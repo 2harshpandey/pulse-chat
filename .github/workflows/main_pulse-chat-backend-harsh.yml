@@ -19,7 +19,7 @@ jobs:
       - name: Set up Node.js version
         uses: actions/setup-node@v3
         with:
-          node-version: '24.x' # Changed to 18.x LTS
+          node-version: '20.x' # Changed to 18.x LTS
 
       - name: npm install
         working-directory: ./backend
@@ -52,4 +52,5 @@ jobs:
           slot-name: 'Production'
           package: .
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_BAF9E9F08BFA4503A2461A3562569A0B }}
+
 
