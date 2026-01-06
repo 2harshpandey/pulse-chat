@@ -162,6 +162,10 @@ const TabButton = styled.button<{ active: boolean }>`
   }
 `;
 
+
+
+
+
 const TabContent = styled.div`
   border: 1px solid #cbd5e0;
   padding: 2rem;
@@ -205,20 +209,19 @@ const LogoutButton = styled(Button)`
 `;
 
 const ActivityLogContainer = styled.div`
-  height: 400px; /* Changed from 500px and flex properties */
+  height: calc(100vh - 20rem);
   width: 100%;
   background-color: #1a202c;
   color: #e2e8f0;
   padding: 1rem;
   border-radius: 4px;
   font-family: 'Courier New', Courier, monospace;
-  overflow-y: auto; /* Changed from hidden */
+  overflow-y: auto;
   border: 1px solid #e2e8f0;
-  /* Removed flex properties */
 `;
 
 const LogViewerContainer = styled.pre`
-  height: 400px; /* Changed from 70vh */
+  height: calc(100vh - 20rem);
   width: 100%;
   overflow-y: scroll;
   background-color: #1a202c;
@@ -258,12 +261,12 @@ const Admin = () => {
   const [error, setError] = useState('');
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [historyLogs, setHistoryLogs] = useState<any[]>([]);
-  const [serverLogs, setServerLogs] = useState('');
+  const [serverLogs, setServerLogs] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('messages');
   const [activityLogs, setActivityLogs] = useState<string[]>(() => {
     const savedLogs = sessionStorage.getItem('admin-activity-logs');
-    return savedLogs ? JSON.parse(savedLogs).reverse() : [];
+    return savedLogs ? JSON.parse(savedLogs) : [];
   });
   const ws = useRef<WebSocket | null>(null);
   const activityLogRef = useRef<HTMLDivElement>(null);
@@ -276,9 +279,13 @@ const Admin = () => {
 
   useEffect(() => {
     if (activityLogRef.current) {
-      activityLogRef.current.scrollTop = activityLogRef.current.scrollHeight;
+      activityLogRef.current.scrollTop = 0;
     }
   }, [activityLogs]);
+  
+  useEffect(() => {
+    console.log('Users state updated:', users);
+  }, [users]);
   
   useEffect(() => {
     const checkAuthAndFetchData = async () => {
@@ -294,11 +301,12 @@ const Admin = () => {
 
           if (usersResponse.ok && historyResponse.ok && serverLogsResponse.ok) {
             const usersData = await usersResponse.json();
+            console.log('Users data:', usersData);
             const historyData = await historyResponse.json();
             const serverLogsData = await serverLogsResponse.text();
             setUsers(usersData);
             setHistoryLogs(historyData.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
-            setServerLogs(serverLogsData);
+            setServerLogs(serverLogsData.split('\n').reverse());
             setIsAuthenticated(true);
           } else {
             sessionStorage.removeItem('admin-password');
@@ -324,22 +332,26 @@ const Admin = () => {
     ws.current.onopen = () => console.log('Admin WebSocket connected');
     ws.current.onmessage = (event) => {
       const message = JSON.parse(event.data);
+      console.log(message);
       switch (message.type) {
         case 'activity':
           setActivityLogs(prevLogs => {
-            const newLogs = [...prevLogs, `[${new Date().toLocaleTimeString()}] ${message.data}`].slice(-50);
+            const newLogs = [`[${new Date().toLocaleTimeString()}] ${message.data}`, ...prevLogs].slice(0, 50);
             sessionStorage.setItem('admin-activity-logs', JSON.stringify(newLogs));
             return newLogs;
           });
           break;
         case 'history':
-          setHistoryLogs(message.data.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+          setHistoryLogs(prevLogs => [message.data, ...prevLogs].sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
           break;
-        case 'users':
-          setUsers(message.data);
+        case 'user_joined':
+          setUsers(prevUsers => [...prevUsers, message.data]);
+          break;
+        case 'user_left':
+          setUsers(prevUsers => prevUsers.filter(user => user.userId !== message.data.userId));
           break;
         case 'server_logs':
-           // Data for this tab will only be fetched on page load
+           setServerLogs(message.data.split('\n').reverse());
           break;
         default:
           break;
@@ -370,7 +382,7 @@ const Admin = () => {
         const serverLogsData = await serverLogsResponse.text();
         setUsers(usersData);
         setHistoryLogs(historyData.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
-        setServerLogs(serverLogsData);
+        setServerLogs(serverLogsData.split('\n').reverse());
         setIsAuthenticated(true);
       } else {
         setError('Incorrect password.');
@@ -397,7 +409,7 @@ const Admin = () => {
         const serverLogsResponse = await fetch(`${process.env.REACT_APP_API_URL}/api/admin/server-logs`, { headers: { 'x-admin-password': storedPassword } });
         if (serverLogsResponse.ok) {
           const serverLogsData = await serverLogsResponse.text();
-          setServerLogs(serverLogsData);
+          setServerLogs(serverLogsData.split('\n').reverse());
         }
       } catch (err) {
         console.error("Failed to fetch server logs", err);
@@ -628,7 +640,9 @@ const Admin = () => {
                   <p>Loading server logs...</p>
               ) : (
                   <LogViewerContainer>
-                      {serverLogs}
+                      {serverLogs.map((log, index) => (
+                          <div key={index}>{log}</div>
+                      ))}
                   </LogViewerContainer>
               )}
             </>

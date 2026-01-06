@@ -635,7 +635,7 @@ const ReactionsPopup = ({
   onRemoveReaction: (emoji: string) => void;
 }) => {
   const [activeTab, setActiveTab] = useState('All');
-  const tabsRef = useRef<HTMLDivElement>(null);
+  const tabsRef = useRef<HTMLDivElement>(null!);
 
   useEffect(() => {
     const tabsEl = tabsRef.current;
@@ -989,7 +989,7 @@ interface Gif { id: string; preview: string; url: string; }
 // --- CHILD COMPONENTS ---
 
 const VideoPlayer = ({ src }: { src: string }) => {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null!);
   const [isPlaying, setIsPlaying] = useState(false);
 
   const handlePlayPause = () => {
@@ -1080,7 +1080,7 @@ interface MessageItemProps {
   msg: Message;
   currentUserId: string;
   activeDeleteMenu: string | null;
-  deleteMenuRef: React.RefObject<HTMLDivElement | null>;
+  deleteMenuRef: React.RefObject<HTMLDivElement>;
   handleSetReply: (message: Message) => void;
   handleReact: (messageId: string, emoji: string) => void;
   openDeleteMenu: (messageId: string) => void;
@@ -1142,8 +1142,8 @@ const MessageItem = React.memo(({
   handleCancelEdit
 }: MessageItemProps) => {
   const isEditing = editingMessageId === msg.id;
-  const editInputRef = useRef<HTMLTextAreaElement>(null);
-  const messageRowRef = useRef<HTMLDivElement>(null);
+  const editInputRef = useRef<HTMLTextAreaElement>(null!);
+  const messageRowRef = useRef<HTMLDivElement>(null!);
 
   useEffect(() => {
     if (isEditing && editInputRef.current) {
@@ -1173,7 +1173,7 @@ const MessageItem = React.memo(({
   
   const currentUserReaction = getReactionByUserId(msg.id, currentUserId);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const reactButtonRef = useRef<HTMLButtonElement>(null);
+  const reactButtonRef = useRef<HTMLButtonElement>(null!);
   const wasLongPressed = useRef(false);
   const sender = msg.userId === currentUserId ? 'me' : 'other';
   const [isMessageBubbleHovered, setIsMessageBubbleHovered] = useState(false);
@@ -1475,11 +1475,11 @@ function Chat() {
   const ws = useRef<WebSocket | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const deleteMenuRef = useRef<HTMLDivElement | null>(null);
-  const gifPickerRef = useRef<HTMLDivElement | null>(null);
-  const attachmentMenuRef = useRef<HTMLDivElement | null>(null);
-  const emojiButtonRef = useRef<HTMLButtonElement | null>(null);
-  const messageInputRef = useRef<HTMLTextAreaElement>(null);
+  const deleteMenuRef = useRef<HTMLDivElement>(null!);
+  const gifPickerRef = useRef<HTMLDivElement>(null!);
+  const attachmentMenuRef = useRef<HTMLDivElement>(null!);
+  const emojiButtonRef = useRef<HTMLButtonElement>(null!);
+  const messageInputRef = useRef<HTMLTextAreaElement>(null!);
   const userIdRef = useRef<string>(getUserId());
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -1724,8 +1724,8 @@ function Chat() {
     }
   };
 
-  const reactionPickerRef = useRef<HTMLDivElement>(null);
-  const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const reactionPickerRef = useRef<HTMLDivElement>(null!);
+  const emojiPickerRef = useRef<HTMLDivElement>(null!);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
