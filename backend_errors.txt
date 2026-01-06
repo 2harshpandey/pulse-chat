@@ -1,0 +1,53 @@
+D:\New folder\backend>npm start
+
+> pulse-backend@1.0.0 start
+> node index.js
+
+[dotenv@17.2.2] injecting env (6) from .env -- tip: ⚙️  suppress all logs with { quiet: true }
+info: MongoDB connected successfully. {"service":"pulse-chat","timestamp":"2026-01-06 14:37:07"}
+info: Loaded 0 messages into history cache. {"service":"pulse-chat","timestamp":"2026-01-06 14:37:07"}
+info: Server is listening on port 8080 {"service":"pulse-chat","timestamp":"2026-01-06 14:37:07"}
+info: [DIAG] Attempting connection. Admin password received: 'null'. Expected: 'Ample@1234' {"service":"pulse-chat","timestamp":"2026-01-06 14:37:25"}
+info: A new client connected! {"service":"pulse-chat","timestamp":"2026-01-06 14:37:25"}
+info: Received message: {"service":"pulse-chat","timestamp":"2026-01-06 14:37:25","type":"user_join","userId":"1756886282459jhvt4yszbcp","username":"Harsh"}
+info: User 'Harsh' joined. {"service":"pulse-chat","timestamp":"2026-01-06 14:37:25"}
+info: [DIAG] Broadcasting to 0 admin(s): {"type":"activity","data":"User 'Harsh' connected."} {"service":"pulse-chat","timestamp":"2026-01-06 14:37:25"}
+info: [DIAG] Broadcasting to 0 admin(s): {"type":"users","data":[{"_id":"695be4a00049c10f3fb838f6","userId":"1756886282459jhvt4yszbcp","__v":0,"createdAt":"2026-01-05T16:19:44.669Z","updatedAt":"2026-01-06T09:05:03.460Z","username":"Harsh"}]} {"service":"pulse-chat","timestamp":"2026-01-06 14:37:25"}
+info: Received message: {"service":"pulse-chat","timestamp":"2026-01-06 14:37:26","type":"start_typing"}
+info: Received message: {"id":"1767690447018","service":"pulse-chat","text":"gf","timestamp":"2026-01-06T09:07:27.018Z","type":"text","userId":"1756886282459jhvt4yszbcp","username":"Harsh"}
+D:\New folder\backend\node_modules\mongoose\lib\document.js:3373
+    this.$__.validationError = new ValidationError(this);
+                               ^
+
+ValidationError: Message validation failed: userColor: Path `userColor` is required.
+    at Document.invalidate (D:\New folder\backend\node_modules\mongoose\lib\document.js:3373:32)
+    at D:\New folder\backend\node_modules\mongoose\lib\document.js:3134:17
+    at D:\New folder\backend\node_modules\mongoose\lib\schemaType.js:1446:9
+    at process.processTicksAndRejections (node:internal/process/task_queues:85:11) {
+  errors: {
+    userColor: ValidatorError: Path `userColor` is required.
+        at validate (D:\New folder\backend\node_modules\mongoose\lib\schemaType.js:1443:13)
+        at SchemaType.doValidate (D:\New folder\backend\node_modules\mongoose\lib\schemaType.js:1427:7)
+        at D:\New folder\backend\node_modules\mongoose\lib\document.js:3126:18
+        at process.processTicksAndRejections (node:internal/process/task_queues:85:11) {
+      properties: {
+        validator: [Function (anonymous)],
+        message: 'Path `userColor` is required.',
+        type: 'required',
+        path: 'userColor',
+        fullPath: undefined,
+        value: undefined
+      },
+      kind: 'required',
+      path: 'userColor',
+      value: undefined,
+      reason: undefined,
+      [Symbol(mongoose#validatorError)]: true
+    }
+  },
+  _message: 'Message validation failed'
+}
+
+Node.js v22.16.0
+
+D:\New folder\backend>

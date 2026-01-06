@@ -9,7 +9,7 @@ const messageSchema = new mongoose.Schema({
   id: { type: String, required: true, unique: true },
   userId: { type: String, required: true },
   username: { type: String, required: true },
-  userColor: { type: String, required: true },
+  
   sender: { type: String, required: true }, // This seems to be the same as userId, can be refactored later
   text: { type: String },
   timestamp: { type: Date, default: Date.now },
