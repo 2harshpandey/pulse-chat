@@ -75,12 +75,16 @@ const Header = styled.header`
   border-bottom: 1px solid #e2e8f0;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
   flex-shrink: 0;
-  z-index: 10;
+  z-index: 50; /* Increased z-index to be above the sidebar */
   display: flex;
   align-items: center;
   justify-content: space-between;
   transition: background-color 0.3s ease;
   animation: ${slideIn} 0.5s ease-out forwards;
+
+  @media (max-width: 768px) {
+    padding: 0.75rem 1rem; /* Reduced padding on mobile */
+  }
 `;
 const HeaderTitle = styled.h1`
   font-size: 1.25rem;
@@ -477,7 +481,7 @@ const UserSidebar = styled.aside<{ $isVisible: boolean }>`
   }
   @media (max-width: 768px) {
     position: fixed;
-    top: 61px;
+    top: 50px;
     right: 0;
     bottom: 0;
     margin-right: ${props => props.$isVisible ? '0' : '-240px'};
