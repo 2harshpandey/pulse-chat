@@ -72,6 +72,26 @@ const broadcastOnlineUsers = () => {
   });
 };
 
+const broadcast = (message) => {
+    const data = JSON.stringify(message);
+    wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(data);
+        }
+    });
+};
+
+// Middleware for super-admin actions requiring a secret key
+const adminSecretAuth = (req, res, next) => {
+    const secret = req.headers['x-admin-secret'];
+    if (secret && secret === process.env.ADMIN_SECRET) {
+        next();
+    } else {
+        logger.warn('Unauthorized attempt to access a secret-protected admin route.');
+        res.status(403).json({ error: 'Forbidden' });
+    }
+};
+
 // Middleware for admin authentication
 const adminAuth = (req, res, next) => {
     const password = req.headers['x-admin-password'];
@@ -148,6 +168,24 @@ app.delete('/api/delete/:id', async (req, res) => {
     logger.error('Delete error:', { message: error.message, stack: error.stack });
     res.status(500).json({ error: 'Failed to delete file.' });
   }
+});
+
+app.delete('/api/messages/all', adminSecretAuth, async (req, res) => {
+    try {
+        await Message.deleteMany({});
+        await MessageEvent.deleteMany({});
+        messageHistory = [];
+        
+        broadcast({ type: 'chat_cleared' });
+        
+        logger.info('All messages and events have been permanently deleted by an admin.');
+        broadcastToAdmins('activity', 'All messages and events have been permanently deleted.');
+
+        res.status(200).json({ message: 'All messages and events have been permanently deleted.' });
+    } catch (error) {
+        logger.error('Error clearing all messages:', { message: error.message, stack: error.stack });
+        res.status(500).json({ error: 'Failed to clear all messages.' });
+    }
 });
 
 // --- GIF API Routes ---

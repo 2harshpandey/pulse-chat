@@ -1575,6 +1575,8 @@ function Chat() {
       const messageData = JSON.parse(event.data);
       if (messageData.type === 'history') {
         setMessages(messageData.data.map(normalizeMessage));
+      } else if (messageData.type === 'chat_cleared') {
+        setMessages([]);
       } else if (messageData.type === 'delete') {
         setMessages(prev => prev.filter(m => m.id !== messageData.id));
       } else if (messageData.type === 'online_users') {

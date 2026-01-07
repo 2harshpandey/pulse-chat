@@ -255,6 +255,13 @@ const formatTime = (dateString: string) => {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 };
 
+const ClearHistoryButton = styled(Button)`
+  background-color: #e53e3e;
+  &:hover {
+    background-color: #c53030;
+  }
+`;
+
 const Admin = () => {
   const [password, setPassword] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -344,6 +351,10 @@ const Admin = () => {
         case 'history':
           setHistoryLogs(prevLogs => [message.data, ...prevLogs].sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
           break;
+        case 'chat_cleared':
+          setHistoryLogs([]);
+          setActivityLogs(prev => [`[${new Date().toLocaleTimeString()}] Chat history permanently cleared.`, ...prev]);
+          break;
         case 'user_joined':
           setUsers(prevUsers => [...prevUsers, message.data]);
           break;
@@ -401,6 +412,38 @@ const Admin = () => {
     setPassword('');
     setActivityLogs([]);
   }
+
+  const handlePermanentClear = async () => {
+    const enteredPassword = prompt("This is a destructive action. Please re-enter the admin password to proceed.");
+    const storedPassword = sessionStorage.getItem('admin-password');
+
+    if (enteredPassword !== storedPassword) {
+      alert("Incorrect password.");
+      return;
+    }
+
+    if (window.confirm("ARE YOU SURE?\n\nThis will permanently delete all messages and events from the database. This action cannot be undone.")) {
+      try {
+        const response = await fetch(`${process.env.REACT_APP_API_URL}/api/messages/all`, {
+          method: 'DELETE',
+          headers: {
+            'x-admin-secret': process.env.REACT_APP_ADMIN_SECRET || ''
+          }
+        });
+
+        if (response.ok) {
+          alert("All chat history has been permanently deleted.");
+          setHistoryLogs([]); // Clear logs from UI immediately
+        } else {
+          const errorData = await response.json();
+          alert(`Error: ${errorData.error || 'Failed to clear history.'}`);
+        }
+      } catch (err) {
+        alert("A network error occurred.");
+        console.error("Failed to clear history", err);
+      }
+    }
+  };
 
   const handleRefreshServerLogs = async () => {
     const storedPassword = sessionStorage.getItem('admin-password');
@@ -529,7 +572,10 @@ const Admin = () => {
       <TabContent>
         {activeTab === 'messages' && (
           <>
-            <h2>Message Log</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2>Message Log</h2>
+              <ClearHistoryButton onClick={handlePermanentClear}>Clear Chat History</ClearHistoryButton>
+            </div>
             <FilterContainer>
               <Input
                 type="text"
