@@ -119,7 +119,7 @@ const MessageRow = styled.div<{ $sender: string; $isSelected?: boolean; $isActiv
   border-radius: 8px;
   transition: background-color 0.2s ease;
   user-select: none;
-  touch-action: none; /* Prevent browser scrolling from interfering with drag */
+  touch-action: pan-y; /* Allow vertical scrolling, while manually handling horizontal drag */
   z-index: ${props => props.$isActiveDeleteMenu ? 40 : 'auto'};
 `;
 const Username = styled.div<{ $sender: 'me' | 'other' }>`
