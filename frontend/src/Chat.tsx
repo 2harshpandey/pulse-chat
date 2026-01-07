@@ -83,7 +83,7 @@ const Header = styled.header`
   animation: ${slideIn} 0.5s ease-out forwards;
 
   @media (max-width: 768px) {
-    padding: 0.75rem 1rem; /* Reduced padding on mobile */
+    padding: 0.5rem 1rem; /* Further reduced padding on mobile */
   }
 `;
 const HeaderTitle = styled.h1`
@@ -468,7 +468,7 @@ const UserSidebar = styled.aside<{ $isVisible: boolean }>`
   width: 240px;
   background: #f8fafc;
   border-left: 1px solid #e2e8f0;
-  padding: 1rem;
+  padding: 1.5rem 1rem;
   overflow-y: hidden; /* Hide overflow for the sidebar itself */
   transition: margin-right 0.3s ease, background-color 0.3s ease;
   flex-shrink: 0;
@@ -481,7 +481,7 @@ const UserSidebar = styled.aside<{ $isVisible: boolean }>`
   }
   @media (max-width: 768px) {
     position: fixed;
-    top: 50px;
+    top: 40px;
     right: 0;
     bottom: 0;
     margin-right: ${props => props.$isVisible ? '0' : '-240px'};
