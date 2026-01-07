@@ -17,7 +17,7 @@ const AuthContainer = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100vh;
+  height: 100%;
   background-color: #e2e8f0;
 `;
 const AuthBox = styled.div`
