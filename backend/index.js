@@ -83,11 +83,16 @@ const broadcast = (message) => {
 
 // Middleware for super-admin actions requiring a secret key
 const adminSecretAuth = (req, res, next) => {
-    const secret = req.headers['x-admin-secret'];
-    if (secret && secret === process.env.ADMIN_SECRET) {
+    const receivedSecret = req.headers['x-admin-secret'];
+    const expectedSecret = process.env.ADMIN_SECRET;
+
+    // Diagnostic logging
+    logger.info(`[DIAG] Admin Secret Auth: Received length: ${receivedSecret?.length || 0}, Expected length: ${expectedSecret?.length || 0}`);
+            
+    if (receivedSecret && expectedSecret && receivedSecret === expectedSecret) {
         next();
     } else {
-        logger.warn('Unauthorized attempt to access a secret-protected admin route.');
+        logger.warn('Unauthorized attempt to access a secret-protected admin route. Secret mismatch.');
         res.status(403).json({ error: 'Forbidden' });
     }
 };
