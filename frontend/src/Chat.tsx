@@ -1156,17 +1156,27 @@ const MessageItem = React.memo(({
   }, [isEditing]);
 
   useDrag(({ active, movement: [mx], last }) => {
+    // If a drag gesture starts, always cancel the long-press-to-select timer.
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+
     if (isMobileView && !isSelectModeActive && messageRowRef.current) {
       if (last) {
+        // If the drag was far enough, trigger the reply action.
         if (mx > 70) {
           handleSetReply(msg);
         }
+        // Animate the message back to its original position.
         messageRowRef.current.style.transform = 'translateX(0px)';
         messageRowRef.current.style.transition = 'transform 0.2s ease-out';
       } else {
+        // During the drag, update the position.
         let newX = active ? mx : 0;
-        if (newX < 0) newX = 0;
-        if (newX > 80) newX = 80;
+        if (newX < 0) newX = 0; // Prevent dragging left.
+        if (newX > 80) newX = 80; // Cap the drag distance to 80px.
+
         messageRowRef.current.style.transform = `translateX(${newX}px)`;
         messageRowRef.current.style.transition = 'none';
       }
