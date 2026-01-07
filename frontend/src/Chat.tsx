@@ -101,6 +101,8 @@ const ChatWindow = styled.main`
   display: flex;
   flex-direction: column;
   animation: ${slideIn} 0.5s ease-out forwards;
+  -webkit-overflow-scrolling: touch; /* Enable momentum scrolling on iOS */
+  touch-action: pan-y; /* Allow vertical panning */
 `;
 const MessagesContainer = styled.div`
   flex-grow: 1;
