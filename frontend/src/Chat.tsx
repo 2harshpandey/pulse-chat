@@ -1371,11 +1371,11 @@ const MessageItem = React.memo(({
               {selectedMessages[0] === msg.id && selectedMessages.length === 1 && (
                 <MobileReactionPicker 
                   $sender={sender}
-                  onMouseDown={e => e.stopPropagation()}
+                  onClick={e => e.stopPropagation()}
                   onTouchStart={e => e.stopPropagation()}
                 >
                   {['👍', '❤️', '😂', '😮', '😢', '🙏'].map(emoji => (
-                    <ReactionEmoji key={emoji} onMouseDown={() => {
+                    <ReactionEmoji key={emoji} onClick={() => {
                       handleReact(msg.id, emoji);
                       handleCancelSelectMode();
                     }}>{emoji}</ReactionEmoji>
