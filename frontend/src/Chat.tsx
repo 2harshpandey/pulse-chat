@@ -99,6 +99,7 @@ const LayoutContainer = styled.div`
   overflow: hidden;
 `;
 const ChatWindow = styled.main`
+  position: relative;
   flex: 1;
   overflow-y: auto;
   padding: 1rem;
@@ -1475,6 +1476,40 @@ const FileIcon = () => (
   </svg>
 );
 
+const ScrollToBottomButton = styled.button<{ $isVisible: boolean }>`
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  width: 44px;
+  height: 44px;
+  background-color: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
+  border: 1px solid #e2e8f0;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  opacity: ${props => props.$isVisible ? 1 : 0};
+  transform: ${props => props.$isVisible ? 'scale(1)' : 'scale(0.8)'};
+  pointer-events: ${props => props.$isVisible ? 'auto' : 'none'};
+  z-index: 20;
+
+  svg {
+    width: 24px;
+    height: 24px;
+    stroke: #4a5568;
+    stroke-width: 2.5;
+  }
+
+  &:hover {
+    transform: scale(1.1);
+    background-color: white;
+  }
+`;
+
 
 function Chat() {
   const userContext = useContext(UserContext);
@@ -1509,6 +1544,7 @@ function Chat() {
   const [isMobileView, setIsMobileView] = useState(window.innerWidth <= 768);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState<string>('');
+  const [isScrollToBottomVisible, setIsScrollToBottomVisible] = useState(false);
 
   useEffect(() => {
     const handleResize = () => {
@@ -1537,6 +1573,7 @@ function Chat() {
   
 
   const ws = useRef<WebSocket | null>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const deleteMenuRef = useRef<HTMLDivElement>(null!);
@@ -2038,6 +2075,20 @@ function Chat() {
     return null;
   };
 
+  const handleScroll = () => {
+    const container = chatContainerRef.current;
+    if (container) {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      // Show button if scrolled up more than 300px from the bottom
+      const isScrolledUp = (scrollHeight - scrollTop - clientHeight) > 300;
+      setIsScrollToBottomVisible(isScrolledUp);
+    }
+  };
+
+  const scrollToBottom = () => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
   let currentMessageIdForReaction: string | undefined;
   if (reactionPickerData) {
     currentMessageIdForReaction = reactionPickerData.messageId;
@@ -2186,7 +2237,7 @@ function Chat() {
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
             </MobileUserListToggle>
         <LayoutContainer>
-          <ChatWindow>
+          <ChatWindow ref={chatContainerRef} onScroll={handleScroll}>
             <MessagesContainer>
               {messages.map((msg: Message) => (
                 <MessageItem
@@ -2225,6 +2276,12 @@ function Chat() {
               ))}
               <div ref={chatEndRef} />
             </MessagesContainer>
+            <ScrollToBottomButton $isVisible={isScrollToBottomVisible} onClick={scrollToBottom}>
+              <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 5v14"></path>
+                <path d="m19 12-7 7-7-7"></path>
+              </svg>
+            </ScrollToBottomButton>
             <TypingIndicator onlineUsers={onlineUsers} currentUserId={userIdRef.current} />
           </ChatWindow>
           <UserSidebar $isVisible={isUserListVisible}>
