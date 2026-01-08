@@ -1057,7 +1057,7 @@ const VideoPlayer = ({ src }: { src: string }) => {
   };
 
   return (
-    <VideoPlayerWrapper onClick={handlePlayPause}>
+    <VideoPlayerWrapper onClick={handlePlayPause} onContextMenu={(e) => e.preventDefault()}>
       {!isPlaying && <PlayIcon />}
       <video
         ref={videoRef}
@@ -1080,7 +1080,7 @@ const MediaDisplay = ({ msg, setLightboxUrl }: { msg: Message, setLightboxUrl: (
     const isImage = msg.type === 'image' || msg.url?.match(/\.(jpeg|jpg|gif|png|svg)$/i);
 
     if (isImage && msg.url) {
-        return <img src={msg.url} alt={msg.originalName} onClick={() => setLightboxUrl(msg.url!)} onDoubleClick={(e) => e.preventDefault()} />;
+        return <img src={msg.url} alt={msg.originalName} onClick={() => setLightboxUrl(msg.url!)} onDoubleClick={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} />;
     }
 
     if (isVideo && msg.url) {
@@ -1100,7 +1100,7 @@ const renderMessageContent = (
   if (isImage) {
     return (
       <MediaContent>
-        <img src={msg.url} alt={msg.originalName} onClick={() => setLightboxUrl(msg.url!)} onDoubleClick={(e) => e.preventDefault()} />
+        <img src={msg.url} alt={msg.originalName} onClick={() => setLightboxUrl(msg.url!)} onDoubleClick={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} />
         {msg.text && <MessageText style={{ paddingTop: '0.5rem' }}>{msg.text}</MessageText>}
       </MediaContent>
     );
