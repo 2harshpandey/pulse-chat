@@ -1652,10 +1652,7 @@ function Chat() {
   }, [userContext?.profile]);
 
     useLayoutEffect(() => {
-      const container = chatContainerRef.current;
-      if (container) {
-        container.scrollTop = container.scrollHeight;
-      }
+      chatEndRef.current?.scrollIntoView();
     }, [messages]);
 
   useEffect(() => {
