@@ -54,7 +54,7 @@ const heartbeatInterval = setInterval(function ping() {
     ws.isAlive = false;
     ws.ping(() => {});
   });
-}, 30000);
+}, 10000);
 
 wss.on('close', function close() {
   clearInterval(heartbeatInterval);
