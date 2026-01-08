@@ -1538,8 +1538,9 @@ function Chat() {
   const userContext = useContext(UserContext);
 
   const handleClearChat = () => {
-    if (window.confirm('Are you sure you want to clear the chat view? Messages will reappear on refresh.')) {
+    if (window.confirm('Are you sure you want to clear the chat for this session? Messages will reappear after you log out and log back in.')) {
         setMessages([]);
+        sessionStorage.setItem('chatCleared', 'true');
     }
   };
 
@@ -1621,12 +1622,24 @@ function Chat() {
   };
 
   useEffect(() => {
+    // When the component mounts, check if the chat should be cleared for this session.
+    if (sessionStorage.getItem('chatCleared') === 'true') {
+      setMessages([]);
+    }
+
     if (!userContext?.profile) return;
     ws.current = new WebSocket(process.env.REACT_APP_API_URL?.replace('http', 'ws') || 'ws://localhost:8080');
     ws.current.onopen = () => { ws.current?.send(JSON.stringify({ type: 'user_join', ...userContext.profile, userId: userIdRef.current })); };
     ws.current.onclose = () => console.log('Disconnected');
     ws.current.onmessage = (event: MessageEvent) => {
       const messageData = JSON.parse(event.data);
+
+      // If the chat has been cleared for this session, ignore the initial history load.
+      if (messageData.type === 'history' && sessionStorage.getItem('chatCleared') === 'true') {
+        return;
+      }
+
+      // Process all other messages normally.
       if (messageData.type === 'history') {
         setMessages(messageData.data.map(normalizeMessage));
       } else if (messageData.type === 'chat_cleared') {
