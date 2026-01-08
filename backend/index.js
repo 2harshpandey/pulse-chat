@@ -44,6 +44,22 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 const PORT = process.env.PORT || 8080;
 
+// --- WebSocket Heartbeat (Ping/Pong) ---
+const heartbeatInterval = setInterval(function ping() {
+  wss.clients.forEach(function each(ws) {
+    if (ws.isAlive === false) {
+      logger.warn('Heartbeat: Terminating dead connection.');
+      return ws.terminate();
+    }
+    ws.isAlive = false;
+    ws.ping(() => {});
+  });
+}, 30000);
+
+wss.on('close', function close() {
+  clearInterval(heartbeatInterval);
+});
+
 // --- Middleware ---
 app.use(cors({ methods: ["GET", "POST", "DELETE"] }));
 app.use(express.json());
@@ -252,6 +268,12 @@ app.get('/api/admin/server-logs', adminAuth, (req, res) => {
 
 // --- WebSocket Connection Logic ---
 wss.on('connection', (ws, req) => {
+  // Heartbeat setup for the new connection
+  ws.isAlive = true;
+  ws.on('pong', () => {
+    ws.isAlive = true;
+  });
+
   const url = new URL(req.url, `http://${req.headers.host}`);
   const adminPassword = url.searchParams.get('adminPassword');
 
