@@ -115,7 +115,7 @@ const MessagesContainer = styled.div<{ $isScrollButtonVisible?: boolean; $isMobi
   gap: 1rem;
   overflow-y: auto;
   padding: 1rem;
-  padding-right: ${props => props.$isScrollButtonVisible ? '64px' : '1rem'};
+  padding-right: ${props => !props.$isMobileView && props.$isScrollButtonVisible ? '64px' : '1rem'};
   transition: padding-right 0.3s ease;
 `;
 
