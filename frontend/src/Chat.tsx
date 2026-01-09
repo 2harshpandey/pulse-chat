@@ -1610,6 +1610,7 @@ function Chat() {
   const messageInputRef = useRef<HTMLTextAreaElement>(null!);
   const userIdRef = useRef<string>(getUserId());
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const replyPreviewRef = useRef<HTMLDivElement>(null);
 
   const normalizeMessage = (msg: any): Message => {
     if (msg.reactions) {
@@ -2157,6 +2158,20 @@ function Chat() {
   const currentUserReaction = getReactionByUserId(currentMessageIdForReaction, userIdRef.current);
 
   const selectedMessage = messages.find(msg => msg.id === selectedMessages[0]);
+  useEffect(() => {
+    if (replyingTo && replyPreviewRef.current) {
+        const previewHeight = replyPreviewRef.current.offsetHeight;
+        if (chatContainerRef.current) {
+            const { scrollHeight, scrollTop, clientHeight } = chatContainerRef.current;
+            // Only scroll if the user is already near the bottom, to avoid disrupting them if they're reading history.
+            const isAtBottom = scrollHeight - scrollTop - clientHeight < 100; // 100px threshold
+            if (isAtBottom) {
+                chatContainerRef.current.scrollBy({ top: previewHeight, behavior: 'smooth' });
+            }
+        }
+    }
+  }, [replyingTo]);
+
   const canEditSelectedMessage = selectedMessages.length === 1 &&
     selectedMessage &&
     selectedMessage.userId === userIdRef.current &&
@@ -2388,7 +2403,7 @@ function Chat() {
             </SelectModeFooter>
           ) : (
             <>
-              {replyingTo && <ReplyPreviewContainer onClick={() => scrollToMessage(replyingTo.id)}>
+              {replyingTo && <ReplyPreviewContainer ref={replyPreviewRef} onClick={() => scrollToMessage(replyingTo.id)}>
                 {replyingTo.type === 'video' && replyingTo.url ? (
                   <video src={replyingTo.url} style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover' }} />
                 ) : (replyingTo.type === 'image' || replyingTo.type === 'video') && replyingTo.url && (
