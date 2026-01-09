@@ -1688,9 +1688,12 @@ function Chat() {
     return () => ws.current?.close();
   }, [userContext?.profile]);
 
-    useLayoutEffect(() => {
-      chatEndRef.current?.scrollIntoView();
-    }, [messages]);
+  useLayoutEffect(() => {
+    const chatContainer = chatContainerRef.current;
+    if (chatContainer) {
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+  }, [messages]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
