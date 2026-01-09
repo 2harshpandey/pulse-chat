@@ -1534,6 +1534,16 @@ const ScrollToBottomButton = styled.button<{ $isVisible: boolean }>`
     transform: scale(1.1);
     background-color: white;
   }
+
+  @media (max-width: 768px) {
+    width: 38px;
+    height: 38px;
+    
+    svg {
+      width: 20px;
+      height: 20px;
+    }
+  }
 `;
 
 
