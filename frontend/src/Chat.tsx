@@ -651,7 +651,7 @@ const ReactionPicker = styled.div<{ $sender: 'me' | 'other' }>`
   display: flex; 
   gap: 8px; 
   box-shadow: 0 4px 12px rgba(0,0,0,0.15); 
-  z-index: 30;
+  z-index: 60;
   animation: ${fadeInScale} 0.15s ease-out forwards;
 `;
 const ReactionEmoji = styled.button<{ $isPlusIcon?: boolean }>`
