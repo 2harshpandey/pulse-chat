@@ -1062,12 +1062,12 @@ const VideoPlayer = ({ src }: { src: string }) => {
   );
 };
 
-const MediaDisplay = ({ msg, setLightboxUrl }: { msg: Message, setLightboxUrl: (url: string | null) => void }) => {
+const MediaDisplay = ({ msg, openLightbox }: { msg: Message, openLightbox: (url: string) => void }) => {
     const isVideo = msg.type === 'video' || msg.url?.match(/\.(mp4|webm|mov)$/i);
     const isImage = msg.type === 'image' || msg.url?.match(/\.(jpeg|jpg|gif|png|svg)$/i);
 
     if (isImage && msg.url) {
-        return <img src={msg.url} alt={msg.originalName} onClick={() => setLightboxUrl(msg.url!)} onDoubleClick={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} />;
+        return <img src={msg.url} alt={msg.originalName} onClick={() => openLightbox(msg.url!)} onDoubleClick={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} />;
     }
 
     if (isVideo && msg.url) {
@@ -1079,7 +1079,7 @@ const MediaDisplay = ({ msg, setLightboxUrl }: { msg: Message, setLightboxUrl: (
 
 const renderMessageContent = (
   msg: Message,
-  setLightboxUrl: (url: string | null) => void
+  openLightbox: (url: string) => void
 ) => {
   const isVideo = msg.type === 'video' || msg.url?.match(/\.(mp4|webm|mov)$/i);
   const isImage = msg.type === 'image' || msg.url?.match(/\.(jpeg|jpg|gif|png|svg)$/i);
@@ -1087,7 +1087,7 @@ const renderMessageContent = (
   if (isImage) {
     return (
       <MediaContent>
-        <img src={msg.url} alt={msg.originalName} onClick={() => setLightboxUrl(msg.url!)} onDoubleClick={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} />
+        <img src={msg.url} alt={msg.originalName} onClick={() => openLightbox(msg.url!)} onDoubleClick={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} />
         {msg.text && <MessageText style={{ paddingTop: '0.5rem' }}>{msg.text}</MessageText>}
       </MediaContent>
     );
@@ -1117,7 +1117,7 @@ interface MessageItemProps {
   handleSetReply: (message: Message) => void;
   handleReact: (messageId: string, emoji: string) => void;
   openDeleteMenu: (messageId: string) => void;
-  setLightboxUrl: (url: string | null) => void;
+  openLightbox: (url: string) => void;
   deleteForMe: (messageId: string) => void;
   deleteForEveryone: (messageId: string) => void;
   scrollToMessage: (messageId: string) => void;
@@ -1150,7 +1150,7 @@ const MessageItem = React.memo(({
   handleSetReply,
   handleReact,
   openDeleteMenu,
-  setLightboxUrl,
+  openLightbox,
   deleteForMe,
   deleteForEveryone,
   scrollToMessage,
@@ -1319,7 +1319,7 @@ const MessageItem = React.memo(({
           ) : isEditing ? (
             msg.url ? (
               <MediaContent>
-                <MediaDisplay msg={msg} setLightboxUrl={setLightboxUrl} />
+                <MediaDisplay msg={msg} openLightbox={openLightbox} />
                 <div style={{ paddingTop: '0.5rem' }}>
                   <EditInput
                     ref={editInputRef}
@@ -1422,7 +1422,7 @@ const MessageItem = React.memo(({
                   </DeleteMenuItem>
                 </DeleteMenu>
               )}
-              {renderMessageContent(msg, setLightboxUrl)}
+              {renderMessageContent(msg, openLightbox)}
               <FooterContainer $sender={sender}>
                 <Timestamp $sender={sender}>{msg.edited && <span>(edited) </span>}{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Timestamp>
               </FooterContainer>
@@ -1567,6 +1567,23 @@ function Chat() {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState<string>('');
   const [isScrollToBottomVisible, setIsScrollToBottomVisible] = useState(false);
+
+  useEffect(() => {
+    const handlePopState = (event: PopStateEvent) => {
+      if (lightboxUrl) {
+        setLightboxUrl(null);
+      }
+      if (isDeleteConfirmationVisible) {
+        setIsDeleteConfirmationVisible(false);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [lightboxUrl, isDeleteConfirmationVisible]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -1985,6 +2002,11 @@ function Chat() {
     };
   }, [isSelectModeActive, isMobileView]);
 
+  const openLightbox = (url: string) => {
+    setLightboxUrl(url);
+    window.history.pushState({ lightboxOpen: true }, '');
+  };
+
   const handleInitiateDelete = () => {
     const selectedMessageObjects = messages.filter(msg => selectedMessages.includes(msg.id));
     const allMessagesAreMine = selectedMessageObjects.every(msg => msg.userId === userIdRef.current);
@@ -1992,6 +2014,7 @@ function Chat() {
     if (!allMessagesAreMine) {
       setCanDeleteForEveryone(false);
       setIsDeleteConfirmationVisible(true);
+      window.history.pushState({ deleteConfirm: true }, '');
       return;
     }
 
@@ -2001,6 +2024,7 @@ function Chat() {
 
     setCanDeleteForEveryone(allMessagesAreRecent);
     setIsDeleteConfirmationVisible(true);
+    window.history.pushState({ deleteConfirm: true }, '');
   };
 
     const handleCopy = async (message: Message) => {
@@ -2298,7 +2322,7 @@ function Chat() {
           <ConfirmationContent>
             <h3>Delete {selectedMessages.length} message{selectedMessages.length > 1 ? 's' : ''}?</h3>
             <div>
-              <ConfirmationButton className="cancel" onClick={() => setIsDeleteConfirmationVisible(false)}>Cancel</ConfirmationButton>
+              <ConfirmationButton className="cancel" onClick={() => window.history.back()}>Cancel</ConfirmationButton>
               <ConfirmationButton className="delete" onClick={handleBulkDeleteForMe}>Delete for me</ConfirmationButton>
               {canDeleteForEveryone && (
                 <ConfirmationButton className="delete" onClick={handleBulkDeleteForEveryone}>Delete for everyone</ConfirmationButton>
@@ -2307,7 +2331,7 @@ function Chat() {
           </ConfirmationContent>
         </ConfirmationModal>
       )}
-      {lightboxUrl && <Lightbox onClick={() => setLightboxUrl(null)}><img src={lightboxUrl} alt="Lightbox" /></Lightbox>}
+      {lightboxUrl && <Lightbox onClick={() => window.history.back()}><img src={lightboxUrl} alt="Lightbox" /></Lightbox>}
       {showGifPicker && (
         <GifPickerModal onClick={() => setShowGifPicker(false)}>
           <GifPickerContent ref={gifPickerRef} onClick={(e) => e.stopPropagation()}>
@@ -2335,7 +2359,7 @@ function Chat() {
                               handleSetReply={handleSetReply}
                               handleReact={handleReact}
                               openDeleteMenu={openDeleteMenu}
-                              setLightboxUrl={setLightboxUrl}
+                              openLightbox={openLightbox}
                               activeDeleteMenu={activeDeleteMenu}
                               deleteMenuRef={deleteMenuRef}
                               deleteForMe={deleteForMe}
