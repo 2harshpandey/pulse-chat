@@ -1561,6 +1561,7 @@ function Chat() {
   const [isSelectModeActive, setIsSelectModeActive] = useState(false);
   const [selectedMessages, setSelectedMessages] = useState<string[]>([]);
   const [isDeleteConfirmationVisible, setIsDeleteConfirmationVisible] = useState(false);
+  const [canDeleteForEveryone, setCanDeleteForEveryone] = useState(false);
   const [fullEmojiPickerPosition, setFullEmojiPickerPosition] = useState<DOMRect | null>(null);
   const [isMobileView, setIsMobileView] = useState(window.innerWidth <= 768);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -1960,6 +1961,16 @@ function Chat() {
     handleCancelSelectMode();
   };
 
+  const handleBulkDeleteForEveryone = () => {
+    selectedMessages.forEach(id => {
+      if (ws.current) {
+        ws.current.send(JSON.stringify({ type: 'delete_for_everyone', messageId: id }));
+      }
+    });
+    setIsDeleteConfirmationVisible(false);
+    handleCancelSelectMode();
+  };
+
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && isSelectModeActive && !isMobileView) {
@@ -1979,10 +1990,16 @@ function Chat() {
     const allMessagesAreMine = selectedMessageObjects.every(msg => msg.userId === userIdRef.current);
 
     if (!allMessagesAreMine) {
+      setCanDeleteForEveryone(false);
       setIsDeleteConfirmationVisible(true);
       return;
     }
 
+    const timeLimit = 15 * 60 * 1000; // 15 minutes
+    const now = new Date().getTime();
+    const allMessagesAreRecent = selectedMessageObjects.every(msg => (now - new Date(msg.timestamp).getTime()) < timeLimit);
+
+    setCanDeleteForEveryone(allMessagesAreRecent);
     setIsDeleteConfirmationVisible(true);
   };
 
@@ -2283,6 +2300,9 @@ function Chat() {
             <div>
               <ConfirmationButton className="cancel" onClick={() => setIsDeleteConfirmationVisible(false)}>Cancel</ConfirmationButton>
               <ConfirmationButton className="delete" onClick={handleBulkDeleteForMe}>Delete for me</ConfirmationButton>
+              {canDeleteForEveryone && (
+                <ConfirmationButton className="delete" onClick={handleBulkDeleteForEveryone}>Delete for everyone</ConfirmationButton>
+              )}
             </div>
           </ConfirmationContent>
         </ConfirmationModal>
