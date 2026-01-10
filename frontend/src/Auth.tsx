@@ -114,7 +114,7 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
   const [error, setError] = useState('');
 
   const handleLogin = () => {
-    if (password !== 'Khushi123') {
+    if (password !== 'Ample@123') {
       setError('Incorrect password.');
       return;
     }
