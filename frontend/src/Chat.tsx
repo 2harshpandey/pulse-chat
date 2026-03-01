@@ -1188,6 +1188,7 @@ const MessageItem = React.memo(({
   const isEditing = editingMessageId === msg.id;
   const editInputRef = useRef<HTMLTextAreaElement>(null!);
   const messageRowRef = useRef<HTMLDivElement>(null!);
+  const messageBubbleRef = useRef<HTMLDivElement>(null!);
 
   useEffect(() => {
     if (isEditing && editInputRef.current) {
@@ -1297,6 +1298,13 @@ const MessageItem = React.memo(({
       $isActiveDeleteMenu={activeDeleteMenu === msg.id}
       onDoubleClick={(e) => {
         if (!isMobileView && !isSelectModeActive && !isDeleted) {
+          // Only quote when double-clicking *outside* the message bubble
+          // (i.e. the empty space beside the bubble). If the double-click
+          // target is inside the bubble, ignore it so normal text selection
+          // and interactions work.
+          if (messageBubbleRef.current && messageBubbleRef.current.contains(e.target as Node)) {
+            return;
+          }
           e.preventDefault();
           handleSetReply(msg);
         }
@@ -1316,6 +1324,7 @@ const MessageItem = React.memo(({
       >
         {!isDeleted && <Username $sender={sender}>{msg.username}</Username>}
         <MessageBubble 
+          ref={messageBubbleRef}
           $sender={sender} 
           $messageType={msg.type} 
           $isUploading={msg.isUploading} 
