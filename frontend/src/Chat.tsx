@@ -1608,8 +1608,8 @@ function Chat() {
   // One guard entry is enough — the popstate handler re-pushes it if more overlays remain.
   useEffect(() => {
     const anyOpen = isDeleteConfirmationVisible || isSelectModeActive || !!lightboxUrl || isUserListVisible;
-    if (anyOpen && !history.state?.overlayGuard) {
-      history.pushState({ overlayGuard: true }, '');
+    if (anyOpen && !window.history.state?.overlayGuard) {
+      window.history.pushState({ overlayGuard: true }, '');
     }
   }, [isDeleteConfirmationVisible, isSelectModeActive, lightboxUrl, isUserListVisible]);
 
@@ -1666,15 +1666,15 @@ function Chat() {
       if (isDeleteConfirmationVisible) {
         setIsDeleteConfirmationVisible(false);
         const moreOpen = isSelectModeActive || !!lightboxUrl || isUserListVisible;
-        if (moreOpen) history.pushState({ overlayGuard: true }, '');
+        if (moreOpen) window.history.pushState({ overlayGuard: true }, '');
       } else if (isSelectModeActive) {
         setSelectedMessages([]);
         setIsSelectModeActive(false);
         const moreOpen = !!lightboxUrl || isUserListVisible;
-        if (moreOpen) history.pushState({ overlayGuard: true }, '');
+        if (moreOpen) window.history.pushState({ overlayGuard: true }, '');
       } else if (lightboxUrl) {
         setLightboxUrl(null);
-        if (isUserListVisible) history.pushState({ overlayGuard: true }, '');
+        if (isUserListVisible) window.history.pushState({ overlayGuard: true }, '');
       } else if (isUserListVisible) {
         setIsUserListVisible(false);
       }
