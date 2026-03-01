@@ -326,32 +326,44 @@ wss.on('connection', (ws, req) => {
   });
 
   const url = new URL(req.url, `http://${req.headers.host}`);
-  const adminPassword = url.searchParams.get('adminPassword');
+  const isAdminConnection = url.searchParams.get('admin') === 'true';
 
-  if (adminPassword === process.env.ADMIN_PASSWORD) {
-    ws.isAdmin = true;
-    adminClients.add(ws);
-    logger.info('An admin client connected!');
-    broadcastToAdmins('activity', 'An admin client connected to admin channel.');
-    User.find().then(allDbUsers => {
-      ws.send(JSON.stringify({ type: 'users', data: allDbUsers }));
+  if (isAdminConnection) {
+    // Auth is done via the first WebSocket message to keep the password out of the URL (and server logs).
+    ws.once('message', (rawData) => {
+      try {
+        const data = JSON.parse(rawData.toString());
+        if (data.type === 'admin_auth' && data.password === process.env.ADMIN_PASSWORD) {
+          ws.isAdmin = true;
+          adminClients.add(ws);
+          logger.info('An admin client authenticated and connected!');
+          broadcastToAdmins('activity', 'An admin client connected to admin channel.');
+          User.find().then(allDbUsers => {
+            ws.send(JSON.stringify({ type: 'users', data: allDbUsers }));
+          });
+          ws.on('close', () => {
+            adminClients.delete(ws);
+            logger.info('An admin client disconnected from admin channel.');
+            broadcastToAdmins('activity', 'An admin client disconnected from admin channel.');
+          });
+        } else {
+          logger.warn('Admin auth failed: incorrect password.');
+          ws.terminate();
+        }
+      } catch {
+        ws.terminate();
+      }
     });
-    
-    ws.on('close', () => {
-      adminClients.delete(ws);
-      logger.info('An admin client disconnected from admin channel.');
-      broadcastToAdmins('activity', 'An admin client disconnected from admin channel.');
-    });
-    // Admin clients just listen, they don't send messages like users.
-    // We can add specific admin message handlers here if needed in the future.
-    return; 
+    return;
   }
 
   logger.info('A new client connected!');
 
   ws.on('message', async (message) => {
     const parsedMessage = JSON.parse(message.toString());
-    logger.info('Received message:', parsedMessage);
+    if (parsedMessage.type !== 'admin_auth') {
+      logger.info('Received message:', parsedMessage);
+    }
 
     switch (parsedMessage.type) {
       case 'user_join': {

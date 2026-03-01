@@ -374,9 +374,12 @@ const Admin = () => {
     const storedPassword = sessionStorage.getItem('admin-password');
     if (!storedPassword) return;
 
-    const wsUrl = `${process.env.REACT_APP_API_URL?.replace('http', 'ws') || 'ws://localhost:8080'}?adminPassword=${storedPassword}`;
+    const wsUrl = `${process.env.REACT_APP_API_URL?.replace('http', 'ws') || 'ws://localhost:8080'}?admin=true`;
     ws.current = new WebSocket(wsUrl);
-    ws.current.onopen = () => console.log('Admin WebSocket connected');
+    ws.current.onopen = () => {
+      ws.current?.send(JSON.stringify({ type: 'admin_auth', password: storedPassword }));
+      console.log('Admin WebSocket connected');
+    };
     ws.current.onmessage = (event) => {
       const message = JSON.parse(event.data);
       console.log(message);
