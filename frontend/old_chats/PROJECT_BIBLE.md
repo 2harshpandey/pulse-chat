@@ -315,8 +315,6 @@ This session was focused on improving the core user experience by fixing long-st
 
 ## Session 12 Summary: Security hardening, UX polish & production push
 
-**Date:** 2026-03-01
-
 **Overview:** This session focused on closing remaining security leaks (hardcoded client/admin passwords and logging/exposure), a set of UX/mobile polish items in the chat UI, and preparing the app for production by ensuring environment-driven auth and CI/Azure app-settings updates.
 
 - **Security & Auth:**
@@ -331,6 +329,8 @@ This session was focused on improving the core user experience by fixing long-st
     - Ensured reliable scroll-to-bottom behavior on load and after send; added tweaks so the scroll-to-bottom button doesn't steal focus or minimize the on-screen keyboard on touch devices (preventDefault on pointer/mouse/touch down events).
     - Double-click quoting limited to desktop clicks that occur outside the message bubble (prevents accidental quoting when double-clicking inside a bubble).
     - Made the typing indicator text unselectable (`user-select: none`) to avoid accidental-selection UX.
+    - Footer copy behavior (mobile): the footer `Copy` action now appears only when exactly one message is selected; it hides immediately when multiple messages are selected and reappears when selection returns to a single message.
+    - Media preview tap behavior: tapping an image/video/GIF preview opens the lightbox/player without selecting the message (prevents accidental multi-select); selecting a message still works when tapping the side-area or for plain text/quoted messages.
 
 - **Backend (key file): `backend/index.js`**
     - Implemented `POST /api/auth/verify` and moved admin handshake logic to message-based auth.
