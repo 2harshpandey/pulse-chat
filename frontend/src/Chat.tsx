@@ -1748,10 +1748,12 @@ function Chat() {
 
     } else if (stagedGif) {
       const gifMessage: Message = { id: stagedGif.id, userId: userIdRef.current, username: userContext.profile.username, type: 'image', url: stagedGif.url, text: inputMessage, timestamp: new Date().toISOString(), replyingTo: replyContext };
+      setMessages(prev => [...prev, gifMessage]);
       ws.current.send(JSON.stringify(gifMessage));
       resetInput();
     } else {
       const textMessage: Message = { id: Date.now().toString(), userId: userIdRef.current, username: userContext.profile.username, type: 'text', text: inputMessage, timestamp: new Date().toISOString(), replyingTo: replyContext };
+      setMessages(prev => [...prev, textMessage]);
       ws.current.send(JSON.stringify(textMessage));
       resetInput();
     }
