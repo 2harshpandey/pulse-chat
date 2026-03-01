@@ -1598,18 +1598,28 @@ function Chat() {
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const replyPreviewRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef({ isSelectModeActive, isDeleteConfirmationVisible, lightboxUrl, isUserListVisible });
+  // Tracks whether we currently have a guard entry in the history stack.
+  // Using a ref (not window.history.state) avoids stale-state issues when
+  // overlays are closed programmatically rather than via the back button.
+  const overlayGuardPushed = useRef(false);
 
   // Update ref whenever any overlay state changes
   useEffect(() => {
     stateRef.current = { isSelectModeActive, isDeleteConfirmationVisible, lightboxUrl, isUserListVisible };
   }, [isSelectModeActive, isDeleteConfirmationVisible, lightboxUrl, isUserListVisible]);
 
-  // Push a history guard entry whenever any overlay opens so the back button is intercepted.
-  // One guard entry is enough — the popstate handler re-pushes it if more overlays remain.
+  // Push exactly ONE history guard entry when going from "nothing open" to
+  // "something open".  When the popstate handler consumes the guard it resets
+  // the ref, so the *next* effect run (triggered by closing one layer while
+  // others remain) will push a fresh guard automatically.
   useEffect(() => {
     const anyOpen = isDeleteConfirmationVisible || isSelectModeActive || !!lightboxUrl || isUserListVisible;
-    if (anyOpen && !window.history.state?.overlayGuard) {
+    if (anyOpen && !overlayGuardPushed.current) {
       window.history.pushState({ overlayGuard: true }, '');
+      overlayGuardPushed.current = true;
+    }
+    if (!anyOpen) {
+      overlayGuardPushed.current = false;
     }
   }, [isDeleteConfirmationVisible, isSelectModeActive, lightboxUrl, isUserListVisible]);
 
@@ -1658,27 +1668,25 @@ function Chat() {
   // Mobile Back Button Handler
   useEffect(() => {
     const handlePopState = () => {
+      // The browser just consumed (popped) our guard entry, so mark it gone.
+      // If more layers remain open the guard-push *effect* will automatically
+      // push a fresh guard after React re-renders with the updated state.
+      overlayGuardPushed.current = false;
+
       const { isSelectModeActive, isDeleteConfirmationVisible, lightboxUrl, isUserListVisible } = stateRef.current;
 
-      // Strict hierarchy: confirm modal → select mode → lightbox → user list sidebar.
-      // After closing a layer, re-push the guard if more layers are still open so the
-      // next back press is also intercepted instead of exiting the app.
+      // Strict hierarchy: confirm modal → select mode → lightbox → sidebar.
       if (isDeleteConfirmationVisible) {
         setIsDeleteConfirmationVisible(false);
-        const moreOpen = isSelectModeActive || !!lightboxUrl || isUserListVisible;
-        if (moreOpen) window.history.pushState({ overlayGuard: true }, '');
       } else if (isSelectModeActive) {
         setSelectedMessages([]);
         setIsSelectModeActive(false);
-        const moreOpen = !!lightboxUrl || isUserListVisible;
-        if (moreOpen) window.history.pushState({ overlayGuard: true }, '');
       } else if (lightboxUrl) {
         setLightboxUrl(null);
-        if (isUserListVisible) window.history.pushState({ overlayGuard: true }, '');
       } else if (isUserListVisible) {
         setIsUserListVisible(false);
       }
-      // else: nothing open — let the natural navigation happen
+      // else: nothing open — the natural back navigation proceeds
     };
 
     window.addEventListener('popstate', handlePopState);
@@ -1969,7 +1977,6 @@ function Chat() {
 
   const openLightbox = (url: string) => {
     setLightboxUrl(url);
-    window.history.pushState({ lightbox: true }, '');
   };
 
   const handleInitiateDelete = () => {
@@ -1985,7 +1992,6 @@ function Chat() {
       setCanDeleteForEveryone(allMessagesAreRecent);
     }
     setIsDeleteConfirmationVisible(true);
-    window.history.pushState({ deleteConfirm: true }, '');
   };
   
   const handleToggleSelectMessage = (messageId: string) => {
