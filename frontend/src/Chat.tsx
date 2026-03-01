@@ -1842,6 +1842,8 @@ function Chat() {
         isUploading: true,
       };
       setMessages(prev => [...prev, message]);
+      // Ensure the view scrolls to show the newly added message
+      requestAnimationFrame(() => scrollToBottom());
       
       const formData = new FormData();
       formData.append('file', stagedFile);
@@ -1868,11 +1870,13 @@ function Chat() {
     } else if (stagedGif) {
       const gifMessage: Message = { id: stagedGif.id, userId: userIdRef.current, username: userContext.profile.username, type: 'image', url: stagedGif.url, text: inputMessage, timestamp: new Date().toISOString(), replyingTo: replyContext };
       setMessages(prev => [...prev, gifMessage]);
+      requestAnimationFrame(() => scrollToBottom());
       ws.current.send(JSON.stringify(gifMessage));
       resetInput();
     } else {
       const textMessage: Message = { id: Date.now().toString(), userId: userIdRef.current, username: userContext.profile.username, type: 'text', text: inputMessage, timestamp: new Date().toISOString(), replyingTo: replyContext };
       setMessages(prev => [...prev, textMessage]);
+      requestAnimationFrame(() => scrollToBottom());
       ws.current.send(JSON.stringify(textMessage));
       resetInput();
     }
