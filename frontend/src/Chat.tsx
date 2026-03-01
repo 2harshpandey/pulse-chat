@@ -1649,27 +1649,77 @@ function Chat() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []); // Empty dependency array means this runs only once on mount
 
-  // WebSocket connection
+  // WebSocket connection with auto-reconnect on tab-resume / network-restore
   useEffect(() => {
     if (!userContext?.profile) return;
-    ws.current = new WebSocket(process.env.REACT_APP_API_URL?.replace('http', 'ws') || 'ws://localhost:8080');
-    ws.current.onopen = () => { ws.current?.send(JSON.stringify({ type: 'user_join', ...userContext.profile, userId: userIdRef.current })); };
-    ws.current.onclose = () => console.log('Disconnected');
-    ws.current.onmessage = (event: MessageEvent) => {
-      const messageData = JSON.parse(event.data);
-      if (messageData.type === 'history') {
-        setMessages(messageData.data.map(normalizeMessage));
-      } else if (messageData.type === 'online_users') {
-        setOnlineUsers(messageData.data);
-      } else if (messageData.type === 'update') {
-        const normalizedUpdate = normalizeMessage(messageData.data);
-        setMessages(prev => prev.map(m => m.id === normalizedUpdate.id ? { ...m, ...normalizedUpdate } : m));
-      } else {
-        setMessages(prev => [...prev, normalizeMessage(messageData)]);
-      }
+
+    // Defined inside the effect so the handlers always close over the
+    // latest userContext.profile and the setState functions.
+    const connect = () => {
+      // Already open or in the middle of connecting — nothing to do.
+      if (
+        ws.current &&
+        (ws.current.readyState === WebSocket.OPEN ||
+          ws.current.readyState === WebSocket.CONNECTING)
+      ) return;
+
+      ws.current = new WebSocket(
+        process.env.REACT_APP_API_URL?.replace('http', 'ws') || 'ws://localhost:8080'
+      );
+
+      ws.current.onopen = () => {
+        ws.current?.send(
+          JSON.stringify({ type: 'user_join', ...userContext.profile, userId: userIdRef.current })
+        );
+      };
+
+      ws.current.onclose = () => console.log('WebSocket disconnected');
+
+      ws.current.onerror = () => {
+        // Force close so the readyState is CLOSED and the next connect() call
+        // will actually create a new socket.
+        ws.current?.close();
+      };
+
+      ws.current.onmessage = (event: MessageEvent) => {
+        const messageData = JSON.parse(event.data);
+        if (messageData.type === 'history') {
+          setMessages(messageData.data.map(normalizeMessage));
+        } else if (messageData.type === 'online_users') {
+          setOnlineUsers(messageData.data);
+        } else if (messageData.type === 'update') {
+          const normalizedUpdate = normalizeMessage(messageData.data);
+          setMessages(prev =>
+            prev.map(m => (m.id === normalizedUpdate.id ? { ...m, ...normalizedUpdate } : m))
+          );
+        } else {
+          setMessages(prev => [...prev, normalizeMessage(messageData)]);
+        }
+      };
     };
-    return () => ws.current?.close();
-  }, [userContext?.profile]);
+
+    // Initial connection
+    connect();
+
+    // --- Auto-reconnect triggers ---
+
+    // 1. User returns to the tab / un-minimizes the browser on mobile.
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') connect();
+    };
+
+    // 2. Device regains network connectivity (e.g. came out of airplane mode).
+    const handleOnline = () => connect();
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('online', handleOnline);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('online', handleOnline);
+      ws.current?.close();
+    };
+  }, [userContext?.profile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // General click/keydown handlers
   useEffect(() => {
