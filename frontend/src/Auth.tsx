@@ -130,7 +130,9 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
     setIsLoading(true);
     setError('');
     try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL}/api/auth/verify`, {
+      const apiBase = (process.env.REACT_APP_API_URL || '').replace(/\/$/, '');
+      const url = `${apiBase}/api/auth/verify`;
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
