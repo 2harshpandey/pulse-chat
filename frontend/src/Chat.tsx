@@ -374,6 +374,7 @@ const AttachmentMenuItem = styled.button`
   text-align: left;
   font-size: 0.9rem;
   cursor: pointer;
+  transition: background-color 0.2s;
   &:hover { background-color: #f7fafc; }
 `;
 
@@ -1616,7 +1617,7 @@ function Chat() {
   const [editingText, setEditingText] = useState<string>('');
   const [isScrollToBottomVisible, setIsScrollToBottomVisible] = useState(false);
   const [messageIdForFullEmojiPicker, setMessageIdForFullEmojiPicker] = useState<string | null>(null);
-  const [reactionsPopup, setReactionsPopup] = useState<{ messageId: string; reactions: { [emoji: string]: { userId: string, username: string }[] }; rect: DOMRect } | null>(null);
+  const [reactionsPopup, setReactionsPopup] = useState<{ messageId: string; reactions: { [emoji: string]: { userId: string; username: string; }[] }; rect: DOMRect } | null>(null);
   const [reactionPickerData, setReactionPickerData] = useState<{ messageId: string; rect: DOMRect; sender: 'me' | 'other' } | null>(null);
   const [emojiPickerPosition, setEmojiPickerPosition] = useState<DOMRect | null>(null);
 
@@ -2072,7 +2073,23 @@ function Chat() {
   }, []);
   
   const reactionPickerRef = useRef<HTMLDivElement>(null!);
-  
+
+  // Close reaction picker when clicking/tapping outside
+  useEffect(() => {
+    if (!reactionPickerData) return;
+    function handleOutside(e: MouseEvent | TouchEvent) {
+      if (reactionPickerRef.current && !reactionPickerRef.current.contains(e.target as Node)) {
+        setReactionPickerData(null);
+      }
+    }
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('touchstart', handleOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('touchstart', handleOutside);
+    };
+  }, [reactionPickerData]);
+
   // --- OVERLAY & HISTORY MANAGEMENT ---
 
   const openLightbox = useCallback((url: string) => {
