@@ -15,7 +15,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.6.2",
-    "react-scripts": "5.0.1",
+    "react-scripts": "^5.0.1",
     "styled-components": "^5.3.6",
     "typescript": "^4.9.4",
     "web-vitals": "^2.1.4"
@@ -54,7 +54,11 @@
     "@remix-run/router": ">=1.23.2",
     "nth-check": ">=2.0.1",
     "lodash": ">=4.17.23",
-    "jsonpath": ">=1.2.0",
-    "qs": ">=6.14.2"
+    "jsonpath": ">=1.1.0",
+    "bfj": ">=8.0.0",
+    "qs": ">=6.14.2",
+    "resolve-url-loader": {
+      "postcss": ">=8.4.31"
+    }
   }
 }
