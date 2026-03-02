@@ -16,13 +16,29 @@ const getUserId = (): string => {
 };
 
 /**
+ * Trusted CDN hostnames allowed as fetch targets in downloadFile.
+ * Any URL whose hostname is not in this list is opened in a new tab instead of
+ * fetched — prevents Server-Side Request Forgery (SSRF) if msg.url is ever set
+ * to an internal network address.
+ */
+const ALLOWED_DOWNLOAD_HOSTS = ['res.cloudinary.com', 'media.tenor.com', 'tenor.com'];
+
+/**
  * Fetches a file as a Blob and triggers a browser download with the correct filename.
  * The HTML `download` attribute is silently ignored by browsers for cross-origin URLs
  * (e.g. Cloudinary CDN), so we must fetch the blob and create a local object URL.
- * Falls back to opening in a new tab if the fetch fails.
+ * Falls back to opening in a new tab if the fetch fails or the host is not trusted.
  */
 const downloadFile = async (url: string, filename: string): Promise<void> => {
   try {
+    // Validate URL host against allowlist before fetching (SSRF prevention).
+    let parsed: URL;
+    try { parsed = new URL(url); } catch { window.open(url, '_blank', 'noopener,noreferrer'); return; }
+    const { hostname, protocol } = parsed;
+    const isTrustedHost =
+      (protocol === 'https:' || protocol === 'http:') &&
+      ALLOWED_DOWNLOAD_HOSTS.some(h => hostname === h || hostname.endsWith('.' + h));
+    if (!isTrustedHost) { window.open(url, '_blank', 'noopener,noreferrer'); return; }
     const response = await fetch(url);
     const blob = await response.blob();
     const blobUrl = URL.createObjectURL(blob);
@@ -34,7 +50,38 @@ const downloadFile = async (url: string, filename: string): Promise<void> => {
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
   } catch {
-    window.open(url, '_blank');
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+};
+
+/**
+ * Sanitizes a URL before using it as a media src/href attribute.
+ * Rejects any URL whose protocol is not https:, http:, or blob: — prevents
+ * XSS via javascript: or data: URIs that could be injected through server data.
+ */
+const sanitizeMediaUrl = (url: string | undefined | null): string => {
+  if (!url) return '';
+  if (url.startsWith('blob:')) return url; // createObjectURL URLs are always safe
+  try {
+    const { protocol } = new URL(url);
+    return (protocol === 'https:' || protocol === 'http:') ? url : '';
+  } catch {
+    return '';
+  }
+};
+
+/**
+ * Returns true only if the URL hostname is exactly tenor.com or a subdomain.
+ * A simple .includes('tenor.com') check can be bypassed by embedding it anywhere
+ * in the URL — e.g. http://evil.com/path/tenor.com would incorrectly pass.
+ */
+const isTenorUrl = (url: string | undefined | null): boolean => {
+  if (!url) return false;
+  try {
+    const { hostname } = new URL(url);
+    return hostname === 'tenor.com' || hostname.endsWith('.tenor.com');
+  } catch {
+    return false;
   }
 };
 
@@ -1405,7 +1452,7 @@ const VideoPlayer = ({ src, onPointerDown }: { src: string; onPointerDown?: () =
       {!isPlaying && <PlayIcon />}
       <video
         ref={videoRef}
-        src={src}
+        src={sanitizeMediaUrl(src)}
         onLoadedMetadata={handleLoadedMetadata}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
@@ -1424,7 +1471,7 @@ const MediaDisplay = ({ msg, openLightbox }: { msg: Message, openLightbox: (url:
     const isImage = msg.type === 'image' || msg.url?.match(/\.(jpeg|jpg|gif|png|svg)$/i);
 
     if (isImage && msg.url) {
-        return <img src={msg.url} alt={msg.originalName} onClick={() => openLightbox(msg.url!)} onDoubleClick={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} />;
+        return <img src={sanitizeMediaUrl(msg.url)} alt={msg.originalName} onClick={() => { const u = sanitizeMediaUrl(msg.url); if (u) openLightbox(u); }} onDoubleClick={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} />;
     }
 
     if (isVideo && msg.url) {
@@ -1454,7 +1501,7 @@ const renderMessageContent = (
     return (
       <MediaContent>
         <MediaImageWrapper>
-          <img src={msg.url} alt={msg.originalName} onClick={() => openLightbox(msg.url!)} onPointerDown={() => onMediaPointerDown?.()} onDoubleClick={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} />
+          <img src={sanitizeMediaUrl(msg.url)} alt={msg.originalName} onClick={() => { const u = sanitizeMediaUrl(msg.url); if (u) openLightbox(u); }} onPointerDown={() => onMediaPointerDown?.()} onDoubleClick={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} />
           {msg.url && (
             <MediaDownloadOverlayBtn
               title="Download"
@@ -2870,7 +2917,7 @@ function Chat() {
       if (type === 'system_notification') { setReplyingTo(null); return; }
       let replyText = replyingTo.text || 'Message';
       if (!replyingTo.text) {
-        if (replyingTo.url?.includes('tenor.com')) replyText = 'GIF';
+        if (isTenorUrl(replyingTo.url)) replyText = 'GIF';
         else if (replyingTo.type === 'image') replyText = 'Image';
         else if (replyingTo.type === 'video') replyText = 'Video';
       }
@@ -2958,9 +3005,9 @@ function Chat() {
             </FilePreviewModalHeader>
             <FilePreviewModalBody>
               {isImg ? (
-                <img src={URL.createObjectURL(activeFile)} alt={activeFile.name} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px' }} />
+                <img src={sanitizeMediaUrl(URL.createObjectURL(activeFile))} alt="File preview" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px' }} />
               ) : isVid ? (
-                <video src={URL.createObjectURL(activeFile)} controls style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: '8px' }} />
+                <video src={sanitizeMediaUrl(URL.createObjectURL(activeFile))} controls style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: '8px' }} />
               ) : (
                 <FilePreviewNoPreview>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
@@ -2980,7 +3027,7 @@ function Chat() {
                   return (
                     <div key={idx} style={{ position: 'relative', flexShrink: 0 }}>
                       <FilePreviewThumb $active={idx === previewActiveIndex} onClick={() => setPreviewActiveIndex(idx)}>
-                        {tIsImg ? <img src={URL.createObjectURL(f)} alt={f.name} /> : tIsVid ? <video src={URL.createObjectURL(f)} /> : (
+                        {tIsImg ? <img src={sanitizeMediaUrl(URL.createObjectURL(f))} alt="" /> : tIsVid ? <video src={sanitizeMediaUrl(URL.createObjectURL(f))} /> : (
                           <svg viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                         )}
                       </FilePreviewThumb>
@@ -3344,7 +3391,7 @@ function Chat() {
 
       {lightboxUrl && (
         <Lightbox onClick={() => setLightboxUrl(null)}>
-          <img src={lightboxUrl} alt="Lightbox" />
+          <img src={sanitizeMediaUrl(lightboxUrl)} alt="Lightbox" />
         </Lightbox>
       )}
        {showGifPicker && (
