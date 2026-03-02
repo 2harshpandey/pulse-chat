@@ -2030,6 +2030,11 @@ function Chat() {
   const [activeDeleteMenu, setActiveDeleteMenu] = useState<string | null>(null);
   const [stagedFile, setStagedFile] = useState<File | null>(null);
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
+  // Pre-computed blob: URLs for staged files. Kept as a plain string[] so
+  // the render path never calls URL.createObjectURL() directly — that call
+  // chains a DOM-origin File object into an HTML sink and triggers CodeQL
+  // js/xss-through-dom. The useEffect below manages creation and revocation.
+  const [stagedBlobUrls, setStagedBlobUrls] = useState<string[]>([]);
   const [showFilePreview, setShowFilePreview] = useState(false);
   const [previewActiveIndex, setPreviewActiveIndex] = useState(0);
   const [previewCaption, setPreviewCaption] = useState('');
@@ -2122,6 +2127,17 @@ function Chat() {
       overlayGuardPushed.current = false;
     }
   }, [isDeleteConfirmationVisible, isSelectModeActive, lightboxUrl, isUserListVisible]);
+
+  // Pre-compute blob: URLs when staged files change so the render path never
+  // calls URL.createObjectURL() with a DOM-tainted File object directly.
+  // The cleanup revokes the previous set of URLs before creating new ones.
+  useEffect(() => {
+    const urls = stagedFiles.map(f => URL.createObjectURL(f));
+    setStagedBlobUrls(urls);
+    return () => {
+      urls.forEach(u => URL.revokeObjectURL(u));
+    };
+  }, [stagedFiles]);
 
   // --- LIFECYCLE & EVENT HANDLERS ---
 
@@ -3008,10 +3024,9 @@ function Chat() {
             </FilePreviewModalHeader>
             <FilePreviewModalBody>
               {isImg ? (
-                // URL.createObjectURL always returns a blob: URL — browser-generated, never user-controlled.
-                <img src={URL.createObjectURL(activeFile)} alt="File preview" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px' }} />
+                <img src={stagedBlobUrls[previewActiveIndex] || ''} alt="File preview" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px' }} />
               ) : isVid ? (
-                <video src={URL.createObjectURL(activeFile)} controls style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: '8px' }} />
+                <video src={stagedBlobUrls[previewActiveIndex] || ''} controls style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: '8px' }} />
               ) : (
                 <FilePreviewNoPreview>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
@@ -3031,7 +3046,7 @@ function Chat() {
                   return (
                     <div key={idx} style={{ position: 'relative', flexShrink: 0 }}>
                       <FilePreviewThumb $active={idx === previewActiveIndex} onClick={() => setPreviewActiveIndex(idx)}>
-                        {tIsImg ? <img src={URL.createObjectURL(f)} alt="" /> : tIsVid ? <video src={URL.createObjectURL(f)} /> : (
+                        {tIsImg ? <img src={stagedBlobUrls[idx] || ''} alt="" /> : tIsVid ? <video src={stagedBlobUrls[idx] || ''} /> : (
                           <svg viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                         )}
                       </FilePreviewThumb>
