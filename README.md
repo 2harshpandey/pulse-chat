@@ -191,6 +191,15 @@ This project progressed through multiple focused sessions. Brief highlights by s
   - Bug fixes: fixed non-image/video upload failures, resolved modal/chat layout overlaps, tightened error-path handling.
   - Business rules enforced: multi-file support + clear errors; downloads keep original names; all UI responsive & accessible.
   - Validation & commits: build-verified and tested across devices/browsers — only remaining minor Gboard top-bar stutter attributed to Gboard, not the app.
+  ESC to unquote: pressing Esc now removes the quoted message.
+  - Quoted-preview polish: quote-preview cross stays perfectly circular, slightly larger hit area; long quote text is responsively truncated with an ellipsis (no visual distortion) across all screen sizes (touch + non-touch).
+  - Scroll-to-bottom positioning: repositioned so it never overlaps send/other buttons — on desktop it's raised above the send button; on mobile it's placed just above the quoted-preview.
+  - Menu/reaction toggles: clicking the same react icon or three-dots now toggles (closes) the menu instead of blinking.
+  - Prevent quoting deleted messages on touch: blocked quoting of deleted messages on touchscreen devices (non-touch behavior unchanged).
+  - Auto-scroll fixes: when quote-preview or a message menu would overlap the original message or be hidden by the textbox, chat auto-scrolls smoothly so the item’s end sits just above the preview/menu.
+  - Unselectable deleted-text: in-place “You deleted this message.” text is now user-select: none.
+  - Reaction bar dismiss: reaction bar closes when clicking anywhere outside it (blank canvas).
+  - Cross-cutting: all changes are responsive, smooth, and tested on touch & non-touch devices; added small UI checks for these flows.
 
 
 ## Contributing
