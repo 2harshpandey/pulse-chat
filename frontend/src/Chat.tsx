@@ -119,6 +119,17 @@ const MessagesContainer = styled.div<{ $isScrollButtonVisible?: boolean; $isMobi
   transition: padding-right 0.3s ease;
 `;
 
+/* Wraps MessagesContainer + ScrollToBottomButton so the button is anchored
+   to the bottom of the messages area — automatically above whatever the footer contains */
+const MessagesAndScrollWrapper = styled.div`
+  flex: 1;
+  position: relative;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+`;
+
 const MessageRow = styled.div<{ $sender: string; $isSelected?: boolean; $isActiveDeleteMenu?: boolean; }>`
   display: flex;
   flex-direction: row;
@@ -1541,9 +1552,9 @@ const FileIcon = () => (
   </svg>
 );
 
-const ScrollToBottomButton = styled.button<{ $isVisible: boolean; $hasFooterPreview?: boolean }>`
+const ScrollToBottomButton = styled.button<{ $isVisible: boolean }>`
   position: absolute;
-  bottom: ${props => props.$hasFooterPreview ? '140px' : '85px'};
+  bottom: 16px;
   right: 20px;
   width: 44px;
   height: 44px;
@@ -1556,7 +1567,7 @@ const ScrollToBottomButton = styled.button<{ $isVisible: boolean; $hasFooterPrev
   align-items: center;
   justify-content: center;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  transition: opacity 0.3s ease, transform 0.3s ease, bottom 0.3s ease;
+  transition: opacity 0.3s ease, transform 0.3s ease;
   opacity: ${props => props.$isVisible ? 1 : 0};
   transform: ${props => props.$isVisible ? 'scale(1)' : 'scale(0.8)'};
   pointer-events: ${props => props.$isVisible ? 'auto' : 'none'};
@@ -1577,7 +1588,7 @@ const ScrollToBottomButton = styled.button<{ $isVisible: boolean; $hasFooterPrev
   @media (max-width: 768px) {
     width: 38px;
     height: 38px;
-    bottom: ${props => props.$hasFooterPreview ? '140px' : '85px'};
+    bottom: 12px;
     right: 16px;
     
     svg {
@@ -2489,6 +2500,7 @@ function Chat() {
         </Header>
         <LayoutContainer>
           <ChatWindow>
+            <MessagesAndScrollWrapper>
             <MessagesContainer ref={chatContainerRef} onScroll={handleScroll} onClick={handleChatAreaClick} $isScrollButtonVisible={isScrollToBottomVisible} $isMobileView={isMobileView}>
                {messages.map((msg: Message) => {
                           if (msg.type === 'system_notification') {
@@ -2534,7 +2546,6 @@ function Chat() {
             </MessagesContainer>
             <ScrollToBottomButton
               $isVisible={isScrollToBottomVisible}
-              $hasFooterPreview={!!(replyingTo || stagedFile || stagedGif)}
               onClick={scrollToBottom}
               onMouseDown={(e) => e.preventDefault()}
               onTouchStart={(e) => e.preventDefault()}
@@ -2545,6 +2556,7 @@ function Chat() {
                 <path d="m19 12-7 7-7-7"></path>
               </svg>
             </ScrollToBottomButton>
+            </MessagesAndScrollWrapper>
             <TypingIndicator onlineUsers={onlineUsers} currentUserId={userIdRef.current} />
             <Footer>
               {isSelectModeActive ? (
