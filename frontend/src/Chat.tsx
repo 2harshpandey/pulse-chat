@@ -15,6 +15,29 @@ const getUserId = (): string => {
   return userId;
 };
 
+/**
+ * Fetches a file as a Blob and triggers a browser download with the correct filename.
+ * The HTML `download` attribute is silently ignored by browsers for cross-origin URLs
+ * (e.g. Cloudinary CDN), so we must fetch the blob and create a local object URL.
+ * Falls back to opening in a new tab if the fetch fails.
+ */
+const downloadFile = async (url: string, filename: string): Promise<void> => {
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+  } catch {
+    window.open(url, '_blank');
+  }
+};
+
 // --- STYLED COMPONENTS ---
 export const GlobalStyle = createGlobalStyle`
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -389,7 +412,7 @@ const AttachButton = styled(SendButton)`
       box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     }
 `;
-const FileAttachmentCard = styled.a`
+const FileAttachmentCard = styled.div`
   display: flex;
   align-items: center;
   gap: 10px;
@@ -397,14 +420,13 @@ const FileAttachmentCard = styled.a`
   background: rgba(0,0,0,0.07);
   border-radius: 10px;
   border: 1px solid rgba(0,0,0,0.1);
-  text-decoration: none;
   color: inherit;
   cursor: pointer;
   transition: background 0.15s;
-  max-width: 260px;
+  max-width: 280px;
   &:hover { background: rgba(0,0,0,0.13); }
   svg { flex-shrink: 0; }
-  span { font-size: 0.85rem; font-weight: 500; word-break: break-all; opacity: 0.85; }
+  span { font-size: 0.85rem; font-weight: 500; word-break: break-all; opacity: 0.85; flex: 1; min-width: 0; }
 `;
 
 const MediaContent = styled.div`
@@ -420,8 +442,64 @@ const MediaContent = styled.div`
       max-width: 450px;
     }
   }
-  p + img, p + video { margin-top: 0.5rem; }
+  p + div, p + img, p + video { margin-top: 0.5rem; }
 `;
+
+/* Absolutely-positioned download button that appears over images */
+const MediaDownloadOverlayBtn = styled.button`
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.52);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.18s, background 0.15s;
+  z-index: 2;
+  svg { width: 15px; height: 15px; }
+  &:hover { background: rgba(0, 0, 0, 0.72); }
+  @media (max-width: 768px) { opacity: 1; width: 28px; height: 28px; }
+`;
+
+/* Wraps an image so the download overlay button can be positioned within it */
+const MediaImageWrapper = styled.div`
+  position: relative;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  @media (min-width: 769px) { max-width: 450px; }
+  &:hover ${MediaDownloadOverlayBtn} { opacity: 1; }
+`;
+
+/* Small inline download button for videos and file cards */
+const InlineDownloadBtn = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  padding: 4px 10px;
+  background: rgba(0,0,0,0.06);
+  border: 1px solid rgba(0,0,0,0.09);
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: inherit;
+  opacity: 0.7;
+  transition: opacity 0.15s, background 0.15s;
+  &:hover { opacity: 1; background: rgba(0,0,0,0.12); }
+  svg { width: 13px; height: 13px; flex-shrink: 0; }
+`;
+
 const ConfirmationButton = styled.button`
   padding: 0.5rem 1rem;
   border: none;
@@ -1196,10 +1274,28 @@ const renderMessageContent = (
   const isVideo = msg.type === 'video' || msg.url?.match(/\.(mp4|webm|mov)$/i);
   const isImage = msg.type === 'image' || msg.url?.match(/\.(jpeg|jpg|gif|png|svg)$/i);
 
+  const DownloadSvg = () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="7 10 12 15 17 10"/>
+      <line x1="12" y1="15" x2="12" y2="3"/>
+    </svg>
+  );
+
   if (isImage) {
     return (
       <MediaContent>
-        <img src={msg.url} alt={msg.originalName} onClick={() => openLightbox(msg.url!)} onPointerDown={() => onMediaPointerDown?.()} onDoubleClick={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} />
+        <MediaImageWrapper>
+          <img src={msg.url} alt={msg.originalName} onClick={() => openLightbox(msg.url!)} onPointerDown={() => onMediaPointerDown?.()} onDoubleClick={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} />
+          {msg.url && (
+            <MediaDownloadOverlayBtn
+              title="Download"
+              onClick={(e) => { e.stopPropagation(); downloadFile(msg.url!, msg.originalName || 'image'); }}
+            >
+              <DownloadSvg />
+            </MediaDownloadOverlayBtn>
+          )}
+        </MediaImageWrapper>
         {msg.text && <MessageText style={{ paddingTop: '0.5rem' }}>{msg.text}</MessageText>}
       </MediaContent>
     );
@@ -1209,6 +1305,9 @@ const renderMessageContent = (
     return (
       <MediaContent>
         <VideoPlayer src={msg.url} onPointerDown={onMediaPointerDown} />
+        <InlineDownloadBtn onClick={() => downloadFile(msg.url!, msg.originalName || 'video')}>
+          <DownloadSvg /> Download
+        </InlineDownloadBtn>
         {msg.text && <MessageText style={{ paddingTop: '0.5rem' }}>{msg.text}</MessageText>}
       </MediaContent>
     );
@@ -1217,12 +1316,17 @@ const renderMessageContent = (
   if (msg.type === 'file' || (msg.url && !isImage && !isVideo)) {
     return (
       <MediaContent>
-        <FileAttachmentCard href={msg.url} target="_blank" rel="noopener noreferrer" download={msg.originalName}>
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <FileAttachmentCard onClick={() => msg.url && downloadFile(msg.url, msg.originalName || 'file')}>
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
             <polyline points="14 2 14 8 20 8"/>
           </svg>
           <span>{msg.originalName || 'Download file'}</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 'auto', flexShrink: 0, opacity: 0.6 }}>
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
         </FileAttachmentCard>
         {msg.text && <MessageText style={{ paddingTop: '0.5rem' }}>{msg.text}</MessageText>}
       </MediaContent>

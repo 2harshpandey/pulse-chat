@@ -56,6 +56,8 @@ const storage = new CloudinaryStorage({
   params: {
     folder: 'pulse-chat',
     resource_type: 'auto',
+    use_filename: true,       // Preserve original filename in the Cloudinary public_id
+    unique_filename: true,    // Append a short random suffix to avoid collisions
   },
 });
 const upload = multer({ storage });
