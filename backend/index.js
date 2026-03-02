@@ -60,7 +60,10 @@ const storage = new CloudinaryStorage({
     unique_filename: true,    // Append a short random suffix to avoid collisions
   },
 });
-const upload = multer({ \n  storage,\n  limits: { fileSize: 100 * 1024 * 1024 }  // 100 MB max\n});
+const upload = multer({
+  storage,
+  limits: { fileSize: 100 * 1024 * 1024 }  // 100 MB max
+});
 
 // --- Server Setup ---
 const app = express();
