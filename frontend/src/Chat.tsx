@@ -1366,7 +1366,7 @@ const MessageItem = React.memo(({
           onMouseLeave={() => setIsMessageBubbleHovered(false)}
         >
           {isDeleted ? (
-            <MessageText style={{ fontStyle: 'italic', color: sender === 'me' ? '#bfdbfe' : '#a0aec0' }}>
+            <MessageText style={{ fontStyle: 'italic', color: sender === 'me' ? '#bfdbfe' : '#a0aec0', userSelect: 'none', WebkitUserSelect: 'none', cursor: 'default' }}>
               {msg.deletedBy === currentUserId ? 'You deleted this message.' : 'This message has been deleted.'}
             </MessageText>
           ) : isEditing ? (
@@ -2090,6 +2090,45 @@ function Chat() {
     };
   }, [reactionPickerData]);
 
+  // When a reply preview appears, scroll the chat so the quoted message
+  // is fully visible just above the preview — same as WhatsApp behaviour.
+  useEffect(() => {
+    if (!replyingTo) return;
+    // Double rAF: first frame commits the DOM, second ensures layout is complete
+    // (footer has grown to include the reply preview, container has shrunk).
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const msgElement = document.getElementById(`message-${replyingTo.id}`);
+        if (!msgElement || !chatContainerRef.current) return;
+        const container = chatContainerRef.current;
+        const containerRect = container.getBoundingClientRect();
+        const msgRect = msgElement.getBoundingClientRect();
+        const margin = 8;
+        if (msgRect.bottom > containerRect.bottom - margin) {
+          container.scrollBy({ top: msgRect.bottom - containerRect.bottom + margin, behavior: 'smooth' });
+        }
+      });
+    });
+  }, [replyingTo]);
+
+  // When the message-actions menu opens, scroll the chat so the bottom of
+  // the menu sits inside the visible area (above the footer).
+  const handleOpenDeleteMenu = useCallback((messageId: string) => {
+    setActiveDeleteMenu(messageId);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (!deleteMenuRef.current || !chatContainerRef.current) return;
+        const container = chatContainerRef.current;
+        const containerRect = container.getBoundingClientRect();
+        const menuRect = deleteMenuRef.current.getBoundingClientRect();
+        const margin = 12;
+        if (menuRect.bottom > containerRect.bottom - margin) {
+          container.scrollBy({ top: menuRect.bottom - containerRect.bottom + margin, behavior: 'smooth' });
+        }
+      });
+    });
+  }, []);
+
   // --- OVERLAY & HISTORY MANAGEMENT ---
 
   const openLightbox = useCallback((url: string) => {
@@ -2453,7 +2492,7 @@ function Chat() {
                               currentUserId={userIdRef.current}
                               handleSetReply={handleSetReply}
                               handleReact={handleReact}
-                              openDeleteMenu={setActiveDeleteMenu}
+                              openDeleteMenu={handleOpenDeleteMenu}
                               openLightbox={openLightbox}
                               activeDeleteMenu={activeDeleteMenu}
                               deleteMenuRef={deleteMenuRef}
