@@ -14,6 +14,38 @@ const connectDB = require('./db');
 const User = require('./models/user');
 const Message = require('./models/message');
 const MessageEvent = require('./models/messageEvent');
+const rateLimit = require('express-rate-limit');
+
+// --- Rate Limiters ---
+// Prevent brute-force and abuse on public/sensitive endpoints.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20,                  // max 20 attempts per window
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+});
+const uploadLimiter = rateLimit({
+  windowMs: 60 * 1000,      // 1 minute
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many uploads, please try again later.' },
+});
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,      // 1 minute
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+});
+const adminLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+});
 
 // --- Environment Variable Check ---
 // Log a clear warning at startup if any critical secrets are missing.
@@ -129,13 +161,10 @@ const adminSecretAuth = (req, res, next) => {
     const receivedSecret = req.headers['x-admin-secret'];
     const expectedSecret = process.env.ADMIN_SECRET;
 
-    // Diagnostic logging
-    logger.info(`[DIAG] Admin Secret Auth: Received length: ${receivedSecret?.length || 0}, Expected length: ${expectedSecret?.length || 0}`);
-            
     if (receivedSecret && expectedSecret && receivedSecret === expectedSecret) {
         next();
     } else {
-        logger.warn('Unauthorized attempt to access a secret-protected admin route. Secret mismatch.');
+        logger.warn('Unauthorized attempt to access a secret-protected admin route.');
         res.status(403).json({ error: 'Forbidden' });
     }
 };
@@ -159,7 +188,7 @@ app.get('/health', (req, res) => {
 app.get('/', (req, res) => res.send('Pulse Chat Server is running!'));
 
 // --- Client Auth Verification ---
-app.post('/api/auth/verify', (req, res) => {
+app.post('/api/auth/verify', authLimiter, (req, res) => {
     const { password } = req.body;
     if (password && password === process.env.CLIENT_PASSWORD) {
         res.status(200).json({ success: true });
@@ -168,7 +197,7 @@ app.post('/api/auth/verify', (req, res) => {
     }
 });
 
-app.post('/api/upload', (req, res) => {
+app.post('/api/upload', uploadLimiter, (req, res) => {
   upload.single('file')(req, res, (err) => {
     if (err) {
       logger.error(`Upload middleware error: ${err.message}`);
@@ -217,7 +246,7 @@ app.post('/api/upload', (req, res) => {
   });
 });
 
-app.delete('/api/delete/:id', async (req, res) => {
+app.delete('/api/delete/:id', apiLimiter, async (req, res) => {
   try {
     const messageId = req.params.id;
     if (!messageId) return res.status(400).json({ error: 'No message ID provided.' });
@@ -296,23 +325,23 @@ app.get('/api/gifs/search', async (req, res) => {
 });
 
 // --- Admin Routes ---
-app.get('/api/admin/messages', adminAuth, async (req, res) => {
+app.get('/api/admin/messages', adminLimiter, adminAuth, async (req, res) => {
     const messages = await Message.find().sort({ createdAt: -1 }).limit(MAX_HISTORY);
     res.json(messages.reverse());
 });
 
-app.get('/api/admin/users', adminAuth, async (req, res) => {
+app.get('/api/admin/users', adminLimiter, adminAuth, async (req, res) => {
     console.log('Online users:', Array.from(onlineUsers.values()));
     const users = Array.from(onlineUsers.values());
     res.json(users);
 });
 
-app.get('/api/admin/history', adminAuth, async (req, res) => {
+app.get('/api/admin/history', adminLimiter, adminAuth, async (req, res) => {
     const events = await MessageEvent.find().sort({ createdAt: -1 });
     res.json(events);
 });
 
-app.get('/api/admin/server-logs', adminAuth, (req, res) => {
+app.get('/api/admin/server-logs', adminLimiter, adminAuth, (req, res) => {
   const logFilePath = path.join(__dirname, 'pulse-activity.log');
   fs.readFile(logFilePath, 'utf8', (err, data) => {
     if (err) {

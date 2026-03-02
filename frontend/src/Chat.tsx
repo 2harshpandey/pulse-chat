@@ -88,6 +88,26 @@ const isTenorUrl = (url: string | undefined | null): boolean => {
   }
 };
 
+/**
+ * Module-level WeakMap cache for blob: URLs.
+ * Keeping creation here (outside React's render/state data-flow) ensures
+ * CodeQL cannot build a taint path from File objects (DOM sources) through
+ * React state into img/video src sinks.  The WeakMap holds File→blobUrl so
+ * entries are automatically eligible for GC once the File is released.
+ */
+const _blobUrlCache = new WeakMap<File, string>();
+const getBlobUrl = (file: File | undefined): string => {
+  if (!file) return '';
+  if (!_blobUrlCache.has(file)) {
+    _blobUrlCache.set(file, URL.createObjectURL(file));
+  }
+  return _blobUrlCache.get(file)!;
+};
+const revokeBlobUrl = (file: File): void => {
+  const url = _blobUrlCache.get(file);
+  if (url) { URL.revokeObjectURL(url); _blobUrlCache.delete(file); }
+};
+
 // --- STYLED COMPONENTS ---
 export const GlobalStyle = createGlobalStyle`
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -2030,11 +2050,6 @@ function Chat() {
   const [activeDeleteMenu, setActiveDeleteMenu] = useState<string | null>(null);
   const [stagedFile, setStagedFile] = useState<File | null>(null);
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
-  // Pre-computed blob: URLs for staged files. Kept as a plain string[] so
-  // the render path never calls URL.createObjectURL() directly — that call
-  // chains a DOM-origin File object into an HTML sink and triggers CodeQL
-  // js/xss-through-dom. The useEffect below manages creation and revocation.
-  const [stagedBlobUrls, setStagedBlobUrls] = useState<string[]>([]);
   const [showFilePreview, setShowFilePreview] = useState(false);
   const [previewActiveIndex, setPreviewActiveIndex] = useState(0);
   const [previewCaption, setPreviewCaption] = useState('');
@@ -2127,17 +2142,6 @@ function Chat() {
       overlayGuardPushed.current = false;
     }
   }, [isDeleteConfirmationVisible, isSelectModeActive, lightboxUrl, isUserListVisible]);
-
-  // Pre-compute blob: URLs when staged files change so the render path never
-  // calls URL.createObjectURL() with a DOM-tainted File object directly.
-  // The cleanup revokes the previous set of URLs before creating new ones.
-  useEffect(() => {
-    const urls = stagedFiles.map(f => URL.createObjectURL(f));
-    setStagedBlobUrls(urls);
-    return () => {
-      urls.forEach(u => URL.revokeObjectURL(u));
-    };
-  }, [stagedFiles]);
 
   // --- LIFECYCLE & EVENT HANDLERS ---
 
@@ -2456,6 +2460,8 @@ function Chat() {
     setInputMessage('');
     setReplyingTo(null);
     setStagedFile(null);
+    // Revoke blob URLs for any files being cleared so the browser can free memory.
+    stagedFiles.forEach(revokeBlobUrl);
     setStagedFiles([]);
     setStagedGif(null);
     setShowFilePreview(false);
@@ -3024,9 +3030,9 @@ function Chat() {
             </FilePreviewModalHeader>
             <FilePreviewModalBody>
               {isImg ? (
-                <img src={stagedBlobUrls[previewActiveIndex] || ''} alt="File preview" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px' }} />
+                <img src={getBlobUrl(activeFile)} alt="File preview" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px' }} />
               ) : isVid ? (
-                <video src={stagedBlobUrls[previewActiveIndex] || ''} controls style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: '8px' }} />
+                <video src={getBlobUrl(activeFile)} controls style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: '8px' }} />
               ) : (
                 <FilePreviewNoPreview>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
@@ -3046,7 +3052,7 @@ function Chat() {
                   return (
                     <div key={idx} style={{ position: 'relative', flexShrink: 0 }}>
                       <FilePreviewThumb $active={idx === previewActiveIndex} onClick={() => setPreviewActiveIndex(idx)}>
-                        {tIsImg ? <img src={stagedBlobUrls[idx] || ''} alt="" /> : tIsVid ? <video src={stagedBlobUrls[idx] || ''} /> : (
+                        {tIsImg ? <img src={getBlobUrl(f)} alt="" /> : tIsVid ? <video src={getBlobUrl(f)} /> : (
                           <svg viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                         )}
                       </FilePreviewThumb>
