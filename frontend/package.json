@@ -54,6 +54,7 @@
     "@remix-run/router": ">=1.23.2",
     "nth-check": ">=2.0.1",
     "lodash": ">=4.17.23",
-    "jsonpath": ">=1.2.0"
+    "jsonpath": ">=1.2.0",
+    "qs": ">=6.14.2"
   }
 }
