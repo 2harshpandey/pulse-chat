@@ -48,6 +48,10 @@
     "@types/styled-components": "^5.1.26"
   },
   "overrides": {
-    "rollup": ">=2.80.0"
+    "rollup": ">=2.80.0",
+    "minimatch": ">=5.1.8",
+    "serialize-javascript": ">=7.0.3",
+    "@remix-run/router": ">=1.23.2",
+    "nth-check": ">=2.0.1"
   }
 }
