@@ -1336,7 +1336,26 @@ const MessageItem = React.memo(({
       onTouchEnd={handleLongPressEnd}
     >
       {isSelectModeActive && (
-        <SelectCheckboxContainer onClick={(e) => { e.stopPropagation(); handleToggleSelectMessage(msg.id); }}>
+        <SelectCheckboxContainer
+          onTouchStart={(e) => {
+            // stopImmediatePropagation at the native level prevents useDrag
+            // (which adds its own native listeners to messageRowRef) from also
+            // seeing this touch and calling handleToggleSelectMessage a second time.
+            e.nativeEvent.stopImmediatePropagation();
+          }}
+          onTouchEnd={(e) => {
+            e.nativeEvent.stopImmediatePropagation();
+            // preventDefault stops the browser from synthesising a click event
+            // after touchend, so onClick below won't double-fire on mobile.
+            e.preventDefault();
+            handleToggleSelectMessage(msg.id);
+          }}
+          onClick={(e) => {
+            // Desktop-only fallback (touch devices are handled by onTouchEnd above).
+            e.stopPropagation();
+            handleToggleSelectMessage(msg.id);
+          }}
+        >
           <Checkbox checked={isSelected} />
         </SelectCheckboxContainer>
       )}
@@ -1630,6 +1649,9 @@ function Chat() {
   // Prevents sending start_typing more than once per ~3 s even on rapid keystrokes.
   const typingCooldownRef = useRef(false);
   const resizeRafRef = useRef<number>(0);
+  // Tracks whether the text input was focused (keyboard open) when the user
+  // started touching the emoji button.  Set in onTouchStart, consumed in onClick.
+  const emojiKeyboardWasOpenRef = useRef(false);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInputMessage(e.target.value);
@@ -1831,6 +1853,29 @@ function Chat() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // ── WhatsApp-style auto-focus (desktop only) ──────────────────────────────
+  // When the user types any printable character while nothing (or a non-input)
+  // element is focused, redirect keystrokes into the message input automatically.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Only printable single characters; skip modifiers, function keys, etc.
+      if (e.key.length !== 1 || e.metaKey || e.ctrlKey || e.altKey) return;
+      // Already in the input – nothing to do.
+      if (document.activeElement === messageInputRef.current) return;
+      // Don't steal focus from other text fields (e.g. the edit textarea).
+      const tag = (document.activeElement as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      // Don't redirect when overlays or select mode are active.
+      if (isSelectModeActive || !!lightboxUrl || isDeleteConfirmationVisible || isUserListVisible || editingMessageId) return;
+      // Don't redirect on mobile – mobile keyboard requires explicit tap.
+      if (isMobileView) return;
+      messageInputRef.current?.focus();
+      // Do NOT call e.preventDefault() so the character is typed into the input.
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [isSelectModeActive, lightboxUrl, isDeleteConfirmationVisible, isUserListVisible, editingMessageId, isMobileView]);
 
   useLayoutEffect(() => {
     const chatContainer = chatContainerRef.current;
@@ -2201,6 +2246,15 @@ function Chat() {
     }
   }, []);
 
+  // Clicking on empty space in the chat area focuses the input (WhatsApp-style).
+  // Only fires when the click target IS the scroll container itself (empty space),
+  // not when it bubbles up from a message, button, or any other child element.
+  const handleChatAreaClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target !== chatContainerRef.current) return;
+    if (isSelectModeActive || !!lightboxUrl || isDeleteConfirmationVisible) return;
+    messageInputRef.current?.focus();
+  }, [isSelectModeActive, lightboxUrl, isDeleteConfirmationVisible]);
+
   const scrollToMessage = useCallback((messageId: string) => {
     const element = document.getElementById(`message-${messageId}`);
     if (element) {
@@ -2218,19 +2272,13 @@ function Chat() {
   };
 
   const handleEmojiClick = (emojiData: EmojiClickData) => { setInputMessage(prev => prev + emojiData.emoji); };
-  const handleOpenEmojiPicker = useCallback((rect: DOMRect) => {
-    // On mobile/touch devices: if the keyboard is open (input focused),
-    // blur the input first so the on-screen keyboard hides and doesn't
-    // cover the emoji picker. Delay opening briefly to allow the
-    // keyboard hide animation to run.
-    if (isMobileView && messageInputRef.current && document.activeElement === messageInputRef.current) {
-      try { messageInputRef.current.blur(); } catch (e) { /* ignore */ }
-      setTimeout(() => setEmojiPickerPosition(prev => prev ? null : rect), 80);
-      return;
+  const handleOpenEmojiPicker = useCallback((rect: DOMRect, delayMs = 0) => {
+    if (delayMs > 0) {
+      setTimeout(() => setEmojiPickerPosition(prev => prev ? null : rect), delayMs);
+    } else {
+      setEmojiPickerPosition(prev => prev ? null : rect);
     }
-
-    setEmojiPickerPosition(prev => prev ? null : rect);
-  }, [isMobileView]);
+  }, []);
 
   const handleOpenFullEmojiPicker = useCallback((rect: DOMRect, messageId: string) => {
     setFullEmojiPickerPosition(rect);
@@ -2369,7 +2417,7 @@ function Chat() {
         </Header>
         <LayoutContainer>
           <ChatWindow>
-            <MessagesContainer ref={chatContainerRef} onScroll={handleScroll} $isScrollButtonVisible={isScrollToBottomVisible} $isMobileView={isMobileView}>
+            <MessagesContainer ref={chatContainerRef} onScroll={handleScroll} onClick={handleChatAreaClick} $isScrollButtonVisible={isScrollToBottomVisible} $isMobileView={isMobileView}>
                {messages.map((msg: Message) => {
                           if (msg.type === 'system_notification') {
                             return <SystemMessage key={msg.id}>{msg.text}</SystemMessage>;
@@ -2478,7 +2526,28 @@ function Chat() {
               <InputContainer>
                 <ActionButtonsContainer>
                   <div style={{ position: 'relative' }}>
-                    <EmojiButton ref={emojiButtonRef} onClick={(e) => handleOpenEmojiPicker(e.currentTarget.getBoundingClientRect())}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg></EmojiButton>
+                    <EmojiButton
+                      ref={emojiButtonRef}
+                      onTouchStart={() => {
+                        // Capture keyboard state BEFORE focus shifts away from the input.
+                        // onTouchStart fires first – document.activeElement is still the input.
+                        if (messageInputRef.current && document.activeElement === messageInputRef.current) {
+                          emojiKeyboardWasOpenRef.current = true;
+                          try { messageInputRef.current.blur(); } catch (_) {}
+                        }
+                      }}
+                      onClick={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        if (emojiKeyboardWasOpenRef.current) {
+                          // Keyboard was just dismissed; wait for its slide-down animation
+                          // (~150 ms) before showing the picker so it isn't covered.
+                          emojiKeyboardWasOpenRef.current = false;
+                          handleOpenEmojiPicker(rect, 150);
+                        } else {
+                          handleOpenEmojiPicker(rect);
+                        }
+                      }}
+                    ><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg></EmojiButton>
                   </div>
                   <div style={{ position: 'relative' }} ref={attachmentMenuRef}>
                     <AttachButton onClick={() => setIsAttachmentMenuVisible(!isAttachmentMenuVisible)} ref={attachmentButtonRef}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg></AttachButton>
