@@ -293,7 +293,7 @@ const MessagesAndScrollWrapper = styled.div`
   overflow: hidden;
 `;
 
-const MessageRow = styled.div<{ $sender: string; $isSelected?: boolean; $isActiveDeleteMenu?: boolean; }>`
+const MessageRow = styled.div<{ $sender: string; $isSelected?: boolean; $isActiveDeleteMenu?: boolean; $isGrouped?: boolean; }>`
   display: flex;
   flex-direction: row;
   align-items: flex-start;
@@ -303,6 +303,8 @@ const MessageRow = styled.div<{ $sender: string; $isSelected?: boolean; $isActiv
   user-select: none;
   touch-action: pan-y; /* Allow vertical scrolling, while manually handling horizontal drag */
   z-index: ${props => props.$isActiveDeleteMenu ? 40 : 'auto'};
+  /* Reduce the gap from the MessagesContainer when this is a continuation of the same sender */
+  margin-top: ${props => props.$isGrouped ? '-0.55rem' : '0'};
 `;
 const Username = styled.div<{ $sender: 'me' | 'other' }>`
   font-size: 0.75rem;
@@ -1066,13 +1068,20 @@ const ReplyText = styled.div`
   margin-bottom: 8px;
   border-left: 3px solid ${props => props.$sender === 'me' ? 'rgba(255, 255, 255, 0.7)' : 'rgba(0, 0, 0, 0.1)'};
   cursor: pointer;
-  p { font-weight: bold; font-size: 0.8rem; color: black; }
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  p { font-weight: bold; font-size: 0.8rem; color: black; margin: 0; }
   span {
     font-size: 0.9rem;
     opacity: 0.9;
-    display: block; /* Make it a block element */
-    word-wrap: break-word; /* Ensure long words wrap */
+    display: block;
+    word-wrap: break-word;
     color: black;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 `;
 
@@ -1456,7 +1465,7 @@ const SystemMessage = styled.div`
 `;
 
 // --- INTERFACES ---
-interface ReplyContext { id: string; username: string; text: string; type: 'text' | 'image' | 'video' | 'file'; }
+interface ReplyContext { id: string; username: string; text: string; type: 'text' | 'image' | 'video' | 'file'; url?: string; }
 interface Message { id: string; userId: string; username: string; type: 'text' | 'image' | 'video' | 'file' | 'system_notification'; text?: string; url?: string; originalName?: string; timestamp: string; reactions?: { [emoji: string]: { userId: string, username: string }[] }; edited?: boolean; replyingTo?: ReplyContext; isDeleted?: boolean; deletedBy?: string; isUploading?: boolean; uploadError?: boolean; }
 interface Gif { id: string; preview: string; url: string; }
 
@@ -1464,35 +1473,20 @@ interface Gif { id: string; preview: string; url: string; }
 
 const VideoPlayer = ({ src, onPointerDown }: { src: string; onPointerDown?: () => void }) => {
   const videoRef = useRef<HTMLVideoElement>(null!);
-  const [isPlaying, setIsPlaying] = useState(false);
-
-  const handlePlayPause = () => {
-    if (videoRef.current) {
-      if (videoRef.current.paused) {
-        videoRef.current.play();
-        setIsPlaying(true);
-      } else {
-        videoRef.current.pause();
-        setIsPlaying(false);
-      }
-    }
-  };
 
   const handleLoadedMetadata = () => {
-    if (videoRef.current) {
-      videoRef.current.currentTime = 0.1; // Seek to a point to show a thumbnail
-    }
+    // Seek slightly past 0 to generate a poster thumbnail in browsers that need it
+    if (videoRef.current) videoRef.current.currentTime = 0.1;
   };
 
   return (
-    <VideoPlayerWrapper onClick={handlePlayPause} onContextMenu={(e) => e.preventDefault()} onPointerDown={() => onPointerDown?.()}>
-      {!isPlaying && <PlayIcon />}
+    // No custom PlayIcon overlay — native <controls> provides the single play button
+    // so there is never a double-play-button situation on any device.
+    <VideoPlayerWrapper onContextMenu={(e) => e.preventDefault()} onPointerDown={() => onPointerDown?.()}>
       <video
         ref={videoRef}
         src={sanitizeMediaUrl(src)}
         onLoadedMetadata={handleLoadedMetadata}
-        onPlay={() => setIsPlaying(true)}
-        onPause={() => setIsPlaying(false)}
         onDoubleClick={(e) => e.preventDefault()}
         style={{ width: '100%', maxHeight: '60vh', zIndex: 1, position: 'relative' }}
         controls
@@ -1594,6 +1588,7 @@ const renderMessageContent = (
 
 interface MessageItemProps {
   msg: Message;
+  showUsername: boolean;
   currentUserId: string;
   activeDeleteMenu: string | null;
   deleteMenuRef: React.RefObject<HTMLDivElement>;
@@ -1627,6 +1622,7 @@ interface MessageItemProps {
 
 const MessageItem = React.memo(({
   msg,
+  showUsername,
   currentUserId,
   activeDeleteMenu,
   deleteMenuRef,
@@ -1789,6 +1785,7 @@ const MessageItem = React.memo(({
       $sender={sender}
       $isSelected={isSelected}
       $isActiveDeleteMenu={activeDeleteMenu === msg.id}
+      $isGrouped={!showUsername}
       onDoubleClick={(e) => {
         if (!isMobileView && !isSelectModeActive && !isDeleted) {
           // Only quote when double-clicking *outside* the message bubble
@@ -1821,7 +1818,7 @@ const MessageItem = React.memo(({
       <div 
         style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: sender === 'me' ? 'flex-end' : 'flex-start', width: '100%' }}
       >
-        {!isDeleted && <Username $sender={sender}>{msg.username}</Username>}
+        {!isDeleted && showUsername && <Username $sender={sender}>{msg.username}</Username>}
         <MessageBubble 
           ref={messageBubbleRef}
           $sender={sender} 
@@ -1880,8 +1877,26 @@ const MessageItem = React.memo(({
             <>
               {msg.replyingTo && (
                 <QuotedMessageContainer $sender={sender} onClick={() => { if (msg.replyingTo) scrollToMessage(msg.replyingTo.id); }}>
-                  <p>{msg.replyingTo.username}</p>
-                  <span>{msg.replyingTo.text}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p>{msg.replyingTo.username}</p>
+                    <span>{msg.replyingTo.text}</span>
+                  </div>
+                  {msg.replyingTo.url && (msg.replyingTo.type === 'image' || msg.replyingTo.type === 'video') && (
+                    msg.replyingTo.type === 'video' ? (
+                      <video
+                        src={sanitizeMediaUrl(msg.replyingTo.url)}
+                        style={{ width: '48px', height: '48px', borderRadius: '6px', objectFit: 'cover', flexShrink: 0 }}
+                        muted
+                        preload="metadata"
+                      />
+                    ) : (
+                      <img
+                        src={sanitizeMediaUrl(msg.replyingTo.url)}
+                        alt="quoted media"
+                        style={{ width: '48px', height: '48px', borderRadius: '6px', objectFit: 'cover', flexShrink: 0 }}
+                      />
+                    )
+                  )}
                 </QuotedMessageContainer>
               )}
               {selectedMessages[0] === msg.id && selectedMessages.length === 1 && (
@@ -1926,7 +1941,7 @@ const MessageItem = React.memo(({
                       Edit
                     </DeleteMenuItem>
                   )}
-                  {(msg.text || msg.type === 'image') && 
+                  {!msg.isDeleted && (msg.text || msg.url) && 
                     <DeleteMenuItem onClick={() => { handleCopy(msg); setActiveDeleteMenu(null); }}>
                       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                       Copy
@@ -2531,7 +2546,7 @@ function Chat() {
           replyText = 'Video';
         }
       }
-      replyContext = { id: replyingTo.id, username: replyingTo.username, text: replyText, type };
+      replyContext = { id: replyingTo.id, username: replyingTo.username, text: replyText, type, url: replyingTo.url };
     }
 
     if (stagedFile) {
@@ -2777,52 +2792,18 @@ function Chat() {
   };
 
     const handleCopy = useCallback(async (message: Message) => {
-      console.log('Attempting to copy message:', message);
+      // Use writeText for everything — it keeps the call synchronous within the
+      // user-gesture frame on iOS/Android (no fetch/canvas async break) and
+      // works reliably in all browsers across all device types.
+      // For text messages: copy the text content.
+      // For image/GIF messages: copy the media URL (can be opened/pasted in a browser).
       try {
-        if (message.type === 'text' && message.text) {
-          await navigator.clipboard.writeText(message.text);
-          console.log('Text copied to clipboard successfully.');
-        } else if ((message.type === 'image' || message.type === 'video') && message.url) {
-          console.log('Attempting to copy media (image/video):', message.url);
-          try {
-            const response = await fetch(message.url);
-            const blob = await response.blob();
-  
-            if (!blob.type.startsWith('image/')) {
-              await navigator.clipboard.writeText(message.url);
-              console.log('Copied URL for non-image type.');
-              return;
-            }
-  
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            const img = await createImageBitmap(blob);
-            canvas.width = img.width;
-            canvas.height = img.height;
-            ctx!.drawImage(img, 0, 0);
-  
-            canvas.toBlob(async (pngBlob) => {
-              if (pngBlob) {
-                try {
-                  await navigator.clipboard.write([
-                    new ClipboardItem({
-                      'image/png': pngBlob,
-                    }),
-                  ]);
-                  console.log('Image copied to clipboard as PNG successfully.');
-                } catch (copyErr) {
-                  console.error('PNG copy failed, falling back to URL:', copyErr);
-                  await navigator.clipboard.writeText(message.url!);
-                }
-              }
-            }, 'image/png');
-          } catch (e) {
-            console.error('Could not copy image, falling back to URL:', e);
-            await navigator.clipboard.writeText(message.url!);
-          }
+        const textToCopy = message.text || message.url || '';
+        if (textToCopy) {
+          await navigator.clipboard.writeText(textToCopy);
         }
       } catch (err) {
-        console.error('Failed to copy content: ', err);
+        console.error('Failed to copy: ', err);
       }
     }, []);
 
@@ -2978,7 +2959,7 @@ function Chat() {
         else if (replyingTo.type === 'image') replyText = 'Image';
         else if (replyingTo.type === 'video') replyText = 'Video';
       }
-      replyContext = { id: replyingTo.id, username: replyingTo.username, text: replyText, type };
+      replyContext = { id: replyingTo.id, username: replyingTo.username, text: replyText, type, url: replyingTo.url };
     }
 
     const caption = previewCaption.trim();
@@ -3233,14 +3214,20 @@ function Chat() {
           <ChatWindow>
             <MessagesAndScrollWrapper>
             <MessagesContainer ref={chatContainerRef} onScroll={handleScroll} onClick={handleChatAreaClick} $isScrollButtonVisible={isScrollToBottomVisible} $isMobileView={isMobileView}>
-               {messages.map((msg: Message) => {
+               {messages.map((msg: Message, index: number) => {
                           if (msg.type === 'system_notification') {
                             return <SystemMessage key={msg.id}>{msg.text}</SystemMessage>;
                           }
+                          // Show the username label only at the top of a new sender group.
+                          // A new group starts when: it's the first message, the previous
+                          // item was a system notification, or the previous sender differs.
+                          const prevMsg = messages[index - 1];
+                          const showUsername = !prevMsg || prevMsg.type === 'system_notification' || prevMsg.userId !== msg.userId;
                           return (
                             <MessageItem
                               key={msg.id}
                               msg={msg}
+                              showUsername={showUsername}
                               currentUserId={userIdRef.current}
                               handleSetReply={handleSetReply}
                               handleReact={handleReact}
@@ -3300,8 +3287,8 @@ function Chat() {
                          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                       </EditButton>
                     )}
-                      {isMobileView && selectedMessages.length === 1 && (
-                       <CopyButton onClick={() => { if (selectedMessage) { handleCopy(selectedMessage); } handleCancelSelectMode(); }} title="Copy" >
+                      {isMobileView && selectedMessages.length === 1 && selectedMessage && !selectedMessage.isDeleted && (selectedMessage.type === 'text' || selectedMessage.type === 'image') && (
+                       <CopyButton onClick={() => { handleCopy(selectedMessage); handleCancelSelectMode(); }} title="Copy" >
                          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                        </CopyButton>
                       )}
