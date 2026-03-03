@@ -14,7 +14,7 @@ const connectDB = require('./db');
 const User = require('./models/user');
 const Message = require('./models/message');
 const MessageEvent = require('./models/messageEvent');
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 
 // --- Rate Limiters ---
 // Prevent brute-force and abuse on public/sensitive endpoints.
@@ -23,16 +23,19 @@ const rateLimit = require('express-rate-limit');
 // port to the IP in X-Forwarded-For, e.g. "122.172.137.121:54061".
 // express-rate-limit v8 performs strict IP validation and throws
 // ERR_ERL_INVALID_IP_ADDRESS when it sees a port number.
-// This custom key generator strips any trailing port before the IP is used as
-// the rate-limit key, making it safe on Azure regardless of proxy formatting.
+//
+// This custom key generator:
+//  1. Strips any trailing port that Azure's proxy may inject.
+//  2. Wraps the result with ipKeyGenerator() so express-rate-limit can
+//     apply IPv6 subnet masking (avoids ERR_ERL_KEY_GEN_IPV6).
 const getClientIp = (req) => {
   const raw = req.ip || req.socket?.remoteAddress || 'unknown';
-  // Handle IPv4-mapped IPv6 with port: "::ffff:1.2.3.4" stays as-is (no port).
-  // Handle bare IPv4+port:  "1.2.3.4:5678"  → "1.2.3.4"
-  // Handle bracketed IPv6+port: "[::1]:5678" → "::1"
-  return raw
+  // Handle bare IPv4+port:     "1.2.3.4:5678"  → "1.2.3.4"
+  // Handle bracketed IPv6+port: "[::1]:5678"   → "::1"
+  const cleaned = raw
     .replace(/^\[(.+)\]:\d+$/, '$1')  // [IPv6]:port  → IPv6
     .replace(/^(\d+\.\d+\.\d+\.\d+):\d+$/, '$1'); // IPv4:port → IPv4
+  return ipKeyGenerator(cleaned);
 };
 
 const authLimiter = rateLimit({

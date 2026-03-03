@@ -1941,7 +1941,7 @@ const MessageItem = React.memo(({
                       Edit
                     </DeleteMenuItem>
                   )}
-                  {!msg.isDeleted && (msg.text || msg.url) && 
+                  {!msg.isDeleted && msg.type !== 'video' && msg.type !== 'file' && (msg.text || msg.url) && 
                     <DeleteMenuItem onClick={() => { handleCopy(msg); setActiveDeleteMenu(null); }}>
                       <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                       Copy
@@ -2792,18 +2792,53 @@ function Chat() {
   };
 
     const handleCopy = useCallback(async (message: Message) => {
-      // Use writeText for everything — it keeps the call synchronous within the
-      // user-gesture frame on iOS/Android (no fetch/canvas async break) and
-      // works reliably in all browsers across all device types.
-      // For text messages: copy the text content.
-      // For image/GIF messages: copy the media URL (can be opened/pasted in a browser).
       try {
+        if (message.type === 'image' && message.url) {
+          // Copy the actual image to the clipboard.
+          // The ClipboardItem constructor accepts a *Promise* for the blob value,
+          // so clipboard.write() itself stays synchronous within the user-gesture
+          // frame (critical for iOS/Android) while the fetch happens in the background.
+          const url = sanitizeMediaUrl(message.url);
+          if (url && navigator.clipboard.write) {
+            const blobPromise = fetch(url)
+              .then(res => res.blob())
+              .then(blob => {
+                // Clipboard API requires image/png on most browsers.
+                // If the source is already PNG, use it directly.
+                if (blob.type === 'image/png') return blob;
+                // Otherwise convert via an offscreen canvas.
+                return new Promise<Blob>((resolve, reject) => {
+                  const img = new Image();
+                  img.crossOrigin = 'anonymous';
+                  img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.naturalWidth;
+                    canvas.height = img.naturalHeight;
+                    canvas.getContext('2d')!.drawImage(img, 0, 0);
+                    canvas.toBlob(b => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png');
+                    URL.revokeObjectURL(img.src);
+                  };
+                  img.onerror = () => reject(new Error('Image load failed'));
+                  img.src = URL.createObjectURL(blob);
+                });
+              });
+            const item = new ClipboardItem({ 'image/png': blobPromise });
+            await navigator.clipboard.write([item]);
+            return;
+          }
+        }
+        // Fallback: copy text content (for text messages, or if image copy isn't supported).
         const textToCopy = message.text || message.url || '';
         if (textToCopy) {
           await navigator.clipboard.writeText(textToCopy);
         }
       } catch (err) {
         console.error('Failed to copy: ', err);
+        // Last-resort fallback: try copying as text.
+        try {
+          const fallbackText = message.text || message.url || '';
+          if (fallbackText) await navigator.clipboard.writeText(fallbackText);
+        } catch { /* silently fail */ }
       }
     }, []);
 
