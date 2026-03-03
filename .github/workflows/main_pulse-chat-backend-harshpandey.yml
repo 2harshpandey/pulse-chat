@@ -33,22 +33,6 @@ jobs:
         working-directory: ./backend
         run: npm install --legacy-peer-deps
 
-      - name: 'Set Azure App Service environment variables'
-        uses: azure/appservice-settings@v1
-        with:
-          app-name: 'pulse-chat-backend-harshpandey'
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_5A1F5EF3D962405AB4AA6EA27E486E1D }}
-          app-settings-json: |
-            [
-              { "name": "CLIENT_PASSWORD",            "value": "${{ secrets.CLIENT_PASSWORD }}",            "slotSetting": false },
-              { "name": "ADMIN_PASSWORD",             "value": "${{ secrets.ADMIN_PASSWORD }}",             "slotSetting": false },
-              { "name": "MONGODB_URI",                "value": "${{ secrets.MONGODB_URI }}",                "slotSetting": false },
-              { "name": "CLOUDINARY_CLOUD_NAME",      "value": "${{ secrets.CLOUDINARY_CLOUD_NAME }}",      "slotSetting": false },
-              { "name": "CLOUDINARY_API_KEY",         "value": "${{ secrets.CLOUDINARY_API_KEY }}",         "slotSetting": false },
-              { "name": "CLOUDINARY_API_SECRET",      "value": "${{ secrets.CLOUDINARY_API_SECRET }}",      "slotSetting": false },
-              { "name": "TENOR_API_KEY",              "value": "${{ secrets.TENOR_API_KEY }}",              "slotSetting": false }
-            ]
-
       - name: 'Deploy to Azure Web App'
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
