@@ -2251,6 +2251,13 @@ function Chat() {
 
       ws.current.onmessage = (event: MessageEvent) => {
         const messageData = JSON.parse(event.data);
+        if (messageData.type === 'username_taken') {
+          // The server rejected our join because someone else already holds this username.
+          // Store the error so Auth.tsx can display it, then log out back to the login screen.
+          sessionStorage.setItem('authError', messageData.message || 'That username is already in use. Please choose a different one.');
+          userContext?.logout();
+          return;
+        }
         if (messageData.type === 'history') {
           // Reset the initial-scroll flag so the new history always jumps to bottom.
           hasInitialScrolled.current = false;

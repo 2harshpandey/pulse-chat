@@ -453,6 +453,33 @@ wss.on('connection', (ws, req) => {
       case 'user_join': {
         const { userId, username } = parsedMessage;
         ws.userId = userId;
+        ws.username = username;
+
+        // --- Duplicate username guard (WebSocket-level, authoritative) ---
+        // Check every currently-open, identified client (excluding this socket and
+        // excluding a reconnect from the same userId) for a matching username.
+        const trimmedLower = username.trim().toLowerCase();
+        const usernameTaken = Array.from(wss.clients).some(
+          client =>
+            client !== ws &&
+            client.readyState === WebSocket.OPEN &&
+            !client.isAdmin &&
+            client.username &&
+            client.username.trim().toLowerCase() === trimmedLower &&
+            client.userId !== userId   // same userId = reconnect/refresh, allow it
+        );
+
+        if (usernameTaken) {
+          logger.warn(`Username '${username}' rejected — already in use.`);
+          ws.send(JSON.stringify({
+            type: 'username_taken',
+            message: 'That username is already in use. Please choose a different one.',
+          }));
+          // Give the send buffer time to flush before terminating.
+          setTimeout(() => ws.terminate(), 300);
+          return;
+        }
+        // --- End duplicate guard ---
 
         if (pendingDisconnects.has(userId)) {
             clearTimeout(pendingDisconnects.get(userId));

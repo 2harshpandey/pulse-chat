@@ -114,7 +114,11 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
   const [password, setPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [username, setUsername] = useState(() => localStorage.getItem('pulseUsername') || '');
-  const [error, setError] = useState('');
+  const [error, setError] = useState(() => {
+    const pending = sessionStorage.getItem('authError');
+    if (pending) { sessionStorage.removeItem('authError'); return pending; }
+    return '';
+  });
   const [isLoading, setIsLoading] = useState(false);
 
   const handleLogin = async () => {
