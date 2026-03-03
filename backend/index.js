@@ -197,6 +197,21 @@ app.post('/api/auth/verify', authLimiter, (req, res) => {
     }
 });
 
+// --- Username Availability Check ---
+// Returns { available: true } if the username is not currently in use by any online user.
+// Accepts optional `userId` to exclude the requesting user's own existing session.
+app.get('/api/users/check-username', authLimiter, (req, res) => {
+    const { username, userId } = req.query;
+    if (!username || typeof username !== 'string') {
+        return res.status(400).json({ error: 'Username is required.' });
+    }
+    const normalised = username.trim().toLowerCase();
+    const taken = Array.from(onlineUsers.values()).some(
+        u => u.username.trim().toLowerCase() === normalised && u.userId !== userId
+    );
+    res.json({ available: !taken });
+});
+
 app.post('/api/upload', uploadLimiter, (req, res) => {
   upload.single('file')(req, res, (err) => {
     if (err) {
