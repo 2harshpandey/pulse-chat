@@ -212,11 +212,13 @@ This project progressed through multiple focused sessions. Brief highlights by s
     - No webpack changes required; build clean, CVE resolved.
   - Resolved all high-severity npm audit vulnerabilities: upgraded `bfj` to `9.1.3` via package.json overrides, removing the transitive `jsonpath` ReDoS vulnerability.
   - Remaining 2 moderate vulnerabilities (`webpack-dev-server`) are dev/build-tool-only with no production exposure; not fixable without migrating away from Create React App.
+  - Fixed backend rate limiter to handle IPv6 users correctly and prevent bypass (now uses ipKeyGenerator, Azure proxy port stripping still supported).
   - **Bug fixes:**
     - GIF button now works reliably on mobile devices (phantom click issue fixed).
     - Clear chat action now persists across page refreshes (per-user localStorage timestamp).
     - Duplicate usernames are now prevented in the chat room (server-side and client-side checks).
-
+    - Copy button is now hidden for videos on all devices (PC and mobile).
+    - Copying an image now copies the actual image to the clipboard (not just the URL), for both PC and mobile, using the Clipboard API.
 
 ## Contributing
 
