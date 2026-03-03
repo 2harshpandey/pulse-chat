@@ -2089,6 +2089,10 @@ function Chat() {
   const [isDragging, setIsDragging] = useState(false);
   const deleteMenuRef = useRef<HTMLDivElement>(null!);
   const gifPickerRef = useRef<HTMLDivElement>(null!);
+  // Tracks when the GIF picker was last opened (epoch ms).
+  // Used to ignore the phantom synthetic click that mobile browsers fire
+  // ~300 ms after pointerdown, which would otherwise immediately close the modal.
+  const gifPickerOpenedAtRef = useRef<number>(0);
   const attachmentMenuRef = useRef<HTMLDivElement>(null!);
   const attachmentButtonRef = useRef<HTMLButtonElement>(null!);
   const emojiPickerRef = useRef<HTMLDivElement>(null!);
@@ -3351,7 +3355,7 @@ function Chat() {
                   <div style={{ position: 'relative' }} ref={attachmentMenuRef}>
                     <AttachButton onClick={() => setIsAttachmentMenuVisible(!isAttachmentMenuVisible)} ref={attachmentButtonRef}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg></AttachButton>
                     <AttachmentMenuContainer isVisible={isAttachmentMenuVisible}>
-                      <AttachmentMenuItem onPointerDown={(e) => { e.preventDefault(); setShowGifPicker(true); setIsAttachmentMenuVisible(false); }}>
+                      <AttachmentMenuItem onPointerDown={(e) => { e.preventDefault(); gifPickerOpenedAtRef.current = Date.now(); setShowGifPicker(true); setIsAttachmentMenuVisible(false); }}>
                         <FilmIcon /> <span>GIF</span>
                       </AttachmentMenuItem>
                       <AttachmentMenuItem onClick={() => { fileInputRef.current?.click(); setIsAttachmentMenuVisible(false); }}>
@@ -3426,7 +3430,13 @@ function Chat() {
         </Lightbox>
       )}
        {showGifPicker && (
-        <GifPickerModal onClick={() => setShowGifPicker(false)}>
+        <GifPickerModal onClick={() => {
+          // Ignore clicks that arrive within 500 ms of opening — these are the phantom
+          // synthetic click events that mobile browsers generate after a pointerdown,
+          // which would otherwise close the picker immediately after it opens.
+          if (Date.now() - gifPickerOpenedAtRef.current < 500) return;
+          setShowGifPicker(false);
+        }}>
           <GifPickerContent ref={gifPickerRef} onClick={(e) => e.stopPropagation()}>
             <GifSearchBar type="text" placeholder="Search for GIFs..." value={gifSearchTerm} onChange={(e) => setGifSearchTerm(e.target.value)} />
             {isLoadingGifs ? <p style={{textAlign: 'center', padding: '1rem'}}>Loading...</p> : <GifGrid>{gifResults.map(gif => <GifGridItem key={gif.id} src={gif.preview} onClick={() => handleGifSelect(gif)} />)}</GifGrid>}

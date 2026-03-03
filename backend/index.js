@@ -189,8 +189,18 @@ app.get('/', (req, res) => res.send('Pulse Chat Server is running!'));
 
 // --- Client Auth Verification ---
 app.post('/api/auth/verify', authLimiter, (req, res) => {
-    const { password } = req.body;
+    const { password, username, userId } = req.body;
     if (password && password === process.env.CLIENT_PASSWORD) {
+        // If the client sends a username, verify it is not already in use.
+        if (username) {
+            const normalised = username.trim().toLowerCase();
+            const taken = Array.from(onlineUsers.values()).some(
+                u => u.username.trim().toLowerCase() === normalised && u.userId !== userId
+            );
+            if (taken) {
+                return res.status(409).json({ success: false, error: 'That username is already in use. Please choose a different one.' });
+            }
+        }
         res.status(200).json({ success: true });
     } else {
         res.status(401).json({ success: false, error: 'Incorrect password.' });

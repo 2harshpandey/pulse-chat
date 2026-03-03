@@ -138,28 +138,18 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ password, username: username.trim(), userId: getUserId() }),
       });
       if (response.ok) {
-        // Check if the chosen username is already taken by another online user.
-        const trimmedUsername = username.trim();
-        const checkUrl = `${apiBase}/api/users/check-username?username=${encodeURIComponent(trimmedUsername)}&userId=${encodeURIComponent(getUserId())}`;
-        try {
-          const checkRes = await fetch(checkUrl);
-          if (checkRes.ok) {
-            const checkData = await checkRes.json();
-            if (!checkData.available) {
-              setError('That username is already in use. Please choose a different one.');
-              return;
-            }
-          }
-        } catch {
-          // If the check fails (network error), allow joining — don't block on availability check.
-        }
-        localStorage.setItem('pulseUsername', trimmedUsername);
-        onAuthSuccess({ userId: getUserId(), username: trimmedUsername });
+        localStorage.setItem('pulseUsername', username.trim());
+        onAuthSuccess({ userId: getUserId(), username: username.trim() });
       } else {
-        setError('Incorrect password.');
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 409) {
+          setError(data.error || 'That username is already in use. Please choose a different one.');
+        } else {
+          setError('Incorrect password.');
+        }
       }
     } catch {
       setError('Could not connect to the server. Please try again.');
