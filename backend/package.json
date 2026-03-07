@@ -16,9 +16,9 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.2",
     "express": "^5.1.0",
-    "express-rate-limit": "^8.2.1",
+    "express-rate-limit": "^8.2.2",
     "mongoose": "^8.4.1",
-    "multer": "^2.1.0",
+    "multer": "^2.1.1",
     "multer-storage-cloudinary": "^4.0.0",
     "winston": "^3.17.0",
     "ws": "^8.18.3"
