@@ -152,7 +152,13 @@ wss.on('close', function close() {
 });
 
 // --- Middleware ---
-app.use(cors({ methods: ["GET", "POST", "DELETE"] }));
+// Allow all origins (the chat is public) while being explicit about which
+// methods and headers are permitted so mobile-browser CORS preflight checks
+// never fail due to an unrecognised header name.
+app.use(cors({
+  methods: ["GET", "POST", "DELETE"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+}));
 app.use(express.json());
 
 // --- Helper Functions ---

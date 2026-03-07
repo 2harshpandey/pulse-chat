@@ -2133,6 +2133,16 @@ function Chat() {
   // Prevents sending start_typing more than once per ~3 s even on rapid keystrokes.
   const typingCooldownRef = useRef(false);
   const resizeRafRef = useRef<number>(0);
+  // WebSocket auto-reconnect management refs
+  const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectDelayRef = useRef<number>(2000); // starts at 2 s, doubles on each retry
+
+  // Base API URL — upgrade http:// → https:// when the page itself is on HTTPS.
+  // Mobile networks (and many corporate proxies) enforce mixed-content policy strictly,
+  // blocking plain-HTTP fetch calls from an HTTPS page. Home WiFi is typically more
+  // lenient, which is why uploads/auth worked on WiFi but silently failed on mobile data.
+  const apiBase = (process.env.REACT_APP_API_URL || '')
+    .replace(/^http:\/\//, window.location.protocol === 'https:' ? 'https://' : 'http://');
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInputMessage(e.target.value);
@@ -2250,6 +2260,10 @@ function Chat() {
   useEffect(() => {
     if (!userContext?.profile) return;
 
+    // Set to false in the cleanup function so pending reconnect timers never
+    // fire after the component unmounts or the user logs out.
+    let shouldReconnect = true;
+
     // Defined inside the effect so the handlers always close over the
     // latest userContext.profile and the setState functions.
     const connect = () => {
@@ -2260,17 +2274,58 @@ function Chat() {
           ws.current.readyState === WebSocket.CONNECTING)
       ) return;
 
-      ws.current = new WebSocket(
-        process.env.REACT_APP_API_URL?.replace('http', 'ws') || 'ws://localhost:8080'
-      );
+      // ── WebSocket URL: always use wss:// on HTTPS pages ──────────────────
+      // Root cause of "works on WiFi, fails on mobile data":
+      //
+      //  1. Mobile carrier proxies intercept unencrypted ws:// connections and
+      //     either terminate or drop them.  Home WiFi routers typically pass
+      //     ws:// through without interference.
+      //
+      //  2. All modern browsers block mixed content (ws:// from an https:// page),
+      //     but desktop browsers sometimes show a warning instead of hard-blocking,
+      //     while mobile browsers always hard-block.
+      //
+      // Fix: derive the scheme from the PAGE protocol, not from the env-var prefix.
+      //  • Page on https:// → always use wss://, regardless of env-var scheme
+      //  • Page on http://  → use ws:// (local dev only)
+      //  • No env var       → fall back to the page's own host/protocol
+      const wsUrl = (() => {
+        const base = process.env.REACT_APP_API_URL;
+        if (!base) {
+          const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+          return `${proto}://${window.location.host}`;
+        }
+        return base.replace(
+          /^https?:\/\//,
+          window.location.protocol === 'https:' ? 'wss://' : 'ws://'
+        );
+      })();
+
+      ws.current = new WebSocket(wsUrl);
 
       ws.current.onopen = () => {
+        // Reset the backoff delay so the next disconnect starts from 2 s again.
+        reconnectDelayRef.current = 2000;
         ws.current?.send(
           JSON.stringify({ type: 'user_join', ...userContext.profile, userId: userIdRef.current })
         );
       };
 
-      ws.current.onclose = () => console.log('WebSocket disconnected');
+      // ── Auto-reconnect with exponential backoff ───────────────────────────
+      // Mobile connections drop far more often than desktop WiFi (network
+      // switching, carrier proxy timeouts, screen-off power saving).  Without
+      // this, a single dropped socket means no more messages until the user
+      // manually refreshes — the most common symptom reported on mobile data.
+      ws.current.onclose = () => {
+        console.log('WebSocket disconnected — scheduling reconnect');
+        if (shouldReconnect) {
+          reconnectTimerRef.current = setTimeout(() => {
+            // Double the wait on each consecutive failure: 2 s → 4 s → 8 s → … → 30 s max.
+            reconnectDelayRef.current = Math.min(reconnectDelayRef.current * 2, 30000);
+            connect();
+          }, reconnectDelayRef.current);
+        }
+      };
 
       ws.current.onerror = () => {
         // Force close so the readyState is CLOSED and the next connect() call
@@ -2326,6 +2381,12 @@ function Chat() {
     window.addEventListener('online', handleOnline);
 
     return () => {
+      // Prevent any pending reconnect timer from firing after unmount/logout.
+      shouldReconnect = false;
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('online', handleOnline);
       ws.current?.close();
@@ -2570,7 +2631,7 @@ function Chat() {
       formData.append('text', inputMessage);
       formData.append('userId', userIdRef.current);
 
-      fetch(`${process.env.REACT_APP_API_URL}/api/upload`, { method: 'POST', body: formData })
+      fetch(`${apiBase}/api/upload`, { method: 'POST', body: formData })
         .then(response => {
           if (!response.ok) throw new Error('Upload failed');
           return response.json();
@@ -3024,7 +3085,7 @@ function Chat() {
       if (i === 0 && caption) formData.append('text', caption);
       formData.append('userId', userIdRef.current);
 
-      fetch(`${process.env.REACT_APP_API_URL}/api/upload`, { method: 'POST', body: formData })
+      fetch(`${apiBase}/api/upload`, { method: 'POST', body: formData })
         .then(response => { if (!response.ok) throw new Error('Upload failed'); return response.json(); })
         .then(uploadedFileData => {
           const finalMessage = { ...message, ...uploadedFileData, isUploading: false, id: uploadedFileData.id };
