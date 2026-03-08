@@ -987,8 +987,10 @@ const Admin = () => {
   const handleCreateTempLink = async () => {
     setCreatingLink(true);
     try {
+      // State is updated via the WebSocket 'temp_link_created' broadcast — do NOT also
+      // update from the HTTP response or the link will appear twice in the list.
       const res = await fetch(`${apiUrl}/api/admin/temp-links`, { method: 'POST', headers: apiHeaders() });
-      if (res.ok) { const link = await res.json(); setTempLinks(prev => [link, ...prev]); }
+      if (!res.ok) { console.error('Failed to create temp link:', await res.text()); }
     } catch (err) { console.error('Failed to create temp link', err); }
     setCreatingLink(false);
   };
@@ -996,8 +998,10 @@ const Admin = () => {
   const handleRevokeTempLink = async (id: string) => {
     try {
       const safeId = sanitizePathId(id);
+      // State is updated via the WebSocket 'temp_link_revoked' broadcast — do NOT also
+      // update from the HTTP response or the link status will flicker / update twice.
       const res = await fetch(`${apiUrl}/api/admin/temp-links/${safeId}/revoke`, { method: 'POST', headers: apiHeaders() });
-      if (res.ok) { const updated = await res.json(); setTempLinks(prev => prev.map(l => l._id === id ? updated : l)); }
+      if (!res.ok) { console.error('Failed to revoke temp link:', await res.text()); }
     } catch (err) { console.error('Failed to revoke temp link', err); }
   };
 
