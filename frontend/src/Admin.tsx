@@ -102,6 +102,9 @@ const Title = styled.h1`
     height: 36px;
     width: auto;
     object-fit: contain;
+    user-select: none;
+    -webkit-user-drag: none;
+    pointer-events: none;
   }
   @media (max-width: 768px) { font-size: 2rem; img { height: 30px; } }
   @media (max-width: 480px) { font-size: 1.5rem; img { height: 26px; } }
@@ -165,21 +168,13 @@ const AdminLoginBrand = styled.div`
 `;
 
 const AdminBrandLogo = styled.img`
-  width: 56px;
-  height: 56px;
+  width: 80px;
+  height: 80px;
   object-fit: contain;
-  margin-bottom: 0.5rem;
-`;
-
-const AdminBrandName = styled.h1`
-  font-size: 2rem;
-  font-weight: 800;
-  background: linear-gradient(135deg, var(--text-heading), var(--accent-indigo));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  letter-spacing: -0.03em;
-  margin-bottom: 0;
+  margin-bottom: 0.75rem;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
 `;
 
 const AdminHeartbeatSvg = styled.svg`
@@ -1396,8 +1391,7 @@ const Admin = () => {
             )}
           </AdminThemeToggle>
           <AdminLoginBrand>
-            <AdminBrandLogo src="/pulse_logo.png" alt="Pulse" />
-            <AdminBrandName>Pulse Admin</AdminBrandName>
+            <AdminBrandLogo src="/pulse_logo.png" alt="Pulse Admin" />
             <AdminHeartbeatSvg viewBox="0 0 120 30" width="120" height="30">
               <path d="M0 15 L30 15 L38 5 L46 25 L54 8 L60 15 L90 15 L98 5 L106 25 L114 8 L120 15" />
             </AdminHeartbeatSvg>
@@ -1442,7 +1436,7 @@ const Admin = () => {
   return (
     <AdminContainer>
       <HeaderRow>
-        <Title><img src="/pulse_logo.png" alt="Pulse" />Admin Panel</Title>
+        <Title><img src="/pulse_logo.png" alt="Pulse Admin Panel" /></Title>
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
           {lockdownStatus.isActive && (
             <Badge $color="red"><StatusDot $color="red" /> Lockdown Active</Badge>

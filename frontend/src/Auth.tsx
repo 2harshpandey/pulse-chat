@@ -180,10 +180,13 @@ const BrandSection = styled.div`
 `;
 
 const BrandLogo = styled.img`
-  width: 64px;
-  height: 64px;
+  width: 90px;
+  height: 90px;
   object-fit: contain;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.75rem;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
 `;
 
 const BrandName = styled.h1`
@@ -469,7 +472,7 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken }) => {
 
             <BrandSection>
               <BrandLogo src="/pulse_logo.png" alt="Pulse" />
-              <BrandName>{isTempLink ? "You're Invited!" : 'Pulse'}</BrandName>
+              {isTempLink && <BrandName>You're Invited!</BrandName>}
               <HeartbeatSvg viewBox="0 0 120 30" width="120" height="30">
                 <path d="M0 15 L30 15 L38 5 L46 25 L54 8 L60 15 L90 15 L98 5 L106 25 L114 8 L120 15" />
               </HeartbeatSvg>

@@ -255,6 +255,9 @@ const HeaderTitle = styled.h1`
     height: 32px;
     width: auto;
     object-fit: contain;
+    user-select: none;
+    -webkit-user-drag: none;
+    pointer-events: none;
   }
 `;
 const LayoutContainer = styled.div`
@@ -1451,32 +1454,6 @@ const VideoPlayerWrapper = styled.div`
     max-width: 450px;
   }
 `;
-const PlayIcon = styled.div`
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 60px;
-  height: 60px;
-  background-color: rgba(0, 0, 0, 0.5);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2;
-  pointer-events: none;
-  transition: opacity 0.2s ease;
-  &::after {
-    content: '';
-    display: block;
-    width: 0;
-    height: 0;
-    border-top: 12px solid transparent;
-    border-bottom: 12px solid transparent;
-    border-left: 20px solid white;
-    margin-left: 6px;
-  }
-`;
 
 const MessageText = styled.p`
   user-select: text; /* Allow selection on PC */
@@ -2140,6 +2117,7 @@ function Chat() {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState<string>('');
   const [isScrollToBottomVisible, setIsScrollToBottomVisible] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [messageIdForFullEmojiPicker, setMessageIdForFullEmojiPicker] = useState<string | null>(null);
   const [reactionsPopup, setReactionsPopup] = useState<{ messageId: string; reactions: { [emoji: string]: { userId: string; username: string; }[] }; rect: DOMRect } | null>(null);
   const [reactionPickerData, setReactionPickerData] = useState<{ messageId: string; rect: DOMRect; sender: 'me' | 'other' } | null>(null);
@@ -2399,6 +2377,9 @@ function Chat() {
             ? allMsgs.filter(m => m.type === 'system_notification' || new Date(m.timestamp).getTime() > clearTs)
             : allMsgs;
           setMessages(filtered);
+          // Mark history as loaded so the Virtuoso component renders
+          // for the first time already at the bottom — no visible scroll.
+          setHistoryLoaded(true);
         } else if (messageData.type === 'online_users') {
           setOnlineUsers(messageData.data);
         } else if (messageData.type === 'update') {
@@ -3330,7 +3311,7 @@ function Chat() {
       )}
       <AppContainer>
         <Header>
-          <HeaderTitle><a href="/" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', textDecoration: 'none', color: 'inherit' }}><img src="/pulse_logo.png" alt="Pulse" />Pulse Chat</a></HeaderTitle>
+          <HeaderTitle><a href="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none', color: 'inherit' }}><img src="/pulse_logo.png" alt="Pulse Chat" style={{ height: '36px' }} /></a></HeaderTitle>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <ThemeToggleBtn onClick={toggleTheme} title={isDark ? 'Switch to light mode' : 'Switch to dark mode'} aria-label="Toggle theme">
               {isDark ? (
@@ -3348,6 +3329,7 @@ function Chat() {
           <ChatWindow>
             <MessagesAndScrollWrapper>
             <MessagesContainer ref={chatContainerRef} onClick={handleChatAreaClick} $isScrollButtonVisible={isScrollToBottomVisible} $isMobileView={isMobileView}>
+              {historyLoaded ? (
                <Virtuoso
                  ref={virtuosoRef}
                  data={messages}
@@ -3401,6 +3383,7 @@ function Chat() {
                           );
                  }}
                />
+              ) : null}
             </MessagesContainer>
             <ScrollToBottomButton
               $isVisible={isScrollToBottomVisible}
