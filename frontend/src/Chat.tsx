@@ -1467,14 +1467,13 @@ const MessageText = styled.p`
 `;
 
 const SystemMessage = styled.div`
-  align-self: center;
   background-color: var(--bg-hover);
   color: var(--text-secondary);
   padding: 0.5rem 1rem;
   border-radius: 1.25rem;
   font-size: 0.9rem;
-  margin: 0.5rem 0;
   width: fit-content;
+  max-width: 80%;
   text-align: center;
   box-shadow: var(--shadow-sm);
   transition: background-color 0.3s ease, color 0.3s ease;
@@ -3341,9 +3340,14 @@ function Chat() {
                  increaseViewportBy={{ top: 600, bottom: 200 }}
                  overscan={200}
                  style={{ flex: 1, overflow: 'auto' }}
+                 components={{ Footer: () => <div style={{ height: '12px' }} /> }}
                  itemContent={(index: number, msg: Message) => {
                           if (msg.type === 'system_notification') {
-                            return <SystemMessage>{msg.text}</SystemMessage>;
+                            return (
+                              <div style={{ display: 'flex', justifyContent: 'center', padding: '0.4rem 0' }}>
+                                <SystemMessage>{msg.text}</SystemMessage>
+                              </div>
+                            );
                           }
                           const prevMsg = messages[index - 1];
                           const showUsername = !prevMsg || prevMsg.type === 'system_notification' || prevMsg.userId !== msg.userId;
