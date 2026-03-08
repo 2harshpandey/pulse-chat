@@ -24,28 +24,5 @@ lerna-debug.log*
 npm-debug.log
 yarn-error.log
 
-/previous_chats.txt
-/chats.json
-/chat2.json
-/chats.md
-/New folder.zip
-/pic.png
-/pic2.png
-/pic3.png
-Docker Desktop Installer.exe 
-"Docker Desktop Installer.exe" 
-f r o n t e n d / p u b l i c / o l d - c h a t s / 
- 
- 
-# Ignore local-only old chats folder used for personal notes
-frontend/old_chats/
-
-# Sensitive personal chat logs - NEVER commit these
-chat3.json
-chat2.json
-chats.json
-chatt.md
-chat.json
+# Extras
 vulnerabilities.txt
-other_vulnerabilities.txt
-last_2_vulnerabilities.txt

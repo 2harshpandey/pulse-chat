@@ -3,6 +3,7 @@ import styled, { createGlobalStyle, keyframes } from 'styled-components';
 import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
 import { useDrag } from '@use-gesture/react';
 import { UserContext, UserProfile } from './UserContext';
+import { useParams } from 'react-router-dom';
 import Auth from './Auth';
 
 // --- UTILITY ---
@@ -2071,6 +2072,7 @@ const ScrollToBottomButton = styled.button<{ $isVisible: boolean }>`
 
 function Chat() {
   const userContext = useContext(UserContext);
+  const { token: tempToken } = useParams<{ token?: string }>();
 
   // --- STATE MANAGEMENT ---
   const [messages, setMessages] = useState<Message[]>([]);
@@ -2339,6 +2341,12 @@ function Chat() {
           // The server rejected our join because someone else already holds this username.
           // Store the error so Auth.tsx can display it, then log out back to the login screen.
           sessionStorage.setItem('authError', messageData.message || 'That username is already in use. Please choose a different one.');
+          userContext?.logout();
+          return;
+        }
+        if (messageData.type === 'force_logout') {
+          // Admin forced this user out — store message and log out
+          sessionStorage.setItem('authError', messageData.message || 'You have been logged out by an administrator.');
           userContext?.logout();
           return;
         }
@@ -2997,7 +3005,7 @@ function Chat() {
   }, []);
 
   // --- RENDER ---
-  if (!userContext?.profile) { return <Auth onAuthSuccess={userContext!.login} />; }
+  if (!userContext?.profile) { return <Auth onAuthSuccess={userContext!.login} tempToken={tempToken || null} />; }
 
   const selectedMessage = messages.find(msg => msg.id === selectedMessages[0]);
   const canEditSelectedMessage = selectedMessages.length === 1 && selectedMessage && selectedMessage.userId === userIdRef.current && selectedMessage.text && (new Date().getTime() - new Date(selectedMessage.timestamp).getTime()) < 15 * 60 * 1000;

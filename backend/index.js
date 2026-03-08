@@ -7,6 +7,7 @@ const cors = require('cors');
 const cloudinary = require('cloudinary').v2;
 const CloudinaryStorage = require('multer-storage-cloudinary').CloudinaryStorage;
 const multer = require('multer');
+const crypto = require('crypto');
 const logger = require('./logger');
 const fs = require('fs');
 const path = require('path');
@@ -14,6 +15,10 @@ const connectDB = require('./db');
 const User = require('./models/user');
 const Message = require('./models/message');
 const MessageEvent = require('./models/messageEvent');
+const TempLink = require('./models/tempLink');
+const BlockedUser = require('./models/blockedUser');
+const LoginLockdown = require('./models/loginLockdown');
+const AuditLog = require('./models/auditLog');
 const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 
 // --- Rate Limiters ---
@@ -100,6 +105,69 @@ const onlineUsers = new Map();
 const typingUsers = new Map();
 const adminClients = new Set();
 const pendingDisconnects = new Map();
+
+// Track logged-in users (persists across disconnects until explicit logout/force-logout)
+// Map<userId, { userId, username, loginTime, ip, userAgent }>
+const loggedInUsers = new Map();
+
+// Track user fingerprints for robust blocking
+// Map<userId, { ips: Set, userAgents: Set, screenResolution, platform, language, timezone, deviceHashes: Set }>
+const userFingerprints = new Map();
+
+// --- Helper: Generate device hash from fingerprint components ---
+const generateDeviceHash = (components) => {
+  const str = [
+    components.userAgent || '',
+    components.screenResolution || '',
+    components.platform || '',
+    components.language || '',
+    components.timezone || '',
+  ].join('|');
+  return crypto.createHash('sha256').update(str).digest('hex').substring(0, 16);
+};
+
+// --- Helper: Extract clean IP from request ---
+const extractIp = (req) => {
+  const raw = req.ip || req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
+  return raw.replace(/^\[(.+)\]:\d+$/, '$1').replace(/^(\d+\.\d+\.\d+\.\d+):\d+$/, '$1');
+};
+
+// --- Helper: Check if a user is blocked by any fingerprint match ---
+const isUserBlocked = async (userId, ip, userAgent, deviceFingerprint) => {
+  // Check by userId first (fastest)
+  const blockedByUserId = await BlockedUser.findOne({ userId, isBlocked: true });
+  if (blockedByUserId) return { blocked: true, reason: 'User ID is blocked', blockedUser: blockedByUserId };
+
+  // Check by IP
+  if (ip && ip !== 'unknown') {
+    const blockedByIp = await BlockedUser.findOne({ 'fingerprints.ips': ip, isBlocked: true });
+    if (blockedByIp) return { blocked: true, reason: 'IP address is blocked', blockedUser: blockedByIp };
+  }
+
+  // Check by device hash
+  if (deviceFingerprint) {
+    const hash = generateDeviceHash({ ...deviceFingerprint, userAgent });
+    const blockedByHash = await BlockedUser.findOne({ 'fingerprints.deviceHashes': hash, isBlocked: true });
+    if (blockedByHash) return { blocked: true, reason: 'Device is blocked', blockedUser: blockedByHash };
+  }
+
+  return { blocked: false };
+};
+
+// --- Helper: Check if login lockdown is active ---
+const isLoginLocked = async () => {
+  const lockdown = await LoginLockdown.findOne({ isActive: true }).sort({ createdAt: -1 });
+  if (!lockdown) return { locked: false };
+  
+  // Check if lockdown has expired
+  if (lockdown.endTime && new Date() > lockdown.endTime) {
+    lockdown.isActive = false;
+    await lockdown.save();
+    return { locked: false };
+  }
+  
+  return { locked: true, lockdown };
+};
 
 // --- Cloudinary & Multer Configuration ---
 cloudinary.config({
@@ -226,8 +294,37 @@ app.get('/health', (req, res) => {
 app.get('/', (req, res) => res.send('Pulse Chat Server is running!'));
 
 // --- Client Auth Verification ---
-app.post('/api/auth/verify', authLimiter, (req, res) => {
-    const { password, username, userId } = req.body;
+app.post('/api/auth/verify', authLimiter, async (req, res) => {
+    const { password, username, userId, fingerprint } = req.body;
+    const ip = extractIp(req);
+    const userAgent = req.headers['user-agent'] || '';
+
+    // Check if user is blocked
+    const blockCheck = await isUserBlocked(userId, ip, userAgent, fingerprint);
+    if (blockCheck.blocked) {
+        await AuditLog.create({
+            type: 'join_failed_blocked',
+            details: { userId, username, reason: blockCheck.reason, blockedUsername: blockCheck.blockedUser?.username },
+            ip, userAgent,
+        });
+        broadcastToAdmins('audit_log', { type: 'join_failed_blocked', details: { userId, username, reason: blockCheck.reason }, ip, timestamp: new Date() });
+        return res.status(403).json({ success: false, error: 'You have been blocked from this chat room.' });
+    }
+
+    // Check login lockdown (but allow already logged-in users)
+    if (!loggedInUsers.has(userId)) {
+        const lockCheck = await isLoginLocked();
+        if (lockCheck.locked) {
+            await AuditLog.create({
+                type: 'join_failed_lockdown',
+                details: { userId, username },
+                ip, userAgent,
+            });
+            broadcastToAdmins('audit_log', { type: 'join_failed_lockdown', details: { userId, username }, ip, timestamp: new Date() });
+            return res.status(403).json({ success: false, error: 'New logins are temporarily disabled. Please try again later.' });
+        }
+    }
+
     if (password && password === process.env.CLIENT_PASSWORD) {
         // If the client sends a username, verify it is not already in use.
         if (username) {
@@ -236,13 +333,109 @@ app.post('/api/auth/verify', authLimiter, (req, res) => {
                 u => u.username.trim().toLowerCase() === normalised && u.userId !== userId
             );
             if (taken) {
+                await AuditLog.create({ type: 'join_failed_username_taken', details: { userId, username }, ip, userAgent });
                 return res.status(409).json({ success: false, error: 'That username is already in use. Please choose a different one.' });
             }
         }
+
+        // Store fingerprint data
+        if (fingerprint) {
+            const existing = userFingerprints.get(userId) || { ips: new Set(), userAgents: new Set(), deviceHashes: new Set() };
+            existing.ips.add(ip);
+            existing.userAgents.add(userAgent);
+            existing.screenResolution = fingerprint.screenResolution;
+            existing.platform = fingerprint.platform;
+            existing.language = fingerprint.language;
+            existing.timezone = fingerprint.timezone;
+            const hash = generateDeviceHash({ ...fingerprint, userAgent });
+            existing.deviceHashes.add(hash);
+            userFingerprints.set(userId, existing);
+        }
+
+        // Track as logged in
+        loggedInUsers.set(userId, { userId, username: username?.trim(), loginTime: new Date(), ip, userAgent });
+
         res.status(200).json({ success: true });
     } else {
+        await AuditLog.create({ type: 'join_failed_password', details: { userId, username }, ip, userAgent });
+        broadcastToAdmins('audit_log', { type: 'join_failed_password', details: { userId, username }, ip, timestamp: new Date() });
         res.status(401).json({ success: false, error: 'Incorrect password.' });
     }
+});
+
+// --- Temp Link Auth Verification ---
+app.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
+    const { token, username, userId, fingerprint } = req.body;
+    const ip = extractIp(req);
+    const userAgent = req.headers['user-agent'] || '';
+
+    if (!token || !username?.trim() || !userId) {
+        return res.status(400).json({ success: false, error: 'Token, username, and userId are required.' });
+    }
+
+    // Check if user is blocked
+    const blockCheck = await isUserBlocked(userId, ip, userAgent, fingerprint);
+    if (blockCheck.blocked) {
+        await AuditLog.create({
+            type: 'join_failed_blocked',
+            details: { userId, username, reason: blockCheck.reason, viaTempLink: true },
+            ip, userAgent,
+        });
+        broadcastToAdmins('audit_log', { type: 'join_failed_blocked', details: { userId, username, reason: blockCheck.reason }, ip, timestamp: new Date() });
+        return res.status(403).json({ success: false, error: 'You have been blocked from this chat room.' });
+    }
+
+    // Find and validate the temp link
+    const tempLink = await TempLink.findOne({ token });
+    if (!tempLink) {
+        await AuditLog.create({ type: 'temp_link_expired_attempt', details: { token: token.substring(0, 8) + '...', userId, username }, ip, userAgent });
+        return res.status(404).json({ success: false, error: 'This link is invalid or has expired.' });
+    }
+
+    if (tempLink.isRevoked) {
+        await AuditLog.create({ type: 'temp_link_expired_attempt', details: { token: token.substring(0, 8) + '...', userId, username, reason: 'revoked' }, ip, userAgent });
+        return res.status(410).json({ success: false, error: 'This link has been revoked.' });
+    }
+
+    if (new Date() > tempLink.expiresAt) {
+        await AuditLog.create({ type: 'temp_link_expired_attempt', details: { token: token.substring(0, 8) + '...', userId, username, reason: 'expired' }, ip, userAgent });
+        return res.status(410).json({ success: false, error: 'This link has expired.' });
+    }
+
+    // Check username availability
+    const normalised = username.trim().toLowerCase();
+    const taken = Array.from(onlineUsers.values()).some(
+        u => u.username.trim().toLowerCase() === normalised && u.userId !== userId
+    );
+    if (taken) {
+        return res.status(409).json({ success: false, error: 'That username is already in use. Please choose a different one.' });
+    }
+
+    // Store fingerprint data
+    if (fingerprint) {
+        const existing = userFingerprints.get(userId) || { ips: new Set(), userAgents: new Set(), deviceHashes: new Set() };
+        existing.ips.add(ip);
+        existing.userAgents.add(userAgent);
+        existing.screenResolution = fingerprint.screenResolution;
+        existing.platform = fingerprint.platform;
+        existing.language = fingerprint.language;
+        existing.timezone = fingerprint.timezone;
+        const hash = generateDeviceHash({ ...fingerprint, userAgent });
+        existing.deviceHashes.add(hash);
+        userFingerprints.set(userId, existing);
+    }
+
+    // Record usage
+    tempLink.usedBy.push({ username: username.trim(), joinedAt: new Date() });
+    await tempLink.save();
+
+    await AuditLog.create({ type: 'temp_link_used', details: { token: token.substring(0, 8) + '...', userId, username: username.trim() }, ip, userAgent });
+    broadcastToAdmins('audit_log', { type: 'temp_link_used', details: { userId, username: username.trim() }, timestamp: new Date() });
+
+    // Track as logged in
+    loggedInUsers.set(userId, { userId, username: username.trim(), loginTime: new Date(), ip, userAgent, viaTempLink: true });
+
+    res.status(200).json({ success: true });
 });
 
 // --- Username Availability Check ---
@@ -416,6 +609,296 @@ app.get('/api/admin/server-logs', adminLimiter, adminAuth, (req, res) => {
   });
 });
 
+// --- Temp Link Admin Routes ---
+app.post('/api/admin/temp-links', adminLimiter, adminAuth, async (req, res) => {
+    try {
+        const token = crypto.randomBytes(32).toString('hex');
+        const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+        const tempLink = await TempLink.create({ token, expiresAt });
+        
+        await AuditLog.create({ type: 'temp_link_created', details: { token: token.substring(0, 8) + '...', expiresAt } });
+        broadcastToAdmins('temp_link_created', tempLink);
+        broadcastToAdmins('activity', `Temporary access link created. Expires at ${expiresAt.toLocaleTimeString()}.`);
+        
+        res.status(201).json(tempLink);
+    } catch (error) {
+        logger.error('Failed to create temp link:', error);
+        res.status(500).json({ error: 'Failed to create temporary link.' });
+    }
+});
+
+app.get('/api/admin/temp-links', adminLimiter, adminAuth, async (req, res) => {
+    try {
+        const links = await TempLink.find().sort({ createdAt: -1 }).limit(50);
+        res.json(links);
+    } catch (error) {
+        logger.error('Failed to fetch temp links:', error);
+        res.status(500).json({ error: 'Failed to fetch temporary links.' });
+    }
+});
+
+app.post('/api/admin/temp-links/:id/revoke', adminLimiter, adminAuth, async (req, res) => {
+    try {
+        const link = await TempLink.findByIdAndUpdate(
+            req.params.id,
+            { isRevoked: true, revokedAt: new Date() },
+            { new: true }
+        );
+        if (!link) return res.status(404).json({ error: 'Link not found.' });
+
+        await AuditLog.create({ type: 'temp_link_revoked', details: { token: link.token.substring(0, 8) + '...' } });
+        broadcastToAdmins('temp_link_revoked', link);
+        broadcastToAdmins('activity', `Temporary access link revoked.`);
+
+        res.json(link);
+    } catch (error) {
+        logger.error('Failed to revoke temp link:', error);
+        res.status(500).json({ error: 'Failed to revoke link.' });
+    }
+});
+
+// --- Logged-in Users Routes ---
+app.get('/api/admin/logged-in-users', adminLimiter, adminAuth, (req, res) => {
+    const users = Array.from(loggedInUsers.values());
+    res.json(users);
+});
+
+// --- Force Logout Route ---
+app.post('/api/admin/force-logout/:userId', adminLimiter, adminAuth, async (req, res) => {
+    const { userId } = req.params;
+    const targetUser = loggedInUsers.get(userId) || onlineUsers.get(userId);
+    const username = targetUser?.username || 'Unknown';
+
+    // Send force_logout to the specific user's WebSocket(s)
+    wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN && client.userId === userId && !client.isAdmin) {
+            client.send(JSON.stringify({ type: 'force_logout', message: 'You have been logged out by an administrator.' }));
+            setTimeout(() => client.terminate(), 500);
+        }
+    });
+
+    // Remove from tracking maps
+    onlineUsers.delete(userId);
+    loggedInUsers.delete(userId);
+    typingUsers.delete(userId);
+    if (pendingDisconnects.has(userId)) {
+        clearTimeout(pendingDisconnects.get(userId));
+        pendingDisconnects.delete(userId);
+    }
+
+    await AuditLog.create({ type: 'user_force_logged_out', details: { userId, username } });
+    broadcastToAdmins('user_force_logged_out', { userId, username });
+    broadcastToAdmins('activity', `User '${username}' was force-logged out by admin.`);
+    broadcastOnlineUsers();
+
+    res.json({ success: true, message: `User '${username}' has been logged out.` });
+});
+
+// --- Block/Unblock User Routes ---
+app.post('/api/admin/block-user', adminLimiter, adminAuth, async (req, res) => {
+    const { userId, username, reason } = req.body;
+    if (!userId) return res.status(400).json({ error: 'userId is required.' });
+
+    try {
+        // Gather all known fingerprints for this user
+        const fp = userFingerprints.get(userId);
+        const userInfo = loggedInUsers.get(userId) || onlineUsers.get(userId);
+        
+        const fingerprints = {
+            ips: [],
+            userAgents: [],
+            deviceHashes: [],
+            screenResolution: fp?.screenResolution || '',
+            platform: fp?.platform || '',
+            language: fp?.language || '',
+            timezone: fp?.timezone || '',
+        };
+
+        if (fp) {
+            fingerprints.ips = Array.from(fp.ips || []);
+            fingerprints.userAgents = Array.from(fp.userAgents || []);
+            fingerprints.deviceHashes = Array.from(fp.deviceHashes || []);
+        }
+
+        // Add current connection info if available
+        if (userInfo?.ip && !fingerprints.ips.includes(userInfo.ip)) {
+            fingerprints.ips.push(userInfo.ip);
+        }
+        if (userInfo?.userAgent && !fingerprints.userAgents.includes(userInfo.userAgent)) {
+            fingerprints.userAgents.push(userInfo.userAgent);
+        }
+
+        // Also scan active WebSocket connections for this user's IP/UA
+        wss.clients.forEach(client => {
+            if (client.userId === userId && !client.isAdmin) {
+                const wsIp = client._socket?.remoteAddress || '';
+                const wsUa = client.upgradeReq?.headers?.['user-agent'] || '';
+                if (wsIp && !fingerprints.ips.includes(wsIp)) fingerprints.ips.push(wsIp);
+                if (wsUa && !fingerprints.userAgents.includes(wsUa)) fingerprints.userAgents.push(wsUa);
+            }
+        });
+
+        // Create or update block entry
+        let blockedUser = await BlockedUser.findOne({ userId });
+        if (blockedUser) {
+            blockedUser.isBlocked = true;
+            blockedUser.blockedAt = new Date();
+            blockedUser.unblockedAt = null;
+            blockedUser.username = username || blockedUser.username;
+            blockedUser.reason = reason || '';
+            // Merge fingerprints
+            const mergedIps = new Set([...blockedUser.fingerprints.ips, ...fingerprints.ips]);
+            const mergedUAs = new Set([...blockedUser.fingerprints.userAgents, ...fingerprints.userAgents]);
+            const mergedHashes = new Set([...blockedUser.fingerprints.deviceHashes, ...fingerprints.deviceHashes]);
+            blockedUser.fingerprints = {
+                ...fingerprints,
+                ips: Array.from(mergedIps),
+                userAgents: Array.from(mergedUAs),
+                deviceHashes: Array.from(mergedHashes),
+            };
+            await blockedUser.save();
+        } else {
+            blockedUser = await BlockedUser.create({
+                userId,
+                username: username || 'Unknown',
+                fingerprints,
+                reason: reason || '',
+            });
+        }
+
+        // Force logout the blocked user immediately
+        wss.clients.forEach(client => {
+            if (client.readyState === WebSocket.OPEN && client.userId === userId && !client.isAdmin) {
+                client.send(JSON.stringify({ type: 'force_logout', message: 'You have been blocked from this chat room.' }));
+                setTimeout(() => client.terminate(), 500);
+            }
+        });
+        onlineUsers.delete(userId);
+        loggedInUsers.delete(userId);
+        typingUsers.delete(userId);
+
+        await AuditLog.create({ type: 'user_blocked', details: { userId, username: username || 'Unknown', reason } });
+        broadcastToAdmins('user_blocked', blockedUser);
+        broadcastToAdmins('activity', `User '${username || 'Unknown'}' has been blocked.`);
+        broadcastOnlineUsers();
+
+        res.json({ success: true, blockedUser });
+    } catch (error) {
+        logger.error('Failed to block user:', error);
+        res.status(500).json({ error: 'Failed to block user.' });
+    }
+});
+
+app.post('/api/admin/unblock-user/:userId', adminLimiter, adminAuth, async (req, res) => {
+    const { userId } = req.params;
+    try {
+        const blockedUser = await BlockedUser.findOneAndUpdate(
+            { userId, isBlocked: true },
+            { isBlocked: false, unblockedAt: new Date() },
+            { new: true }
+        );
+        if (!blockedUser) return res.status(404).json({ error: 'Blocked user not found.' });
+
+        await AuditLog.create({ type: 'user_unblocked', details: { userId, username: blockedUser.username } });
+        broadcastToAdmins('user_unblocked', blockedUser);
+        broadcastToAdmins('activity', `User '${blockedUser.username}' has been unblocked.`);
+
+        res.json({ success: true, blockedUser });
+    } catch (error) {
+        logger.error('Failed to unblock user:', error);
+        res.status(500).json({ error: 'Failed to unblock user.' });
+    }
+});
+
+app.get('/api/admin/blocked-users', adminLimiter, adminAuth, async (req, res) => {
+    try {
+        const blocked = await BlockedUser.find().sort({ blockedAt: -1 });
+        res.json(blocked);
+    } catch (error) {
+        logger.error('Failed to fetch blocked users:', error);
+        res.status(500).json({ error: 'Failed to fetch blocked users.' });
+    }
+});
+
+// --- Login Lockdown Routes ---
+app.post('/api/admin/login-lockdown', adminLimiter, adminAuth, async (req, res) => {
+    const { type, customMinutes } = req.body;
+    if (!type) return res.status(400).json({ error: 'Lockdown type is required.' });
+
+    try {
+        // Deactivate any existing lockdowns
+        await LoginLockdown.updateMany({ isActive: true }, { isActive: false });
+
+        let endTime = null;
+        const now = new Date();
+        switch (type) {
+            case '1hr': endTime = new Date(now.getTime() + 60 * 60 * 1000); break;
+            case '6hr': endTime = new Date(now.getTime() + 6 * 60 * 60 * 1000); break;
+            case '12hr': endTime = new Date(now.getTime() + 12 * 60 * 60 * 1000); break;
+            case '1day': endTime = new Date(now.getTime() + 24 * 60 * 60 * 1000); break;
+            case '3days': endTime = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000); break;
+            case 'indefinite': endTime = null; break;
+            case 'custom':
+                if (!customMinutes || customMinutes <= 0) return res.status(400).json({ error: 'Custom duration in minutes is required.' });
+                endTime = new Date(now.getTime() + customMinutes * 60 * 1000);
+                break;
+            default: return res.status(400).json({ error: 'Invalid lockdown type.' });
+        }
+
+        const lockdown = await LoginLockdown.create({ type, endTime, isActive: true });
+
+        await AuditLog.create({ type: 'lockdown_enabled', details: { type, endTime } });
+        broadcastToAdmins('lockdown_update', lockdown);
+        broadcastToAdmins('activity', `Login lockdown enabled: ${type}${endTime ? ` until ${endTime.toLocaleString()}` : ' (indefinite)'}.`);
+
+        res.json(lockdown);
+    } catch (error) {
+        logger.error('Failed to enable login lockdown:', error);
+        res.status(500).json({ error: 'Failed to enable lockdown.' });
+    }
+});
+
+app.delete('/api/admin/login-lockdown', adminLimiter, adminAuth, async (req, res) => {
+    try {
+        await LoginLockdown.updateMany({ isActive: true }, { isActive: false });
+
+        await AuditLog.create({ type: 'lockdown_disabled', details: {} });
+        broadcastToAdmins('lockdown_update', { isActive: false });
+        broadcastToAdmins('activity', `Login lockdown has been disabled.`);
+
+        res.json({ success: true });
+    } catch (error) {
+        logger.error('Failed to disable login lockdown:', error);
+        res.status(500).json({ error: 'Failed to disable lockdown.' });
+    }
+});
+
+app.get('/api/admin/login-lockdown', adminLimiter, adminAuth, async (req, res) => {
+    try {
+        const lockdown = await LoginLockdown.findOne({ isActive: true }).sort({ createdAt: -1 });
+        if (lockdown && lockdown.endTime && new Date() > lockdown.endTime) {
+            lockdown.isActive = false;
+            await lockdown.save();
+            return res.json({ isActive: false });
+        }
+        res.json(lockdown || { isActive: false });
+    } catch (error) {
+        logger.error('Failed to fetch lockdown status:', error);
+        res.status(500).json({ error: 'Failed to fetch lockdown status.' });
+    }
+});
+
+// --- Audit Log Routes ---
+app.get('/api/admin/audit-logs', adminLimiter, adminAuth, async (req, res) => {
+    try {
+        const logs = await AuditLog.find().sort({ timestamp: -1 }).limit(200);
+        res.json(logs);
+    } catch (error) {
+        logger.error('Failed to fetch audit logs:', error);
+        res.status(500).json({ error: 'Failed to fetch audit logs.' });
+    }
+});
+
 // Route for fetching paginated messages for infinite scroll
 app.get('/api/messages', apiLimiter, async (req, res) => {
     try {
@@ -463,6 +946,10 @@ wss.on('connection', (ws, req) => {
           User.find().then(allDbUsers => {
             ws.send(JSON.stringify({ type: 'users', data: allDbUsers }));
           });
+          // Send current logged-in users
+          ws.send(JSON.stringify({ type: 'logged_in_users', data: Array.from(loggedInUsers.values()) }));
+          // Send current online users
+          ws.send(JSON.stringify({ type: 'online_users_admin', data: Array.from(onlineUsers.values()) }));
           ws.on('close', () => {
             adminClients.delete(ws);
             logger.info('An admin client disconnected from admin channel.');
@@ -489,9 +976,46 @@ wss.on('connection', (ws, req) => {
 
     switch (parsedMessage.type) {
       case 'user_join': {
-        const { userId, username } = parsedMessage;
+        const { userId, username, fingerprint: fpData } = parsedMessage;
         ws.userId = userId;
         ws.username = username;
+
+        // Collect connection fingerprint
+        const wsIp = extractIp(req);
+        const wsUa = req.headers['user-agent'] || '';
+        ws.clientIp = wsIp;
+        ws.clientUa = wsUa;
+
+        // Store fingerprint data
+        if (fpData || true) {
+            const existing = userFingerprints.get(userId) || { ips: new Set(), userAgents: new Set(), deviceHashes: new Set() };
+            existing.ips.add(wsIp);
+            if (wsUa) existing.userAgents.add(wsUa);
+            if (fpData) {
+                existing.screenResolution = fpData.screenResolution || existing.screenResolution;
+                existing.platform = fpData.platform || existing.platform;
+                existing.language = fpData.language || existing.language;
+                existing.timezone = fpData.timezone || existing.timezone;
+                const hash = generateDeviceHash({ ...fpData, userAgent: wsUa });
+                existing.deviceHashes.add(hash);
+            }
+            userFingerprints.set(userId, existing);
+        }
+
+        // Check if user is blocked (async)
+        const blockResult = await isUserBlocked(userId, wsIp, wsUa, fpData);
+        if (blockResult.blocked) {
+            logger.warn(`Blocked user '${username}' attempted to join via WebSocket.`);
+            ws.send(JSON.stringify({ type: 'force_logout', message: 'You have been blocked from this chat room.' }));
+            await AuditLog.create({
+                type: 'join_failed_blocked',
+                details: { userId, username, reason: blockResult.reason, via: 'websocket' },
+                ip: wsIp, userAgent: wsUa,
+            });
+            broadcastToAdmins('audit_log', { type: 'join_failed_blocked', details: { userId, username }, timestamp: new Date() });
+            setTimeout(() => ws.terminate(), 300);
+            return;
+        }
 
         // --- Duplicate username guard (WebSocket-level, authoritative) ---
         // Check every currently-open, identified client (excluding this socket and
@@ -535,6 +1059,11 @@ wss.on('connection', (ws, req) => {
         
         onlineUsers.set(userId, { userId, username });
         
+        // Also track as logged in
+        if (!loggedInUsers.has(userId)) {
+            loggedInUsers.set(userId, { userId, username, loginTime: new Date(), ip: ws.clientIp, userAgent: ws.clientUa });
+        }
+
         User.findOneAndUpdate(
           { userId },
           { userId, username, lastSeen: new Date() },
@@ -543,6 +1072,7 @@ wss.on('connection', (ws, req) => {
 
         broadcastToAdmins('user_joined', { userId, username });
         broadcastToAdmins('activity', `User '${username}' connected.`);
+        broadcastToAdmins('logged_in_users', Array.from(loggedInUsers.values()));
         broadcastOnlineUsers();
 
         Message.find().sort({ createdAt: -1 }).limit(50).lean()

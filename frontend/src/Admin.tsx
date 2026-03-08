@@ -1,28 +1,20 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import styled from 'styled-components';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import styled, { keyframes, css } from 'styled-components';
 
 /**
  * Sanitizes a URL before using it as an href/src attribute.
- * Rejects javascript:, data:, and any non-http/https protocol to prevent XSS.
- * Returns the URL-parser canonical form (parsed.href) rather than the raw input
- * string so that static-analysis taint tracking sees a URL-object-derived value,
- * not the original user-controlled string.
  */
 const sanitizeUrl = (url: string | undefined | null): string => {
   if (!url) return '';
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return '';
-    return parsed.href; // Canonical form from the URL parser — not the raw input string
+    return parsed.href;
   } catch {
     return '';
   }
 };
 
-/**
- * Returns true only when the URL hostname is exactly tenor.com or a subdomain.
- * A simple .includes('tenor.com') check can be bypassed via path/query embedding.
- */
 const isTenorUrl = (url: string | undefined | null): boolean => {
   if (!url) return false;
   try {
@@ -33,6 +25,18 @@ const isTenorUrl = (url: string | undefined | null): boolean => {
   }
 };
 
+// --- ANIMATIONS ---
+const fadeIn = keyframes`
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+`;
+
+const pulse = keyframes`
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+`;
+
+// --- STYLED COMPONENTS ---
 const AdminContainer = styled.div`
   padding: 2rem;
   background-color: #f7fafc;
@@ -40,16 +44,10 @@ const AdminContainer = styled.div`
   overflow: hidden;
   display: flex;
   flex-direction: column;
-
-  @media (max-width: 768px) {
-    padding: 1.25rem 1rem;
-  }
-  @media (max-width: 480px) {
-    padding: 1rem 0.75rem;
-  }
-  @media (max-height: 500px) {
-    padding: 0.4rem 0.6rem;
-  }
+  animation: ${fadeIn} 0.3s ease-out;
+  @media (max-width: 768px) { padding: 1.25rem 1rem; }
+  @media (max-width: 480px) { padding: 1rem 0.75rem; }
+  @media (max-height: 500px) { padding: 0.4rem 0.6rem; }
 `;
 
 const Title = styled.h1`
@@ -57,16 +55,9 @@ const Title = styled.h1`
   font-weight: bold;
   color: #1a202c;
   margin-bottom: 0;
-
-  @media (max-width: 768px) {
-    font-size: 2rem;
-  }
-  @media (max-width: 480px) {
-    font-size: 1.5rem;
-  }
-  @media (max-height: 500px) {
-    font-size: 1.2rem;
-  }
+  @media (max-width: 768px) { font-size: 2rem; }
+  @media (max-width: 480px) { font-size: 1.5rem; }
+  @media (max-height: 500px) { font-size: 1.2rem; }
 `;
 
 const LoginFormContainer = styled.div`
@@ -89,11 +80,8 @@ const LoginBox = styled.div`
   align-items: center;
   width: 100%;
   max-width: 420px;
-
-  @media (max-width: 480px) {
-    padding: 2rem 1.5rem;
-    border-radius: 12px;
-  }
+  animation: ${fadeIn} 0.4s ease-out;
+  @media (max-width: 480px) { padding: 2rem 1.5rem; border-radius: 12px; }
 `;
 
 const PasswordInputWrapper = styled.div`
@@ -101,10 +89,7 @@ const PasswordInputWrapper = styled.div`
   width: 100%;
   max-width: 300px;
   margin-bottom: 1rem;
-
-  @media (max-width: 480px) {
-    max-width: 100%;
-  }
+  @media (max-width: 480px) { max-width: 100%; }
 `;
 
 const HeaderRow = styled.div`
@@ -115,9 +100,7 @@ const HeaderRow = styled.div`
   gap: 1rem;
   flex-wrap: wrap;
   flex-shrink: 0;
-  @media (max-height: 500px) {
-    margin-bottom: 0.3rem;
-  }
+  @media (max-height: 500px) { margin-bottom: 0.3rem; }
 `;
 
 const EyeIconButton = styled.button`
@@ -133,24 +116,18 @@ const EyeIconButton = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
-  
-  &:hover {
-    color: #4a5568;
-  }
+  transition: color 0.2s;
+  &:hover { color: #4a5568; }
 `;
 
 const PasswordInput = styled.input`
-  padding: 0.75rem 3rem 0.75rem 1rem; /* Add padding-right for icon */
+  padding: 0.75rem 3rem 0.75rem 1rem;
   font-size: 1rem;
   border: 1px solid #cbd5e0;
   border-radius: 4px;
   width: 100%;
   transition: all 0.2s;
-  &:focus {
-    outline: none;
-    border-color: #3B82F6;
-    box-shadow: 0 0 0 2px #bfdbfe;
-  }
+  &:focus { outline: none; border-color: #3B82F6; box-shadow: 0 0 0 2px #bfdbfe; }
 `;
 
 const Input = styled.input`
@@ -163,15 +140,8 @@ const Input = styled.input`
   max-width: 300px;
   box-sizing: border-box;
   transition: all 0.2s;
-  &:focus {
-    outline: none;
-    border-color: #3B82F6;
-    box-shadow: 0 0 0 2px #bfdbfe;
-  }
-  @media (max-height: 500px) {
-    padding: 0.28rem 0.5rem;
-    font-size: 0.78rem;
-  }
+  &:focus { outline: none; border-color: #3B82F6; box-shadow: 0 0 0 2px #bfdbfe; }
+  @media (max-height: 500px) { padding: 0.28rem 0.5rem; font-size: 0.78rem; }
 `;
 
 const SelectWrapper = styled.div`
@@ -180,7 +150,6 @@ const SelectWrapper = styled.div`
   max-width: 300px;
   margin-bottom: 1rem;
   box-sizing: border-box;
-
   &::after {
     content: '';
     position: absolute;
@@ -199,32 +168,21 @@ const SelectWrapper = styled.div`
 
 const Select = styled.select`
   padding: 0.75rem 1rem;
-  padding-right: 2.5rem; /* Make space for custom arrow */
+  padding-right: 2.5rem;
   font-size: 1rem;
   width: 100%;
-  margin-bottom: 0; 
-  flex: none; 
+  margin-bottom: 0;
+  flex: none;
   min-width: auto;
-  
   border: 1px solid #cbd5e0;
   border-radius: 4px;
   background-color: white;
   transition: all 0.2s;
-  
   -webkit-appearance: none;
   -moz-appearance: none;
   appearance: none;
-
-  &:focus {
-    outline: none;
-    border-color: #3B82F6;
-    box-shadow: 0 0 0 2px #bfdbfe;
-  }
-  @media (max-height: 500px) {
-    padding: 0.28rem 0.5rem;
-    padding-right: 2rem;
-    font-size: 0.78rem;
-  }
+  &:focus { outline: none; border-color: #3B82F6; box-shadow: 0 0 0 2px #bfdbfe; }
+  @media (max-height: 500px) { padding: 0.28rem 0.5rem; padding-right: 2rem; font-size: 0.78rem; }
 `;
 
 const FilterContainer = styled.div`
@@ -237,36 +195,16 @@ const FilterContainer = styled.div`
   border-radius: 8px;
   box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
   flex-shrink: 0;
-
   ${Input}, ${SelectWrapper} {
-    flex: 1;
-    min-width: 160px;
-    max-width: none;
-    margin-bottom: 0;
+    flex: 1; min-width: 160px; max-width: none; margin-bottom: 0;
   }
-
   @media (max-width: 480px) {
-    gap: 0.5rem;
-    padding: 0.75rem;
-
-    ${Input}, ${SelectWrapper} {
-      flex: 1 1 100%;
-      min-width: unset;
-    }
+    gap: 0.5rem; padding: 0.75rem;
+    ${Input}, ${SelectWrapper} { flex: 1 1 100%; min-width: unset; }
   }
-
-  /* Landscape: keep all filters in a single row, very compact */
   @media (max-height: 500px) {
-    flex-wrap: nowrap;
-    gap: 0.3rem;
-    padding: 0.3rem 0.5rem;
-    margin-bottom: 0.3rem;
-
-    ${Input}, ${SelectWrapper} {
-      flex: 1;
-      min-width: 60px;
-      margin-bottom: 0;
-    }
+    flex-wrap: nowrap; gap: 0.3rem; padding: 0.3rem 0.5rem; margin-bottom: 0.3rem;
+    ${Input}, ${SelectWrapper} { flex: 1; min-width: 60px; margin-bottom: 0; }
   }
 `;
 
@@ -278,24 +216,18 @@ const Button = styled.button`
   color: white;
   border: none;
   border-radius: 4px;
-  transition: background-color 0.2s;
+  transition: all 0.2s;
   white-space: nowrap;
-  &:hover {
-    background-color: #2563EB;
-  }
-  &:disabled {
-    background-color: #9ca3af;
-    cursor: not-allowed;
-  }
-  @media (max-width: 480px) {
-    padding: 0.6rem 1rem;
-    font-size: 0.9rem;
-  }
+  &:hover { background-color: #2563EB; transform: translateY(-1px); }
+  &:active { transform: translateY(0); }
+  &:disabled { background-color: #9ca3af; cursor: not-allowed; transform: none; }
+  @media (max-width: 480px) { padding: 0.6rem 1rem; font-size: 0.9rem; }
 `;
 
 const ErrorMessage = styled.p`
   color: #EF4444;
   margin-top: 1rem;
+  animation: ${fadeIn} 0.3s ease-out;
 `;
 
 const TabContainer = styled.div`
@@ -306,9 +238,7 @@ const TabContainer = styled.div`
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   flex-shrink: 0;
-  &::-webkit-scrollbar {
-    display: none;
-  }
+  &::-webkit-scrollbar { display: none; }
 `;
 
 const TabButton = styled.button<{ active: boolean }>`
@@ -316,10 +246,10 @@ const TabButton = styled.button<{ active: boolean }>`
   font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
-  background-color: ${props => props.active ? 'white' : 'transparent'};
-  color: ${props => props.active ? '#3B82F6' : '#4a5568'};
-  border: 1px solid ${props => props.active ? '#cbd5e0' : 'transparent'};
-  border-bottom: 1px solid ${props => props.active ? 'white' : '#cbd5e0'};
+  background-color: ${(p: any) => p.active ? 'white' : 'transparent'};
+  color: ${(p: any) => p.active ? '#3B82F6' : '#4a5568'};
+  border: 1px solid ${(p: any) => p.active ? '#cbd5e0' : 'transparent'};
+  border-bottom: 1px solid ${(p: any) => p.active ? 'white' : '#cbd5e0'};
   margin-bottom: -1px;
   border-top-left-radius: 0.25rem;
   border-top-right-radius: 0.25rem;
@@ -327,18 +257,9 @@ const TabButton = styled.button<{ active: boolean }>`
   transition: all 0.2s;
   white-space: nowrap;
   flex-shrink: 0;
-  &:hover {
-    color: #3B82F6;
-  }
-  @media (max-width: 600px) {
-    padding: 0.6rem 1rem;
-    font-size: 0.875rem;
-  }
+  &:hover { color: #3B82F6; }
+  @media (max-width: 600px) { padding: 0.6rem 1rem; font-size: 0.875rem; }
 `;
-
-
-
-
 
 const TabContent = styled.div`
   border: 1px solid #cbd5e0;
@@ -350,17 +271,9 @@ const TabContent = styled.div`
   flex: 1;
   min-height: 0;
   overflow: hidden;
-
-  @media (max-width: 768px) {
-    padding: 1.25rem 1rem;
-  }
-  @media (max-width: 480px) {
-    padding: 1rem 0.75rem;
-    border-top-right-radius: 0.25rem;
-  }
-  @media (max-height: 500px) {
-    padding: 0.4rem 0.5rem;
-  }
+  @media (max-width: 768px) { padding: 1.25rem 1rem; }
+  @media (max-width: 480px) { padding: 1rem 0.75rem; border-top-right-radius: 0.25rem; }
+  @media (max-height: 500px) { padding: 0.4rem 0.5rem; }
 `;
 
 const Table = styled.table`
@@ -382,10 +295,7 @@ const Th = styled.th`
   font-weight: 600;
   color: #4a5568;
   white-space: nowrap;
-  @media (max-height: 500px) {
-    padding: 0.3rem 0.5rem;
-    font-size: 0.78rem;
-  }
+  @media (max-height: 500px) { padding: 0.3rem 0.5rem; font-size: 0.78rem; }
 `;
 
 const Td = styled.td`
@@ -394,10 +304,7 @@ const Td = styled.td`
   border-bottom: 1px solid #e2e8f0;
   overflow-wrap: break-word;
   word-break: normal;
-  @media (max-height: 500px) {
-    padding: 0.3rem 0.5rem;
-    font-size: 0.78rem;
-  }
+  @media (max-height: 500px) { padding: 0.3rem 0.5rem; font-size: 0.78rem; }
 `;
 
 const TableWrapper = styled.div`
@@ -413,9 +320,34 @@ const TableWrapper = styled.div`
 const LogoutButton = styled(Button)`
   background-color: #EF4444;
   flex-shrink: 0;
-  &:hover {
-    background-color: #DC2626;
-  }
+  &:hover { background-color: #DC2626; }
+`;
+
+const SuccessButton = styled(Button)`
+  background-color: #10B981;
+  &:hover { background-color: #059669; }
+`;
+
+const SmallButton = styled(Button)`
+  padding: 0.4rem 0.8rem;
+  font-size: 0.8rem;
+  border-radius: 6px;
+`;
+
+const SmallDangerButton = styled(SmallButton)`
+  background-color: #EF4444;
+  &:hover { background-color: #DC2626; }
+`;
+
+const SmallSuccessButton = styled(SmallButton)`
+  background-color: #10B981;
+  &:hover { background-color: #059669; }
+`;
+
+const SmallWarningButton = styled(SmallButton)`
+  background-color: #F59E0B;
+  color: #1a202c;
+  &:hover { background-color: #D97706; }
 `;
 
 const ActivityLogContainer = styled.div`
@@ -430,15 +362,8 @@ const ActivityLogContainer = styled.div`
   font-size: 0.85rem;
   overflow-y: auto;
   border: 1px solid #e2e8f0;
-
-  @media (max-width: 768px) {
-    padding: 0.75rem;
-    font-size: 0.78rem;
-  }
-  @media (max-height: 500px) {
-    padding: 0.4rem 0.5rem;
-    font-size: 0.75rem;
-  }
+  @media (max-width: 768px) { padding: 0.75rem; font-size: 0.78rem; }
+  @media (max-height: 500px) { padding: 0.4rem 0.5rem; font-size: 0.75rem; }
 `;
 
 const LogViewerContainer = styled.pre`
@@ -456,28 +381,269 @@ const LogViewerContainer = styled.pre`
   white-space: pre-wrap;
   word-wrap: break-word;
   border: 1px solid #e2e8f0;
-
-  @media (max-width: 768px) {
-    padding: 0.75rem;
-    font-size: 0.78rem;
-  }
-  @media (max-height: 500px) {
-    padding: 0.4rem 0.5rem;
-    font-size: 0.75rem;
-  }
+  @media (max-width: 768px) { padding: 0.75rem; font-size: 0.78rem; }
+  @media (max-height: 500px) { padding: 0.4rem 0.5rem; font-size: 0.75rem; }
 `;
 
 const ActivityLogItem = styled.div`
   padding: 0.25rem 0;
+  animation: ${fadeIn} 0.2s ease-out;
 `;
 
+const SectionTitle = styled.h3`
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1a202c;
+  margin: 1.5rem 0 0.75rem 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  &:first-child { margin-top: 0; }
+`;
+
+const Card = styled.div<{ $variant?: 'default' | 'success' | 'warning' | 'danger' }>`
+  background: ${(p: any) => {
+    switch (p.$variant) {
+      case 'success': return 'linear-gradient(135deg, #f0fdf4, #dcfce7)';
+      case 'warning': return 'linear-gradient(135deg, #fffbeb, #fef3c7)';
+      case 'danger': return 'linear-gradient(135deg, #fef2f2, #fee2e2)';
+      default: return 'white';
+    }
+  }};
+  border: 1px solid ${(p: any) => {
+    switch (p.$variant) {
+      case 'success': return '#86efac';
+      case 'warning': return '#fcd34d';
+      case 'danger': return '#fca5a5';
+      default: return '#e2e8f0';
+    }
+  }};
+  border-radius: 12px;
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+  transition: all 0.2s;
+  animation: ${fadeIn} 0.3s ease-out;
+  &:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+`;
+
+const LinkCard = styled(Card)`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+`;
+
+const Badge = styled.span<{ $color: 'green' | 'red' | 'yellow' | 'gray' | 'blue' }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  ${(p: any) => {
+    switch (p.$color) {
+      case 'green': return 'background: #dcfce7; color: #166534;';
+      case 'red': return 'background: #fee2e2; color: #991b1b;';
+      case 'yellow': return 'background: #fef3c7; color: #92400e;';
+      case 'gray': return 'background: #f3f4f6; color: #374151;';
+      case 'blue': return 'background: #dbeafe; color: #1e40af;';
+      default: return '';
+    }
+  }}
+`;
+
+const StatusDot = styled.span<{ $color: 'green' | 'red' | 'yellow' | 'gray' }>`
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  background-color: ${(p: any) => {
+    switch (p.$color) {
+      case 'green': return '#22c55e';
+      case 'red': return '#ef4444';
+      case 'yellow': return '#f59e0b';
+      case 'gray': return '#9ca3af';
+      default: return '#9ca3af';
+    }
+  }};
+  ${(p: any) => p.$color === 'green' && css`animation: ${pulse} 2s ease-in-out infinite;`}
+`;
+
+const LinkUrlBox = styled.div`
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  color: #334155;
+  word-break: break-all;
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const CopyButton = styled.button`
+  background: none;
+  border: 1px solid #cbd5e0;
+  border-radius: 6px;
+  padding: 0.35rem 0.6rem;
+  cursor: pointer;
+  color: #64748b;
+  font-size: 0.75rem;
+  transition: all 0.2s;
+  white-space: nowrap;
+  &:hover { background: #f1f5f9; border-color: #94a3b8; color: #334155; }
+`;
+
+const UsedByList = styled.div`
+  font-size: 0.8rem;
+  color: #64748b;
+  margin-top: 0.5rem;
+`;
+
+const LockdownPanel = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 1rem;
+  background: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  margin-bottom: 1rem;
+`;
+
+const LockdownOption = styled.button<{ $active?: boolean }>`
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  border: 1px solid ${(p: any) => p.$active ? '#3B82F6' : '#cbd5e0'};
+  background: ${(p: any) => p.$active ? '#3B82F6' : 'white'};
+  color: ${(p: any) => p.$active ? 'white' : '#4a5568'};
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  &:hover { border-color: #3B82F6; transform: translateY(-1px); }
+`;
+
+const AuditLogEntry = styled.div<{ $type?: string }>`
+  padding: 0.6rem 0.8rem;
+  border-left: 3px solid ${(p: any) => {
+    if (p.$type?.includes('blocked')) return '#ef4444';
+    if (p.$type?.includes('unblocked')) return '#22c55e';
+    if (p.$type?.includes('failed')) return '#f59e0b';
+    if (p.$type?.includes('temp_link')) return '#3B82F6';
+    if (p.$type?.includes('lockdown')) return '#8b5cf6';
+    if (p.$type?.includes('force')) return '#f97316';
+    return '#94a3b8';
+  }};
+  background: #f8fafc;
+  margin-bottom: 0.5rem;
+  border-radius: 0 6px 6px 0;
+  font-size: 0.85rem;
+  animation: ${fadeIn} 0.2s ease-out;
+`;
+
+const ScrollContainer = styled.div`
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 0.5rem;
+`;
+
+const EmptyState = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  color: #94a3b8;
+  text-align: center;
+  gap: 0.75rem;
+`;
+
+const CustomTimeInput = styled.input`
+  padding: 0.5rem;
+  border: 1px solid #cbd5e0;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  width: 100px;
+  &:focus { outline: none; border-color: #3B82F6; }
+`;
+
+const ClearHistoryButton = styled(Button)`
+  background-color: #e53e3e;
+  flex-shrink: 0;
+  &:hover { background-color: #c53030; }
+`;
+
+// --- INTERFACES ---
 interface UserProfile {
   userId: string;
   username: string;
 }
 
-type Tab = 'messages' | 'users' | 'activity' | 'logs';
+interface TempLinkData {
+  _id: string;
+  token: string;
+  createdAt: string;
+  expiresAt: string;
+  isRevoked: boolean;
+  revokedAt: string | null;
+  usedBy: { username: string; joinedAt: string }[];
+}
 
+interface BlockedUserData {
+  _id: string;
+  userId: string;
+  username: string;
+  isBlocked: boolean;
+  blockedAt: string;
+  unblockedAt: string | null;
+  reason: string;
+  fingerprints: {
+    ips: string[];
+    userAgents: string[];
+    deviceHashes: string[];
+  };
+}
+
+interface LockdownData {
+  isActive: boolean;
+  type?: string;
+  startTime?: string;
+  endTime?: string | null;
+}
+
+interface AuditLogData {
+  _id: string;
+  type: string;
+  details: any;
+  ip?: string;
+  userAgent?: string;
+  timestamp: string;
+}
+
+interface LoggedInUser {
+  userId: string;
+  username: string;
+  loginTime: string;
+  ip?: string;
+  userAgent?: string;
+  viaTempLink?: boolean;
+}
+
+type Tab = 'messages' | 'users' | 'access' | 'security' | 'activity' | 'logs';
+
+// --- HELPERS ---
 const formatDate = (dateString: string) => {
   const date = new Date(dateString);
   return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
@@ -488,14 +654,42 @@ const formatTime = (dateString: string) => {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 };
 
-const ClearHistoryButton = styled(Button)`
-  background-color: #e53e3e;
-  flex-shrink: 0;
-  &:hover {
-    background-color: #c53030;
-  }
-`;
+const formatDateTime = (dateString: string) => `${formatDate(dateString)} ${formatTime(dateString)}`;
 
+const getTimeRemaining = (expiresAt: string): string => {
+  const diff = new Date(expiresAt).getTime() - Date.now();
+  if (diff <= 0) return 'Expired';
+  const mins = Math.floor(diff / 60000);
+  const secs = Math.floor((diff % 60000) / 1000);
+  return `${mins}m ${secs}s`;
+};
+
+const getLinkStatus = (link: TempLinkData): { status: 'active' | 'expired' | 'revoked'; label: string } => {
+  if (link.isRevoked) return { status: 'revoked', label: 'Revoked' };
+  if (new Date() > new Date(link.expiresAt)) return { status: 'expired', label: 'Expired' };
+  return { status: 'active', label: 'Active' };
+};
+
+const auditTypeLabel = (type: string): string => {
+  const labels: Record<string, string> = {
+    'user_blocked': '🚫 User Blocked',
+    'user_unblocked': '✅ User Unblocked',
+    'user_force_logged_out': '🔒 Force Logged Out',
+    'join_failed_blocked': '⛔ Join Failed (Blocked)',
+    'join_failed_lockdown': '🔐 Join Failed (Lockdown)',
+    'join_failed_password': '❌ Join Failed (Wrong Password)',
+    'join_failed_username_taken': '⚠️ Join Failed (Username Taken)',
+    'temp_link_created': '🔗 Temp Link Created',
+    'temp_link_revoked': '🔗 Temp Link Revoked',
+    'temp_link_used': '🔗 Temp Link Used',
+    'temp_link_expired_attempt': '🔗 Expired Link Attempt',
+    'lockdown_enabled': '🔒 Lockdown Enabled',
+    'lockdown_disabled': '🔓 Lockdown Disabled',
+  };
+  return labels[type] || type;
+};
+
+// ===================== ADMIN COMPONENT =====================
 const Admin = () => {
   const [password, setPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
@@ -507,33 +701,44 @@ const Admin = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('messages');
   const [activityLogs, setActivityLogs] = useState<string[]>(() => {
-    const savedLogs = sessionStorage.getItem('admin-activity-logs');
-    return savedLogs ? JSON.parse(savedLogs) : [];
+    const saved = sessionStorage.getItem('admin-activity-logs');
+    return saved ? JSON.parse(saved) : [];
   });
   const ws = useRef<WebSocket | null>(null);
   const activityLogRef = useRef<HTMLDivElement>(null);
-  // Holds the authenticated password in memory only — never stored in web storage.
   const passwordRef = useRef<string>('');
 
-  // Filter states
+  // Message Log filters
   const [filterMessageId, setFilterMessageId] = useState('');
   const [filterUser, setFilterUser] = useState('');
   const [filterEventType, setFilterEventType] = useState('All');
   const [filterContent, setFilterContent] = useState('');
 
-  useEffect(() => {
-    if (activityLogRef.current) {
-      activityLogRef.current.scrollTop = 0;
-    }
-  }, [activityLogs]);
-  
-  useEffect(() => {
-    console.log('Users state updated:', users);
-  }, [users]);
+  // New feature states
+  const [tempLinks, setTempLinks] = useState<TempLinkData[]>([]);
+  const [blockedUsers, setBlockedUsers] = useState<BlockedUserData[]>([]);
+  const [lockdownStatus, setLockdownStatus] = useState<LockdownData>({ isActive: false });
+  const [auditLogs, setAuditLogs] = useState<AuditLogData[]>([]);
+  const [loggedInUsersList, setLoggedInUsersList] = useState<LoggedInUser[]>([]);
+  const [onlineUsersList, setOnlineUsersList] = useState<UserProfile[]>([]);
+  const [customLockdownMinutes, setCustomLockdownMinutes] = useState('');
+  const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
+  const [creatingLink, setCreatingLink] = useState(false);
+  const [, setLinkTimerKey] = useState(0);
 
+  // Refresh link countdown timers every second
+  useEffect(() => {
+    const interval = setInterval(() => setLinkTimerKey(k => k + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (activityLogRef.current) activityLogRef.current.scrollTop = 0;
+  }, [activityLogs]);
+
+  // --- WebSocket ---
   useEffect(() => {
     if (!isAuthenticated) return;
-
     const storedPassword = passwordRef.current;
     if (!storedPassword) return;
 
@@ -541,145 +746,248 @@ const Admin = () => {
     ws.current = new WebSocket(wsUrl);
     ws.current.onopen = () => {
       ws.current?.send(JSON.stringify({ type: 'admin_auth', password: storedPassword }));
-      console.log('Admin WebSocket connected');
     };
     ws.current.onmessage = (event) => {
       const message = JSON.parse(event.data);
-      console.log(message);
       switch (message.type) {
         case 'activity':
-          setActivityLogs(prevLogs => {
-            const newLogs = [`[${new Date().toLocaleTimeString()}] ${message.data}`, ...prevLogs].slice(0, 50);
+          setActivityLogs(prev => {
+            const newLogs = [`[${new Date().toLocaleTimeString()}] ${message.data}`, ...prev].slice(0, 50);
             sessionStorage.setItem('admin-activity-logs', JSON.stringify(newLogs));
             return newLogs;
           });
           break;
         case 'history':
-          setHistoryLogs(prevLogs => [message.data, ...prevLogs].sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+          setHistoryLogs(prev => [message.data, ...prev].sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
           break;
         case 'chat_cleared':
           setHistoryLogs([]);
           setActivityLogs(prev => [`[${new Date().toLocaleTimeString()}] Chat history permanently cleared.`, ...prev]);
           break;
         case 'user_joined':
-          setUsers(prevUsers => [...prevUsers, message.data]);
+          setOnlineUsersList(prev => prev.some(u => u.userId === message.data.userId) ? prev : [...prev, message.data]);
           break;
         case 'user_left':
-          setUsers(prevUsers => prevUsers.filter(user => user.userId !== message.data.userId));
+          setOnlineUsersList(prev => prev.filter(u => u.userId !== message.data.userId));
+          break;
+        case 'users':
+          setUsers(message.data);
+          break;
+        case 'online_users_admin':
+          setOnlineUsersList(message.data);
+          break;
+        case 'logged_in_users':
+          setLoggedInUsersList(message.data);
           break;
         case 'server_logs':
-           setServerLogs(message.data.split('\n').reverse());
+          setServerLogs(message.data.split('\n').reverse());
           break;
-        default:
+        case 'temp_link_created':
+          setTempLinks(prev => [message.data, ...prev]);
           break;
+        case 'temp_link_revoked':
+          setTempLinks(prev => prev.map(l => l._id === message.data._id ? message.data : l));
+          break;
+        case 'user_blocked':
+          setBlockedUsers(prev => [message.data, ...prev.filter(u => u.userId !== message.data.userId)]);
+          setOnlineUsersList(prev => prev.filter(u => u.userId !== message.data.userId));
+          setLoggedInUsersList(prev => prev.filter(u => u.userId !== message.data.userId));
+          break;
+        case 'user_unblocked':
+          setBlockedUsers(prev => prev.map(u => u.userId === message.data.userId ? message.data : u));
+          break;
+        case 'user_force_logged_out':
+          setOnlineUsersList(prev => prev.filter(u => u.userId !== message.data.userId));
+          setLoggedInUsersList(prev => prev.filter(u => u.userId !== message.data.userId));
+          break;
+        case 'lockdown_update':
+          setLockdownStatus(message.data);
+          break;
+        case 'audit_log':
+          setAuditLogs(prev => [{ ...message.data, _id: Date.now().toString() }, ...prev].slice(0, 200));
+          break;
+        default: break;
       }
     };
     ws.current.onclose = () => console.log('Admin WebSocket disconnected');
     ws.current.onerror = (error) => console.error('Admin WebSocket error:', error);
-
-    return () => {
-      if (ws.current) ws.current.close();
-    };
+    return () => { if (ws.current) ws.current.close(); };
   }, [isAuthenticated]);
 
+  const apiHeaders = useCallback(() => ({
+    'x-admin-password': passwordRef.current,
+    'Content-Type': 'application/json',
+  }), []);
+  const apiUrl = process.env.REACT_APP_API_URL || '';
+
+  // --- Auth ---
   const handleLogin = async () => {
     setIsLoading(true);
     setError('');
     try {
-      const [usersResponse, historyResponse, serverLogsResponse] = await Promise.all([
-        fetch(`${process.env.REACT_APP_API_URL}/api/admin/users`, { headers: { 'x-admin-password': password } }),
-        fetch(`${process.env.REACT_APP_API_URL}/api/admin/history`, { headers: { 'x-admin-password': password } }),
-        fetch(`${process.env.REACT_APP_API_URL}/api/admin/server-logs`, { headers: { 'x-admin-password': password } })
+      const headers = { 'x-admin-password': password };
+      const [usersRes, historyRes, serverLogsRes, tempLinksRes, blockedRes, lockdownRes, auditRes, loggedInRes] = await Promise.all([
+        fetch(`${apiUrl}/api/admin/users`, { headers }),
+        fetch(`${apiUrl}/api/admin/history`, { headers }),
+        fetch(`${apiUrl}/api/admin/server-logs`, { headers }),
+        fetch(`${apiUrl}/api/admin/temp-links`, { headers }),
+        fetch(`${apiUrl}/api/admin/blocked-users`, { headers }),
+        fetch(`${apiUrl}/api/admin/login-lockdown`, { headers }),
+        fetch(`${apiUrl}/api/admin/audit-logs`, { headers }),
+        fetch(`${apiUrl}/api/admin/logged-in-users`, { headers }),
       ]);
-
-      if (usersResponse.ok && historyResponse.ok && serverLogsResponse.ok) {
-        passwordRef.current = password; // Store in memory only, not in web storage.
-        const usersData = await usersResponse.json();
-        const historyData = await historyResponse.json();
-        const serverLogsData = await serverLogsResponse.text();
-        setUsers(usersData);
-        setHistoryLogs(historyData.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
-        setServerLogs(serverLogsData.split('\n').reverse());
+      if (usersRes.ok && historyRes.ok) {
+        passwordRef.current = password;
+        setUsers(await usersRes.json());
+        setHistoryLogs((await historyRes.json()).sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+        setServerLogs((await serverLogsRes.text()).split('\n').reverse());
+        if (tempLinksRes.ok) setTempLinks(await tempLinksRes.json());
+        if (blockedRes.ok) setBlockedUsers(await blockedRes.json());
+        if (lockdownRes.ok) setLockdownStatus(await lockdownRes.json());
+        if (auditRes.ok) setAuditLogs(await auditRes.json());
+        if (loggedInRes.ok) setLoggedInUsersList(await loggedInRes.json());
         setIsAuthenticated(true);
       } else {
         setError('Incorrect password.');
       }
-    } catch (err) {
+    } catch {
       setError('An error occurred while trying to log in.');
     }
     setIsLoading(false);
   };
-  
+
   const handleLogout = () => {
     if (ws.current) ws.current.close();
     passwordRef.current = '';
-    sessionStorage.removeItem('admin-password');
     sessionStorage.removeItem('admin-activity-logs');
     setIsAuthenticated(false);
     setPassword('');
     setActivityLogs([]);
-  }
+  };
 
   const handlePermanentClear = async () => {
-    const enteredPassword = prompt("This is a destructive action. Please re-enter the admin password to proceed.");
-    const storedPassword = passwordRef.current;
-
-    if (enteredPassword !== storedPassword) {
-      alert("Incorrect password.");
-      return;
-    }
-
-    if (window.confirm("ARE YOU SURE?\n\nThis will permanently delete all messages and events from the database. This action cannot be undone.")) {
+    const enteredPassword = prompt("Re-enter admin password to confirm:");
+    if (enteredPassword !== passwordRef.current) { alert("Incorrect password."); return; }
+    if (window.confirm("ARE YOU SURE?\n\nThis will permanently delete all messages and events.")) {
       try {
-        const response = await fetch(`${process.env.REACT_APP_API_URL}/api/messages/all`, {
+        const res = await fetch(`${apiUrl}/api/messages/all`, {
           method: 'DELETE',
-          headers: {
-            'x-admin-secret': process.env.REACT_APP_ADMIN_SECRET || ''
-          }
+          headers: { 'x-admin-secret': process.env.REACT_APP_ADMIN_SECRET || '' },
         });
-
-        if (response.ok) {
-          alert("All chat history has been permanently deleted.");
-          setHistoryLogs([]); // Clear logs from UI immediately
-        } else {
-          const errorData = await response.json();
-          alert(`Error: ${errorData.error || 'Failed to clear history.'}`);
-        }
-      } catch (err) {
-        alert("A network error occurred.");
-        console.error("Failed to clear history", err);
-      }
+        if (res.ok) { alert("All chat history deleted."); setHistoryLogs([]); }
+        else { const d = await res.json(); alert(`Error: ${d.error || 'Failed.'}`); }
+      } catch { alert("A network error occurred."); }
     }
   };
 
   const handleRefreshServerLogs = async () => {
-    const storedPassword = passwordRef.current;
-    if (storedPassword) {
-      try {
-        const serverLogsResponse = await fetch(`${process.env.REACT_APP_API_URL}/api/admin/server-logs`, { headers: { 'x-admin-password': storedPassword } });
-        if (serverLogsResponse.ok) {
-          const serverLogsData = await serverLogsResponse.text();
-          setServerLogs(serverLogsData.split('\n').reverse());
-        }
-      } catch (err) {
-        console.error("Failed to fetch server logs", err);
+    if (!passwordRef.current) return;
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/server-logs`, { headers: { 'x-admin-password': passwordRef.current } });
+      if (res.ok) setServerLogs((await res.text()).split('\n').reverse());
+    } catch (err) { console.error("Failed to fetch server logs", err); }
+  };
+
+  // --- Temp Link Actions ---
+  const handleCreateTempLink = async () => {
+    setCreatingLink(true);
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/temp-links`, { method: 'POST', headers: apiHeaders() });
+      if (res.ok) { const link = await res.json(); setTempLinks(prev => [link, ...prev]); }
+    } catch (err) { console.error('Failed to create temp link', err); }
+    setCreatingLink(false);
+  };
+
+  const handleRevokeTempLink = async (id: string) => {
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/temp-links/${id}/revoke`, { method: 'POST', headers: apiHeaders() });
+      if (res.ok) { const updated = await res.json(); setTempLinks(prev => prev.map(l => l._id === id ? updated : l)); }
+    } catch (err) { console.error('Failed to revoke temp link', err); }
+  };
+
+  const handleCopyLink = (token: string, id: string) => {
+    const link = `${window.location.origin}/join/${token}`;
+    navigator.clipboard.writeText(link).then(() => {
+      setCopiedLinkId(id);
+      setTimeout(() => setCopiedLinkId(null), 2000);
+    });
+  };
+
+  // --- User Actions ---
+  const handleForceLogout = async (userId: string) => {
+    if (!window.confirm('Force logout this user?')) return;
+    try {
+      await fetch(`${apiUrl}/api/admin/force-logout/${userId}`, { method: 'POST', headers: apiHeaders() });
+      setOnlineUsersList(prev => prev.filter(u => u.userId !== userId));
+      setLoggedInUsersList(prev => prev.filter(u => u.userId !== userId));
+    } catch (err) { console.error('Failed to force logout', err); }
+  };
+
+  const handleBlockUser = async (userId: string, username: string) => {
+    const reason = prompt(`Block user "${username}"? Enter a reason (optional):`);
+    if (reason === null) return;
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/block-user`, {
+        method: 'POST', headers: apiHeaders(),
+        body: JSON.stringify({ userId, username, reason }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setBlockedUsers(prev => [data.blockedUser, ...prev.filter(u => u.userId !== userId)]);
+        setOnlineUsersList(prev => prev.filter(u => u.userId !== userId));
+        setLoggedInUsersList(prev => prev.filter(u => u.userId !== userId));
       }
-    }
+    } catch (err) { console.error('Failed to block user', err); }
+  };
+
+  const handleUnblockUser = async (userId: string) => {
+    if (!window.confirm('Unblock this user?')) return;
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/unblock-user/${userId}`, { method: 'POST', headers: apiHeaders() });
+      if (res.ok) {
+        const data = await res.json();
+        setBlockedUsers(prev => prev.map(u => u.userId === userId ? data.blockedUser : u));
+      }
+    } catch (err) { console.error('Failed to unblock user', err); }
+  };
+
+  // --- Lockdown Actions ---
+  const handleSetLockdown = async (type: string) => {
+    try {
+      const body: any = { type };
+      if (type === 'custom') {
+        const mins = parseInt(customLockdownMinutes);
+        if (!mins || mins <= 0) { alert('Enter a valid number of minutes.'); return; }
+        body.customMinutes = mins;
+      }
+      const res = await fetch(`${apiUrl}/api/admin/login-lockdown`, {
+        method: 'POST', headers: apiHeaders(), body: JSON.stringify(body),
+      });
+      if (res.ok) setLockdownStatus(await res.json());
+    } catch (err) { console.error('Failed to set lockdown', err); }
+  };
+
+  const handleRemoveLockdown = async () => {
+    try {
+      const res = await fetch(`${apiUrl}/api/admin/login-lockdown`, { method: 'DELETE', headers: apiHeaders() });
+      if (res.ok) setLockdownStatus({ isActive: false });
+    } catch (err) { console.error('Failed to remove lockdown', err); }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') handleLogin();
   };
 
+  // --- Render Helpers ---
   const renderEventType = (logType: string) => {
     switch (logType) {
-        case 'create': return 'Create';
-        case 'edit': return 'Edit';
-        case 'upload': return 'Upload';
-        case 'delete_everyone': return 'Delete (Everyone)';
-        default: return logType;
+      case 'create': return 'Create';
+      case 'edit': return 'Edit';
+      case 'upload': return 'Upload';
+      case 'delete_everyone': return 'Delete (Everyone)';
+      default: return logType;
     }
-  }
+  };
 
   const renderMessageDetails = (log: any) => {
     const formatMedia = (content: any) => {
@@ -693,30 +1001,18 @@ const Admin = () => {
       }
       return `"${text}"`;
     };
-
     switch (log.type) {
-      case 'create':
-        return <>Content: {formatMedia(log.message)}</>;
-      case 'edit':
-        return <>Old: "{log.oldText}" → New: "{log.newText}"</>;
-      case 'delete_everyone':
-        return <>Deleted Content: {formatMedia(log.deletedContent)}</>;
-      case 'upload':
-        return `File: '${log.file.originalname}' (${(log.file.size / 1024).toFixed(2)} KB)`;
-      default:
-        return JSON.stringify(log);
+      case 'create': return <>Content: {formatMedia(log.message)}</>;
+      case 'edit': return <>Old: "{log.oldText}" → New: "{log.newText}"</>;
+      case 'delete_everyone': return <>Deleted: {formatMedia(log.deletedContent)}</>;
+      case 'upload': return `File: '${log.file.originalname}' (${(log.file.size / 1024).toFixed(2)} KB)`;
+      default: return JSON.stringify(log);
     }
   };
 
   const enrichedHistoryLogs = useMemo(() => {
     const userMap = new Map(users.map(u => [u.userId, u.username]));
-    return historyLogs.map(log => {
-      const username = log.username || userMap.get(log.userId) || 'Unknown';
-      return {
-        ...log,
-        username: username,
-      };
-    });
+    return historyLogs.map(log => ({ ...log, username: log.username || userMap.get(log.userId) || 'Unknown' }));
   }, [historyLogs, users]);
 
   const filteredHistoryLogs = useMemo(() => {
@@ -724,28 +1020,19 @@ const Admin = () => {
       const messageIdMatch = filterMessageId ? (log.messageId || log.message?.id)?.toLowerCase().includes(filterMessageId.toLowerCase()) : true;
       const userMatch = filterUser ? (log.username || '').toLowerCase().includes(filterUser.toLowerCase()) : true;
       const eventTypeMatch = filterEventType === 'All' ? true : log.type === filterEventType.toLowerCase().replace(' (everyone)', '_everyone');
-      
       const contentMatch = !filterContent ? true : (() => {
-        const lowerCaseFilter = filterContent.toLowerCase();
-        if (log.type === 'create' && log.message?.text) {
-            return log.message.text.toLowerCase().includes(lowerCaseFilter);
-        }
-        if (log.type === 'edit') {
-            return (log.oldText && log.oldText.toLowerCase().includes(lowerCaseFilter)) || (log.newText && log.newText.toLowerCase().includes(lowerCaseFilter));
-        }
-        if (log.type === 'delete_everyone' && log.deletedContent?.text) {
-            return log.deletedContent.text.toLowerCase().includes(lowerCaseFilter);
-        }
-        if (log.type === 'upload' && log.file?.originalname) {
-            return log.file.originalname.toLowerCase().includes(lowerCaseFilter);
-        }
+        const lc = filterContent.toLowerCase();
+        if (log.type === 'create' && log.message?.text) return log.message.text.toLowerCase().includes(lc);
+        if (log.type === 'edit') return (log.oldText?.toLowerCase().includes(lc)) || (log.newText?.toLowerCase().includes(lc));
+        if (log.type === 'delete_everyone' && log.deletedContent?.text) return log.deletedContent.text.toLowerCase().includes(lc);
+        if (log.type === 'upload' && log.file?.originalname) return log.file.originalname.toLowerCase().includes(lc);
         return false;
       })();
-
       return messageIdMatch && userMatch && eventTypeMatch && contentMatch;
     });
   }, [enrichedHistoryLogs, filterMessageId, filterUser, filterEventType, filterContent]);
 
+  // =========== LOGIN SCREEN ===========
   if (!isAuthenticated) {
     return (
       <LoginFormContainer>
@@ -761,9 +1048,9 @@ const Admin = () => {
             />
             <EyeIconButton type="button" onClick={() => setIsPasswordVisible(prev => !prev)}>
               {isPasswordVisible ? (
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>
               ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
               )}
             </EyeIconButton>
           </PasswordInputWrapper>
@@ -774,21 +1061,30 @@ const Admin = () => {
     );
   }
 
+  // =========== MAIN ADMIN PANEL ===========
   return (
     <AdminContainer>
       <HeaderRow>
         <Title>Admin Panel</Title>
-        <LogoutButton onClick={handleLogout}>Logout</LogoutButton>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          {lockdownStatus.isActive && (
+            <Badge $color="red"><StatusDot $color="red" /> Lockdown Active</Badge>
+          )}
+          <LogoutButton onClick={handleLogout}>Logout</LogoutButton>
+        </div>
       </HeaderRow>
 
       <TabContainer>
         <TabButton active={activeTab === 'messages'} onClick={() => setActiveTab('messages')}>Message Log</TabButton>
         <TabButton active={activeTab === 'users'} onClick={() => setActiveTab('users')}>Users</TabButton>
+        <TabButton active={activeTab === 'access'} onClick={() => setActiveTab('access')}>Access Links</TabButton>
+        <TabButton active={activeTab === 'security'} onClick={() => setActiveTab('security')}>Security</TabButton>
         <TabButton active={activeTab === 'activity'} onClick={() => setActiveTab('activity')}>Live Activity</TabButton>
         <TabButton active={activeTab === 'logs'} onClick={() => setActiveTab('logs')}>Server Logs</TabButton>
       </TabContainer>
 
       <TabContent>
+        {/* ===== MESSAGE LOG ===== */}
         {activeTab === 'messages' && (
           <>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem' }}>
@@ -796,23 +1092,10 @@ const Admin = () => {
               <ClearHistoryButton onClick={handlePermanentClear}>Clear Chat History</ClearHistoryButton>
             </div>
             <FilterContainer>
-              <Input
-                type="text"
-                placeholder="Filter by Message ID"
-                value={filterMessageId}
-                onChange={(e) => setFilterMessageId(e.target.value)}
-              />
-              <Input
-                type="text"
-                placeholder="Filter by User"
-                value={filterUser}
-                onChange={(e) => setFilterUser(e.target.value)}
-              />
+              <Input type="text" placeholder="Filter by Message ID" value={filterMessageId} onChange={(e) => setFilterMessageId(e.target.value)} />
+              <Input type="text" placeholder="Filter by User" value={filterUser} onChange={(e) => setFilterUser(e.target.value)} />
               <SelectWrapper>
-                <Select
-                  value={filterEventType}
-                  onChange={(e) => setFilterEventType(e.target.value)}
-                >
+                <Select value={filterEventType} onChange={(e) => setFilterEventType(e.target.value)}>
                   <option value="All">All Events</option>
                   <option value="Create">Create</option>
                   <option value="Edit">Edit</option>
@@ -820,101 +1103,318 @@ const Admin = () => {
                   <option value="Delete (Everyone)">Delete (Everyone)</option>
                 </Select>
               </SelectWrapper>
-              <Input
-                type="text"
-                placeholder="Filter by Content"
-                value={filterContent}
-                onChange={(e) => setFilterContent(e.target.value)}
-              />
+              <Input type="text" placeholder="Filter by Content" value={filterContent} onChange={(e) => setFilterContent(e.target.value)} />
             </FilterContainer>
-            {isLoading ? (
-                <p>Loading history...</p>
-            ) : (
-                <TableWrapper>
-                  <WideTable>
-                    <thead>
-                        <tr>
-                            <Th>Date</Th>
-                            <Th>Time</Th>
-                            <Th>Event</Th>
-                            <Th>User</Th>
-                            <Th>Message ID</Th>
-                            <Th>Details</Th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {filteredHistoryLogs.map((log, index) => (
-                            <tr key={index}>
-                                <Td>{formatDate(log.timestamp)}</Td>
-                                <Td>{formatTime(log.timestamp)}</Td>
-                                <Td>{renderEventType(log.type)}</Td>
-                                <Td>{log.username} ({log.userId})</Td>
-                                <Td>{log.messageId || log.message?.id || 'N/A'}</Td>
-                                <Td>{renderMessageDetails(log)}</Td>
-                            </tr>
-                        ))}
-                    </tbody>
-                  </WideTable>
-                </TableWrapper>
-            )}
-          </>
-        )}
-
-        {activeTab === 'users' && (
-          <>
-            <h2>Users</h2>
-            {isLoading ? (
-              <p>Loading users...</p>
-            ) : (
+            {isLoading ? <p>Loading history...</p> : (
               <TableWrapper>
-                <Table>
+                <WideTable>
                   <thead>
-                    <tr>
-                      <Th>User ID</Th>
-                      <Th>Username</Th>
-                    </tr>
+                    <tr><Th>Date</Th><Th>Time</Th><Th>Event</Th><Th>User</Th><Th>Message ID</Th><Th>Details</Th></tr>
                   </thead>
                   <tbody>
-                    {users.map(user => (
-                      <tr key={user.userId}>
-                        <Td>{user.userId}</Td>
-                        <Td>{user.username}</Td>
+                    {filteredHistoryLogs.map((log, index) => (
+                      <tr key={index}>
+                        <Td>{formatDate(log.timestamp)}</Td>
+                        <Td>{formatTime(log.timestamp)}</Td>
+                        <Td>{renderEventType(log.type)}</Td>
+                        <Td>{log.username} ({log.userId})</Td>
+                        <Td>{log.messageId || log.message?.id || 'N/A'}</Td>
+                        <Td>{renderMessageDetails(log)}</Td>
                       </tr>
                     ))}
                   </tbody>
-                </Table>
+                </WideTable>
               </TableWrapper>
             )}
           </>
         )}
 
-        {activeTab === 'activity' && (
-            <>
-                <h2>Real-Time Activity</h2>
-                <ActivityLogContainer ref={activityLogRef}>
-                {activityLogs.map((log, index) => (
-                    <ActivityLogItem key={index}>{log}</ActivityLogItem>
+        {/* ===== USERS ===== */}
+        {activeTab === 'users' && (
+          <ScrollContainer>
+            <SectionTitle>
+              <StatusDot $color="green" /> Online Users ({onlineUsersList.length})
+            </SectionTitle>
+            {onlineUsersList.length === 0 ? (
+              <EmptyState><span>No users currently online</span></EmptyState>
+            ) : (
+              <Table>
+                <thead><tr><Th>Username</Th><Th>User ID</Th><Th>Actions</Th></tr></thead>
+                <tbody>
+                  {onlineUsersList.map(user => (
+                    <tr key={user.userId}>
+                      <Td><div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><StatusDot $color="green" /><strong>{user.username}</strong></div></Td>
+                      <Td style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#64748b' }}>{user.userId}</Td>
+                      <Td>
+                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                          <SmallDangerButton onClick={() => handleForceLogout(user.userId)}>Force Logout</SmallDangerButton>
+                          <SmallWarningButton onClick={() => handleBlockUser(user.userId, user.username)}>Block</SmallWarningButton>
+                        </div>
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            )}
+
+            <SectionTitle style={{ marginTop: '2rem' }}>
+              <StatusDot $color="yellow" /> Logged-In Sessions ({loggedInUsersList.length})
+              <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 400 }}>— includes offline</span>
+            </SectionTitle>
+            {loggedInUsersList.length === 0 ? (
+              <EmptyState><span>No tracked sessions</span></EmptyState>
+            ) : (
+              <Table>
+                <thead><tr><Th>Username</Th><Th>Status</Th><Th>Login Time</Th><Th>Via</Th><Th>Actions</Th></tr></thead>
+                <tbody>
+                  {loggedInUsersList.map(user => {
+                    const isOnline = onlineUsersList.some(u => u.userId === user.userId);
+                    return (
+                      <tr key={user.userId}>
+                        <Td><div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><StatusDot $color={isOnline ? 'green' : 'gray'} /><strong>{user.username}</strong></div></Td>
+                        <Td><Badge $color={isOnline ? 'green' : 'gray'}>{isOnline ? 'Online' : 'Offline'}</Badge></Td>
+                        <Td style={{ fontSize: '0.85rem' }}>{user.loginTime ? formatDateTime(user.loginTime) : 'N/A'}</Td>
+                        <Td>{user.viaTempLink ? <Badge $color="blue">Temp Link</Badge> : <Badge $color="gray">Password</Badge>}</Td>
+                        <Td>
+                          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                            <SmallDangerButton onClick={() => handleForceLogout(user.userId)}>Force Logout</SmallDangerButton>
+                            <SmallWarningButton onClick={() => handleBlockUser(user.userId, user.username)}>Block</SmallWarningButton>
+                          </div>
+                        </Td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </Table>
+            )}
+
+            <SectionTitle style={{ marginTop: '2rem' }}>
+              All Registered Users ({users.length})
+            </SectionTitle>
+            <Table>
+              <thead><tr><Th>User ID</Th><Th>Username</Th></tr></thead>
+              <tbody>
+                {users.map(user => (
+                  <tr key={user.userId}>
+                    <Td style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#64748b' }}>{user.userId}</Td>
+                    <Td>{user.username}</Td>
+                  </tr>
                 ))}
-                </ActivityLogContainer>
-            </>
+              </tbody>
+            </Table>
+          </ScrollContainer>
         )}
 
-        {activeTab === 'logs' && (
-            <>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                <h2 style={{ margin: 0 }}>Server Logs</h2>
-                <Button onClick={handleRefreshServerLogs}>Refresh</Button>
+        {/* ===== ACCESS LINKS ===== */}
+        {activeTab === 'access' && (
+          <ScrollContainer>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
+              <h2 style={{ margin: 0 }}>Temporary Access Links</h2>
+              <Button onClick={handleCreateTempLink} disabled={creatingLink}>
+                {creatingLink ? '⏳ Creating...' : '+ Generate New Link'}
+              </Button>
+            </div>
+            <p style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
+              Generate secure temporary links for password-free access. Links expire in 5 minutes.
+            </p>
+
+            {tempLinks.length === 0 ? (
+              <EmptyState>
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                <span>No links created yet</span>
+                <span style={{ fontSize: '0.8rem' }}>Click "Generate New Link" to create one</span>
+              </EmptyState>
+            ) : (
+              tempLinks.map(link => {
+                const { status, label } = getLinkStatus(link);
+                const badgeColor = status === 'active' ? 'green' : status === 'revoked' ? 'red' : 'gray';
+                const dotColor = badgeColor === 'green' ? 'green' : badgeColor === 'red' ? 'red' : 'gray';
+                return (
+                  <LinkCard key={link._id} $variant={status === 'active' ? 'success' : undefined}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.5rem', flexWrap: 'wrap' }}>
+                        <Badge $color={badgeColor}><StatusDot $color={dotColor} />{label}</Badge>
+                        {status === 'active' && (
+                          <span style={{ fontSize: '0.8rem', color: '#059669', fontWeight: 600 }}>⏱ {getTimeRemaining(link.expiresAt)} remaining</span>
+                        )}
+                      </div>
+                      <LinkUrlBox>
+                        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {window.location.origin}/join/{link.token.substring(0, 12)}...
+                        </span>
+                        {status === 'active' && (
+                          <CopyButton onClick={() => handleCopyLink(link.token, link._id)}>
+                            {copiedLinkId === link._id ? '✓ Copied!' : 'Copy'}
+                          </CopyButton>
+                        )}
+                      </LinkUrlBox>
+                      <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#94a3b8' }}>
+                        Created: {formatDateTime(link.createdAt)}
+                        {link.revokedAt && ` · Revoked: ${formatDateTime(link.revokedAt)}`}
+                      </div>
+                      {link.usedBy && link.usedBy.length > 0 && (
+                        <UsedByList>
+                          Used by: {link.usedBy.map((u, i) => (
+                            <Badge key={i} $color="blue" style={{ marginLeft: '0.3rem' }}>
+                              {u.username} ({formatTime(u.joinedAt)})
+                            </Badge>
+                          ))}
+                        </UsedByList>
+                      )}
+                    </div>
+                    {status === 'active' && (
+                      <SmallDangerButton onClick={() => handleRevokeTempLink(link._id)}>Revoke</SmallDangerButton>
+                    )}
+                  </LinkCard>
+                );
+              })
+            )}
+          </ScrollContainer>
+        )}
+
+        {/* ===== SECURITY ===== */}
+        {activeTab === 'security' && (
+          <ScrollContainer>
+            {/* Login Lockdown */}
+            <SectionTitle>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4a5568" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              Login Lockdown
+            </SectionTitle>
+            <Card $variant={lockdownStatus.isActive ? 'danger' : 'default'}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                <Badge $color={lockdownStatus.isActive ? 'red' : 'green'}>
+                  <StatusDot $color={lockdownStatus.isActive ? 'red' : 'green'} />
+                  {lockdownStatus.isActive ? 'LOCKDOWN ACTIVE' : 'No Lockdown'}
+                </Badge>
+                {lockdownStatus.isActive && lockdownStatus.endTime && (
+                  <span style={{ fontSize: '0.85rem', color: '#991b1b' }}>Until: {formatDateTime(lockdownStatus.endTime)}</span>
+                )}
+                {lockdownStatus.isActive && !lockdownStatus.endTime && (
+                  <span style={{ fontSize: '0.85rem', color: '#991b1b', fontWeight: 600 }}>Indefinite</span>
+                )}
               </div>
-              {isLoading ? (
-                  <p>Loading server logs...</p>
+              <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1rem' }}>
+                When active, no new users can log in. Logged-in users can reconnect. Temp links still work.
+              </p>
+              {lockdownStatus.isActive ? (
+                <SuccessButton onClick={handleRemoveLockdown}>🔓 Disable Lockdown</SuccessButton>
               ) : (
-                  <LogViewerContainer>
-                      {serverLogs.map((log, index) => (
-                          <div key={index}>{log}</div>
-                      ))}
-                  </LogViewerContainer>
+                <LockdownPanel>
+                  {['1hr', '6hr', '12hr', '1day', '3days'].map(t => (
+                    <LockdownOption key={t} onClick={() => handleSetLockdown(t)}>
+                      {t === '1hr' ? '1 Hour' : t === '6hr' ? '6 Hours' : t === '12hr' ? '12 Hours' : t === '1day' ? '1 Day' : '3 Days'}
+                    </LockdownOption>
+                  ))}
+                  <LockdownOption onClick={() => handleSetLockdown('indefinite')}>Until I Allow</LockdownOption>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <CustomTimeInput type="number" placeholder="Minutes" value={customLockdownMinutes} onChange={e => setCustomLockdownMinutes(e.target.value)} min="1" />
+                    <LockdownOption onClick={() => handleSetLockdown('custom')}>Custom</LockdownOption>
+                  </div>
+                </LockdownPanel>
               )}
-            </>
+            </Card>
+
+            {/* Blocked Users */}
+            <SectionTitle style={{ marginTop: '2rem' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+              Blocked Users ({blockedUsers.filter(u => u.isBlocked).length})
+            </SectionTitle>
+            {blockedUsers.filter(u => u.isBlocked).length === 0 ? (
+              <EmptyState><span>No blocked users</span></EmptyState>
+            ) : (
+              <Table>
+                <thead><tr><Th>Username</Th><Th>User ID</Th><Th>Blocked At</Th><Th>Reason</Th><Th>Known IPs</Th><Th>Actions</Th></tr></thead>
+                <tbody>
+                  {blockedUsers.filter(u => u.isBlocked).map(user => (
+                    <tr key={user._id}>
+                      <Td><strong>{user.username}</strong></Td>
+                      <Td style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#64748b' }}>{user.userId}</Td>
+                      <Td style={{ fontSize: '0.85rem' }}>{formatDateTime(user.blockedAt)}</Td>
+                      <Td style={{ fontSize: '0.85rem' }}>{user.reason || '—'}</Td>
+                      <Td style={{ fontSize: '0.8rem', fontFamily: 'monospace' }}>{user.fingerprints?.ips?.length > 0 ? user.fingerprints.ips.join(', ') : '—'}</Td>
+                      <Td><SmallSuccessButton onClick={() => handleUnblockUser(user.userId)}>Unblock</SmallSuccessButton></Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
+            )}
+
+            {/* Block History */}
+            {blockedUsers.filter(u => !u.isBlocked).length > 0 && (
+              <>
+                <SectionTitle style={{ marginTop: '2rem' }}>Block History</SectionTitle>
+                <Table>
+                  <thead><tr><Th>Username</Th><Th>Blocked At</Th><Th>Unblocked At</Th><Th>Reason</Th></tr></thead>
+                  <tbody>
+                    {blockedUsers.filter(u => !u.isBlocked).map(user => (
+                      <tr key={user._id}>
+                        <Td>{user.username}</Td>
+                        <Td style={{ fontSize: '0.85rem' }}>{formatDateTime(user.blockedAt)}</Td>
+                        <Td style={{ fontSize: '0.85rem' }}>{user.unblockedAt ? formatDateTime(user.unblockedAt) : '—'}</Td>
+                        <Td>{user.reason || '—'}</Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              </>
+            )}
+
+            {/* Audit Logs */}
+            <SectionTitle style={{ marginTop: '2rem' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4a5568" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              Audit Logs
+            </SectionTitle>
+            {auditLogs.length === 0 ? (
+              <EmptyState><span>No audit logs yet</span></EmptyState>
+            ) : (
+              auditLogs.map(log => (
+                <AuditLogEntry key={log._id} $type={log.type}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div>
+                      <strong>{auditTypeLabel(log.type)}</strong>
+                      <div style={{ marginTop: '0.25rem', color: '#64748b', fontSize: '0.8rem' }}>
+                        {log.details?.userId && <span>User: {log.details.username || log.details.userId} </span>}
+                        {log.details?.reason && <span>· Reason: {log.details.reason} </span>}
+                        {log.details?.token && <span>· Token: {log.details.token} </span>}
+                        {log.details?.type && log.type.includes('lockdown') && <span>· Duration: {log.details.type} </span>}
+                        {log.ip && <span>· IP: {log.ip} </span>}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: '0.75rem', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+                      {formatDateTime(log.timestamp)}
+                    </span>
+                  </div>
+                </AuditLogEntry>
+              ))
+            )}
+          </ScrollContainer>
+        )}
+
+        {/* ===== LIVE ACTIVITY ===== */}
+        {activeTab === 'activity' && (
+          <>
+            <h2>Real-Time Activity</h2>
+            <ActivityLogContainer ref={activityLogRef}>
+              {activityLogs.map((log, index) => (
+                <ActivityLogItem key={index}>{log}</ActivityLogItem>
+              ))}
+            </ActivityLogContainer>
+          </>
+        )}
+
+        {/* ===== SERVER LOGS ===== */}
+        {activeTab === 'logs' && (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem' }}>
+              <h2 style={{ margin: 0 }}>Server Logs</h2>
+              <Button onClick={handleRefreshServerLogs}>Refresh</Button>
+            </div>
+            {isLoading ? <p>Loading server logs...</p> : (
+              <LogViewerContainer>
+                {serverLogs.map((log, index) => <div key={index}>{log}</div>)}
+              </LogViewerContainer>
+            )}
+          </>
         )}
       </TabContent>
     </AdminContainer>

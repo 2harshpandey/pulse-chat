@@ -10,6 +10,7 @@ function App() {
       <GlobalStyle />
       <Routes>
         <Route path="/" element={<Chat />} />
+        <Route path="/join/:token" element={<Chat />} />
         <Route path="/admin" element={<Admin />} />
       </Routes>
     </>
