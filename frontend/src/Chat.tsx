@@ -1933,7 +1933,8 @@ const MessageItem = React.memo(({
                       handleCancelSelectMode(); 
                     }}>{currentUserReaction}</ReactionEmoji>
                   ) : (
-                    <ReactionEmoji $isPlusIcon={true} onClick={(e) => {
+                    <ReactionEmoji $isPlusIcon={true} onPointerDown={(e) => {
+                      e.preventDefault();
                       e.stopPropagation();
                       handleOpenFullEmojiPicker(e.currentTarget.getBoundingClientRect(), msg.id);
                     }}>+</ReactionEmoji>
@@ -2382,6 +2383,9 @@ function Chat() {
           setHistoryLoaded(true);
         } else if (messageData.type === 'online_users') {
           setOnlineUsers(messageData.data);
+        } else if (messageData.type === 'chat_cleared') {
+          // Admin cleared all messages — wipe the local list immediately.
+          setMessages([]);
         } else if (messageData.type === 'update') {
           const normalizedUpdate = normalizeMessage(messageData.data);
           setMessages(prev =>
@@ -3297,7 +3301,10 @@ function Chat() {
           {['👍', '❤️', '😂', '😮', '😢', '🙏'].map(emoji => (
             <ReactionEmoji key={emoji} onClick={(e) => { e.stopPropagation(); handleReact(reactionPickerData.messageId, emoji); }}>{emoji}</ReactionEmoji>
           ))}
-          
+          <ReactionEmoji $isPlusIcon={true} onClick={(e) => {
+            e.stopPropagation();
+            handleOpenFullEmojiPicker(e.currentTarget.getBoundingClientRect(), reactionPickerData.messageId);
+          }}>+</ReactionEmoji>
         </ReactionPicker>
       )}
 
