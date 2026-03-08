@@ -1099,23 +1099,23 @@ const ReplyText = styled.div`
 `;
 
   const QuotedMessageContainer = styled.div<{ $sender: 'me' | 'other' }>`
-  background: ${props => props.$sender === 'me' ? 'rgba(255, 255, 255, 0.25)' : 'rgba(125, 211, 252, 0.08)'};
+  background: ${props => props.$sender === 'me' ? 'rgba(255, 255, 255, 0.25)' : 'var(--bg-hover)'};
   padding: 8px;
   border-radius: 8px;
   margin-bottom: 8px;
-  border-left: 3px solid ${props => props.$sender === 'me' ? 'rgba(255, 255, 255, 0.7)' : 'rgba(125, 211, 252, 0.6)'};
+  border-left: 3px solid ${props => props.$sender === 'me' ? 'rgba(255, 255, 255, 0.7)' : 'var(--accent-indigo)'};
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: 8px;
   overflow: hidden;
-  p { font-weight: bold; font-size: 0.8rem; color: ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.95)' : '#7dd3fc'}; margin: 0; }
+  p { font-weight: bold; font-size: 0.8rem; color: ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.95)' : 'var(--text-primary)'}; margin: 0; }
   span {
     font-size: 0.9rem;
     opacity: 0.9;
     display: block;
     word-wrap: break-word;
-    color: ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.85)' : '#7dd3fc'};
+    color: ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.85)' : 'var(--text-secondary)'};
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -2392,7 +2392,14 @@ function Chat() {
             prev.map(m => (m.id === normalizedUpdate.id ? { ...m, ...normalizedUpdate } : m))
           );
         } else {
-          setMessages(prev => [...prev, normalizeMessage(messageData)]);
+          const normalized = normalizeMessage(messageData);
+          setMessages(prev => {
+            // Deduplicate: system_notification messages (join/leave) can arrive
+            // via broadcast while a reconnect also triggers a fresh history load.
+            // If a message with the same id already exists, skip it.
+            if (normalized.id && prev.some(m => m.id === normalized.id)) return prev;
+            return [...prev, normalized];
+          });
         }
       };
     };
@@ -3008,6 +3015,11 @@ function Chat() {
   }, []);
 
   const handleOpenFullEmojiPicker = useCallback((rect: DOMRect, messageId: string) => {
+    // Blur any focused input to prevent the mobile keyboard from opening
+    // alongside the emoji picker.
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
     setFullEmojiPickerPosition(rect);
     setMessageIdForFullEmojiPicker(messageId);
     setReactionPickerData(null);
@@ -3252,31 +3264,29 @@ function Chat() {
         </div>
       )}
       {fullEmojiPickerPosition && (
+        <>
+        <div
+          style={{ position: 'fixed', inset: 0, zIndex: 99, background: 'rgba(0,0,0,0.3)' }}
+          onClick={() => { setFullEmojiPickerPosition(null); setMessageIdForFullEmojiPicker(null); }}
+        />
         <EmojiPickerWrapper
           ref={emojiPickerRef}
-          style={(() => {
-            const pickerWidth = 350; // Default width of the emoji picker
-            let top = fullEmojiPickerPosition.bottom + 10;
-            let left = fullEmojiPickerPosition.left;
-
-            if (left + pickerWidth > window.innerWidth) {
-              left = window.innerWidth - pickerWidth - 10;
-            }
-
-            if (left < 0) {
-              left = 10;
-            }
-
-            return { 
-              position: 'absolute', 
-              top: `${top}px`, 
-              left: `${left}px`, 
-              zIndex: 31
-            } as React.CSSProperties;
-          })()}
+          style={{
+            position: 'fixed',
+            bottom: '10px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 100,
+          }}
         >
-          <EmojiPicker onEmojiClick={(emojiData) => { handleReact(messageIdForFullEmojiPicker!, emojiData.emoji); setFullEmojiPickerPosition(null); setMessageIdForFullEmojiPicker(null); }} theme={isDark ? Theme.DARK : Theme.LIGHT} />
+          <EmojiPicker
+            onEmojiClick={(emojiData) => { handleReact(messageIdForFullEmojiPicker!, emojiData.emoji); setFullEmojiPickerPosition(null); setMessageIdForFullEmojiPicker(null); }}
+            theme={isDark ? Theme.DARK : Theme.LIGHT}
+            autoFocusSearch={false}
+            searchDisabled={isMobileView}
+          />
         </EmojiPickerWrapper>
+        </>
       )}
        {reactionPickerData && (
         <ReactionPicker
