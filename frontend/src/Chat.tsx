@@ -2702,7 +2702,12 @@ function Chat() {
     if (message.type === 'system_notification') return;
     if (message.isDeleted) return; // Can't quote a deleted message
     setReplyingTo(message);
-  }, []);
+    // Focus the input so the keyboard opens automatically on touch devices.
+    // Use rAF so the reply-preview has time to render and shift the layout first.
+    requestAnimationFrame(() => {
+      messageInputRef.current?.focus();
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleReact = useCallback((messageId: string, emoji: string) => {
     if (!ws.current || !userContext?.profile) return;
