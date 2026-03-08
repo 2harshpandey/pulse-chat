@@ -259,6 +259,7 @@ const TabButton = styled.button<{ active: boolean }>`
   flex-shrink: 0;
   &:hover { color: #3B82F6; }
   @media (max-width: 600px) { padding: 0.6rem 1rem; font-size: 0.875rem; }
+  @media (max-width: 380px) { padding: 0.5rem 0.65rem; font-size: 0.78rem; }
 `;
 
 const TabContent = styled.div`
@@ -271,8 +272,8 @@ const TabContent = styled.div`
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  @media (max-width: 768px) { padding: 1.25rem 1rem; }
-  @media (max-width: 480px) { padding: 1rem 0.75rem; border-top-right-radius: 0.25rem; }
+  @media (max-width: 768px) { padding: 1rem 0.85rem; }
+  @media (max-width: 480px) { padding: 0.85rem 0.65rem; border-top-right-radius: 0.25rem; }
   @media (max-height: 500px) { padding: 0.4rem 0.5rem; }
 `;
 
@@ -332,6 +333,7 @@ const SmallButton = styled(Button)`
   padding: 0.4rem 0.8rem;
   font-size: 0.8rem;
   border-radius: 6px;
+  @media (max-width: 480px) { padding: 0.45rem 0.7rem; }
 `;
 
 const SmallDangerButton = styled(SmallButton)`
@@ -399,8 +401,10 @@ const SectionTitle = styled.h3`
   border-bottom: 2px solid #e2e8f0;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.5rem;
   &:first-child { margin-top: 0; }
+  @media (max-width: 480px) { font-size: 1rem; margin: 1.25rem 0 0.6rem 0; }
 `;
 
 const Card = styled.div<{ $variant?: 'default' | 'success' | 'warning' | 'danger' }>`
@@ -426,6 +430,7 @@ const Card = styled.div<{ $variant?: 'default' | 'success' | 'warning' | 'danger
   transition: all 0.2s;
   animation: ${fadeIn} 0.3s ease-out;
   &:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+  @media (max-width: 480px) { padding: 1rem; border-radius: 8px; }
 `;
 
 const LinkCard = styled(Card)`
@@ -518,6 +523,7 @@ const LockdownPanel = styled.div`
   border-radius: 8px;
   border: 1px solid #e2e8f0;
   margin-bottom: 1rem;
+  @media (max-width: 480px) { padding: 0.75rem; gap: 0.4rem; }
 `;
 
 const LockdownOption = styled.button<{ $active?: boolean }>`
@@ -549,13 +555,14 @@ const AuditLogEntry = styled.div<{ $type?: string }>`
   border-radius: 0 6px 6px 0;
   font-size: 0.85rem;
   animation: ${fadeIn} 0.2s ease-out;
+  @media (max-width: 480px) { padding: 0.5rem 0.6rem; font-size: 0.8rem; }
 `;
 
 const ScrollContainer = styled.div`
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  overflow-x: hidden;
+  overflow-x: auto;
   padding-right: 0.5rem;
 `;
 

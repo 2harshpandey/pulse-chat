@@ -225,7 +225,7 @@ wss.on('close', function close() {
 // never fail due to an unrecognised header name.
 app.use(cors({
   methods: ["GET", "POST", "DELETE"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: ["Content-Type", "Authorization", "x-admin-password", "x-admin-secret"],
 }));
 app.use(express.json());
 
@@ -587,8 +587,7 @@ app.get('/api/admin/messages', adminLimiter, adminAuth, async (req, res) => {
 });
 
 app.get('/api/admin/users', adminLimiter, adminAuth, async (req, res) => {
-    console.log('Online users:', Array.from(onlineUsers.values()));
-    const users = Array.from(onlineUsers.values());
+    const users = await User.find({}).sort({ createdAt: 1 }).lean();
     res.json(users);
 });
 
