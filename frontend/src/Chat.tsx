@@ -1835,14 +1835,19 @@ const MessageItem = React.memo(({
     }
   }, [msg.id]);
 
-  // Reset wasLongPressed only when select mode is DEACTIVATED.
-  // We must NOT reset it when select mode is activated — the long-press
-  // timer sets wasLongPressed=true just before the re-render that activates
-  // select mode, and the tap handler needs that flag to avoid immediately
-  // toggling (deselecting) the message when the touch ends.
+  // Reset gesture flags only when select mode is DEACTIVATED.
+  // We must NOT reset wasLongPressed when select mode is activated — the long-press
+  // timer sets it just before the re-render that activates select mode, and the
+  // tap handler needs it to avoid immediately deselecting the message when
+  // the touch ends.
+  // reactionPickerTapped must also be reset here — the + button flow sets it and
+  // calls handleCancelSelectMode() synchronously (deactivating select mode),
+  // then the panel opens. If we don't reset it here, it stays true across
+  // ALL subsequent long-press + tap cycles, permanently blocking tap-to-unselect.
   useEffect(() => {
     if (!isSelectModeActive) {
       wasLongPressed.current = false;
+      reactionPickerTapped.current = false;
     }
   }, [isSelectModeActive]);
 
@@ -2223,7 +2228,12 @@ function Chat() {
   const [editingText, setEditingText] = useState<string>('');
   const [isScrollToBottomVisible, setIsScrollToBottomVisible] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
-  const [messageIdForFullEmojiPicker, setMessageIdForFullEmojiPicker] = useState<string | null>(null);
+  // Use a ref (not state) for the message ID associated with the full emoji picker.
+  // EmojiPicker from emoji-picker-react may cache its onEmojiClick prop and call
+  // a stale closure — reading from a ref guarantees we always get the current value.
+  // fullEmojiPickerPosition (state) already controls whether the panel is shown;
+  // we only need the ref to carry the message ID into the callback.
+  const messageIdForFullEmojiPickerRef = useRef<string | null>(null);
   const [reactionsPopup, setReactionsPopup] = useState<{ messageId: string; reactions: { [emoji: string]: { userId: string; username: string; }[] }; rect: DOMRect } | null>(null);
   const [reactionPickerData, setReactionPickerData] = useState<{ messageId: string; rect: DOMRect; sender: 'me' | 'other' } | null>(null);
   const [emojiPickerPosition, setEmojiPickerPosition] = useState<DOMRect | null>(null);
@@ -3175,7 +3185,7 @@ function Chat() {
       document.activeElement.blur();
     }
     setFullEmojiPickerPosition(rect);
-    setMessageIdForFullEmojiPicker(messageId);
+    messageIdForFullEmojiPickerRef.current = messageId;
     setReactionPickerData(null);
     // Don't clear select mode here — the select mode was already cleared
     // by handleCancelSelectMode in the MobileReactionPicker onClick,
@@ -3402,15 +3412,15 @@ function Chat() {
         <>
         <div
           style={{ position: 'fixed', inset: 0, zIndex: 99, background: 'rgba(0,0,0,0.3)' }}
-          onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); setFullEmojiPickerPosition(null); setMessageIdForFullEmojiPicker(null); }}
+          onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); setFullEmojiPickerPosition(null); messageIdForFullEmojiPickerRef.current = null; }}
         />
         {isMobileView ? (
           <MobileEmojiPanel>
             <EmojiPicker
               onEmojiClick={(emojiData) => {
-                const msgId = messageIdForFullEmojiPicker;
+                const msgId = messageIdForFullEmojiPickerRef.current;
                 setFullEmojiPickerPosition(null);
-                setMessageIdForFullEmojiPicker(null);
+                messageIdForFullEmojiPickerRef.current = null;
                 if (msgId) {
                   handleReact(msgId, emojiData.emoji);
                 }
@@ -3434,9 +3444,9 @@ function Chat() {
           >
             <EmojiPicker
               onEmojiClick={(emojiData) => {
-                const msgId = messageIdForFullEmojiPicker;
+                const msgId = messageIdForFullEmojiPickerRef.current;
                 setFullEmojiPickerPosition(null);
-                setMessageIdForFullEmojiPicker(null);
+                messageIdForFullEmojiPickerRef.current = null;
                 if (msgId) {
                   handleReact(msgId, emojiData.emoji);
                 }
