@@ -936,14 +936,19 @@ const UserSidebar = styled.aside<{ $isVisible: boolean }>`
   border-left: 1px solid var(--border-primary);
   padding: 1.5rem 1rem;
   overflow-y: hidden;
-  transition: margin-right 0.3s ease, background-color 0.3s ease, border-color 0.3s ease;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
   flex-shrink: 0;
   user-select: none;
-  animation: ${slideIn} 0.5s ease-out forwards;
+  /* slideIn animation only on desktop — on mobile it fires even while the
+     sidebar is hidden, causing a brief visible flash right after login. */
+  @media (min-width: 769px) {
+    animation: ${slideIn} 0.5s ease-out forwards;
+  }
   display: flex;
   flex-direction: column;
   h2 {
     color: var(--text-heading);
+    margin-bottom: 0.75rem;
     transition: color 0.3s ease;
   }
   @media (max-width: 768px) {
@@ -951,8 +956,14 @@ const UserSidebar = styled.aside<{ $isVisible: boolean }>`
     top: 40px;
     right: 0;
     bottom: 0;
-    margin-right: ${props => props.$isVisible ? '0' : '-240px'};
     z-index: 40;
+    /* Use transform instead of margin-right: more reliable for fixed elements,
+       GPU-composited, and does not interact with transition animations. */
+    transform: ${props => props.$isVisible ? 'translateX(0)' : 'translateX(100%)'};
+    transition: transform 0.3s ease, background-color 0.3s ease, border-color 0.3s ease;
+    /* Extra safeguard: even if transform somehow misfires, hidden sidebar is
+       never interactive or visible. */
+    visibility: ${props => props.$isVisible ? 'visible' : 'hidden'};
   }
 `;
 // Transparent backdrop behind the sidebar on mobile — clicking it closes the panel
@@ -967,7 +978,10 @@ const SidebarBackdrop = styled.div<{ $isVisible: boolean }>`
   }
 `;
 const UserList = styled.ul`
-  list-style: none; padding: 0; margin: 0;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  margin-top: 0.5rem;
   flex-grow: 1; /* Allow UserList to take up available space */
   overflow-y: auto; /* Enable scrolling for the user list */
 `;

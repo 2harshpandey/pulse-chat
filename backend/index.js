@@ -1092,48 +1092,65 @@ wss.on('connection', (ws, req) => {
       case 'react': {
         const { messageId, userId, emoji } = parsedMessage;
         const username = onlineUsers.get(userId)?.username || 'Unknown';
-        // By using .lean(), we get a plain JavaScript object instead of a Mongoose document.
-        // This prevents errors where Mongoose-specific types don't have standard array methods.
-        const message = await Message.findOne({ id: messageId }).lean();
 
-        if (message) {
-          // Ensure reactions is a plain object.
-          if (!message.reactions || typeof message.reactions !== 'object') {
-            message.reactions = {};
+        // IMPORTANT: Do NOT use .lean() here.
+        // The reactions field is declared as `type: Map` in the Mongoose schema.
+        // .lean() returns Mongoose Map fields as JavaScript Map instances, NOT plain
+        // objects. JavaScript's `for...in` loop does NOT iterate over Map entries
+        // (only own enumerable properties), so the previous approach silently failed
+        // to find / remove existing reactions, permanently corrupting the state of
+        // any message that received a custom-emoji reaction.
+        //
+        // Fix: fetch the full Mongoose document and use the Map API directly
+        // (.entries(), .get(), .set(), .delete()), then call markModified + save().
+        const messageDoc = await Message.findOne({ id: messageId });
+
+        if (messageDoc) {
+          // Initialise the Map if the field is missing.
+          if (!messageDoc.reactions) {
+            messageDoc.reactions = new Map();
           }
 
           let previousEmoji = null;
-          // Find and remove any previous reaction from this user
-          for (const e in message.reactions) {
-            // Defensive check to ensure we're working with an array, preventing crashes from bad data.
-            if (Array.isArray(message.reactions[e])) {
-              const userIndex = message.reactions[e].findIndex(u => u.userId === userId);
+
+          // Iterate using the Map API — this correctly traverses all stored entries.
+          for (const [e, users] of messageDoc.reactions.entries()) {
+            if (Array.isArray(users)) {
+              const userIndex = users.findIndex(u => u.userId === userId);
               if (userIndex > -1) {
                 previousEmoji = e;
-                message.reactions[e].splice(userIndex, 1);
-                if (message.reactions[e].length === 0) {
-                  delete message.reactions[e];
+                const updatedUsers = users.filter((_, i) => i !== userIndex);
+                if (updatedUsers.length === 0) {
+                  messageDoc.reactions.delete(e);
+                } else {
+                  messageDoc.reactions.set(e, updatedUsers);
                 }
-                break; // A user can only have one reaction, so we can stop.
+                break; // A user can only have one reaction at a time.
               }
             }
           }
 
-          // If the new reaction is not a toggle-off of the same emoji, add it.
+          // If the new emoji is not a toggle-off of the same emoji, add it.
           if (previousEmoji !== emoji) {
-            if (!Array.isArray(message.reactions[emoji])) {
-              message.reactions[emoji] = [];
-            }
-            message.reactions[emoji].push({ userId, username });
+            const existing = Array.from(messageDoc.reactions.get(emoji) || []);
+            existing.push({ userId, username });
+            messageDoc.reactions.set(emoji, existing);
           }
-          
-          // Atomically update the reactions in the database.
-          await Message.updateOne({ id: messageId }, { $set: { reactions: message.reactions } });
 
-          // Broadcast the update to all clients
+          // markModified tells Mongoose the Map changed (required for mixed/map fields).
+          messageDoc.markModified('reactions');
+          await messageDoc.save();
+
+          // Build a plain-object snapshot for the WebSocket broadcast.
+          // JSON.stringify on a Map instance gives '{}' — we must convert explicitly.
+          const reactionsPlain = {};
+          for (const [k, v] of messageDoc.reactions.entries()) {
+            reactionsPlain[k] = Array.from(v);
+          }
+
           wss.clients.forEach(client => {
             if (client.readyState === WebSocket.OPEN) {
-              client.send(JSON.stringify({ type: 'update', data: { id: messageId, reactions: message.reactions } }));
+              client.send(JSON.stringify({ type: 'update', data: { id: messageId, reactions: reactionsPlain } }));
             }
           });
         }
