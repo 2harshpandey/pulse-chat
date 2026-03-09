@@ -1,5 +1,6 @@
 require('dotenv').config();
 const http = require('http');
+const https = require('https');
 const dns = require('dns');
 const net = require('net');
 const express = require('express');
@@ -637,17 +638,49 @@ app.get('/api/link-preview', apiLimiter, async (req, res) => {
     catch { return res.status(400).json({ error: 'Could not resolve hostname' }); }
     if (isPrivateOrInternalIp(resolvedIp)) return res.status(400).json({ error: 'Invalid URL' });
 
-    const response = await axios.get(url, {
-      timeout: 5000,
-      maxContentLength: 1024 * 512,
-      maxRedirects: 3,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
-        'Accept': 'text/html,application/xhtml+xml',
-      },
-      responseType: 'text',
+    // Make the request using the resolved IP as the hostname, never the raw user-supplied URL.
+    // This breaks the SSRF taint chain: `url` is only used for parsing above; the actual
+    // TCP connection target is `resolvedIp`, a server-controlled validated value.
+    const isHttps = parsedUrl.protocol === 'https:';
+    const reqModule = isHttps ? https : http;
+    const reqPath = (parsedUrl.pathname || '/') + (parsedUrl.search || '');
+    const reqPort = parsedUrl.port ? Number(parsedUrl.port) : (isHttps ? 443 : 80);
+
+    const html = await new Promise((resolve, reject) => {
+      const opts = {
+        hostname: resolvedIp,          // server-controlled validated IP — not user input
+        port: reqPort,
+        path: reqPath,
+        method: 'GET',
+        headers: {
+          'Host': rawHostname,          // needed for virtual hosting
+          'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+          'Accept': 'text/html,application/xhtml+xml',
+          'Connection': 'close',
+        },
+        // TLS: send the real hostname for SNI and certificate validation
+        ...(isHttps ? { servername: rawHostname, rejectUnauthorized: true } : {}),
+      };
+      const req = reqModule.request(opts, (incoming) => {
+        // Block redirects — a redirect could point to a private IP and bypass our check.
+        if (incoming.statusCode >= 300 && incoming.statusCode < 400) {
+          req.destroy();
+          return reject(new Error('Redirects not followed'));
+        }
+        const chunks = [];
+        let totalSize = 0;
+        incoming.on('data', (chunk) => {
+          totalSize += chunk.length;
+          if (totalSize > 512 * 1024) { req.destroy(); return reject(new Error('Response too large')); }
+          chunks.push(chunk);
+        });
+        incoming.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+        incoming.on('error', reject);
+      });
+      req.setTimeout(5000, () => { req.destroy(); reject(new Error('Request timed out')); });
+      req.on('error', reject);
+      req.end();
     });
-    const html = typeof response.data === 'string' ? response.data : String(response.data);
     const getOg = (prop) => {
       const m = html.match(new RegExp(`<meta[^>]+property=["']og:${prop}["'][^>]+content=["']([^"']{0,500})["']`, 'i'))
         || html.match(new RegExp(`<meta[^>]+content=["']([^"']{0,500})["'][^>]+property=["']og:${prop}["']`, 'i'));
