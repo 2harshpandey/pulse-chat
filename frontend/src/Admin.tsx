@@ -996,6 +996,27 @@ const formatTime = (dateString: string) => {
 
 const formatDateTime = (dateString: string) => `${formatDate(dateString)} ${formatTime(dateString)}`;
 
+// Rewrites the "timestamp" field inside a raw Winston JSON log line to IST
+const formatServerLogLine = (line: string): string => {
+  try {
+    const parsed = JSON.parse(line);
+    if (parsed.timestamp) {
+      // Try to parse the timestamp and convert to IST
+      const date = new Date(parsed.timestamp);
+      if (!isNaN(date.getTime())) {
+        const ist = new Date(date.getTime() + 5.5 * 60 * 60 * 1000);
+        const pad = (n: number) => String(n).padStart(2, '0');
+        parsed.timestamp =
+          `${ist.getUTCFullYear()}-${pad(ist.getUTCMonth() + 1)}-${pad(ist.getUTCDate())} ` +
+          `${pad(ist.getUTCHours())}:${pad(ist.getUTCMinutes())}:${pad(ist.getUTCSeconds())} IST`;
+      }
+    }
+    return JSON.stringify(parsed);
+  } catch {
+    return line;
+  }
+};
+
 const getTimeRemaining = (expiresAt: string): string => {
   const diff = new Date(expiresAt).getTime() - Date.now();
   if (diff <= 0) return 'Expired';
@@ -1893,7 +1914,7 @@ const Admin = () => {
             </div>
             {isLoading ? <p>Loading server logs...</p> : (
               <LogViewerContainer>
-                {serverLogs.map((log, index) => <div key={index}>{log}</div>)}
+                {serverLogs.map((log, index) => <div key={index}>{formatServerLogLine(log)}</div>)}
               </LogViewerContainer>
             )}
           </>
