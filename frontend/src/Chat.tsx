@@ -3281,7 +3281,7 @@ function Chat() {
     resetInput();
   };
 
-  const handleGifSelect = (gif: Gif) => { setStagedGif(gif); setStagedFile(null); setStagedFiles([]); setShowFilePreview(false); };
+  const handleGifSelect = (gif: Gif) => { setStagedGif(gif); setStagedFile(null); setStagedFiles([]); setShowFilePreview(false); setShowGifPicker(false); };
 
 
 
