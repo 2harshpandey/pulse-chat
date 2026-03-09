@@ -1159,6 +1159,11 @@ const ReplyText = styled.div`
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  ${props => props.$sender === 'other' && `
+    [data-theme='dark'] & {
+      background: #253348;
+    }
+  `}
 `;
 
 const ReactionPicker = styled.div<{ $sender: 'me' | 'other' }>`
