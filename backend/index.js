@@ -1,5 +1,7 @@
 require('dotenv').config();
 const http = require('http');
+const dns = require('dns');
+const net = require('net');
 const express = require('express');
 const axios = require('axios');
 const { WebSocketServer, WebSocket } = require('ws');
@@ -20,6 +22,30 @@ const BlockedUser = require('./models/blockedUser');
 const LoginLockdown = require('./models/loginLockdown');
 const AuditLog = require('./models/auditLog');
 const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
+
+// Helper: returns true for loopback, private, and link-local IPs to prevent SSRF.
+const isPrivateOrInternalIp = (ip) => {
+  if (net.isIPv4(ip)) {
+    const [a, b] = ip.split('.').map(Number);
+    return (
+      a === 0 || a === 127 ||                           // loopback / unspecified
+      (a === 169 && b === 254) ||                       // link-local / AWS metadata
+      a === 10 ||                                        // 10.0.0.0/8
+      (a === 172 && b >= 16 && b <= 31) ||              // 172.16.0.0/12
+      (a === 192 && b === 168) ||                       // 192.168.0.0/16
+      a >= 240                                           // reserved
+    );
+  }
+  if (net.isIPv6(ip)) {
+    const l = ip.toLowerCase();
+    if (l === '::1' || l === '::') return true;         // loopback / unspecified
+    if (/^f[cd]/i.test(l)) return true;                // fc00::/7 ULA private
+    if (/^fe[89ab][0-9a-f]/i.test(l)) return true;     // fe80::/10 link-local
+    if (l.startsWith('::ffff:')) return isPrivateOrInternalIp(l.slice(7)); // IPv4-mapped
+    return false;
+  }
+  return true; // unknown format — block by default
+};
 
 // --- Rate Limiters ---
 // Prevent brute-force and abuse on public/sensitive endpoints.
@@ -594,11 +620,27 @@ app.get('/api/link-preview', apiLimiter, async (req, res) => {
     const { url } = req.query;
     if (!url || typeof url !== 'string') return res.status(400).json({ error: 'URL parameter required' });
     if (!/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'Invalid URL' });
-    let hostname = '';
-    try { hostname = new URL(url).hostname.replace(/^www\./, ''); } catch { return res.status(400).json({ error: 'Invalid URL' }); }
+
+    let parsedUrl;
+    try { parsedUrl = new URL(url); } catch { return res.status(400).json({ error: 'Invalid URL' }); }
+
+    // Restrict to standard HTTP/HTTPS ports only — prevents using this as a port scanner.
+    const port = parsedUrl.port;
+    if (port && port !== '80' && port !== '443') return res.status(400).json({ error: 'Invalid URL' });
+
+    const rawHostname = parsedUrl.hostname;
+    const hostname = rawHostname.replace(/^www\./, '');
+
+    // Resolve the hostname and block private/internal IPs to prevent SSRF.
+    let resolvedIp;
+    try { ({ address: resolvedIp } = await dns.promises.lookup(rawHostname)); }
+    catch { return res.status(400).json({ error: 'Could not resolve hostname' }); }
+    if (isPrivateOrInternalIp(resolvedIp)) return res.status(400).json({ error: 'Invalid URL' });
+
     const response = await axios.get(url, {
       timeout: 5000,
       maxContentLength: 1024 * 512,
+      maxRedirects: 3,
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
         'Accept': 'text/html,application/xhtml+xml',
