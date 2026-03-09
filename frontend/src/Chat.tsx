@@ -1819,10 +1819,15 @@ const MessageItem = React.memo(({
     }
   }, [msg.id]);
 
-  // Reset wasLongPressed whenever select mode changes — this covers
-  // edge cases where the ref got stuck from a prior gesture.
+  // Reset wasLongPressed only when select mode is DEACTIVATED.
+  // We must NOT reset it when select mode is activated — the long-press
+  // timer sets wasLongPressed=true just before the re-render that activates
+  // select mode, and the tap handler needs that flag to avoid immediately
+  // toggling (deselecting) the message when the touch ends.
   useEffect(() => {
-    wasLongPressed.current = false;
+    if (!isSelectModeActive) {
+      wasLongPressed.current = false;
+    }
   }, [isSelectModeActive]);
 
   const sender = msg.userId === currentUserId ? 'me' : 'other';
