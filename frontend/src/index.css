@@ -109,3 +109,11 @@ body {
   -moz-osx-font-smoothing: grayscale;
   transition: background-color 0.3s ease, color 0.3s ease;
 }
+
+/* Chat message / input overlay links */
+a.chat-link {
+  text-decoration: underline;
+}
+a.chat-link:hover {
+  text-decoration: none;
+}

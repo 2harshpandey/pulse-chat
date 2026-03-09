@@ -1731,10 +1731,10 @@ const renderTextWithLinks = (text: string, sender: 'me' | 'other'): React.ReactN
           href={norm.href}
           target="_blank"
           rel="noopener noreferrer"
+          className="chat-link"
           onClick={(e) => e.stopPropagation()}
           style={{
             color: LINK_COLOR,
-            textDecoration: 'underline',
             wordBreak: 'break-all',
           }}
         >{norm.display}</a>
