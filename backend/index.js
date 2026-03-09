@@ -588,6 +588,42 @@ app.get('/api/gifs/search', async (req, res) => {
   }
 });
 
+// --- Link Preview ---
+app.get('/api/link-preview', apiLimiter, async (req, res) => {
+  try {
+    const { url } = req.query;
+    if (!url || typeof url !== 'string') return res.status(400).json({ error: 'URL parameter required' });
+    if (!/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'Invalid URL' });
+    let hostname = '';
+    try { hostname = new URL(url).hostname.replace(/^www\./, ''); } catch { return res.status(400).json({ error: 'Invalid URL' }); }
+    const response = await axios.get(url, {
+      timeout: 5000,
+      maxContentLength: 1024 * 512,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+        'Accept': 'text/html,application/xhtml+xml',
+      },
+      responseType: 'text',
+    });
+    const html = typeof response.data === 'string' ? response.data : String(response.data);
+    const getOg = (prop) => {
+      const m = html.match(new RegExp(`<meta[^>]+property=["']og:${prop}["'][^>]+content=["']([^"']{0,500})["']`, 'i'))
+        || html.match(new RegExp(`<meta[^>]+content=["']([^"']{0,500})["'][^>]+property=["']og:${prop}["']`, 'i'));
+      return m ? m[1] : null;
+    };
+    const getTitle = () => { const m = html.match(/<title[^>]*>([^<]{0,200})<\/title>/i); return m ? m[1].trim() : null; };
+    const getMetaDesc = () => {
+      const m = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']{0,500})["']/i)
+        || html.match(/<meta[^>]+content=["']([^"']{0,500})["'][^>]+name=["']description["']/i);
+      return m ? m[1] : null;
+    };
+    res.json({ title: getOg('title') || getTitle(), description: getOg('description') || getMetaDesc(), image: getOg('image'), hostname, siteName: getOg('site_name') });
+  } catch (error) {
+    logger.error('Link preview fetch error:', { message: error.message });
+    res.status(500).json({ error: 'Failed to fetch preview' });
+  }
+});
+
 // --- Admin Routes ---
 app.get('/api/admin/messages', adminLimiter, adminAuth, async (req, res) => {
     const messages = await Message.find().sort({ createdAt: -1 }).limit(MAX_HISTORY);

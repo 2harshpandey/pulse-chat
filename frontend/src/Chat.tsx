@@ -1166,6 +1166,64 @@ const ReplyText = styled.div`
   `}
 `;
 
+const LinkPreviewCard = styled.a<{ $sender: 'me' | 'other' }>`
+  display: flex;
+  flex-direction: column;
+  text-decoration: none;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-top: 6px;
+  background: ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.18)' : 'var(--bg-hover)'};
+  border-left: 3px solid ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.7)' : 'var(--accent-indigo)'};
+  border-top: 1px solid ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.2)' : 'var(--border-primary)'};
+  border-right: 1px solid ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.2)' : 'var(--border-primary)'};
+  border-bottom: 1px solid ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.2)' : 'var(--border-primary)'};
+  transition: opacity 0.15s;
+  &:hover { opacity: 0.85; }
+  ${props => props.$sender === 'other' && `
+    [data-theme='dark'] & { background: #253348; border-top-color: rgba(255,255,255,0.08); border-right-color: rgba(255,255,255,0.08); border-bottom-color: rgba(255,255,255,0.08); }
+  `}
+`;
+const LinkPreviewImage = styled.img`
+  width: 100%;
+  max-height: 160px;
+  object-fit: cover;
+  display: block;
+`;
+const LinkPreviewBody = styled.div`
+  padding: 8px 10px;
+`;
+const LinkPreviewSiteName = styled.p<{ $sender: 'me' | 'other' }>`
+  margin: 0 0 2px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.75)' : 'var(--accent-indigo)'};
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+const LinkPreviewTitle = styled.p<{ $sender: 'me' | 'other' }>`
+  margin: 0 0 3px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.95)' : 'var(--text-primary)'};
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+`;
+const LinkPreviewDesc = styled.p<{ $sender: 'me' | 'other' }>`
+  margin: 0;
+  font-size: 0.78rem;
+  color: ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.75)' : 'var(--text-secondary)'};
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+`;
+
 const ReactionPicker = styled.div<{ $sender: 'me' | 'other' }>`
   position: absolute;
   background: var(--bg-elevated); 
@@ -1524,7 +1582,7 @@ const SystemMessage = styled.div`
 `;
 
 // --- INTERFACES ---
-interface ReplyContext { id: string; username: string; text: string; type: 'text' | 'image' | 'video' | 'file'; url?: string; }
+interface ReplyContext { id: string; username: string; text: string; type: 'text' | 'image' | 'video' | 'file'; url?: string; isDeleted?: boolean; }
 interface Message { id: string; userId: string; username: string; type: 'text' | 'image' | 'video' | 'file' | 'system_notification'; text?: string; url?: string; originalName?: string; timestamp: string; reactions?: { [emoji: string]: { userId: string, username: string }[] }; edited?: boolean; replyingTo?: ReplyContext; isDeleted?: boolean; deletedBy?: string; isUploading?: boolean; uploadError?: boolean; }
 interface Gif { id: string; preview: string; url: string; }
 
@@ -1644,6 +1702,71 @@ const renderMessageContent = (
 
   return null;
 };
+
+interface LinkPreviewData {
+  title?: string | null;
+  description?: string | null;
+  image?: string | null;
+  hostname: string;
+  siteName?: string | null;
+}
+
+const linkPreviewCache = new Map<string, LinkPreviewData | null>();
+
+const detectFirstUrl = (text: string): string | null => {
+  const match = text.match(/https?:\/\/[^\s]+/);
+  if (!match) return null;
+  return match[0].replace(/[.,;:!?)'"]+$/, '');
+};
+
+const LinkPreview: React.FC<{ url: string; sender: 'me' | 'other' }> = React.memo(({ url, sender }) => {
+  const [data, setData] = useState<LinkPreviewData | null | undefined>(
+    () => linkPreviewCache.has(url) ? (linkPreviewCache.get(url) ?? null) : undefined
+  );
+  useEffect(() => {
+    if (linkPreviewCache.has(url)) {
+      setData(linkPreviewCache.get(url) ?? null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/link-preview?url=${encodeURIComponent(url)}`);
+        if (!res.ok) throw new Error('bad response');
+        const json: LinkPreviewData = await res.json();
+        linkPreviewCache.set(url, json);
+        if (!cancelled) setData(json);
+      } catch {
+        linkPreviewCache.set(url, null);
+        if (!cancelled) setData(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [url]);
+  if (!data) return null;
+  return (
+    <LinkPreviewCard
+      $sender={sender}
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {data.image && (
+        <LinkPreviewImage
+          src={data.image}
+          alt=""
+          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+        />
+      )}
+      <LinkPreviewBody>
+        <LinkPreviewSiteName $sender={sender}>{data.siteName || data.hostname}</LinkPreviewSiteName>
+        {data.title && <LinkPreviewTitle $sender={sender}>{data.title}</LinkPreviewTitle>}
+        {data.description && <LinkPreviewDesc $sender={sender}>{data.description}</LinkPreviewDesc>}
+      </LinkPreviewBody>
+    </LinkPreviewCard>
+  );
+});
 
 interface MessageItemProps {
   msg: Message;
@@ -1932,6 +2055,32 @@ const MessageItem = React.memo(({
           onMouseEnter={() => setIsMessageBubbleHovered(true)}
           onMouseLeave={() => setIsMessageBubbleHovered(false)}
         >
+          {msg.replyingTo && (
+            <QuotedMessageContainer $sender={sender} onClick={() => { if (msg.replyingTo) scrollToMessage(msg.replyingTo.id); }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p>{msg.replyingTo.username}</p>
+                <span style={msg.replyingTo.isDeleted ? { fontStyle: 'italic', opacity: 0.7 } : undefined}>
+                  {msg.replyingTo.isDeleted ? 'This message has been deleted.' : msg.replyingTo.text}
+                </span>
+              </div>
+              {!msg.replyingTo.isDeleted && msg.replyingTo.url && (msg.replyingTo.type === 'image' || msg.replyingTo.type === 'video') && (
+                msg.replyingTo.type === 'video' ? (
+                  <video
+                    src={sanitizeMediaUrl(msg.replyingTo.url)}
+                    style={{ width: '48px', height: '48px', borderRadius: '6px', objectFit: 'cover', flexShrink: 0 }}
+                    muted
+                    preload="metadata"
+                  />
+                ) : (
+                  <img
+                    src={sanitizeMediaUrl(msg.replyingTo.url)}
+                    alt="quoted media"
+                    style={{ width: '48px', height: '48px', borderRadius: '6px', objectFit: 'cover', flexShrink: 0 }}
+                  />
+                )
+              )}
+            </QuotedMessageContainer>
+          )}
           {isDeleted ? (
             <MessageText style={{ fontStyle: 'italic', color: sender === 'me' ? '#bfdbfe' : '#a0aec0', userSelect: 'none', WebkitUserSelect: 'none', cursor: 'default' }}>
               {msg.deletedBy === currentUserId ? 'You deleted this message.' : 'This message has been deleted.'}
@@ -1979,30 +2128,6 @@ const MessageItem = React.memo(({
             )
           ) : (
             <>
-              {msg.replyingTo && (
-                <QuotedMessageContainer $sender={sender} onClick={() => { if (msg.replyingTo) scrollToMessage(msg.replyingTo.id); }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <p>{msg.replyingTo.username}</p>
-                    <span>{msg.replyingTo.text}</span>
-                  </div>
-                  {msg.replyingTo.url && (msg.replyingTo.type === 'image' || msg.replyingTo.type === 'video') && (
-                    msg.replyingTo.type === 'video' ? (
-                      <video
-                        src={sanitizeMediaUrl(msg.replyingTo.url)}
-                        style={{ width: '48px', height: '48px', borderRadius: '6px', objectFit: 'cover', flexShrink: 0 }}
-                        muted
-                        preload="metadata"
-                      />
-                    ) : (
-                      <img
-                        src={sanitizeMediaUrl(msg.replyingTo.url)}
-                        alt="quoted media"
-                        style={{ width: '48px', height: '48px', borderRadius: '6px', objectFit: 'cover', flexShrink: 0 }}
-                      />
-                    )
-                  )}
-                </QuotedMessageContainer>
-              )}
               {selectedMessages[0] === msg.id && selectedMessages.length === 1 && (
                 <MobileReactionPicker 
                   $sender={sender}
@@ -2070,6 +2195,7 @@ const MessageItem = React.memo(({
                 </DeleteMenu>
               )}
               {renderMessageContent(msg, openLightbox, isMobileView && isSelectModeActive ? () => { mediaWasTapped.current = true; } : undefined)}
+              {msg.type === 'text' && !msg.url && msg.text && (() => { const _u = detectFirstUrl(msg.text); return _u ? <LinkPreview url={_u} sender={sender} /> : null; })()}
               <FooterContainer $sender={sender}>
                 <Timestamp $sender={sender}>{msg.edited && <span>(edited) </span>}{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Timestamp>
               </FooterContainer>
@@ -2480,7 +2606,13 @@ function Chat() {
           const filtered = clearTs > 0
             ? allMsgs.filter(m => m.type === 'system_notification' || new Date(m.timestamp).getTime() > clearTs)
             : allMsgs;
-          setMessages(filtered);
+          const deletedIds = new Set(allMsgs.filter(m => m.isDeleted).map(m => m.id));
+          const processed = filtered.map(m =>
+            (m.replyingTo && deletedIds.has(m.replyingTo.id))
+              ? { ...m, replyingTo: { ...m.replyingTo, isDeleted: true } }
+              : m
+          );
+          setMessages(processed);
           // Mark history as loaded so the Virtuoso component renders
           // for the first time already at the bottom — no visible scroll.
           setHistoryLoaded(true);
@@ -2492,7 +2624,13 @@ function Chat() {
         } else if (messageData.type === 'update') {
           const normalizedUpdate = normalizeMessage(messageData.data);
           setMessages(prev =>
-            prev.map(m => (m.id === normalizedUpdate.id ? { ...m, ...normalizedUpdate } : m))
+            prev.map(m => {
+              if (m.id === normalizedUpdate.id) return { ...m, ...normalizedUpdate };
+              if (normalizedUpdate.isDeleted && m.replyingTo && m.replyingTo.id === normalizedUpdate.id) {
+                return { ...m, replyingTo: { ...m.replyingTo, isDeleted: true } };
+              }
+              return m;
+            })
           );
         } else {
           const normalized = normalizeMessage(messageData);
