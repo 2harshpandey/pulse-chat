@@ -150,7 +150,28 @@ const popIn = keyframes`
 `;
 
 const EmojiPickerWrapper = styled.div`
-  animation: ${fadeInScale} 0.3s ease-out forwards;
+  animation: ${fadeInScale} 0.2s ease-out forwards;
+`;
+
+/** WhatsApp-style bottom panel for emoji pickers on mobile.
+ *  Sits exactly where the keyboard would be, below the footer. */
+const MobileEmojiPanel = styled.div`
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border-primary);
+  display: flex;
+  flex-direction: column;
+  max-height: 45vh;
+  animation: ${slideIn} 0.2s ease-out forwards;
+  .epr-main {
+    width: 100% !important;
+    border: none !important;
+    border-radius: 0 !important;
+  }
 `;
 
 const pulseBorderAnim = keyframes`
@@ -319,6 +340,10 @@ const MessageRow = styled.div<{ $sender: string; $isSelected?: boolean; $isActiv
   /* Grouped = same sender continuation: tight gap; non-grouped = new sender: clear separation */
   padding-top: ${props => props.$isGrouped ? '3px' : '10px'};
   padding-bottom: 1px;
+  /* GPU-accelerate each row so scrolling composites on the GPU layer,
+     eliminating micro-stutter on fast swipes (especially mobile). */
+  will-change: transform;
+  transform: translateZ(0);
 `;
 const Username = styled.div<{ $sender: 'me' | 'other' }>`
   font-size: 0.75rem;
@@ -1958,7 +1983,13 @@ const MessageItem = React.memo(({
                     <ReactionEmoji $isPlusIcon={true} onPointerDown={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      handleOpenFullEmojiPicker(e.currentTarget.getBoundingClientRect(), msg.id);
+                      // Capture the message ID before clearing select mode
+                      const msgId = msg.id;
+                      handleCancelSelectMode();
+                      // Use rAF to let select mode clear, then open the picker
+                      requestAnimationFrame(() => {
+                        handleOpenFullEmojiPicker(e.currentTarget.getBoundingClientRect(), msgId);
+                      });
                     }}>+</ReactionEmoji>
                   )}
                 </MobileReactionPicker>
@@ -2745,8 +2776,40 @@ function Chat() {
 
   const handleReact = useCallback((messageId: string, emoji: string) => {
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN || !userContext?.profile || !messageId) return;
+    const userId = userIdRef.current;
+    const username = userContext.profile.username;
+
+    // ── Optimistic local update ──────────────────────────────────────
+    // Apply the reaction change immediately in local state so the UI
+    // feels instant. The server will broadcast the authoritative state
+    // shortly after, which will reconcile any difference.
+    setMessages(prev => prev.map(m => {
+      if (m.id !== messageId) return m;
+      const reactions = m.reactions ? JSON.parse(JSON.stringify(m.reactions)) : {};
+      // Remove any existing reaction by this user
+      let previousEmoji: string | null = null;
+      for (const e in reactions) {
+        if (Array.isArray(reactions[e])) {
+          const idx = reactions[e].findIndex((r: any) => r.userId === userId);
+          if (idx > -1) {
+            previousEmoji = e;
+            reactions[e].splice(idx, 1);
+            if (reactions[e].length === 0) delete reactions[e];
+            break;
+          }
+        }
+      }
+      // If not toggling off the same emoji, add the new one
+      if (previousEmoji !== emoji) {
+        if (!Array.isArray(reactions[emoji])) reactions[emoji] = [];
+        reactions[emoji].push({ userId, username });
+      }
+      return { ...m, reactions };
+    }));
+
+    // Send to server
     try {
-      ws.current.send(JSON.stringify({ type: 'react', messageId, userId: userIdRef.current, emoji }));
+      ws.current.send(JSON.stringify({ type: 'react', messageId, userId, emoji }));
     } catch (e) {
       console.error('Failed to send reaction:', e);
     }
@@ -3064,8 +3127,10 @@ function Chat() {
     setFullEmojiPickerPosition(rect);
     setMessageIdForFullEmojiPicker(messageId);
     setReactionPickerData(null);
-    setIsSelectModeActive(false);
-    setSelectedMessages([]);
+    // Don't clear select mode here — the select mode was already cleared
+    // by handleCancelSelectMode in the MobileReactionPicker onClick,
+    // or this was opened from the desktop reaction picker (no select mode).
+    // Clearing here caused a race condition where the message ID was lost.
   }, []);
 
   // --- RENDER ---
@@ -3268,41 +3333,38 @@ function Chat() {
         );
       })()}
       {emojiPickerPosition && (
-        <div
-          ref={emojiPickerRef}
-          style={(() => {
-            // On mobile, use fixed positioning anchored above the input area so
-            // the picker is never covered by a keyboard or pushed off-screen.
-            if (window.innerWidth <= 768) {
-              return {
-                position: 'fixed' as const,
-                bottom: '70px',
-                left: '50%',
-                transform: 'translateX(-50%)',
-                zIndex: 21,
-              };
-            }
-            const pickerWidth = 350;
-            let top = emojiPickerPosition.top - 450;
-            let left = emojiPickerPosition.left;
-
-            if (top < 0) {
-              top = emojiPickerPosition.bottom + 10;
-            }
-
-            if (left + pickerWidth > window.innerWidth) {
-              left = window.innerWidth - pickerWidth - 10;
-            }
-
-            if (left < 0) {
-              left = 10;
-            }
-
-            return { position: 'absolute' as const, top: `${top}px`, left: `${left}px`, zIndex: 21 };
-          })()}
-        >
-          <EmojiPicker onEmojiClick={handleEmojiClick} autoFocusSearch={false} theme={isDark ? Theme.DARK : Theme.LIGHT} />
-        </div>
+        isMobileView ? (
+          <>
+            <div
+              style={{ position: 'fixed', inset: 0, zIndex: 20, background: 'rgba(0,0,0,0.2)' }}
+              onPointerDown={() => setEmojiPickerPosition(null)}
+            />
+            <MobileEmojiPanel ref={emojiPickerRef} style={{ zIndex: 21 }}>
+              <EmojiPicker
+                onEmojiClick={(emojiData) => { handleEmojiClick(emojiData); }}
+                autoFocusSearch={false}
+                theme={isDark ? Theme.DARK : Theme.LIGHT}
+                width="100%"
+                lazyLoadEmojis={true}
+              />
+            </MobileEmojiPanel>
+          </>
+        ) : (
+          <div
+            ref={emojiPickerRef}
+            style={(() => {
+              const pickerWidth = 350;
+              let top = emojiPickerPosition.top - 450;
+              let left = emojiPickerPosition.left;
+              if (top < 0) top = emojiPickerPosition.bottom + 10;
+              if (left + pickerWidth > window.innerWidth) left = window.innerWidth - pickerWidth - 10;
+              if (left < 0) left = 10;
+              return { position: 'absolute' as const, top: `${top}px`, left: `${left}px`, zIndex: 21 };
+            })()}
+          >
+            <EmojiPicker onEmojiClick={handleEmojiClick} autoFocusSearch={false} theme={isDark ? Theme.DARK : Theme.LIGHT} lazyLoadEmojis={true} />
+          </div>
+        )
       )}
       {fullEmojiPickerPosition && (
         <>
@@ -3310,33 +3372,49 @@ function Chat() {
           style={{ position: 'fixed', inset: 0, zIndex: 99, background: 'rgba(0,0,0,0.3)' }}
           onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); setFullEmojiPickerPosition(null); setMessageIdForFullEmojiPicker(null); }}
         />
-        <EmojiPickerWrapper
-          ref={fullEmojiPickerRef}
-          style={{
-            position: 'fixed',
-            bottom: '10px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 100,
-          }}
-        >
-          <EmojiPicker
-            onEmojiClick={(emojiData) => {
-              // Capture the message ID before clearing state
-              const msgId = messageIdForFullEmojiPicker;
-              // Close the picker first
-              setFullEmojiPickerPosition(null);
-              setMessageIdForFullEmojiPicker(null);
-              // Then send the reaction (with the captured ID)
-              if (msgId) {
-                handleReact(msgId, emojiData.emoji);
-              }
+        {isMobileView ? (
+          <MobileEmojiPanel>
+            <EmojiPicker
+              onEmojiClick={(emojiData) => {
+                const msgId = messageIdForFullEmojiPicker;
+                setFullEmojiPickerPosition(null);
+                setMessageIdForFullEmojiPicker(null);
+                if (msgId) {
+                  handleReact(msgId, emojiData.emoji);
+                }
+              }}
+              theme={isDark ? Theme.DARK : Theme.LIGHT}
+              autoFocusSearch={false}
+              width="100%"
+              lazyLoadEmojis={true}
+            />
+          </MobileEmojiPanel>
+        ) : (
+          <EmojiPickerWrapper
+            ref={fullEmojiPickerRef}
+            style={{
+              position: 'fixed',
+              bottom: '10px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 100,
             }}
-            theme={isDark ? Theme.DARK : Theme.LIGHT}
-            autoFocusSearch={false}
-            searchDisabled={isMobileView}
-          />
-        </EmojiPickerWrapper>
+          >
+            <EmojiPicker
+              onEmojiClick={(emojiData) => {
+                const msgId = messageIdForFullEmojiPicker;
+                setFullEmojiPickerPosition(null);
+                setMessageIdForFullEmojiPicker(null);
+                if (msgId) {
+                  handleReact(msgId, emojiData.emoji);
+                }
+              }}
+              theme={isDark ? Theme.DARK : Theme.LIGHT}
+              autoFocusSearch={false}
+              lazyLoadEmojis={true}
+            />
+          </EmojiPickerWrapper>
+        )}
         </>
       )}
        {reactionPickerData && (
@@ -3416,8 +3494,9 @@ function Chat() {
                  followOutput={(isAtBottom: boolean) => isAtBottom ? 'smooth' : false}
                  atBottomStateChange={handleAtBottomStateChange}
                  atBottomThreshold={20}
-                 increaseViewportBy={{ top: 600, bottom: 200 }}
-                 overscan={200}
+                 increaseViewportBy={{ top: 1200, bottom: 600 }}
+                 overscan={600}
+                 computeItemKey={(index: number, msg: Message) => msg.id || index}
                  style={{ flex: 1, overflow: 'auto' }}
                  components={{ Footer: () => <div style={{ height: '12px' }} /> }}
                  itemContent={(index: number, msg: Message) => {
@@ -3623,7 +3702,13 @@ function Chat() {
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 9l-6-6H5a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9z"></path><path d="M15 3v6h6"></path><path d="M9.5 12.5 14.5 17.5"></path><path d="m14.5 12.5-5 5"></path></svg>
                 Clear Chat
               </ClearChatButton>
-            <LogoutButton onClick={userContext!.logout}>
+            <LogoutButton onClick={() => {
+              // Send explicit logout to server so it removes us from loggedInUsers
+              if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+                ws.current.send(JSON.stringify({ type: 'user_logout', userId: userIdRef.current }));
+              }
+              userContext!.logout();
+            }}>
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
               Logout
             </LogoutButton>

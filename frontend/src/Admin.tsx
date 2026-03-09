@@ -1136,6 +1136,10 @@ const Admin = () => {
           setOnlineUsersList(prev => prev.filter(u => u.userId !== message.data.userId));
           setLoggedInUsersList(prev => prev.filter(u => u.userId !== message.data.userId));
           break;
+        case 'user_logged_out':
+          setOnlineUsersList(prev => prev.filter(u => u.userId !== message.data.userId));
+          setLoggedInUsersList(prev => prev.filter(u => u.userId !== message.data.userId));
+          break;
         case 'lockdown_update':
           setLockdownStatus(message.data);
           break;

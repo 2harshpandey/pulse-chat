@@ -1174,6 +1174,36 @@ wss.on('connection', (ws, req) => {
         wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(JSON.stringify(updateMsg)); });
         break;
       }
+      case 'user_logout': {
+        // Explicit logout from the client — remove from loggedInUsers
+        // so the admin panel's "Logged-In Sessions" list stays accurate.
+        const logoutUserId = parsedMessage.userId || ws.userId;
+        if (logoutUserId) {
+          const logoutUser = loggedInUsers.get(logoutUserId) || onlineUsers.get(logoutUserId);
+          const logoutUsername = logoutUser?.username || ws.username || 'Unknown';
+          loggedInUsers.delete(logoutUserId);
+          onlineUsers.delete(logoutUserId);
+          typingUsers.delete(logoutUserId);
+          if (pendingDisconnects.has(logoutUserId)) {
+            clearTimeout(pendingDisconnects.get(logoutUserId));
+            pendingDisconnects.delete(logoutUserId);
+          }
+          logger.info(`User '${logoutUsername}' logged out explicitly.`);
+          broadcastToAdmins('user_logged_out', { userId: logoutUserId, username: logoutUsername });
+          broadcastToAdmins('logged_in_users', Array.from(loggedInUsers.values()));
+          broadcastToAdmins('activity', `User '${logoutUsername}' logged out.`);
+          broadcastOnlineUsers();
+
+          // Broadcast system notification
+          broadcast({
+            type: 'system_notification',
+            id: `system-${Date.now()}`,
+            text: `${logoutUsername} has left the chat.`,
+            timestamp: new Date().toISOString(),
+          });
+        }
+        break;
+      }
       case 'start_typing': {
         if (ws.userId) typingUsers.set(ws.userId, true);
         broadcastOnlineUsers();
