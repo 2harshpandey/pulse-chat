@@ -1688,6 +1688,9 @@ const VALID_TLDS = new Set([
   'yt','za','zm','zw',
 ]);
 
+// color used for all hyperlinks
+const LINK_COLOR = 'rgb(255 238 0)';
+
 // Candidate regex: matches http(s)://..., www.anything, or word.word patterns.
 // Uses a capturing group so text.split() keeps the matches in the result array.
 // TLD validation inside normalizeUrl filters false positives (gibberish domains).
@@ -1730,7 +1733,7 @@ const renderTextWithLinks = (text: string, sender: 'me' | 'other'): React.ReactN
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
           style={{
-            color: sender === 'me' ? '#bfdbfe' : 'var(--accent-indigo)',
+            color: LINK_COLOR,
             textDecoration: 'underline',
             wordBreak: 'break-all',
           }}
