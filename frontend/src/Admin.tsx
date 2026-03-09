@@ -565,6 +565,7 @@ const LogoutButton = styled(Button)`
 
 const DangerButton = styled(Button)`
   background-color: #EF4444;
+  text-shadow: 0 0 2px rgba(0,0,0,0.7);
   &:hover { background-color: #DC2626; }
 `;
 
