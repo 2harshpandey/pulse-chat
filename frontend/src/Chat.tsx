@@ -1713,11 +1713,6 @@ const MessageItem = React.memo(({
   // When true the gesture-tap handler skips selection so the lightbox/player
   // can open without also selecting the message.
   const mediaWasTapped = useRef(false);
-  // Tracks whether the pointer-down landed on the MobileReactionPicker.
-  // The picker can unmount before the tap ends (e.g., clicking + to open
-  // full emoji panel calls handleCancelSelectMode), so checking target.closest
-  // at tap-time fails. We capture this on pointerdown instead.
-  const reactionPickerTapped = useRef(false);
 
   useEffect(() => {
     if (isEditing && editInputRef.current) {
@@ -1739,13 +1734,10 @@ const MessageItem = React.memo(({
 
     if (tap) {
       const target = event.target as HTMLElement;
-      // If the tap was on the reaction picker, ignore it completely.
-      // We check both the current DOM (target.closest) and the ref that was
-      // set on pointerdown (reactionPickerTapped). The latter handles the case
-      // where the picker unmounts before the tap ends (e.g., clicking + opens
-      // the full emoji panel and calls handleCancelSelectMode).
-      if (target.closest('.mobile-reaction-picker') || reactionPickerTapped.current) {
-        reactionPickerTapped.current = false;
+      // If the tap was on the MobileReactionPicker, ignore it completely.
+      // The picker stays mounted while the full emoji panel is open, so
+      // target.closest reliably catches taps on any of its buttons.
+      if (target.closest('.mobile-reaction-picker')) {
         return;
       }
       
@@ -1777,7 +1769,6 @@ const MessageItem = React.memo(({
     if (last && !tap) {
       mediaWasTapped.current = false;
       wasLongPressed.current = false;
-      reactionPickerTapped.current = false;
     }
 
     // Only perform swipe-to-reply logic for horizontal swipes, not vertical scrolls.
@@ -1826,7 +1817,6 @@ const MessageItem = React.memo(({
     if (prevMsgIdRef.current !== msg.id) {
       prevMsgIdRef.current = msg.id;
       wasLongPressed.current = false;
-      reactionPickerTapped.current = false;
       mediaWasTapped.current = false;
       if (longPressTimerRef.current) {
         clearTimeout(longPressTimerRef.current);
@@ -1835,19 +1825,14 @@ const MessageItem = React.memo(({
     }
   }, [msg.id]);
 
-  // Reset gesture flags only when select mode is DEACTIVATED.
-  // We must NOT reset wasLongPressed when select mode is activated — the long-press
-  // timer sets it just before the re-render that activates select mode, and the
-  // tap handler needs it to avoid immediately deselecting the message when
-  // the touch ends.
-  // reactionPickerTapped must also be reset here — the + button flow sets it and
-  // calls handleCancelSelectMode() synchronously (deactivating select mode),
-  // then the panel opens. If we don't reset it here, it stays true across
-  // ALL subsequent long-press + tap cycles, permanently blocking tap-to-unselect.
+  // Reset wasLongPressed only when select mode is DEACTIVATED.
+  // We must NOT reset it when select mode is activated — the long-press
+  // timer sets it just before the re-render that activates select mode,
+  // and the tap handler needs it to avoid immediately deselecting the
+  // message when the touch ends.
   useEffect(() => {
     if (!isSelectModeActive) {
       wasLongPressed.current = false;
-      reactionPickerTapped.current = false;
     }
   }, [isSelectModeActive]);
 
@@ -2017,7 +2002,6 @@ const MessageItem = React.memo(({
                 <MobileReactionPicker 
                   $sender={sender}
                   className="mobile-reaction-picker"
-                  onPointerDown={() => { reactionPickerTapped.current = true; }}
                 >
                   {['👍', '❤️', '😂', '😮', '😢', '🙏'].map(emoji => (
                     <ReactionEmoji key={emoji} onClick={(e) => {
@@ -2036,15 +2020,14 @@ const MessageItem = React.memo(({
                     <ReactionEmoji $isPlusIcon={true} onPointerDown={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      // IMPORTANT: capture rect & msgId synchronously here.
-                      // React sets e.currentTarget to null after the event handler
-                      // returns, so accessing it inside requestAnimationFrame (or any
-                      // async callback) throws a TypeError and silently prevents the
-                      // picker from opening.  No rAF is needed — React 18 batches
-                      // all setState calls in the same event handler automatically.
+                      // Capture rect & msgId synchronously (e.currentTarget becomes null
+                      // after the event returns). Do NOT call handleCancelSelectMode here
+                      // — keeping select mode active means the MobileReactionPicker stays
+                      // mounted, so target.closest('.mobile-reaction-picker') reliably
+                      // catches the useDrag tap that fires when the finger lifts.
+                      // Select mode is cancelled in the emoji panel's onEmojiClick instead.
                       const msgId = msg.id;
                       const rect = e.currentTarget.getBoundingClientRect();
-                      handleCancelSelectMode();
                       handleOpenFullEmojiPicker(rect, msgId);
                     }}>+</ReactionEmoji>
                   )}
@@ -3421,6 +3404,10 @@ function Chat() {
                 const msgId = messageIdForFullEmojiPickerRef.current;
                 setFullEmojiPickerPosition(null);
                 messageIdForFullEmojiPickerRef.current = null;
+                // Cancel select mode here (not in the + button handler) so the
+                // MobileReactionPicker stays mounted while the panel is open,
+                // keeping target.closest('.mobile-reaction-picker') reliable.
+                handleCancelSelectMode();
                 if (msgId) {
                   handleReact(msgId, emojiData.emoji);
                 }
@@ -3447,6 +3434,7 @@ function Chat() {
                 const msgId = messageIdForFullEmojiPickerRef.current;
                 setFullEmojiPickerPosition(null);
                 messageIdForFullEmojiPickerRef.current = null;
+                handleCancelSelectMode();
                 if (msgId) {
                   handleReact(msgId, emojiData.emoji);
                 }
@@ -3593,7 +3581,6 @@ function Chat() {
               $isVisible={isScrollToBottomVisible}
               onClick={scrollToBottom}
               onMouseDown={(e) => e.preventDefault()}
-              onTouchStart={(e) => e.preventDefault()}
               onPointerDown={(e) => e.preventDefault()}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">
