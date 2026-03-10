@@ -74,6 +74,32 @@ const shimmer = keyframes`
   100% { background-position: 200% 0; }
 `;
 
+const slideUp = keyframes`
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+`;
+
+const tabContentFade = keyframes`
+  from { opacity: 0; transform: translateY(8px) scale(0.99); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+`;
+
+const cardEntrance = keyframes`
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+`;
+
+const badgePop = keyframes`
+  0%   { transform: scale(0.7); opacity: 0; }
+  70%  { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+`;
+
+const emptyFloat = keyframes`
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-8px); }
+`;
+
 // --- STYLED COMPONENTS ---
 const AdminContainer = styled.div`
   padding: 2rem;
@@ -82,7 +108,7 @@ const AdminContainer = styled.div`
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  animation: ${fadeIn} 0.3s ease-out;
+  animation: ${slideUp} 0.5s cubic-bezier(0.16, 1, 0.3, 1);
   transition: background-color 0.3s ease;
   @media (max-width: 768px) { padding: 1.25rem 1rem; }
   @media (max-width: 480px) { padding: 1rem 0.75rem; }
@@ -271,10 +297,10 @@ const AdminSubmitBtn = styled.button<{ $loading?: boolean }>`
   cursor: pointer;
   position: relative;
   overflow: hidden;
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
   margin-top: 0.5rem;
-  &:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 30px -5px rgba(79,70,229,0.5); }
-  &:active:not(:disabled) { transform: translateY(0); }
+  &:hover:not(:disabled) { transform: translateY(-3px); box-shadow: 0 12px 30px -5px rgba(79,70,229,0.5); }
+  &:active:not(:disabled) { transform: translateY(0) scale(0.98); }
   &:disabled { opacity: 0.65; cursor: not-allowed; transform: none; }
   &::after {
     content: '';
@@ -300,11 +326,12 @@ const AdminThemeToggle = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
   z-index: 2;
-  &:hover { transform: scale(1.1); border-color: var(--accent-blue); }
-  &:active { transform: scale(0.95); }
+  &:hover { transform: scale(1.15); border-color: var(--accent-blue); box-shadow: 0 0 16px rgba(59,130,246,0.2); }
+  &:active { transform: scale(0.9); }
   svg { width: 18px; height: 18px; transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  &:hover svg { transform: rotate(30deg); }
 `;
 
 const AdminSecuredLine = styled.div`
@@ -329,11 +356,12 @@ const PanelThemeToggle = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
   flex-shrink: 0;
-  &:hover { transform: scale(1.1); border-color: var(--accent-blue); box-shadow: 0 0 12px rgba(59,130,246,0.15); }
-  &:active { transform: scale(0.95); }
+  &:hover { transform: scale(1.15); border-color: var(--accent-blue); box-shadow: 0 0 16px rgba(59,130,246,0.2), 0 0 0 3px rgba(59,130,246,0.08); }
+  &:active { transform: scale(0.9); }
   svg { width: 18px; height: 18px; transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  &:hover svg { transform: rotate(30deg); }
 `;
 
 const HeaderRow = styled.div`
@@ -352,15 +380,15 @@ const Input = styled.input`
   font-size: 1rem;
   margin-bottom: 1rem;
   border: 1px solid var(--border-secondary);
-  border-radius: 4px;
+  border-radius: 8px;
   width: 100%;
   max-width: 300px;
   box-sizing: border-box;
   background: var(--bg-input);
   color: var(--text-primary);
-  transition: all 0.2s;
-  &:focus { outline: none; border-color: var(--border-focus); box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
-  &::placeholder { color: var(--text-muted); }
+  transition: all 0.25s ease;
+  &:focus { outline: none; border-color: var(--border-focus); box-shadow: 0 0 0 3px rgba(59,130,246,0.12); }
+  &::placeholder { color: var(--text-muted); transition: color 0.3s ease; }
   @media (max-height: 500px) { padding: 0.28rem 0.5rem; font-size: 0.78rem; }
 `;
 
@@ -395,14 +423,14 @@ const Select = styled.select`
   flex: none;
   min-width: auto;
   border: 1px solid var(--border-secondary);
-  border-radius: 4px;
+  border-radius: 8px;
   background-color: var(--bg-input);
   color: var(--text-primary);
-  transition: all 0.2s;
+  transition: all 0.25s ease;
   -webkit-appearance: none;
   -moz-appearance: none;
   appearance: none;
-  &:focus { outline: none; border-color: var(--border-focus); box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
+  &:focus { outline: none; border-color: var(--border-focus); box-shadow: 0 0 0 3px rgba(59,130,246,0.12); }
   @media (max-height: 500px) { padding: 0.28rem 0.5rem; padding-right: 2rem; font-size: 0.78rem; }
 `;
 
@@ -413,10 +441,11 @@ const FilterContainer = styled.div`
   margin-bottom: 1.5rem;
   padding: 1rem;
   background-color: var(--bg-filter);
-  border-radius: 8px;
+  border-radius: 12px;
   box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
   flex-shrink: 0;
   transition: background-color 0.3s ease;
+  animation: ${slideUp} 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   ${Input}, ${SelectWrapper} {
     flex: 1; min-width: 160px; max-width: none; margin-bottom: 0;
   }
@@ -437,12 +466,12 @@ const Button = styled.button`
   background-color: #3B82F6;
   color: white;
   border: none;
-  border-radius: 4px;
-  transition: all 0.2s;
+  border-radius: 8px;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
   white-space: nowrap;
-  &:hover { background-color: #2563EB; transform: translateY(-1px); }
-  &:active { transform: translateY(0); }
-  &:disabled { background-color: #9ca3af; cursor: not-allowed; transform: none; }
+  &:hover { background-color: #2563EB; transform: translateY(-2px); box-shadow: 0 6px 20px rgba(59, 130, 246, 0.3); }
+  &:active { transform: translateY(0) scale(0.97); box-shadow: none; }
+  &:disabled { background-color: #9ca3af; cursor: not-allowed; transform: none; box-shadow: none; }
   @media (max-width: 480px) { padding: 0.6rem 1rem; font-size: 0.9rem; }
 `;
 
@@ -474,13 +503,32 @@ const TabButton = styled.button<{ active: boolean }>`
   border: 1px solid ${(p: any) => p.active ? 'var(--border-secondary)' : 'transparent'};
   border-bottom: 1px solid ${(p: any) => p.active ? 'var(--bg-tab-active)' : 'var(--border-secondary)'};
   margin-bottom: -1px;
-  border-top-left-radius: 0.25rem;
-  border-top-right-radius: 0.25rem;
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
   outline: none;
-  transition: all 0.2s;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
   white-space: nowrap;
   flex-shrink: 0;
-  &:hover { color: var(--accent-blue); }
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 50%;
+    transform: translateX(-50%) scaleX(${(p: any) => p.active ? 1 : 0});
+    width: 60%;
+    height: 2px;
+    background: var(--accent-blue);
+    border-radius: 1px;
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  &:hover {
+    color: var(--accent-blue);
+    transform: translateY(-1px);
+  }
+  &:active { transform: translateY(0) scale(0.97); }
   @media (max-width: 600px) { padding: 0.6rem 1rem; font-size: 0.875rem; }
   @media (max-width: 380px) { padding: 0.5rem 0.65rem; font-size: 0.78rem; }
 `;
@@ -488,7 +536,7 @@ const TabButton = styled.button<{ active: boolean }>`
 const TabContent = styled.div`
   border: 1px solid var(--border-secondary);
   padding: 2rem;
-  border-radius: 0 0.25rem 0.25rem 0.25rem;
+  border-radius: 0 8px 8px 8px;
   background-color: var(--bg-secondary);
   display: flex;
   flex-direction: column;
@@ -496,8 +544,9 @@ const TabContent = styled.div`
   min-height: 0;
   overflow: hidden;
   transition: background-color 0.3s ease, border-color 0.3s ease;
+  animation: ${tabContentFade} 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   @media (max-width: 768px) { padding: 1rem 0.85rem; }
-  @media (max-width: 480px) { padding: 0.85rem 0.65rem; border-top-right-radius: 0.25rem; }
+  @media (max-width: 480px) { padding: 0.85rem 0.65rem; border-top-right-radius: 8px; }
   @media (max-height: 500px) { padding: 0.4rem 0.5rem; }
 `;
 
@@ -508,6 +557,7 @@ const Table = styled.table`
   font-size: 0.9rem;
   color: var(--text-primary);
   transition: color 0.3s ease;
+  animation: ${slideUp} 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 `;
 
 const WideTable = styled(Table)`
@@ -517,9 +567,12 @@ const WideTable = styled(Table)`
 const Th = styled.th`
   padding: 0.75rem;
   text-align: left;
-  border-bottom: 1px solid var(--border-primary);
+  border-bottom: 2px solid var(--border-primary);
   background-color: var(--bg-primary);
   font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: var(--text-secondary);
   white-space: nowrap;
   transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
@@ -533,7 +586,8 @@ const Td = styled.td`
   overflow-wrap: break-word;
   word-break: normal;
   color: var(--text-primary);
-  transition: border-color 0.3s ease, color 0.3s ease;
+  transition: all 0.2s ease;
+  tr:hover & { background-color: var(--bg-hover); }
   @media (max-height: 500px) { padding: 0.3rem 0.5rem; font-size: 0.78rem; }
 `;
 
@@ -544,7 +598,7 @@ const TableWrapper = styled.div`
   overflow-x: auto;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  border-radius: 4px;
+  border-radius: 8px;
 `;
 
 // Td variant that never wraps — used for compact columns (Date, Time, Event, Message ID)
@@ -560,41 +614,41 @@ const ExpandTd = styled(Td)`
 const LogoutButton = styled(Button)`
   background-color: #EF4444;
   flex-shrink: 0;
-  &:hover { background-color: #DC2626; }
+  &:hover { background-color: #DC2626; box-shadow: 0 6px 20px rgba(239, 68, 68, 0.35); }
 `;
 
 const DangerButton = styled(Button)`
   background-color: #EF4444;
   text-shadow: 0 0 2px rgba(0,0,0,0.7);
-  &:hover { background-color: #DC2626; }
+  &:hover { background-color: #DC2626; box-shadow: 0 6px 20px rgba(239, 68, 68, 0.35); }
 `;
 
 const SuccessButton = styled(Button)`
   background-color: #10B981;
-  &:hover { background-color: #059669; }
+  &:hover { background-color: #059669; box-shadow: 0 6px 20px rgba(16, 185, 129, 0.35); }
 `;
 
 const SmallButton = styled(Button)`
   padding: 0.4rem 0.8rem;
   font-size: 0.8rem;
-  border-radius: 6px;
+  border-radius: 8px;
   @media (max-width: 480px) { padding: 0.45rem 0.7rem; }
 `;
 
 const SmallDangerButton = styled(SmallButton)`
   background-color: #EF4444;
-  &:hover { background-color: #DC2626; }
+  &:hover { background-color: #DC2626; box-shadow: 0 4px 14px rgba(239, 68, 68, 0.3); }
 `;
 
 const SmallSuccessButton = styled(SmallButton)`
   background-color: #10B981;
-  &:hover { background-color: #059669; }
+  &:hover { background-color: #059669; box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3); }
 `;
 
 const SmallWarningButton = styled(SmallButton)`
   background-color: #F59E0B;
   color: #1a202c;
-  &:hover { background-color: #D97706; }
+  &:hover { background-color: #D97706; box-shadow: 0 4px 14px rgba(245, 158, 11, 0.3); }
 `;
 
 const ActivityLogContainer = styled.div`
@@ -636,7 +690,7 @@ const LogViewerContainer = styled.pre`
 
 const ActivityLogItem = styled.div`
   padding: 0.25rem 0;
-  animation: ${fadeIn} 0.2s ease-out;
+  animation: ${cardEntrance} 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 `;
 
 const SectionTitle = styled.h3`
@@ -651,6 +705,22 @@ const SectionTitle = styled.h3`
   flex-wrap: wrap;
   gap: 0.5rem;
   transition: color 0.3s ease, border-color 0.3s ease;
+  animation: ${slideUp} 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    width: 40px;
+    height: 2px;
+    background: var(--accent-blue);
+    border-radius: 1px;
+    transition: width 0.3s ease;
+  }
+  &:hover::after { width: 80px; }
+
   &:first-child { margin-top: 0; }
   @media (max-width: 480px) { font-size: 1rem; margin: 1.25rem 0 0.6rem 0; }
 `;
@@ -675,9 +745,10 @@ const Card = styled.div<{ $variant?: 'default' | 'success' | 'warning' | 'danger
   border-radius: 12px;
   padding: 1.25rem;
   margin-bottom: 1rem;
-  transition: all 0.3s ease;
-  animation: ${fadeIn} 0.3s ease-out;
-  &:hover { box-shadow: var(--shadow-md); }
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: ${cardEntrance} 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  &:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
+  &:active { transform: translateY(0); }
   @media (max-width: 480px) { padding: 1rem; border-radius: 8px; }
 `;
 
@@ -697,6 +768,8 @@ const Badge = styled.span<{ $color: 'green' | 'red' | 'yellow' | 'gray' | 'blue'
   border-radius: 999px;
   font-size: 0.75rem;
   font-weight: 600;
+  animation: ${badgePop} 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: transform 0.2s ease;
   ${(p: any) => {
     switch (p.$color) {
       case 'green': return 'background: #dcfce7; color: #166534;';
@@ -729,7 +802,7 @@ const StatusDot = styled.span<{ $color: 'green' | 'red' | 'yellow' | 'gray' }>`
 const LinkUrlBox = styled.div`
   background: var(--bg-tertiary);
   border: 1px solid var(--border-primary);
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 0.6rem 1rem;
   font-family: 'Courier New', monospace;
   font-size: 0.85rem;
@@ -740,20 +813,22 @@ const LinkUrlBox = styled.div`
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+  transition: all 0.25s ease;
+  &:hover { border-color: var(--accent-blue); box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.08); }
 `;
 
 const CopyButton = styled.button`
   background: none;
   border: 1px solid var(--border-secondary);
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 0.35rem 0.6rem;
   cursor: pointer;
   color: var(--text-tertiary);
   font-size: 0.75rem;
-  transition: all 0.2s;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
   white-space: nowrap;
-  &:hover { background: var(--bg-hover); border-color: var(--text-muted); color: var(--text-primary); }
+  &:hover { background: var(--bg-hover); border-color: var(--text-muted); color: var(--text-primary); transform: scale(1.05); }
+  &:active { transform: scale(0.95); }
 `;
 
 const UsedByList = styled.div`
@@ -770,24 +845,28 @@ const LockdownPanel = styled.div`
   align-items: center;
   padding: 1rem;
   background: var(--bg-tertiary);
-  border-radius: 8px;
+  border-radius: 12px;
   border: 1px solid var(--border-primary);
   margin-bottom: 1rem;
-  transition: background-color 0.3s ease, border-color 0.3s ease;
+  transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+  animation: ${slideUp} 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  &:hover { box-shadow: var(--shadow-sm); }
   @media (max-width: 480px) { padding: 0.75rem; gap: 0.4rem; }
 `;
 
 const LockdownOption = styled.button<{ $active?: boolean }>`
   padding: 0.5rem 1rem;
-  border-radius: 8px;
+  border-radius: 10px;
   border: 1px solid ${(p: any) => p.$active ? '#3B82F6' : 'var(--border-secondary)'};
   background: ${(p: any) => p.$active ? '#3B82F6' : 'var(--bg-secondary)'};
   color: ${(p: any) => p.$active ? 'white' : 'var(--text-secondary)'};
   font-size: 0.85rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
-  &:hover { border-color: #3B82F6; transform: translateY(-1px); }
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: ${(p: any) => p.$active ? '0 4px 14px rgba(59, 130, 246, 0.3)' : 'none'};
+  &:hover { border-color: #3B82F6; transform: translateY(-2px); box-shadow: 0 4px 14px rgba(59, 130, 246, 0.2); }
+  &:active { transform: translateY(0) scale(0.97); }
 `;
 
 const AuditLogEntry = styled.div<{ $type?: string }>`
@@ -803,11 +882,12 @@ const AuditLogEntry = styled.div<{ $type?: string }>`
   }};
   background: var(--bg-tertiary);
   margin-bottom: 0.5rem;
-  border-radius: 0 6px 6px 0;
+  border-radius: 0 8px 8px 0;
   font-size: 0.85rem;
-  animation: ${fadeIn} 0.2s ease-out;
+  animation: ${cardEntrance} 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   color: var(--text-primary);
-  transition: background-color 0.3s ease, color 0.3s ease;
+  transition: all 0.25s ease;
+  &:hover { transform: translateX(4px); background: var(--bg-hover); }
   @media (max-width: 480px) { padding: 0.5rem 0.6rem; font-size: 0.8rem; }
 `;
 
@@ -829,6 +909,9 @@ const EmptyState = styled.div`
   text-align: center;
   gap: 0.75rem;
   transition: color 0.3s ease;
+  animation: ${slideUp} 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+
+  svg { animation: ${emptyFloat} 3s ease-in-out infinite; }
 `;
 
 const CustomTimeInput = styled.input`
@@ -871,8 +954,9 @@ const UserCard = styled.div`
   border-radius: 12px;
   padding: 0.9rem 1rem;
   box-shadow: var(--shadow-sm);
-  animation: ${fadeIn} 0.2s ease-out;
-  transition: background-color 0.3s ease, border-color 0.3s ease;
+  animation: ${cardEntrance} 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  &:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
 `;
 
 const UserCardHeader = styled.div`

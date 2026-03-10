@@ -184,6 +184,70 @@ const countBump = keyframes`
   100% { transform: scale(1); }
 `;
 
+/* ═══ Site-Wide Premium Animations ═══ */
+const subtleSlideUp = keyframes`
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+`;
+
+const inputFocusGlow = keyframes`
+  0%   { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+  50%  { box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.12); }
+  100% { box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.08); }
+`;
+
+const modalSlideUp = keyframes`
+  0%   { opacity: 0; transform: translateY(30px) scale(0.95); }
+  60%  { opacity: 1; transform: translateY(-4px) scale(1.01); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+`;
+
+const gifItemReveal = keyframes`
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+`;
+
+const replySlideIn = keyframes`
+  from { opacity: 0; transform: translateY(8px) scaleY(0.9); }
+  to   { opacity: 1; transform: translateY(0) scaleY(1); }
+`;
+
+const selectModeSlideUp = keyframes`
+  from { opacity: 0; transform: translateY(100%); }
+  to   { opacity: 1; transform: translateY(0); }
+`;
+
+const shimmerOverlay = keyframes`
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+`;
+
+const sendPulse = keyframes`
+  0%   { transform: scale(1); }
+  50%  { transform: scale(0.88); }
+  100% { transform: scale(1); }
+`;
+
+const systemMsgFade = keyframes`
+  from { opacity: 0; transform: scale(0.9); }
+  to   { opacity: 1; transform: scale(1); }
+`;
+
+const filePreviewEnter = keyframes`
+  from { opacity: 0; backdrop-filter: blur(0px); }
+  to   { opacity: 1; backdrop-filter: blur(24px); }
+`;
+
+const sidebarItemSlide = keyframes`
+  from { opacity: 0; transform: translateX(-10px); }
+  to   { opacity: 1; transform: translateX(0); }
+`;
+
+const scrollBtnBounce = keyframes`
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
+`;
+
 const EmojiPickerWrapper = styled.div`
   animation: ${fadeInScale} 0.2s ease-out forwards;
 `;
@@ -290,8 +354,21 @@ const Header = styled.header`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  transition: background-color 0.3s ease, border-color 0.3s ease;
-  animation: ${slideIn} 0.5s ease-out forwards;
+  transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+  animation: ${subtleSlideUp} 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent-blue), transparent);
+    opacity: 0.4;
+    animation: ${shimmerOverlay} 3s ease-in-out infinite;
+  }
 
   @media (max-width: 768px) {
     padding: 0.5rem 1rem;
@@ -446,8 +523,9 @@ const MessageBubble = styled.div<{ $sender: string; $messageType: string; $isUpl
   cursor: pointer;
   min-width: ${props => props.$messageType === 'text' ? '6rem' : '0'};
   opacity: ${props => props.$isUploading ? 0.5 : 1};
-  transition: opacity 0.3s ease, background-color 0.3s ease, color 0.3s ease;
+  transition: opacity 0.3s ease, background-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease, transform 0.2s ease;
   border: ${props => props.$uploadError ? '2px solid red' : 'none'};
+  will-change: transform;
 `;
 
 const EditInput = styled.textarea`
@@ -504,6 +582,7 @@ const Footer = styled.footer`
   flex-shrink: 0;
   z-index: 10;
   transition: background-color 0.3s ease, border-color 0.3s ease;
+  animation: ${subtleSlideUp} 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 `;
 const InputContainer = styled.div`
   position: relative;
@@ -511,6 +590,7 @@ const InputContainer = styled.div`
   align-items: center;
   gap: 0.5rem;
   padding: 0.75rem;
+  transition: all 0.3s ease;
 `;
 
 const ActionButtonsContainer = styled.div`
@@ -545,9 +625,10 @@ const MessageInput = styled.textarea<{ $hasUrl?: boolean }>`
   &:focus { 
     outline: none; 
     border-color: #3B82F6; 
-    box-shadow: 0 0 0 2px #bfdbfe; 
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    animation: ${inputFocusGlow} 0.6s ease-out forwards;
   }
-  &::placeholder { color: ${p => p.$hasUrl ? 'transparent' : 'var(--text-muted)'}; }
+  &::placeholder { color: ${p => p.$hasUrl ? 'transparent' : 'var(--text-muted)'}; transition: color 0.3s ease; }
   &::-webkit-scrollbar { width: 8px; }
   &::-webkit-scrollbar-track { background: transparent; }
   &::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
@@ -599,27 +680,35 @@ const SendButton = styled.button`
   border: none;
   border-radius: 50%;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
   display: flex; align-items: center; justify-content: center;
-  &:hover { 
+  &:hover:not(:disabled) { 
     background-color: #2563EB; 
-    transform: scale(1.1);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    transform: scale(1.12);
+    box-shadow: 0 4px 20px rgba(59, 130, 246, 0.35), 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+  &:active:not(:disabled) {
+    animation: ${sendPulse} 0.25s ease-out;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
   }
   &:disabled { 
     background-color: #9ca3af; 
     cursor: not-allowed; 
     transform: scale(1);
     box-shadow: none;
+    opacity: 0.6;
   }
 `;
 const AttachButton = styled(SendButton)`
     background-color: var(--bg-hover);
     color: var(--text-secondary);
-    &:hover { 
+    &:hover:not(:disabled) { 
       background-color: var(--border-primary); 
-      transform: scale(1.1);
-      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+      transform: scale(1.12) rotate(15deg);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    }
+    &:active:not(:disabled) {
+      transform: scale(0.92) rotate(0deg);
     }
 `;
 const FileAttachmentCard = styled.div`
@@ -632,10 +721,17 @@ const FileAttachmentCard = styled.div`
   border: 1px solid rgba(0,0,0,0.1);
   color: inherit;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
   max-width: 280px;
-  &:hover { background: rgba(0,0,0,0.13); }
-  svg { flex-shrink: 0; }
+  animation: ${subtleSlideUp} 0.3s ease-out forwards;
+  &:hover { 
+    background: rgba(0,0,0,0.13); 
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  }
+  &:active { transform: scale(0.98); }
+  svg { flex-shrink: 0; transition: transform 0.2s ease; }
+  &:hover svg { transform: scale(1.05); }
   span { font-size: 0.85rem; font-weight: 500; word-break: break-all; opacity: 0.85; flex: 1; min-width: 0; }
 `;
 
@@ -719,6 +815,7 @@ const FilePreviewModal = styled.div`
   flex-direction: column;
   background: #1b2430;
   color: white;
+  animation: ${filePreviewEnter} 0.3s ease-out forwards;
 `;
 const FilePreviewModalHeader = styled.div`
   display: flex;
@@ -740,8 +837,9 @@ const FilePreviewModalClose = styled.button`
   justify-content: center;
   border-radius: 50%;
   flex-shrink: 0;
-  transition: background 0.15s;
-  &:hover { background: rgba(255,255,255,0.1); }
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  &:hover { background: rgba(255,255,255,0.1); transform: scale(1.1) rotate(90deg); }
+  &:active { transform: scale(0.9); }
   svg { width: 22px; height: 22px; }
 `;
 const FilePreviewModalFilename = styled.div`
@@ -762,6 +860,7 @@ const FilePreviewModalBody = styled.div`
   overflow: auto;
   padding: 20px;
   min-height: 0;
+  animation: ${fadeInScale} 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
 `;
 const FilePreviewModalFooter = styled.div`
   display: flex;
@@ -794,8 +893,9 @@ const FilePreviewThumb = styled.button<{ $active?: boolean }>`
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: border-color 0.15s;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
   flex-shrink: 0;
+  &:hover { transform: scale(1.08); border-color: ${p => p.$active ? '#3b82f6' : 'rgba(255,255,255,0.2)'}; }
   img, video { width: 100%; height: 100%; object-fit: cover; }
   svg { width: 24px; height: 24px; stroke: rgba(255,255,255,0.55); }
 `;
@@ -812,8 +912,9 @@ const FilePreviewAddBtn = styled.button`
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: border-color 0.15s, color 0.15s;
-  &:hover { border-color: rgba(255,255,255,0.55); color: rgba(255,255,255,0.8); }
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  &:hover { border-color: rgba(255,255,255,0.55); color: rgba(255,255,255,0.8); transform: scale(1.08); }
+  &:active { transform: scale(0.95); }
   svg { width: 24px; height: 24px; }
 `;
 const FilePreviewRemoveBtn = styled.button`
@@ -844,9 +945,9 @@ const FilePreviewCaptionInput = styled.input`
   color: white;
   font-size: 0.92rem;
   outline: none;
-  transition: border-color 0.15s;
+  transition: all 0.3s ease;
   &::placeholder { color: rgba(255,255,255,0.4); }
-  &:focus { border-color: rgba(255,255,255,0.35); }
+  &:focus { border-color: rgba(59, 130, 246, 0.6); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); }
 `;
 const FilePreviewSendBtn = styled.button`
   width: 46px;
@@ -860,8 +961,9 @@ const FilePreviewSendBtn = styled.button`
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background 0.15s, transform 0.15s;
-  &:hover { background: #2563eb; transform: scale(1.05); }
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  &:hover { background: #2563eb; transform: scale(1.1); box-shadow: 0 4px 16px rgba(59, 130, 246, 0.35); }
+  &:active { transform: scale(0.92); }
   &:disabled { opacity: 0.5; cursor: default; transform: none; }
   svg { width: 22px; height: 22px; }
 `;
@@ -884,18 +986,20 @@ const ConfirmationButton = styled.button`
   border-radius: 8px;
   font-weight: bold;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
   
   &.delete {
     background-color: #EF4444;
     color: white;
-    &:hover { background-color: #DC2626; }
+    &:hover { background-color: #DC2626; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3); }
+    &:active { transform: scale(0.96); }
   }
 
   &.cancel {
     background-color: #e2e8f0;
     color: #4a5568;
-    &:hover { background-color: #cbd5e0; }
+    &:hover { background-color: #cbd5e0; transform: translateY(-1px); }
+    &:active { transform: scale(0.96); }
   }
 `;
 
@@ -968,14 +1072,15 @@ const ReactionsContainer = styled.div<{ $sender: 'me' | 'other' }>`
   }
 `;
 const Lightbox = styled.div`
-  position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 1000; cursor: pointer;
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 1000; cursor: pointer;
   animation: ${fadeInScale} 0.3s ease-out forwards;
-  img { max-width: 90%; max-height: 90%; border-radius: 8px; }
+  img { max-width: 90%; max-height: 90%; border-radius: 12px; box-shadow: 0 25px 60px rgba(0,0,0,0.4); }
 `;
 const DeleteMenu = styled.div`
-  background: var(--bg-elevated); border-radius: 8px; box-shadow: var(--shadow-md); overflow: hidden; border: 1px solid var(--border-primary); pointer-events: all; transition: background-color 0.3s ease;
-  animation: ${fadeInScale} 0.2s ease-out forwards;
+  background: var(--bg-elevated); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.15); overflow: hidden; border: 1px solid var(--border-primary); pointer-events: all; transition: background-color 0.3s ease;
+  animation: ${fadeInScale} 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   min-width: 160px;
+  [data-theme='dark'] & { box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
 `;
 const DeleteMenuItem = styled.button`
   display: flex;
@@ -989,11 +1094,15 @@ const DeleteMenuItem = styled.button`
   text-align: left;
   font-size: 0.9rem;
   cursor: pointer;
-  transition: background-color 0.2s;
-  &:hover { background-color: var(--bg-hover); }
+  transition: all 0.2s ease;
+  &:hover { background-color: var(--bg-hover); padding-left: 18px; }
+  &:active { background-color: var(--border-primary); }
+  svg { transition: transform 0.2s ease; }
+  &:hover svg { transform: scale(1.1); }
 `;
 const FilePreviewContainer = styled.div`
   padding: 10px 1rem; border-top: 1px solid var(--border-primary); display: flex; align-items: center; gap: 10px; background-color: var(--bg-tertiary); transition: background-color 0.3s ease, border-color 0.3s ease;
+  animation: ${replySlideIn} 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 `;
 const FilePreviewImage = styled.img`
   width: 50px; height: 50px; border-radius: 8px; object-fit: cover;
@@ -1003,16 +1112,20 @@ const FilePreviewInfo = styled.div`
 `;
 const CancelPreviewButton = styled.button`
   background: var(--bg-hover); border-radius: 50%; border: none; width: 30px; height: 30px; min-width: 30px; min-height: 30px; flex-shrink: 0; cursor: pointer; font-weight: bold; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; color: var(--text-primary);
-  transition: background-color 0.2s;
-  &:hover { background-color: var(--border-primary); }
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  &:hover { background-color: var(--border-primary); transform: scale(1.1) rotate(90deg); }
+  &:active { transform: scale(0.9); }
 `;
 const EmojiButton = styled(SendButton)`
   background-color: var(--bg-hover);
   color: var(--text-secondary);
-  &:hover { 
+  &:hover:not(:disabled) { 
     background-color: var(--border-primary); 
-    transform: scale(1.1);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    transform: scale(1.12) rotate(-10deg);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  }
+  &:active:not(:disabled) {
+    transform: scale(0.92) rotate(5deg);
   }
 `;
 const GifPickerModal = styled.div`
@@ -1020,17 +1133,24 @@ const GifPickerModal = styled.div`
   animation: ${fadeInScale} 0.3s ease-out forwards;
 `;
 const GifPickerContent = styled.div`
-  background: var(--bg-elevated); width: 90%; max-width: 500px; height: 70%; max-height: 600px; border-radius: 8px; display: flex; flex-direction: column; transition: background-color 0.3s ease;
+  background: var(--bg-elevated); width: 90%; max-width: 500px; height: 70%; max-height: 600px; border-radius: 12px; display: flex; flex-direction: column; transition: background-color 0.3s ease;
+  animation: ${modalSlideUp} 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  box-shadow: 0 25px 60px rgba(0,0,0,0.3);
+  overflow: hidden;
 `;
 const GifSearchBar = styled.input`
-  width: 100%; border: none; border-bottom: 1px solid var(--border-primary); padding: 1rem; font-size: 1rem; background: transparent; color: var(--text-primary); &:focus { outline: none; } &::placeholder { color: var(--text-muted); }
+  width: 100%; border: none; border-bottom: 1px solid var(--border-primary); padding: 1rem; font-size: 1rem; background: transparent; color: var(--text-primary); transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  &:focus { outline: none; border-bottom-color: var(--accent-blue); box-shadow: 0 1px 0 0 var(--accent-blue); } &::placeholder { color: var(--text-muted); }
 `;
 const GifGrid = styled.div`
   flex-grow: 1; overflow-y: auto; padding: 1rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px;
 `;
 const GifGridItem = styled.img`
-  width: 100%; height: 120px; object-fit: cover; border-radius: 4px; cursor: pointer; transition: transform 0.2s;
-  &:hover { transform: scale(1.05); }
+  width: 100%; height: 120px; object-fit: cover; border-radius: 8px; cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: ${gifItemReveal} 0.3s ease-out both;
+  &:hover { transform: scale(1.06); box-shadow: 0 4px 16px rgba(0,0,0,0.15); border-radius: 10px; }
+  &:active { transform: scale(0.96); }
 `;
 const UserSidebar = styled.aside<{ $isVisible: boolean }>`
   width: 240px;
@@ -1041,10 +1161,8 @@ const UserSidebar = styled.aside<{ $isVisible: boolean }>`
   transition: background-color 0.3s ease, border-color 0.3s ease;
   flex-shrink: 0;
   user-select: none;
-  /* slideIn animation only on desktop — on mobile it fires even while the
-     sidebar is hidden, causing a brief visible flash right after login. */
   @media (min-width: 769px) {
-    animation: ${slideIn} 0.5s ease-out forwards;
+    animation: ${subtleSlideUp} 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
   display: flex;
   flex-direction: column;
@@ -1052,6 +1170,9 @@ const UserSidebar = styled.aside<{ $isVisible: boolean }>`
     color: var(--text-heading);
     margin-bottom: 0.75rem;
     transition: color 0.3s ease;
+    font-size: 0.9rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
   }
   @media (max-width: 768px) {
     position: fixed;
@@ -1059,12 +1180,8 @@ const UserSidebar = styled.aside<{ $isVisible: boolean }>`
     right: 0;
     bottom: 0;
     z-index: 40;
-    /* Use transform instead of margin-right: more reliable for fixed elements,
-       GPU-composited, and does not interact with transition animations. */
     transform: ${props => props.$isVisible ? 'translateX(0)' : 'translateX(100%)'};
-    transition: transform 0.3s ease, background-color 0.3s ease, border-color 0.3s ease;
-    /* Extra safeguard: even if transform somehow misfires, hidden sidebar is
-       never interactive or visible. */
+    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.3s ease, border-color 0.3s ease;
     visibility: ${props => props.$isVisible ? 'visible' : 'hidden'};
   }
 `;
@@ -1097,9 +1214,17 @@ const UserListItem = styled.li<{ index: number }>`
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  transition: color 0.3s ease;
-  animation: ${slideIn} 0.3s ease-out forwards;
-  animation-delay: ${props => props.index * 0.1}s;
+  padding: 6px 8px;
+  border-radius: 8px;
+  transition: all 0.25s ease;
+  animation: ${sidebarItemSlide} 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: ${props => props.index * 0.06}s;
+  opacity: 0;
+
+  &:hover {
+    background: var(--bg-hover);
+    transform: translateX(4px);
+  }
 `;
 const MobileUserListToggle = styled(AttachButton)`
   display: none;
@@ -1116,11 +1241,12 @@ const ThemeToggleBtn = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
   flex-shrink: 0;
-  &:hover { transform: scale(1.1); border-color: var(--accent-blue); box-shadow: 0 0 10px rgba(59,130,246,0.15); }
-  &:active { transform: scale(0.95); }
+  &:hover { transform: scale(1.15); border-color: var(--accent-blue); box-shadow: 0 0 16px rgba(59,130,246,0.2), 0 0 0 3px rgba(59,130,246,0.08); }
+  &:active { transform: scale(0.9); }
   svg { width: 18px; height: 18px; transition: transform 0.5s cubic-bezier(0.34,1.56,0.64,1); }
+  &:hover svg { transform: rotate(30deg); }
 `;
 
 const ClearChatButton = styled.button`
@@ -1138,15 +1264,16 @@ const ClearChatButton = styled.button`
   font-size: 1rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.2s ease, transform 0.2s ease, border-color 0.3s ease;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
 
   &:hover {
     background-color: var(--border-primary);
     transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
   }
 
   &:active {
-    transform: translateY(0);
+    transform: translateY(0) scale(0.97);
   }
 
   svg {
@@ -1156,7 +1283,9 @@ const ClearChatButton = styled.button`
     stroke-width: 2;
     stroke-linecap: round;
     stroke-linejoin: round;
+    transition: transform 0.3s ease;
   }
+  &:hover svg { transform: rotate(10deg) scale(1.1); }
 `;
 
 const LogoutButton = styled.button`
@@ -1174,15 +1303,16 @@ const LogoutButton = styled.button`
   font-size: 1rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.2s ease, transform 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
 
   &:hover {
     background-color: #DC2626;
     transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(239, 68, 68, 0.3);
   }
 
   &:active {
-    transform: translateY(0);
+    transform: translateY(0) scale(0.97);
   }
 
   svg {
@@ -1192,7 +1322,9 @@ const LogoutButton = styled.button`
     stroke-width: 2;
     stroke-linecap: round;
     stroke-linejoin: round;
+    transition: transform 0.3s ease;
   }
+  &:hover svg { transform: translateX(3px); }
 `;
 
 const bounce = keyframes`
@@ -1232,6 +1364,7 @@ const TypingIndicatorContainer = styled.div`
 `;
 const ReplyPreviewContainer = styled.div`
   padding: 10px 1rem; border-bottom: 1px solid var(--border-primary); background-color: var(--bg-tertiary); display: flex; align-items: center; gap: 10px; overflow: hidden; transition: background-color 0.3s ease, border-color 0.3s ease;
+  animation: ${replySlideIn} 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 `;
 const ReplyText = styled.div`
   flex-grow: 1; font-size: 0.9rem; color: var(--text-secondary); min-width: 0; overflow: hidden;
@@ -1250,6 +1383,9 @@ const ReplyText = styled.div`
   align-items: center;
   gap: 8px;
   overflow: hidden;
+  transition: all 0.2s ease;
+  &:hover { opacity: 0.85; transform: scale(0.99); }
+  &:active { transform: scale(0.97); }
   p { font-weight: bold; font-size: 0.8rem; color: ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.95)' : 'var(--text-primary)'}; margin: 0; }
   span {
     font-size: 0.9rem;
@@ -1272,7 +1408,7 @@ const LinkPreviewCard = styled.a<{ $sender: 'me' | 'other' }>`
   display: flex;
   flex-direction: column;
   text-decoration: none;
-  border-radius: 8px;
+  border-radius: 10px;
   overflow: hidden;
   margin-top: 6px;
   background: ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.18)' : 'var(--bg-hover)'};
@@ -1280,8 +1416,9 @@ const LinkPreviewCard = styled.a<{ $sender: 'me' | 'other' }>`
   border-top: 1px solid ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.2)' : 'var(--border-primary)'};
   border-right: 1px solid ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.2)' : 'var(--border-primary)'};
   border-bottom: 1px solid ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.2)' : 'var(--border-primary)'};
-  transition: opacity 0.15s;
-  &:hover { opacity: 0.85; }
+  transition: all 0.25s ease;
+  animation: ${subtleSlideUp} 0.3s ease-out forwards;
+  &:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
   ${props => props.$sender === 'other' && `
     [data-theme='dark'] & { background: #253348; border-top-color: rgba(255,255,255,0.08); border-right-color: rgba(255,255,255,0.08); border-bottom-color: rgba(255,255,255,0.08); }
   `}
@@ -1657,19 +1794,27 @@ const MessageActions = styled.div`
   right: 12px; 
   display: flex; 
   gap: 8px; 
-  background: white; 
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15); 
+  background: var(--bg-elevated); 
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04); 
   border-radius: 20px; 
   padding: 4px; 
   opacity: 0; 
-  transition: all 0.2s ease; 
+  transform: translateY(4px) scale(0.95);
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); 
   z-index: 32; 
   pointer-events: none;
-  ${MessageBubble}:hover & { opacity: 1; pointer-events: all; }
+  ${MessageBubble}:hover & { opacity: 1; pointer-events: all; transform: translateY(0) scale(1); }
+  [data-theme='dark'] & {
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.06);
+  }
 `;
 const ActionButton = styled.button`
-  background: none; border: none; font-size: 16px; cursor: pointer; padding: 4px; color: #4a5568;
-  &:hover { color: #000; }
+  background: none; border: none; font-size: 16px; cursor: pointer; padding: 4px; color: var(--text-secondary);
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1); border-radius: 50%;
+  &:hover { color: var(--text-primary); transform: scale(1.15); background: var(--bg-hover); }
+  &:active { transform: scale(0.9); }
 `;
 
 const SelectCheckboxContainer = styled.div`
@@ -1684,19 +1829,21 @@ const SelectCheckboxContainer = styled.div`
 const Checkbox = styled.div<{ checked: boolean }>`
   width: 22px;
   height: 22px;
-  border: 2px solid #cbd5e0;
+  border: 2px solid ${props => props.checked ? '#3B82F6' : '#cbd5e0'};
   border-radius: 50%;
   background-color: ${props => props.checked ? '#3B82F6' : 'transparent'};
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  ${props => props.checked && `transform: scale(1); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);`}
   &::after {
     content: '✓';
     color: white;
     font-size: 14px;
     font-weight: bold;
     display: ${props => props.checked ? 'block' : 'none'};
+    animation: ${props => props.checked ? `${staggerFadeIn} 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) both` : 'none'};
   }
 `;
 
@@ -1709,30 +1856,35 @@ const SelectModeFooter = styled.div`
   border-top: 1px solid var(--border-primary);
   transition: background-color 0.3s ease, border-color 0.3s ease;
   color: var(--text-primary);
+  animation: ${selectModeSlideUp} 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 `;
 
 const DeleteButton = styled(SendButton)`
   background-color: #EF4444;
-  &:hover { background-color: #DC2626; }
+  &:hover:not(:disabled) { background-color: #DC2626; box-shadow: 0 4px 16px rgba(239, 68, 68, 0.35); }
 `;
 
 const CopyButton = styled(SendButton)`
   background-color: #64748B;
-  &:hover { background-color: #475569; }
+  &:hover:not(:disabled) { background-color: #475569; box-shadow: 0 4px 16px rgba(100, 116, 139, 0.35); }
 `;
 
 const EditButton = styled(SendButton)`
   background-color: #FBBF24;
-  &:hover { background-color: #F59E0B; }
+  &:hover:not(:disabled) { background-color: #F59E0B; box-shadow: 0 4px 16px rgba(251, 191, 36, 0.35); }
 `;
 
 const ConfirmationModal = styled.div`
-  position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 100;
-  animation: ${fadeInScale} 0.3s ease-out forwards;
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 100;
+  animation: ${reactionsModalFadeIn} 0.2s ease-out forwards;
 `;
 
 const ConfirmationContent = styled.div`
-  background: var(--bg-elevated); padding: 2rem; border-radius: 8px; text-align: center; transition: background-color 0.3s ease, color 0.3s ease;
+  background: var(--bg-elevated); padding: 2rem; border-radius: 16px; text-align: center; transition: background-color 0.3s ease, color 0.3s ease;
+  animation: ${modalSlideUp} 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  box-shadow: 0 25px 60px rgba(0,0,0,0.2);
+  border: 1px solid var(--border-primary);
+  [data-theme='dark'] & { box-shadow: 0 25px 60px rgba(0,0,0,0.5); }
   h3 { margin-bottom: 1rem; color: var(--text-heading); }
   div { display: flex; gap: 1rem; justify-content: center; }
 `;
@@ -1774,6 +1926,7 @@ const SystemMessage = styled.div`
   text-align: center;
   box-shadow: var(--shadow-sm);
   transition: background-color 0.3s ease, color 0.3s ease;
+  animation: ${systemMsgFade} 0.4s ease-out forwards;
 `;
 
 // --- INTERFACES ---
@@ -2596,6 +2749,7 @@ const ScrollToBottomButton = styled.button<{ $isVisible: boolean }>`
   height: 44px;
   background-color: var(--bg-elevated);
   backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--border-primary);
   border-radius: 50%;
   cursor: pointer;
@@ -2603,9 +2757,9 @@ const ScrollToBottomButton = styled.button<{ $isVisible: boolean }>`
   align-items: center;
   justify-content: center;
   box-shadow: var(--shadow-md);
-  transition: opacity 0.3s ease, transform 0.3s ease, background-color 0.3s ease;
+  transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.3s ease;
   opacity: ${props => props.$isVisible ? 1 : 0};
-  transform: ${props => props.$isVisible ? 'scale(1)' : 'scale(0.8)'};
+  transform: ${props => props.$isVisible ? 'scale(1)' : 'scale(0.5)'};
   pointer-events: ${props => props.$isVisible ? 'auto' : 'none'};
   z-index: 20;
 
@@ -2614,11 +2768,16 @@ const ScrollToBottomButton = styled.button<{ $isVisible: boolean }>`
     height: 24px;
     stroke: var(--text-secondary);
     stroke-width: 2.5;
+    animation: ${props => props.$isVisible ? scrollBtnBounce : 'none'} 2s ease-in-out infinite;
   }
 
   &:hover {
-    transform: scale(1.1);
+    transform: scale(1.15);
     background-color: var(--bg-hover);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+  }
+  &:active {
+    transform: scale(0.9);
   }
 
   @media (max-width: 768px) {

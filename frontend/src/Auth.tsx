@@ -157,21 +157,22 @@ const ThemeToggle = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
   flex-shrink: 0;
 
   &:hover {
-    transform: scale(1.1);
+    transform: scale(1.15);
     border-color: var(--accent-blue);
-    box-shadow: 0 0 12px rgba(59, 130, 246, 0.15);
+    box-shadow: 0 0 16px rgba(59, 130, 246, 0.2), 0 0 0 3px rgba(59,130,246,0.08);
   }
-  &:active { transform: scale(0.95); }
+  &:active { transform: scale(0.9); }
 
   svg {
     width: 18px;
     height: 18px;
     transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
+  &:hover svg { transform: rotate(30deg); }
 `;
 
 const BrandSection = styled.div`
@@ -252,8 +253,9 @@ const InputGroup = styled.div<{ $focused?: boolean }>`
   margin-bottom: 1rem;
   border-radius: 12px;
   border: 1.5px solid ${(p: any) => p.$focused ? 'var(--accent-indigo)' : 'var(--border-secondary)'};
-  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.2s ease;
   box-shadow: ${(p: any) => p.$focused ? '0 0 0 3px rgba(99,102,241,0.12)' : 'none'};
+  transform: ${(p: any) => p.$focused ? 'scale(1.01)' : 'scale(1)'};
   background: var(--bg-input);
   overflow: hidden;
   display: flex;
@@ -321,14 +323,14 @@ const SubmitBtn = styled.button<{ $loading?: boolean }>`
   cursor: pointer;
   position: relative;
   overflow: hidden;
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
   margin-top: 0.5rem;
 
   &:hover:not(:disabled) {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 30px -5px rgba(79, 70, 229, 0.5);
+    transform: translateY(-3px);
+    box-shadow: 0 12px 30px -5px rgba(79, 70, 229, 0.5);
   }
-  &:active:not(:disabled) { transform: translateY(0); }
+  &:active:not(:disabled) { transform: translateY(0) scale(0.98); }
   &:disabled { opacity: 0.65; cursor: not-allowed; transform: none; }
 
   &::after {
