@@ -18,6 +18,9 @@
 .env.test.local
 .env.production.local
 
+# Ignore committed production env file if present
+.env.production
+
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
