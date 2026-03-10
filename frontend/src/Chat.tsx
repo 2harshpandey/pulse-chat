@@ -2875,6 +2875,30 @@ const ScrollToBottomButton = styled.button<{ $isVisible: boolean }>`
 `;
 
 
+// ---------------------------------------------------------------------------
+// "Delete for me" persistence helpers
+// Message IDs are stored per-user in localStorage so deletions survive refresh.
+// ---------------------------------------------------------------------------
+const DELETED_FOR_ME_KEY = (userId: string) => `pulseDeletedForMe_${userId}`;
+
+function getDeletedForMeIds(userId: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(DELETED_FOR_ME_KEY(userId));
+    return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function addDeletedForMeIds(userId: string, ids: string[]): void {
+  try {
+    const existing = getDeletedForMeIds(userId);
+    ids.forEach(id => existing.add(id));
+    localStorage.setItem(DELETED_FOR_ME_KEY(userId), JSON.stringify(Array.from(existing)));
+  } catch { /* storage full — ignore */ }
+}
+// ---------------------------------------------------------------------------
+
 function Chat() {
   const userContext = useContext(UserContext);
   const { token: tempToken } = useParams<{ token?: string }>();
@@ -3169,10 +3193,12 @@ function Chat() {
           // Reset the initial-scroll flag so the new history always jumps to bottom.
           hasInitialScrolled.current = false;
           const clearTs = Number(localStorage.getItem(`pulseClearTimestamp_${userIdRef.current}`) || '0');
+          const deletedForMeIds = getDeletedForMeIds(userIdRef.current);
           const allMsgs: Message[] = messageData.data.map(normalizeMessage);
-          const filtered = clearTs > 0
+          const filtered = (clearTs > 0
             ? allMsgs.filter(m => m.type === 'system_notification' || new Date(m.timestamp).getTime() > clearTs)
-            : allMsgs;
+            : allMsgs
+          ).filter(m => !deletedForMeIds.has(m.id));
           const deletedIds = new Set(allMsgs.filter(m => m.isDeleted).map(m => m.id));
           const processed = filtered.map(m =>
             (m.replyingTo && deletedIds.has(m.replyingTo.id))
@@ -3206,6 +3232,8 @@ function Chat() {
             // via broadcast while a reconnect also triggers a fresh history load.
             // If a message with the same id already exists, skip it.
             if (normalized.id && prev.some(m => m.id === normalized.id)) return prev;
+            // Skip messages the user has deleted for themselves.
+            if (normalized.id && getDeletedForMeIds(userIdRef.current).has(normalized.id)) return prev;
             return [...prev, normalized];
           });
         }
@@ -3583,6 +3611,7 @@ function Chat() {
   }, [userContext?.profile]);
 
   const deleteForMe = useCallback((messageId: string) => {
+    addDeletedForMeIds(userIdRef.current, [messageId]);
     setMessages(prev => prev.filter(m => m.id !== messageId));
   }, []);
 
@@ -3722,6 +3751,7 @@ function Chat() {
   }, [isSelectModeActive, messages.length]);
 
   const handleBulkDeleteForMe = () => {
+    addDeletedForMeIds(userIdRef.current, selectedMessages);
     setMessages(prev => prev.filter(m => !selectedMessages.includes(m.id)));
     // Replace the guard history entry in-place rather than calling back().
     // history.back() fires a popstate event that React Router v6 intercepts
