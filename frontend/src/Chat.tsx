@@ -1226,9 +1226,19 @@ const UserListItem = styled.li<{ index: number }>`
     transform: translateX(4px);
   }
 `;
-const MobileUserListToggle = styled(AttachButton)`
+const MobileUserListToggle = styled(AttachButton)<{ $isOpen?: boolean }>`
   display: none;
-  @media (max-width: 768px) { display: flex; }
+  @media (max-width: 768px) {
+    display: flex;
+    /* Override inherited hover-rotation — hover is sticky on mobile after a tap.
+       Rotation is controlled by the $isOpen state prop instead. */
+    &:hover:not(:disabled) { transform: scale(1.12); }
+    &:active:not(:disabled) { transform: scale(0.92); }
+    svg {
+      transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transform: ${props => props.$isOpen ? 'rotate(20deg)' : 'rotate(0deg)'};
+    }
+  }
 `;
 
 const ThemeToggleBtn = styled.button`
@@ -1790,7 +1800,9 @@ const ReactionCountSpan = styled.span`
 `;
 const MessageActions = styled.div`
   position: absolute; 
-  top: -16px; 
+  bottom: 100%;
+  top: auto;
+  margin-bottom: 2px;
   right: 12px; 
   display: flex; 
   gap: 8px; 
@@ -2006,8 +2018,9 @@ const VALID_TLDS = new Set([
   'yt','za','zm','zw',
 ]);
 
-// color used for all hyperlinks
-const LINK_COLOR = 'rgb(255 238 0)';
+// color used for all hyperlinks — other-users messages use CSS variable (blue in
+// light mode, yellow in dark mode). Own messages keep the yellow constant.
+const LINK_COLOR_OWN = 'rgb(255, 238, 0)';
 
 // Candidate regex: matches http(s)://..., www.anything, or word.word patterns.
 // Uses a capturing group so text.split() keeps the matches in the result array.
@@ -2052,7 +2065,7 @@ const renderTextWithLinks = (text: string, sender: 'me' | 'other'): React.ReactN
           className="chat-link"
           onClick={(e) => e.stopPropagation()}
           style={{
-            color: LINK_COLOR,
+            color: sender === 'other' ? 'var(--link-color)' : LINK_COLOR_OWN,
             wordBreak: 'break-all',
           }}
         >{norm.display}</a>
@@ -4136,8 +4149,8 @@ function Chat() {
                 <svg viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
               )}
             </ThemeToggleBtn>
-            <MobileUserListToggle onClick={() => setIsUserListVisible(!isUserListVisible)}>
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+            <MobileUserListToggle $isOpen={isUserListVisible} onClick={() => setIsUserListVisible(!isUserListVisible)}>
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
             </MobileUserListToggle>
           </div>
         </Header>

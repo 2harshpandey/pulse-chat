@@ -1,0 +1,8 @@
+# Netlify configuration
+# Ensures SPA routing works: all unknown routes are served index.html
+# so React Router can render the correct page (including 404 error page).
+
+[[redirects]]
+  from = "/*"
+  to   = "/index.html"
+  status = 200
