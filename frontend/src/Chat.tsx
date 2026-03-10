@@ -3656,8 +3656,16 @@ function Chat() {
 
   const handleBulkDeleteForMe = () => {
     setMessages(prev => prev.filter(m => !selectedMessages.includes(m.id)));
-    // Pop the history state, then reset UI state
-    window.history.back();
+    // Replace the guard history entry in-place rather than calling back().
+    // history.back() fires a popstate event that React Router v6 intercepts
+    // and treats as a route navigation — on desktop (mouse-click path through
+    // the three-dots portal) this causes React Router to land on a 404.
+    // replaceState() silently overwrites the guard entry with no popstate,
+    // so React Router never sees a navigation and the chat stays mounted.
+    if (overlayGuardPushed.current) {
+      window.history.replaceState(null, '');
+      overlayGuardPushed.current = false;
+    }
     setIsDeleteConfirmationVisible(false);
     setIsSelectModeActive(false);
     setSelectedMessages([]);
@@ -3669,8 +3677,12 @@ function Chat() {
         ws.current.send(JSON.stringify({ type: 'delete_for_everyone', messageId: id }));
       }
     });
-    // Pop the history state, then reset UI state
-    window.history.back();
+    // Same fix as handleBulkDeleteForMe — use replaceState instead of back()
+    // to avoid the popstate→React Router→404 issue on desktop mouse-click path.
+    if (overlayGuardPushed.current) {
+      window.history.replaceState(null, '');
+      overlayGuardPushed.current = false;
+    }
     setIsDeleteConfirmationVisible(false);
     setIsSelectModeActive(false);
     setSelectedMessages([]);
