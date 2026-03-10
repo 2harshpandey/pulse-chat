@@ -1207,7 +1207,7 @@ const UserList = styled.ul`
 const UserListItem = styled.li<{ index: number }>`
   color: var(--text-primary);
   font-weight: 500;
-  margin-bottom: 0.5rem;
+    margin-bottom: 0.25rem;
   white-space: normal;
   word-break: break-word;
   overflow-wrap: anywhere;
