@@ -2050,6 +2050,19 @@ const normalizeUrl = (raw: string): { href: string; display: string } | null => 
   return { href: `https://${display}`, display };
 };
 
+/**
+ * Guard against javascript:/data: injection: only allow http(s) and ftp.
+ * Returns '#' for anything else so the anchor is inert but never executable.
+ */
+const safeHref = (url: string): string => {
+  try {
+    const { protocol } = new URL(url);
+    return ['http:', 'https:', 'ftp:'].includes(protocol) ? url : '#';
+  } catch {
+    return '#';
+  }
+};
+
 const renderTextWithLinks = (text: string, sender: 'me' | 'other'): React.ReactNode => {
   const parts = text.split(CANDIDATE_URL_RE);
   if (parts.length === 1) return text;
@@ -2062,7 +2075,7 @@ const renderTextWithLinks = (text: string, sender: 'me' | 'other'): React.ReactN
     result.push(
       <React.Fragment key={i}>
         <a
-          href={norm.href}
+          href={safeHref(norm.href)}
           target="_blank"
           rel="noopener noreferrer"
           className="chat-link"
