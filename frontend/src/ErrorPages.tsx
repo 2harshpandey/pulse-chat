@@ -623,7 +623,7 @@ const ErrorPage: React.FC<ErrorPageProps> = ({
         <span>Pulse</span> Chat
       </PulseLogoMini>
 
-      <ThemeToggle onClick={toggleTheme} title="Toggle theme">
+      <ThemeToggle onClick={toggleTheme} title="Toggle theme" aria-label="Toggle theme">
         {isDark ? '☀️' : '🌙'}
       </ThemeToggle>
 

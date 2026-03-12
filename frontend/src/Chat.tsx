@@ -2618,6 +2618,7 @@ const MessageItem = React.memo(({
                       openDeleteMenu(msg.id);
                     }}
                     title="More"
+                    aria-label="More actions"
                     className="more-action-button"
                     style={{ fontSize: '20px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                   >&#8942;</ActionButton>
@@ -2707,7 +2708,7 @@ const MessageItem = React.memo(({
               )}
               {!isMobileView && (
                 <MessageActions>
-                  <ActionButton ref={reactButtonRef} className="react-action-button" onClick={() => onOpenReactionPicker(msg.id, reactButtonRef.current!.getBoundingClientRect(), sender)} title="React">
+                  <ActionButton ref={reactButtonRef} className="react-action-button" onClick={() => onOpenReactionPicker(msg.id, reactButtonRef.current!.getBoundingClientRect(), sender)} title="React" aria-label="Add reaction">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
                   </ActionButton>
                   <ActionButton
@@ -2728,6 +2729,7 @@ const MessageItem = React.memo(({
                       openDeleteMenu(msg.id);
                     }}
                     title="More"
+                    aria-label="More actions"
                     className="more-action-button"
                     style={{ fontSize: '20px' }}
                   >&#8942;</ActionButton>
@@ -4278,7 +4280,12 @@ function Chat() {
                 <svg viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
               )}
             </ThemeToggleBtn>
-            <MobileUserListToggle $isOpen={isUserListVisible} onClick={() => setIsUserListVisible(!isUserListVisible)}>
+            <MobileUserListToggle
+              $isOpen={isUserListVisible}
+              onClick={() => setIsUserListVisible(!isUserListVisible)}
+              aria-label={isUserListVisible ? 'Hide online users' : 'Show online users'}
+              title={isUserListVisible ? 'Hide online users' : 'Show online users'}
+            >
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
             </MobileUserListToggle>
           </div>
@@ -4353,6 +4360,8 @@ function Chat() {
               onClick={scrollToBottom}
               onMouseDown={(e) => e.preventDefault()}
               onPointerDown={(e) => e.preventDefault()}
+              aria-label="Scroll to latest messages"
+              title="Scroll to latest messages"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 5v14"></path>
@@ -4368,16 +4377,16 @@ function Chat() {
                   <span>{selectedMessages.length} selected</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                     {canEditSelectedMessage && (
-                      <EditButton onClick={() => { if (selectedMessage) { handleStartEdit(selectedMessage); } handleCancelSelectMode();}} title="Edit" >
+                      <EditButton onClick={() => { if (selectedMessage) { handleStartEdit(selectedMessage); } handleCancelSelectMode();}} title="Edit" aria-label="Edit selected message" >
                          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                       </EditButton>
                     )}
                       {isMobileView && selectedMessages.length === 1 && selectedMessage && !selectedMessage.isDeleted && (selectedMessage.type === 'text' || selectedMessage.type === 'image') && (
-                       <CopyButton onClick={() => { handleCopy(selectedMessage); handleCancelSelectMode(); }} title="Copy" >
+                       <CopyButton onClick={() => { handleCopy(selectedMessage); handleCancelSelectMode(); }} title="Copy" aria-label="Copy selected message" >
                          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                        </CopyButton>
                       )}
-                    <DeleteButton onClick={handleInitiateDelete} title="Delete">
+                    <DeleteButton onClick={handleInitiateDelete} title="Delete" aria-label="Delete selected messages">
                       <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
                     </DeleteButton>
                   </div>
