@@ -125,15 +125,15 @@ const Title = styled.h1`
   align-items: center;
   gap: 0.5rem;
   img {
-    height: 36px;
+    height: 44px;
     width: auto;
     object-fit: contain;
     user-select: none;
     -webkit-user-drag: none;
     pointer-events: none;
   }
-  @media (max-width: 768px) { font-size: 2rem; img { height: 30px; } }
-  @media (max-width: 480px) { font-size: 1.5rem; img { height: 26px; } }
+  @media (max-width: 768px) { font-size: 2rem; img { height: 36px; } }
+  @media (max-width: 480px) { font-size: 1.5rem; img { height: 30px; } }
   @media (max-height: 500px) { font-size: 1.2rem; img { height: 22px; } }
 `;
 

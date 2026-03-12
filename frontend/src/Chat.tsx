@@ -4249,7 +4249,7 @@ function Chat() {
       )}
       <AppContainer>
         <Header>
-          <HeaderTitle><a href="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none', color: 'inherit' }}><img src="/pulse_logo.png" alt="Pulse Chat" style={{ height: '36px' }} /></a></HeaderTitle>
+          <HeaderTitle><a href="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none', color: 'inherit' }}><img src="/pulse_logo.png" alt="Pulse Chat" style={{ height: '44px' }} /></a></HeaderTitle>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <ThemeToggleBtn onClick={toggleTheme} title={isDark ? 'Switch to light mode' : 'Switch to dark mode'} aria-label="Toggle theme">
               {isDark ? (
