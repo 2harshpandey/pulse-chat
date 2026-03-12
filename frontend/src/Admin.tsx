@@ -204,6 +204,9 @@ const AdminOrb = styled.div<{ $color: string; $size: number; $top: string; $left
 `;
 
 const AdminLoginBrand = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   text-align: center;
   margin-bottom: 1.75rem;
   width: 100%;

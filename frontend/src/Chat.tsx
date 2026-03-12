@@ -390,6 +390,7 @@ const HeaderTitle = styled.h1`
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
+    transition: color 0.2s ease;
   }
   a:hover {
     color: var(--accent-blue);
@@ -401,7 +402,7 @@ const HeaderTitle = styled.h1`
     background-clip: text;
   }
   img {
-    height: 32px;
+    height: 44px;
     width: auto;
     object-fit: contain;
     user-select: none;
@@ -4265,7 +4266,7 @@ function Chat() {
       )}
       <AppContainer>
         <Header>
-          <HeaderTitle><a href="/" style={{ display: 'flex', alignItems: 'center', textDecoration: 'none', color: 'inherit', gap: '0.5rem' }}><img src="/pulse_logo.png" alt="Pulse Chat" style={{ height: '44px' }} /><span>Pulse</span> Chat</a></HeaderTitle>
+          <HeaderTitle><a href="/"><img src="/pulse_logo.png" alt="Pulse Chat" /><span>Pulse</span> Chat</a></HeaderTitle>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <ThemeToggleBtn onClick={toggleTheme} title={isDark ? 'Switch to light mode' : 'Switch to dark mode'} aria-label="Toggle theme">
               {isDark ? (

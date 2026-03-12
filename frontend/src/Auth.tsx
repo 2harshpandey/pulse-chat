@@ -176,6 +176,9 @@ const ThemeToggle = styled.button`
 `;
 
 const BrandSection = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   text-align: center;
   margin-bottom: 2rem;
 `;
