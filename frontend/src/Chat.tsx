@@ -531,17 +531,17 @@ const MobileReactionPicker = styled.div<{ $sender: 'me' | 'other' }>`
 `;
 const MessageBubble = styled.div<{ $sender: string; $messageType: string; $isUploading?: boolean; $uploadError?: boolean; }>`
   position: relative;
-  max-width: 75%;
-  padding: 0.5rem 1rem;
-  border-radius: 1.25rem;
+  max-width: ${props => props.$messageType === 'text' ? '66%' : '72%'};
+  padding: ${props => props.$messageType === 'text' ? '0.34rem 0.56rem' : '0.34rem 0.38rem'};
+  border-radius: 0.92rem;
   background-color: ${props => props.$sender === 'me' ? '#3B82F6' : 'var(--bg-message-other)'};
   color: ${props => props.$sender === 'me' ? 'white' : 'var(--text-primary)'};
-  box-shadow: var(--shadow-sm);
+  box-shadow: ${props => props.$sender === 'me' ? '0 1px 1px rgba(0,0,0,0.08)' : '0 1px 1px rgba(0,0,0,0.06)'};
   cursor: pointer;
   min-width: ${props => props.$messageType === 'text' ? '6rem' : '0'};
   opacity: ${props => props.$isUploading ? 0.5 : 1};
   transition: opacity 0.3s ease, background-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease, transform 0.2s ease;
-  border: ${props => props.$uploadError ? '2px solid red' : 'none'};
+  border: ${props => props.$uploadError ? '1px solid red' : 'none'};
   will-change: transform;
 `;
 
@@ -1435,35 +1435,33 @@ const LinkPreviewCard = styled.a<{ $sender: 'me' | 'other' }>`
   display: flex;
   flex-direction: row;
   text-decoration: none;
-  border-radius: 10px;
+  border-radius: 8px;
   overflow: hidden;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   background: ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.18)' : 'var(--bg-hover)'};
-  border-top: 1px solid ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.2)' : 'var(--border-primary)'};
-  border-right: 1px solid ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.2)' : 'var(--border-primary)'};
-  border-bottom: 1px solid ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.2)' : 'var(--border-primary)'};
+  border: 1px solid ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.18)' : 'var(--border-primary)'};
   transition: all 0.25s ease;
   animation: ${subtleSlideUp} 0.3s ease-out forwards;
-  &:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+  &:hover { opacity: 0.95; transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
   ${props => props.$sender === 'other' && `
-    [data-theme='dark'] & { background: #253348; border-top-color: rgba(255,255,255,0.08); border-right-color: rgba(255,255,255,0.08); border-bottom-color: rgba(255,255,255,0.08); }
+    [data-theme='dark'] & { background: #253348; border-color: rgba(255,255,255,0.08); }
   `}
 `;
 const LinkPreviewImage = styled.img`
-  width: 84px;
-  min-width: 84px;
-  height: 84px;
+  width: 78px;
+  min-width: 78px;
+  height: 78px;
   object-fit: cover;
   display: block;
 `;
 const LinkPreviewBody = styled.div`
-  padding: 8px 10px;
+  padding: 7px 9px;
   min-width: 0;
   flex: 1;
 `;
 const LinkPreviewSiteName = styled.p<{ $sender: 'me' | 'other' }>`
   margin: 0 0 2px;
-  font-size: 0.7rem;
+  font-size: 0.66rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -1474,7 +1472,7 @@ const LinkPreviewSiteName = styled.p<{ $sender: 'me' | 'other' }>`
 `;
 const LinkPreviewTitle = styled.p<{ $sender: 'me' | 'other' }>`
   margin: 0 0 3px;
-  font-size: 0.85rem;
+  font-size: 0.83rem;
   font-weight: 600;
   color: ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.95)' : 'var(--text-primary)'};
   display: -webkit-box;
@@ -1484,7 +1482,7 @@ const LinkPreviewTitle = styled.p<{ $sender: 'me' | 'other' }>`
 `;
 const LinkPreviewDesc = styled.p<{ $sender: 'me' | 'other' }>`
   margin: 0;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   color: ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.75)' : 'var(--text-secondary)'};
   display: -webkit-box;
   -webkit-line-clamp: 2;
