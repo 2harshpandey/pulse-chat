@@ -622,77 +622,145 @@ app.get('/api/link-preview', apiLimiter, async (req, res) => {
     if (!url || typeof url !== 'string') return res.status(400).json({ error: 'URL parameter required' });
     if (!/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'Invalid URL' });
 
-    let parsedUrl;
-    try { parsedUrl = new URL(url); } catch { return res.status(400).json({ error: 'Invalid URL' }); }
+    const MAX_REDIRECTS = 3;
+    let currentUrl = url;
+    let finalParsedUrl = null;
+    let finalHtml = '';
 
-    // Restrict to standard HTTP/HTTPS ports only — prevents using this as a port scanner.
-    const port = parsedUrl.port;
-    if (port && port !== '80' && port !== '443') return res.status(400).json({ error: 'Invalid URL' });
+    for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
+      let parsedUrl;
+      try { parsedUrl = new URL(currentUrl); } catch { return res.status(400).json({ error: 'Invalid URL' }); }
 
-    const rawHostname = parsedUrl.hostname;
-    const hostname = rawHostname.replace(/^www\./, '');
+      // Restrict to standard HTTP/HTTPS ports only — prevents using this as a port scanner.
+      const port = parsedUrl.port;
+      if (port && port !== '80' && port !== '443') return res.status(400).json({ error: 'Invalid URL' });
 
-    // Resolve the hostname and block private/internal IPs to prevent SSRF.
-    let resolvedIp;
-    try { ({ address: resolvedIp } = await dns.promises.lookup(rawHostname)); }
-    catch { return res.status(400).json({ error: 'Could not resolve hostname' }); }
-    if (isPrivateOrInternalIp(resolvedIp)) return res.status(400).json({ error: 'Invalid URL' });
+      if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+        return res.status(400).json({ error: 'Invalid URL' });
+      }
 
-    // Make the request using the resolved IP as the hostname, never the raw user-supplied URL.
-    // This breaks the SSRF taint chain: `url` is only used for parsing above; the actual
-    // TCP connection target is `resolvedIp`, a server-controlled validated value.
-    const isHttps = parsedUrl.protocol === 'https:';
-    const reqModule = isHttps ? https : http;
-    const reqPath = (parsedUrl.pathname || '/') + (parsedUrl.search || '');
-    const reqPort = parsedUrl.port ? Number(parsedUrl.port) : (isHttps ? 443 : 80);
+      const rawHostname = parsedUrl.hostname;
 
-    const html = await new Promise((resolve, reject) => {
-      const opts = {
-        hostname: resolvedIp,          // server-controlled validated IP — not user input
-        port: reqPort,
-        path: reqPath,
-        method: 'GET',
-        headers: {
-          'Host': rawHostname,          // needed for virtual hosting
-          'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
-          'Accept': 'text/html,application/xhtml+xml',
-          'Connection': 'close',
-        },
-        // TLS: send the real hostname for SNI and certificate validation
-        ...(isHttps ? { servername: rawHostname, rejectUnauthorized: true } : {}),
-      };
-      const req = reqModule.request(opts, (incoming) => {
-        // Block redirects — a redirect could point to a private IP and bypass our check.
-        if (incoming.statusCode >= 300 && incoming.statusCode < 400) {
-          req.destroy();
-          return reject(new Error('Redirects not followed'));
-        }
-        const chunks = [];
-        let totalSize = 0;
-        incoming.on('data', (chunk) => {
-          totalSize += chunk.length;
-          if (totalSize > 512 * 1024) { req.destroy(); return reject(new Error('Response too large')); }
-          chunks.push(chunk);
+      // Resolve the hostname and block private/internal IPs to prevent SSRF.
+      let resolvedIp;
+      try { ({ address: resolvedIp } = await dns.promises.lookup(rawHostname)); }
+      catch { return res.status(400).json({ error: 'Could not resolve hostname' }); }
+      if (isPrivateOrInternalIp(resolvedIp)) return res.status(400).json({ error: 'Invalid URL' });
+
+      const isHttps = parsedUrl.protocol === 'https:';
+      const reqModule = isHttps ? https : http;
+      const reqPath = (parsedUrl.pathname || '/') + (parsedUrl.search || '');
+      const reqPort = parsedUrl.port ? Number(parsedUrl.port) : (isHttps ? 443 : 80);
+
+      const response = await new Promise((resolve, reject) => {
+        const opts = {
+          hostname: resolvedIp,          // server-controlled validated IP — not user input
+          port: reqPort,
+          path: reqPath,
+          method: 'GET',
+          headers: {
+            'Host': rawHostname,          // needed for virtual hosting
+            'User-Agent': 'Mozilla/5.0 (compatible; PulseChatLinkPreview/1.0; +https://pulsechat.tech)',
+            'Accept': 'text/html,application/xhtml+xml',
+            'Connection': 'close',
+          },
+          // TLS: send the real hostname for SNI and certificate validation
+          ...(isHttps ? { servername: rawHostname, rejectUnauthorized: true } : {}),
+        };
+
+        const request = reqModule.request(opts, (incoming) => {
+          const statusCode = incoming.statusCode || 0;
+          const headers = incoming.headers || {};
+          const chunks = [];
+          let totalSize = 0;
+
+          incoming.on('data', (chunk) => {
+            totalSize += chunk.length;
+            if (totalSize > 512 * 1024) {
+              request.destroy();
+              return reject(new Error('Response too large'));
+            }
+            chunks.push(chunk);
+          });
+
+          incoming.on('end', () => {
+            resolve({
+              statusCode,
+              headers,
+              body: Buffer.concat(chunks).toString('utf8'),
+            });
+          });
+          incoming.on('error', reject);
         });
-        incoming.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-        incoming.on('error', reject);
+
+        request.setTimeout(5000, () => { request.destroy(); reject(new Error('Request timed out')); });
+        request.on('error', reject);
+        request.end();
       });
-      req.setTimeout(5000, () => { req.destroy(); reject(new Error('Request timed out')); });
-      req.on('error', reject);
-      req.end();
-    });
-    const getOg = (prop) => {
-      const m = html.match(new RegExp(`<meta[^>]+property=["']og:${prop}["'][^>]+content=["']([^"']{0,500})["']`, 'i'))
-        || html.match(new RegExp(`<meta[^>]+content=["']([^"']{0,500})["'][^>]+property=["']og:${prop}["']`, 'i'));
-      return m ? m[1] : null;
+
+      const statusCode = Number(response.statusCode || 0);
+
+      // Follow a small number of redirects like chat apps do, while re-validating each hop.
+      if (statusCode >= 300 && statusCode < 400) {
+        const locationHeader = response.headers?.location;
+        if (!locationHeader) throw new Error('Redirect without location');
+        if (Array.isArray(locationHeader)) throw new Error('Invalid redirect location');
+        if (redirectCount >= MAX_REDIRECTS) throw new Error('Too many redirects');
+
+        const nextUrl = new URL(locationHeader, parsedUrl);
+        if (nextUrl.protocol !== 'http:' && nextUrl.protocol !== 'https:') {
+          throw new Error('Invalid redirect protocol');
+        }
+        currentUrl = nextUrl.href;
+        continue;
+      }
+
+      if (statusCode < 200 || statusCode >= 300) throw new Error('Bad response');
+
+      const contentType = String(response.headers?.['content-type'] || '').toLowerCase();
+      if (contentType && !contentType.includes('text/html') && !contentType.includes('application/xhtml+xml')) {
+        throw new Error('Unsupported content type');
+      }
+
+      finalParsedUrl = parsedUrl;
+      finalHtml = String(response.body || '');
+      break;
+    }
+
+    if (!finalParsedUrl || !finalHtml) throw new Error('Failed to fetch preview HTML');
+
+    const html = finalHtml;
+    const hostname = finalParsedUrl.hostname.replace(/^www\./, '');
+    const decode = (v) => String(v || '')
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .trim();
+
+    const getMetaBy = (attrName, attrValue) => {
+      const m = html.match(new RegExp(`<meta[^>]+${attrName}=["']${attrValue}["'][^>]+content=["']([^"']{0,500})["']`, 'i'))
+        || html.match(new RegExp(`<meta[^>]+content=["']([^"']{0,500})["'][^>]+${attrName}=["']${attrValue}["']`, 'i'));
+      return m ? decode(m[1]) : null;
     };
-    const getTitle = () => { const m = html.match(/<title[^>]*>([^<]{0,200})<\/title>/i); return m ? m[1].trim() : null; };
-    const getMetaDesc = () => {
-      const m = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']{0,500})["']/i)
-        || html.match(/<meta[^>]+content=["']([^"']{0,500})["'][^>]+name=["']description["']/i);
-      return m ? m[1] : null;
+
+    const getTitle = () => {
+      const m = html.match(/<title[^>]*>([^<]{0,200})<\/title>/i);
+      return m ? decode(m[1]) : null;
     };
-    res.json({ title: getOg('title') || getTitle(), description: getOg('description') || getMetaDesc(), image: getOg('image'), hostname, siteName: getOg('site_name') });
+
+    const title = getMetaBy('property', 'og:title') || getMetaBy('name', 'twitter:title') || getTitle();
+    const description = getMetaBy('property', 'og:description')
+      || getMetaBy('name', 'twitter:description')
+      || getMetaBy('name', 'description');
+    const siteName = getMetaBy('property', 'og:site_name');
+    const rawImage = getMetaBy('property', 'og:image') || getMetaBy('name', 'twitter:image');
+    const image = rawImage ? (() => {
+      try { return new URL(rawImage, finalParsedUrl).href; } catch { return null; }
+    })() : null;
+
+    res.json({ title, description, image, hostname, siteName });
   } catch (error) {
     logger.error('Link preview fetch error:', { message: error.message });
     res.status(500).json({ error: 'Failed to fetch preview' });

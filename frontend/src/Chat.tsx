@@ -2233,7 +2233,11 @@ const LinkPreview: React.FC<{ url: string; sender: 'me' | 'other' }> = React.mem
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/link-preview?url=${encodeURIComponent(url)}`);
+        const apiBase = (process.env.REACT_APP_API_URL || '')
+          .replace(/^http:\/\//, (typeof window !== 'undefined' && window.location.protocol === 'https:') ? 'https://' : 'http://')
+          .replace(/\/$/, '');
+        const previewEndpoint = `${apiBase}/api/link-preview?url=${encodeURIComponent(url)}`;
+        const res = await fetch(previewEndpoint);
         if (!res.ok) throw new Error('bad response');
         const json: LinkPreviewData = await res.json();
         linkPreviewCache.set(url, json);
