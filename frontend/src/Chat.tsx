@@ -467,7 +467,7 @@ const MessageRow = styled.div<{ $sender: string; $isSelected?: boolean; $isActiv
   touch-action: pan-y; /* Allow vertical scrolling, while manually handling horizontal drag */
   z-index: ${props => props.$isActiveDeleteMenu ? 40 : 'auto'};
   /* Grouped = same sender continuation: tight gap; non-grouped = new sender: clear separation */
-  padding-top: ${props => props.$isGrouped ? '3px' : '10px'};
+  padding-top: ${props => props.$isGrouped ? '2px' : '6px'};
   padding-bottom: 1px;
   /* GPU-accelerate each row so scrolling composites on the GPU layer,
      eliminating micro-stutter on fast swipes (especially mobile). */
@@ -531,18 +531,22 @@ const MobileReactionPicker = styled.div<{ $sender: 'me' | 'other' }>`
 `;
 const MessageBubble = styled.div<{ $sender: string; $messageType: string; $isUploading?: boolean; $uploadError?: boolean; }>`
   position: relative;
-  max-width: ${props => props.$messageType === 'text' ? '66%' : '72%'};
-  padding: ${props => props.$messageType === 'text' ? '0.34rem 0.56rem' : '0.34rem 0.38rem'};
-  border-radius: 0.92rem;
+  max-width: ${props => props.$messageType === 'text' ? '62%' : '68%'};
+  padding: ${props => props.$messageType === 'text' ? '0.28rem 0.48rem' : '0.28rem 0.34rem'};
+  border-radius: 0.82rem;
   background-color: ${props => props.$sender === 'me' ? '#3B82F6' : 'var(--bg-message-other)'};
   color: ${props => props.$sender === 'me' ? 'white' : 'var(--text-primary)'};
-  box-shadow: ${props => props.$sender === 'me' ? '0 1px 1px rgba(0,0,0,0.08)' : '0 1px 1px rgba(0,0,0,0.06)'};
+  box-shadow: ${props => props.$sender === 'me' ? '0 0.5px 1px rgba(0,0,0,0.07)' : '0 0.5px 1px rgba(0,0,0,0.05)'};
   cursor: pointer;
-  min-width: ${props => props.$messageType === 'text' ? '6rem' : '0'};
+  min-width: ${props => props.$messageType === 'text' ? '4.5rem' : '0'};
   opacity: ${props => props.$isUploading ? 0.5 : 1};
   transition: opacity 0.3s ease, background-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease, transform 0.2s ease;
-  border: ${props => props.$uploadError ? '1px solid red' : 'none'};
+  border: ${props => props.$uploadError ? '1px solid #ef4444' : (props.$sender === 'me' ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(15,23,42,0.08)')};
   will-change: transform;
+
+  [data-theme='dark'] & {
+    border-color: ${props => props.$uploadError ? '#ef4444' : (props.$sender === 'me' ? 'rgba(255,255,255,0.12)' : 'rgba(148,163,184,0.14)')};
+  }
 `;
 
 const EditInput = styled.textarea`
@@ -762,7 +766,7 @@ const MediaContent = styled.div`
     cursor: pointer;
     display: block;
     @media (min-width: 769px) {
-      max-width: 450px;
+      max-width: 360px;
     }
   }
   p + div, p + img, p + video { margin-top: 0.5rem; }
@@ -799,7 +803,7 @@ const MediaImageWrapper = styled.div`
   display: block;
   width: fit-content;
   max-width: 100%;
-  @media (min-width: 769px) { max-width: 450px; }
+  @media (min-width: 769px) { max-width: 360px; }
   &:hover ${MediaDownloadOverlayBtn} { opacity: 1; }
 `;
 
@@ -1458,6 +1462,11 @@ const LinkPreviewBody = styled.div`
   padding: 7px 9px;
   min-width: 0;
   flex: 1;
+  border-left: 1px solid rgba(255,255,255,0.12);
+
+  [data-theme='light'] & {
+    border-left-color: rgba(15, 23, 42, 0.09);
+  }
 `;
 const LinkPreviewSiteName = styled.p<{ $sender: 'me' | 'other' }>`
   margin: 0 0 2px;
@@ -1933,7 +1942,7 @@ const VideoPlayerWrapper = styled.div`
   justify-content: center;
   background: #000;
   @media (min-width: 769px) {
-    max-width: 450px;
+    max-width: 360px;
   }
 `;
 
@@ -1942,8 +1951,11 @@ const MessageText = styled.p`
   white-space: pre-wrap;
   word-wrap: break-word;
   cursor: text;
+  font-size: 0.92rem;
+  line-height: 1.35;
   @media (max-width: 768px) {
     user-select: none; /* Disable selection on mobile */
+    font-size: 0.9rem;
   }
 `;
 
@@ -2220,6 +2232,34 @@ interface LinkPreviewData {
 }
 
 const linkPreviewCache = new Map<string, LinkPreviewData | null>();
+const linkPreviewInFlight = new Map<string, Promise<LinkPreviewData | null>>();
+
+const fetchLinkPreviewData = (url: string): Promise<LinkPreviewData | null> => {
+  if (linkPreviewCache.has(url)) return Promise.resolve(linkPreviewCache.get(url) ?? null);
+  if (linkPreviewInFlight.has(url)) return linkPreviewInFlight.get(url)!;
+
+  const promise = (async () => {
+    try {
+      const apiBase = (process.env.REACT_APP_API_URL || '')
+        .replace(/^http:\/\//, (typeof window !== 'undefined' && window.location.protocol === 'https:') ? 'https://' : 'http://')
+        .replace(/\/$/, '');
+      const previewEndpoint = `${apiBase}/api/link-preview?url=${encodeURIComponent(url)}`;
+      const res = await fetch(previewEndpoint);
+      if (!res.ok) throw new Error('bad response');
+      const json: LinkPreviewData = await res.json();
+      linkPreviewCache.set(url, json);
+      return json;
+    } catch {
+      linkPreviewCache.set(url, null);
+      return null;
+    } finally {
+      linkPreviewInFlight.delete(url);
+    }
+  })();
+
+  linkPreviewInFlight.set(url, promise);
+  return promise;
+};
 
 const LinkPreview: React.FC<{ url: string; sender: 'me' | 'other' }> = React.memo(({ url, sender }) => {
   const [data, setData] = useState<LinkPreviewData | null | undefined>(
@@ -2232,20 +2272,8 @@ const LinkPreview: React.FC<{ url: string; sender: 'me' | 'other' }> = React.mem
     }
     let cancelled = false;
     (async () => {
-      try {
-        const apiBase = (process.env.REACT_APP_API_URL || '')
-          .replace(/^http:\/\//, (typeof window !== 'undefined' && window.location.protocol === 'https:') ? 'https://' : 'http://')
-          .replace(/\/$/, '');
-        const previewEndpoint = `${apiBase}/api/link-preview?url=${encodeURIComponent(url)}`;
-        const res = await fetch(previewEndpoint);
-        if (!res.ok) throw new Error('bad response');
-        const json: LinkPreviewData = await res.json();
-        linkPreviewCache.set(url, json);
-        if (!cancelled) setData(json);
-      } catch {
-        linkPreviewCache.set(url, null);
-        if (!cancelled) setData(null);
-      }
+      const result = await fetchLinkPreviewData(url);
+      if (!cancelled) setData(result);
     })();
     return () => { cancelled = true; };
   }, [url]);
@@ -3214,7 +3242,7 @@ function Chat() {
         ws.current?.close();
       };
 
-      ws.current.onmessage = (event: MessageEvent) => {
+      ws.current.onmessage = async (event: MessageEvent) => {
         const messageData = JSON.parse(event.data);
         if (messageData.type === 'username_taken') {
           // The server rejected our join because someone else already holds this username.
@@ -3246,6 +3274,19 @@ function Chat() {
               ? { ...m, replyingTo: { ...m.replyingTo, isDeleted: true } }
               : m
           );
+
+          // Warm link-preview cache before first paint so text messages with URLs
+          // don't render plain first and then morph into preview cards.
+          const previewUrls = Array.from(new Set(
+            processed
+              .filter(m => m.type === 'text' && !m.url && !!m.text)
+              .map(m => detectFirstUrl(m.text || ''))
+              .filter((u): u is string => !!u)
+          )).slice(0, 40);
+          if (previewUrls.length > 0) {
+            await Promise.allSettled(previewUrls.map((u) => fetchLinkPreviewData(u)));
+          }
+
           setMessages(processed);
           // Mark history as loaded so the Virtuoso component renders
           // for the first time already at the bottom — no visible scroll.
@@ -3446,7 +3487,7 @@ function Chat() {
     const targetIndex = messages.length - 1;
     const delays = [0, 250, 900, 1800];
     const timers = delays.map((ms) => setTimeout(() => {
-      if (!virtuosoRef.current || !isAtBottomRef.current) return;
+      if (!virtuosoRef.current) return;
       virtuosoRef.current.scrollToIndex({ index: targetIndex, align: 'end', behavior: 'auto' });
     }, ms));
 
