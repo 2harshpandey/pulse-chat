@@ -1433,13 +1433,12 @@ const ReplyText = styled.div`
 
 const LinkPreviewCard = styled.a<{ $sender: 'me' | 'other' }>`
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   text-decoration: none;
   border-radius: 10px;
   overflow: hidden;
-  margin-top: 6px;
+  margin-bottom: 6px;
   background: ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.18)' : 'var(--bg-hover)'};
-  border-left: 3px solid ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.7)' : 'var(--accent-indigo)'};
   border-top: 1px solid ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.2)' : 'var(--border-primary)'};
   border-right: 1px solid ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.2)' : 'var(--border-primary)'};
   border-bottom: 1px solid ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.2)' : 'var(--border-primary)'};
@@ -1451,13 +1450,16 @@ const LinkPreviewCard = styled.a<{ $sender: 'me' | 'other' }>`
   `}
 `;
 const LinkPreviewImage = styled.img`
-  width: 100%;
-  max-height: 160px;
+  width: 84px;
+  min-width: 84px;
+  height: 84px;
   object-fit: cover;
   display: block;
 `;
 const LinkPreviewBody = styled.div`
   padding: 8px 10px;
+  min-width: 0;
+  flex: 1;
 `;
 const LinkPreviewSiteName = styled.p<{ $sender: 'me' | 'other' }>`
   margin: 0 0 2px;
@@ -2250,6 +2252,10 @@ const LinkPreview: React.FC<{ url: string; sender: 'me' | 'other' }> = React.mem
     return () => { cancelled = true; };
   }, [url]);
   if (!data) return null;
+
+  const primaryImage = data.image || `https://www.google.com/s2/favicons?domain=${encodeURIComponent(data.hostname)}&sz=128`;
+  const secondaryImage = `https://${data.hostname}/favicon.ico`;
+
   return (
     <LinkPreviewCard
       $sender={sender}
@@ -2258,13 +2264,18 @@ const LinkPreview: React.FC<{ url: string; sender: 'me' | 'other' }> = React.mem
       rel="noopener noreferrer"
       onClick={(e) => e.stopPropagation()}
     >
-      {data.image && (
-        <LinkPreviewImage
-          src={data.image}
-          alt=""
-          onError={(e) => { e.currentTarget.style.display = 'none'; }}
-        />
-      )}
+      <LinkPreviewImage
+        src={primaryImage}
+        alt=""
+        onError={(e) => {
+          const current = e.currentTarget.getAttribute('src') || '';
+          if (current !== secondaryImage) {
+            e.currentTarget.setAttribute('src', secondaryImage);
+            return;
+          }
+          e.currentTarget.style.display = 'none';
+        }}
+      />
       <LinkPreviewBody>
         <LinkPreviewSiteName $sender={sender}>{data.siteName || data.hostname}</LinkPreviewSiteName>
         {data.title && <LinkPreviewTitle $sender={sender}>{data.title}</LinkPreviewTitle>}
@@ -2740,8 +2751,8 @@ const MessageItem = React.memo(({
                 </MessageActions>
               )}
               {/* DeleteMenu rendered as fixed portal — see block after </MessageRow> */}
-              {renderMessageContent(msg, openLightbox, isMobileView && isSelectModeActive ? () => { mediaWasTapped.current = true; } : undefined, sender)}
               {msg.type === 'text' && !msg.url && msg.text && (() => { const _u = detectFirstUrl(msg.text); return _u ? <LinkPreview url={_u} sender={sender} /> : null; })()}
+              {renderMessageContent(msg, openLightbox, isMobileView && isSelectModeActive ? () => { mediaWasTapped.current = true; } : undefined, sender)}
               <FooterContainer $sender={sender}>
                 <Timestamp $sender={sender}>{msg.edited && <span>(edited) </span>}{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Timestamp>
               </FooterContainer>
@@ -2811,19 +2822,23 @@ interface TypingIndicatorProps {
 
 const TypingIndicator = ({ onlineUsers, currentUserId }: TypingIndicatorProps) => {
   const typers = onlineUsers.filter(u => u.isTyping && u.userId !== currentUserId);
-  if (typers.length === 0) return null;
 
   const names = typers.map(u => u.username).join(', ');
   const text = typers.length > 2 ? 'Several people are typing' : (typers.length > 1 ? `${names} are typing` : `${names} is typing`);
+  const visible = typers.length > 0;
 
   return (
-    <TypingIndicatorContainer>
-      <span>{text}</span>
-      <BouncingDots>
-        <div></div>
-        <div></div>
-        <div></div>
-      </BouncingDots>
+    <TypingIndicatorContainer style={{ visibility: visible ? 'visible' : 'hidden' }} aria-hidden={!visible}>
+      {visible && (
+        <>
+          <span>{text}</span>
+          <BouncingDots>
+            <div></div>
+            <div></div>
+            <div></div>
+          </BouncingDots>
+        </>
+      )}
     </TypingIndicatorContainer>
   );
 };
@@ -2976,6 +2991,7 @@ function Chat() {
   // Tracks whether we've done the very first scroll-to-bottom after history loads.
   // Must be a ref (not state) so it doesn't trigger re-renders.
   const hasInitialScrolled = useRef(false);
+  const initialHistoryBottomStabilized = useRef(false);
   // Tracks whether the user is currently at the bottom of the chat.
   const isAtBottomRef = useRef(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -3218,6 +3234,7 @@ function Chat() {
         if (messageData.type === 'history') {
           // Reset the initial-scroll flag so the new history always jumps to bottom.
           hasInitialScrolled.current = false;
+          initialHistoryBottomStabilized.current = false;
           const clearTs = Number(localStorage.getItem(`pulseClearTimestamp_${userIdRef.current}`) || '0');
           const deletedForMeIds = getDeletedForMeIds(userIdRef.current);
           const allMsgs: Message[] = messageData.data.map(normalizeMessage);
@@ -3420,6 +3437,23 @@ function Chat() {
       hasInitialScrolled.current = true;
     }
   }, [messages]);
+
+  // Keep the viewport pinned to the latest message for a short period after
+  // initial history load. Late-loading media/previews can change row heights and
+  // otherwise nudge the list upward by a few pixels.
+  useEffect(() => {
+    if (!historyLoaded || messages.length === 0 || initialHistoryBottomStabilized.current) return;
+    initialHistoryBottomStabilized.current = true;
+
+    const targetIndex = messages.length - 1;
+    const delays = [0, 250, 900, 1800];
+    const timers = delays.map((ms) => setTimeout(() => {
+      if (!virtuosoRef.current || !isAtBottomRef.current) return;
+      virtuosoRef.current.scrollToIndex({ index: targetIndex, align: 'end', behavior: 'auto' });
+    }, ms));
+
+    return () => timers.forEach(clearTimeout);
+  }, [historyLoaded, messages.length]);
 
 
   useEffect(() => {

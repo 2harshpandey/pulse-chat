@@ -732,11 +732,11 @@ app.get('/api/link-preview', apiLimiter, async (req, res) => {
     const html = finalHtml;
     const hostname = finalParsedUrl.hostname.replace(/^www\./, '');
     const decode = (v) => String(v || '')
-      .replace(/&amp;/g, '&')
       .replace(/&quot;/g, '"')
       .replace(/&#39;/g, "'")
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&')
       .trim();
 
     const getMetaBy = (attrName, attrValue) => {
