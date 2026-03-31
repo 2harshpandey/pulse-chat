@@ -23,6 +23,7 @@ const BlockedUser = require('./models/blockedUser');
 const LoginLockdown = require('./models/loginLockdown');
 const AuditLog = require('./models/auditLog');
 const ChatState = require('./models/chatState');
+const UserReport = require('./models/userReport');
 const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 
 // Helper: returns true for loopback, private, and link-local IPs to prevent SSRF.
@@ -140,6 +141,9 @@ const DEFAULT_HISTORY_PAGE_SIZE = 50;
 const MAX_HISTORY_PAGE_SIZE = 100;
 const MAX_HISTORY = 5000;
 const GLOBAL_CHAT_STATE_KEY = 'global';
+const MIN_REPORT_REASON_LENGTH = 5;
+const MAX_REPORT_REASON_LENGTH = 500;
+const MAX_REPORTED_JOIN_HISTORY = 25;
 
 let frontendHiddenBefore = null;
 
@@ -1194,6 +1198,16 @@ app.get('/api/admin/audit-logs', adminLimiter, adminAuth, async (req, res) => {
     }
 });
 
+app.get('/api/admin/reports', adminLimiter, adminAuth, async (req, res) => {
+  try {
+    const reports = await UserReport.find().sort({ reportedAt: -1 }).limit(500).lean();
+    res.json(reports);
+  } catch (error) {
+    logger.error('Failed to fetch user reports:', { message: error.message, stack: error.stack });
+    res.status(500).json({ error: 'Failed to fetch user reports.' });
+  }
+});
+
 // Route for fetching paginated messages for infinite scroll
 app.get('/api/messages', apiLimiter, async (req, res) => {
     try {
@@ -1376,7 +1390,15 @@ wss.on('connection', (ws, req) => {
 
         User.findOneAndUpdate(
           { userId },
-          { userId, username, lastSeen: new Date() },
+          {
+            $set: { userId, username, lastSeen: new Date() },
+            $push: {
+              joinHistory: {
+                $each: [new Date()],
+                $slice: -100,
+              },
+            },
+          },
           { upsert: true, new: true }
         ).catch(err => logger.error('Failed to save user:', err));
 
@@ -1548,6 +1570,118 @@ wss.on('connection', (ws, req) => {
       case 'stop_typing': {
         if (ws.userId) typingUsers.delete(ws.userId);
         broadcastOnlineUsers();
+        break;
+      }
+      case 'report_user': {
+        if (!ws.userId || !ws.username) {
+          ws.send(JSON.stringify({ type: 'report_error', message: 'You must be connected to submit a report.' }));
+          break;
+        }
+
+        const reportedUserId = typeof parsedMessage.reportedUserId === 'string'
+          ? parsedMessage.reportedUserId.trim()
+          : '';
+        const fallbackReportedUsername = typeof parsedMessage.reportedUsername === 'string'
+          ? parsedMessage.reportedUsername.trim()
+          : '';
+        const messageId = typeof parsedMessage.messageId === 'string'
+          ? parsedMessage.messageId.trim()
+          : '';
+        const reasonRaw = typeof parsedMessage.reason === 'string'
+          ? parsedMessage.reason.replace(/\s+/g, ' ').trim()
+          : '';
+
+        if (!reportedUserId) {
+          ws.send(JSON.stringify({ type: 'report_error', message: 'Missing reported user.' }));
+          break;
+        }
+
+        if (reportedUserId === ws.userId) {
+          ws.send(JSON.stringify({ type: 'report_error', message: 'You cannot report yourself.' }));
+          break;
+        }
+
+        if (reasonRaw.length < MIN_REPORT_REASON_LENGTH) {
+          ws.send(JSON.stringify({
+            type: 'report_error',
+            message: `Please enter at least ${MIN_REPORT_REASON_LENGTH} characters in the reason.`,
+          }));
+          break;
+        }
+
+        if (reasonRaw.length > MAX_REPORT_REASON_LENGTH) {
+          ws.send(JSON.stringify({
+            type: 'report_error',
+            message: `Reason is too long. Maximum ${MAX_REPORT_REASON_LENGTH} characters.`,
+          }));
+          break;
+        }
+
+        try {
+          const [reportedUserDoc, reportedMessage] = await Promise.all([
+            User.findOne({ userId: { $eq: reportedUserId } }).lean(),
+            messageId ? Message.findOne({ id: { $eq: messageId } }).lean() : Promise.resolve(null),
+          ]);
+
+          const reportedUsername = reportedUserDoc?.username
+            || onlineUsers.get(reportedUserId)?.username
+            || fallbackReportedUsername
+            || 'Unknown';
+
+          const sessionInfo = loggedInUsers.get(reportedUserId);
+          const sessionLoginTime = sessionInfo?.loginTime ? new Date(sessionInfo.loginTime) : null;
+          const sessionDurationMs = sessionLoginTime
+            ? Math.max(0, Date.now() - sessionLoginTime.getTime())
+            : null;
+
+          const joinHistory = Array.isArray(reportedUserDoc?.joinHistory)
+            ? reportedUserDoc.joinHistory
+                .map((d) => new Date(d))
+                .filter((d) => !Number.isNaN(d.getTime()))
+                .slice(-MAX_REPORTED_JOIN_HISTORY)
+            : [];
+
+          const report = await UserReport.create({
+            reporterUserId: ws.userId,
+            reporterUsername: ws.username,
+            reporterIp: ws.clientIp || '',
+            reporterUserAgent: ws.clientUa || '',
+            reportedUserId,
+            reportedUsername,
+            reason: reasonRaw,
+            messageId: reportedMessage?.id || messageId,
+            messageType: reportedMessage?.type || parsedMessage.messageType || 'text',
+            messageText: reportedMessage?.text || '',
+            messageUrl: reportedMessage?.url || '',
+            messageTimestamp: reportedMessage?.timestamp ? new Date(reportedMessage.timestamp) : null,
+            reportedUserJoinedAt: reportedUserDoc?.createdAt ? new Date(reportedUserDoc.createdAt) : null,
+            reportedUserLastSeen: reportedUserDoc?.lastSeen ? new Date(reportedUserDoc.lastSeen) : null,
+            reportedUserCurrentSessionLoginTime: sessionLoginTime,
+            reportedUserCurrentSessionDurationMs: sessionDurationMs,
+            reportedUserIsOnline: onlineUsers.has(reportedUserId),
+            reportedUserJoinHistory: joinHistory,
+            reportedAt: new Date(),
+          });
+
+          const reportData = typeof report.toObject === 'function' ? report.toObject() : report;
+          broadcastToAdmins('user_reported', reportData);
+          broadcastToAdmins('activity', `User report: '${ws.username}' reported '${reportedUsername}'.`);
+
+          ws.send(JSON.stringify({
+            type: 'report_submitted',
+            data: {
+              reportId: reportData._id,
+              reportedUserId,
+              reportedUsername,
+            },
+          }));
+        } catch (error) {
+          logger.error('Failed to save user report:', { message: error.message, stack: error.stack });
+          ws.send(JSON.stringify({
+            type: 'report_error',
+            message: 'Failed to submit report. Please try again.',
+          }));
+        }
         break;
       }
       case 'delete_for_everyone': {

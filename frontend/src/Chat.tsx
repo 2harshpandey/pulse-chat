@@ -202,6 +202,8 @@ const MAX_LOADED_MEDIA_TRACKING = 800;
 const MAX_QUOTE_JUMP_STACK_DEPTH = 64;
 const MAX_QUOTE_AUTO_LOAD_PAGES = 120;
 const LONG_PRESS_CANCEL_MOVE_PX = 8;
+const MIN_REPORT_REASON_LENGTH = 5;
+const MAX_REPORT_REASON_LENGTH = 500;
 const COMPOSER_TEXTAREA_ID = 'chat-composer-input';
 
 // --- STYLED COMPONENTS ---
@@ -2186,6 +2188,123 @@ const ConfirmationContent = styled.div`
   div { display: flex; gap: 1rem; justify-content: center; }
 `;
 
+const ReportModal = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  background: rgba(0, 0, 0, 0.46);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  animation: ${reactionsModalFadeIn} 0.2s ease-out forwards;
+`;
+
+const ReportDialog = styled.div`
+  width: min(92vw, 460px);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-primary);
+  border-radius: 16px;
+  box-shadow: 0 28px 64px rgba(0, 0, 0, 0.28);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  animation: ${modalSlideUp} 0.34s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+
+  [data-theme='dark'] & {
+    box-shadow: 0 28px 64px rgba(0, 0, 0, 0.5);
+  }
+
+  @media (max-width: 480px) {
+    width: 94vw;
+    border-radius: 14px;
+    padding: 0.9rem;
+  }
+`;
+
+const ReportTitle = styled.h3`
+  margin: 0;
+  font-size: 1rem;
+  color: var(--text-heading);
+`;
+
+const ReportSubtext = styled.p`
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--text-secondary);
+`;
+
+const ReportMessageMeta = styled.div`
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+
+  strong {
+    font-size: 0.8rem;
+    color: var(--text-primary);
+  }
+
+  span {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    word-break: break-word;
+  }
+`;
+
+const ReportReasonInput = styled.textarea`
+  width: 100%;
+  min-height: 96px;
+  max-height: 180px;
+  resize: vertical;
+  border: 1px solid var(--border-secondary);
+  border-radius: 10px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  padding: 0.7rem 0.8rem;
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+
+  &:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.14);
+  }
+
+  &::placeholder {
+    color: var(--text-muted);
+  }
+`;
+
+const ReportReasonMeta = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+`;
+
+const ReportError = styled.p`
+  margin: 0;
+  font-size: 0.8rem;
+  color: #ef4444;
+`;
+
+const ReportActions = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+`;
+
 const VideoPlayerWrapper = styled.div`
   ${mediaFrameStyles}
   cursor: pointer;
@@ -2665,6 +2784,7 @@ interface MessageItemProps {
   handleToggleSelectMessage: (messageId: string) => void;
   setActiveDeleteMenu: (id: string | null) => void;
   handleCopy: (message: Message) => void;
+  handleOpenReport: (message: Message) => void;
   handleStartEdit: (message: Message) => void;
   handleCancelSelectMode: () => void;
   isMobileView: boolean;
@@ -2701,6 +2821,7 @@ const MessageItem = React.memo(({
   handleToggleSelectMessage,
   setActiveDeleteMenu,
   handleCopy,
+  handleOpenReport,
   handleStartEdit,
   handleCancelSelectMode,
   isMobileView,
@@ -3320,6 +3441,12 @@ const MessageItem = React.memo(({
                   Copy
                 </DeleteMenuItem>
               }
+              {msg.userId !== currentUserId && (
+                <DeleteMenuItem onClick={() => { handleOpenReport(msg); setActiveDeleteMenu(null); }}>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                  Report user
+                </DeleteMenuItem>
+              )}
               <DeleteMenuItem onClick={() => { handleToggleSelectMessage(msg.id); setActiveDeleteMenu(null); }}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
                 Delete
@@ -3542,6 +3669,11 @@ function Chat() {
   const [selectedMessages, setSelectedMessages] = useState<string[]>([]);
   const [preserveComposerDuringSelectMode, setPreserveComposerDuringSelectMode] = useState(false);
   const [isDeleteConfirmationVisible, setIsDeleteConfirmationVisible] = useState(false);
+  const [isReportModalVisible, setIsReportModalVisible] = useState(false);
+  const [reportTargetMessage, setReportTargetMessage] = useState<Message | null>(null);
+  const [reportReason, setReportReason] = useState('');
+  const [reportError, setReportError] = useState('');
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const [canDeleteForEveryone, setCanDeleteForEveryone] = useState(false);
   const [fullEmojiPickerPosition, setFullEmojiPickerPosition] = useState<DOMRect | null>(null);
   const [isMobileView, setIsMobileView] = useState(window.innerWidth <= 768);
@@ -3722,6 +3854,7 @@ function Chat() {
     isSelectModeActive,
     selectedMessageCount: selectedMessages.length,
     isDeleteConfirmationVisible,
+    isReportModalVisible,
     lightboxUrl,
     isUserListVisible,
     replyingTo,
@@ -3741,6 +3874,7 @@ function Chat() {
       isSelectModeActive,
       selectedMessageCount: selectedMessages.length,
       isDeleteConfirmationVisible,
+      isReportModalVisible,
       lightboxUrl,
       isUserListVisible,
       replyingTo,
@@ -3753,6 +3887,7 @@ function Chat() {
     isSelectModeActive,
     selectedMessages.length,
     isDeleteConfirmationVisible,
+    isReportModalVisible,
     lightboxUrl,
     isUserListVisible,
     replyingTo,
@@ -3770,6 +3905,7 @@ function Chat() {
     const hasSelectedMessages = selectedMessages.length > 0;
     const anyOpen =
       isDeleteConfirmationVisible ||
+      isReportModalVisible ||
       isSelectModeActive ||
       hasSelectedMessages ||
       !!lightboxUrl ||
@@ -3788,6 +3924,7 @@ function Chat() {
     }
   }, [
     isDeleteConfirmationVisible,
+    isReportModalVisible,
     isSelectModeActive,
     selectedMessages.length,
     lightboxUrl,
@@ -3874,6 +4011,7 @@ function Chat() {
         isSelectModeActive,
         selectedMessageCount,
         isDeleteConfirmationVisible,
+        isReportModalVisible,
         lightboxUrl,
         isUserListVisible,
         replyingTo,
@@ -3886,6 +4024,10 @@ function Chat() {
       // Strict hierarchy: confirm modal → full-emoji → select mode → GIF → emoji → plus menu → lightbox → sidebar → quote.
       if (isDeleteConfirmationVisible) {
         setIsDeleteConfirmationVisible(false);
+      } else if (isReportModalVisible) {
+        setIsReportModalVisible(false);
+        setReportError('');
+        setIsSubmittingReport(false);
       } else if (isFullEmojiPickerOpen) {
         setFullEmojiPickerPosition(null);
         messageIdForFullEmojiPickerRef.current = null;
@@ -4041,6 +4183,15 @@ function Chat() {
           setHistoryLoaded(true);
         } else if (messageData.type === 'online_users') {
           setOnlineUsers(messageData.data);
+        } else if (messageData.type === 'report_submitted') {
+          setIsSubmittingReport(false);
+          setReportError('');
+          setReportReason('');
+          setReportTargetMessage(null);
+          setIsReportModalVisible(false);
+        } else if (messageData.type === 'report_error') {
+          setIsSubmittingReport(false);
+          setReportError(typeof messageData.message === 'string' ? messageData.message : 'Failed to submit report. Please try again.');
         } else if (messageData.type === 'chat_cleared') {
           // Admin cleared all messages — wipe the local list immediately.
           setMessages([]);
@@ -4915,6 +5066,56 @@ function Chat() {
       setActiveDeleteMenu(null);
     }, []);
 
+    const handleOpenReport = useCallback((message: Message) => {
+      if (!message || message.userId === userIdRef.current || message.isDeleted || message.type === 'system_notification') {
+        return;
+      }
+      setActiveDeleteMenu(null);
+      setReportTargetMessage(message);
+      setReportReason('');
+      setReportError('');
+      setIsSubmittingReport(false);
+      setIsReportModalVisible(true);
+    }, []);
+
+    const handleCloseReportModal = useCallback(() => {
+      setIsReportModalVisible(false);
+      setIsSubmittingReport(false);
+      setReportError('');
+      setReportReason('');
+      setReportTargetMessage(null);
+    }, []);
+
+    const handleSubmitReport = useCallback(() => {
+      if (!reportTargetMessage || !ws.current || ws.current.readyState !== WebSocket.OPEN) {
+        setReportError('Unable to submit report right now. Please try again.');
+        return;
+      }
+
+      const normalizedReason = reportReason.replace(/\s+/g, ' ').trim();
+      if (normalizedReason.length < MIN_REPORT_REASON_LENGTH) {
+        setReportError(`Please enter at least ${MIN_REPORT_REASON_LENGTH} characters.`);
+        return;
+      }
+
+      if (normalizedReason.length > MAX_REPORT_REASON_LENGTH) {
+        setReportError(`Please keep the reason under ${MAX_REPORT_REASON_LENGTH} characters.`);
+        return;
+      }
+
+      setIsSubmittingReport(true);
+      setReportError('');
+
+      ws.current.send(JSON.stringify({
+        type: 'report_user',
+        reportedUserId: reportTargetMessage.userId,
+        reportedUsername: reportTargetMessage.username,
+        messageId: reportTargetMessage.id,
+        messageType: reportTargetMessage.type,
+        reason: normalizedReason,
+      }));
+    }, [reportReason, reportTargetMessage]);
+
     const handleCancelEdit = useCallback(() => {
       setEditingMessageId(null);
       setEditingText('');
@@ -5600,6 +5801,7 @@ function Chat() {
                               handleToggleSelectMessage={handleToggleSelectMessage}
                               setActiveDeleteMenu={setActiveDeleteMenu}
                               handleCopy={handleCopy}
+                              handleOpenReport={handleOpenReport}
                               handleStartEdit={handleStartEdit}
                               handleCancelSelectMode={handleCancelSelectMode}
                               isMobileView={isMobileView}
@@ -5873,6 +6075,50 @@ function Chat() {
             </div>
           </ConfirmationContent>
         </ConfirmationModal>
+      )}
+
+      {isReportModalVisible && reportTargetMessage && (
+        <ReportModal onClick={handleCloseReportModal}>
+          <ReportDialog onClick={(e) => e.stopPropagation()}>
+            <ReportTitle>Report user</ReportTitle>
+            <ReportSubtext>
+              Reported user: <strong>{reportTargetMessage.username}</strong>
+            </ReportSubtext>
+            <ReportMessageMeta>
+              <strong>Reported message</strong>
+              <span>
+                {reportTargetMessage.text?.trim()
+                  || (reportTargetMessage.type === 'image'
+                    ? '[Image message]'
+                    : reportTargetMessage.type === 'video'
+                      ? '[Video message]'
+                      : reportTargetMessage.type === 'file'
+                        ? '[File attachment]'
+                        : '[No text content]')}
+              </span>
+            </ReportMessageMeta>
+            <ReportReasonInput
+              value={reportReason}
+              onChange={(e) => setReportReason(e.target.value)}
+              placeholder="Tell us why this user/message should be reviewed..."
+              maxLength={MAX_REPORT_REASON_LENGTH}
+              autoFocus
+            />
+            <ReportReasonMeta>
+              <span>Minimum {MIN_REPORT_REASON_LENGTH} characters</span>
+              <span>{reportReason.length}/{MAX_REPORT_REASON_LENGTH}</span>
+            </ReportReasonMeta>
+            {reportError && <ReportError>{reportError}</ReportError>}
+            <ReportActions>
+              <ConfirmationButton className="cancel" onClick={handleCloseReportModal} disabled={isSubmittingReport}>
+                Cancel
+              </ConfirmationButton>
+              <ConfirmationButton className="delete" onClick={handleSubmitReport} disabled={isSubmittingReport}>
+                {isSubmittingReport ? 'Submitting...' : 'Submit report'}
+              </ConfirmationButton>
+            </ReportActions>
+          </ReportDialog>
+        </ReportModal>
       )}
 
       {lightboxUrl && (
