@@ -204,7 +204,6 @@ const MAX_QUOTE_AUTO_LOAD_PAGES = 120;
 const LONG_PRESS_CANCEL_MOVE_PX = 8;
 const MIN_REPORT_REASON_LENGTH = 5;
 const MAX_REPORT_REASON_LENGTH = 500;
-const COMPOSER_TEXTAREA_ID = 'chat-composer-input';
 
 // --- STYLED COMPONENTS ---
 export const GlobalStyle = createGlobalStyle`
@@ -3037,34 +3036,6 @@ const MessageItem = React.memo(({
     );
   }, []);
 
-  const shouldPreserveComposerKeyboard = useCallback((target: HTMLElement) => {
-    if (!isMobileView || isLongPressIgnoredTarget(target)) {
-      return false;
-    }
-    return (
-      document.activeElement instanceof HTMLElement &&
-      document.activeElement.id === COMPOSER_TEXTAREA_ID
-    );
-  }, [isMobileView, isLongPressIgnoredTarget]);
-
-  const handleLongPressTouchStartCapture = (e: React.TouchEvent) => {
-    if (!isMobileView || e.touches.length !== 1) return;
-    const target = e.target as HTMLElement;
-    if (shouldPreserveComposerKeyboard(target) && e.nativeEvent.cancelable) {
-      // Capture-phase preventDefault keeps textarea focus from being stolen
-      // before the long-press timer starts on some mobile browsers.
-      e.preventDefault();
-    }
-  };
-
-  const handleLongPressPointerDownCapture = (e: React.PointerEvent) => {
-    if (e.pointerType !== 'touch') return;
-    const target = e.target as HTMLElement;
-    if (shouldPreserveComposerKeyboard(target) && e.nativeEvent.cancelable) {
-      e.preventDefault();
-    }
-  };
-
   const handleLongPressStart = (e: React.TouchEvent | React.MouseEvent) => {
     if (!isMobileView || !('touches' in e)) {
       return;
@@ -3077,12 +3048,6 @@ const MessageItem = React.memo(({
     const target = e.target as HTMLElement;
     if (isLongPressIgnoredTarget(target)) {
       return;
-    }
-
-    if (shouldPreserveComposerKeyboard(target) && e.nativeEvent.cancelable) {
-      // Keep focus on the composer while long-pressing a message so the
-      // on-screen keyboard doesn't collapse on touch devices.
-      e.preventDefault();
     }
 
     if (e.touches.length !== 1) {
@@ -3176,8 +3141,6 @@ const MessageItem = React.memo(({
       }}
       onMouseDown={handleLongPressStart}
       onMouseUp={handleLongPressEnd}
-      onPointerDownCapture={handleLongPressPointerDownCapture}
-      onTouchStartCapture={handleLongPressTouchStartCapture}
       onTouchStart={handleLongPressStart}
       onTouchMove={handleLongPressMove}
       onTouchEnd={handleLongPressEnd}
@@ -3667,7 +3630,6 @@ function Chat() {
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [isSelectModeActive, setIsSelectModeActive] = useState(false);
   const [selectedMessages, setSelectedMessages] = useState<string[]>([]);
-  const [preserveComposerDuringSelectMode, setPreserveComposerDuringSelectMode] = useState(false);
   const [isDeleteConfirmationVisible, setIsDeleteConfirmationVisible] = useState(false);
   const [isReportModalVisible, setIsReportModalVisible] = useState(false);
   const [reportTargetMessage, setReportTargetMessage] = useState<Message | null>(null);
@@ -4913,11 +4875,6 @@ function Chat() {
   };
   
   const handleToggleSelectMessage = useCallback((messageId: string) => {
-    const shouldPreserveComposer =
-      isMobileView &&
-      document.activeElement instanceof HTMLElement &&
-      document.activeElement.id === COMPOSER_TEXTAREA_ID;
-
     setSelectedMessages(prevSelected => {
       const newSelected = prevSelected.includes(messageId)
         ? prevSelected.filter(id => id !== messageId)
@@ -4925,39 +4882,22 @@ function Chat() {
 
       if (newSelected.length === 0) {
         setIsSelectModeActive(false);
-        setPreserveComposerDuringSelectMode(false);
       } else if (prevSelected.length === 0) {
         setIsSelectModeActive(true);
-        setPreserveComposerDuringSelectMode(shouldPreserveComposer);
         if (!overlayGuardPushed.current) {
           window.history.pushState({ overlayGuard: true }, '');
           overlayGuardPushed.current = true;
-        }
-        if (shouldPreserveComposer) {
-          requestAnimationFrame(() => {
-            const composer = document.getElementById(COMPOSER_TEXTAREA_ID) as HTMLTextAreaElement | null;
-            if (composer && document.activeElement !== composer) {
-              composer.focus({ preventScroll: true });
-            }
-          });
         }
       }
       
       return newSelected;
     });
-  }, [isMobileView]);
+  }, []);
 
   const handleCancelSelectMode = useCallback(() => {
     setIsSelectModeActive(false);
-    setPreserveComposerDuringSelectMode(false);
     setSelectedMessages([]);
   }, []);
-
-  useEffect(() => {
-    if (!isSelectModeActive) {
-      setPreserveComposerDuringSelectMode(false);
-    }
-  }, [isSelectModeActive]);
 
   // Re-anchor scroll to bottom when select mode deactivates on mobile.
   // The select-mode footer swaps with the input footer, changing the chat
@@ -5840,7 +5780,7 @@ function Chat() {
             </MessagesAndScrollWrapper>
             <TypingIndicator onlineUsers={onlineUsers} currentUserId={userIdRef.current} />
             <Footer>
-              {isSelectModeActive && !preserveComposerDuringSelectMode && (
+              {isSelectModeActive && (
                 <SelectModeFooter>
                   <CancelPreviewButton onClick={handleCancelSelectMode}>&times;</CancelPreviewButton>
                   <span>{selectedMessages.length} selected</span>
@@ -5861,9 +5801,8 @@ function Chat() {
                   </div>
                 </SelectModeFooter>
               )}
-              {/* Keep the input section always mounted so the keyboard doesn't dismiss on long-press.
-                  When select mode is active, hide it visually but keep the textarea in the DOM. */}
-                <div style={isSelectModeActive && !preserveComposerDuringSelectMode ? { position: 'absolute', width: 0, height: 0, overflow: 'hidden', opacity: 0, pointerEvents: 'none' } : undefined}>
+              {!isSelectModeActive && (
+                <div>
                {replyingTo && <ReplyPreviewContainer ref={replyPreviewRef} onClick={() => scrollToMessage(replyingTo.id)}>
                 {replyingTo.type === 'video' && replyingTo.url ? (
                   <video src={replyingTo.url} style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover' }} />
@@ -5979,7 +5918,6 @@ function Chat() {
                           </InputHighlightOverlay>
                         )}
                         <MessageInput
-                          id={COMPOSER_TEXTAREA_ID}
                           $hasUrl={hasUrl}
                           ref={messageInputRef}
                           rows={1}
@@ -5988,11 +5926,6 @@ function Chat() {
                           onChange={handleInputChange}
                           onKeyDown={handleInputKeyDown}
                           onPaste={handlePaste}
-                          onBlur={() => {
-                            if (isSelectModeActive) {
-                              setPreserveComposerDuringSelectMode(false);
-                            }
-                          }}
                           maxLength={MAX_MESSAGE_LENGTH}
                         />
                       </>
@@ -6026,6 +5959,7 @@ function Chat() {
                 </div>
               )}
               </div>
+              )}
             </Footer>
           </ChatWindow>
           <SidebarBackdrop $isVisible={isUserListVisible} onClick={() => setIsUserListVisible(false)} />
