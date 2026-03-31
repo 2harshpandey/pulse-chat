@@ -3717,8 +3717,8 @@ function Chat() {
       const hadReply = !!replyingTo;
       resetInput();
       // After resetInput clears the reply preview, the footer height changes.
-      // A delayed scroll ensures we reach the true bottom after layout stabilizes.
-      if (hadReply) setTimeout(() => scrollToBottom(), 150);
+      // A delayed staggered scroll ensures we reach the true bottom after layout stabilizes.
+      if (hadReply) forceScrollToBottomAsync();
 
     } else if (stagedGif) {
       const gifMessage: Message = { id: stagedGif.id, userId: userIdRef.current, username: userContext.profile.username, type: 'image', url: stagedGif.url, text: inputMessage, timestamp: new Date().toISOString(), replyingTo: replyContext };
@@ -3728,8 +3728,8 @@ function Chat() {
       const hadReply = !!replyingTo;
       resetInput();
       // After resetInput clears the reply preview, the footer height changes.
-      // A delayed scroll ensures we reach the true bottom after layout stabilizes.
-      if (hadReply) setTimeout(() => scrollToBottom(), 150);
+      // A delayed staggered scroll ensures we reach the true bottom after layout stabilizes.
+      if (hadReply) forceScrollToBottomAsync();
     } else {
       const textMessage: Message = { id: Date.now().toString(), userId: userIdRef.current, username: userContext.profile.username, type: 'text', text: inputMessage, timestamp: new Date().toISOString(), replyingTo: replyContext };
       setMessages(prev => [...prev, textMessage]);
@@ -3738,8 +3738,8 @@ function Chat() {
       const hadReply = !!replyingTo;
       resetInput();
       // After resetInput clears the reply preview, the footer height changes.
-      // A delayed scroll ensures we reach the true bottom after layout stabilizes.
-      if (hadReply) setTimeout(() => scrollToBottom(), 150);
+      // A delayed staggered scroll ensures we reach the true bottom after layout stabilizes.
+      if (hadReply) forceScrollToBottomAsync();
     }
   };
 
@@ -4120,8 +4120,20 @@ function Chat() {
   
   const scrollToBottom = () => {
     if (virtuosoRef.current) {
-      virtuosoRef.current.scrollToIndex({ index: messages.length - 1, align: 'end', behavior: 'smooth' });
+      // Use an outrageously large index to guarantee anchoring to the end,
+      // bypassing stale closure limits when called asynchronously.
+      virtuosoRef.current.scrollToIndex({ index: 9999999, align: 'end', behavior: 'smooth' });
     }
+  };
+
+  const forceScrollToBottomAsync = () => {
+    scrollToBottom();
+    // Re-issue the scroll over the next 500ms to guarantee anchoring.
+    // This perfectly tracks the mobile OS virtual keyboard retracting animation
+    // and layout flex reflows (like reply previews unmounting).
+    setTimeout(scrollToBottom, 50);
+    setTimeout(scrollToBottom, 200);
+    setTimeout(scrollToBottom, 450);
   };
 
   const handleEmojiClick = (emojiData: EmojiClickData) => { setInputMessage(prev => prev + emojiData.emoji); };
@@ -4560,7 +4572,7 @@ function Chat() {
                 if (isMobileView && document.activeElement instanceof HTMLElement) {
                   document.activeElement.blur();
                 }
-                scrollToBottom();
+                forceScrollToBottomAsync();
               }}
               onMouseDown={(e) => e.preventDefault()}
               onPointerDown={(e) => e.preventDefault()}
