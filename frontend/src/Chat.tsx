@@ -469,10 +469,6 @@ const MessageRow = styled.div<{ $sender: string; $isSelected?: boolean; $isActiv
   /* Grouped = same sender continuation: tight gap; non-grouped = new sender: clear separation */
   padding-top: ${props => props.$isGrouped ? '2px' : '6px'};
   padding-bottom: 1px;
-  /* GPU-accelerate each row so scrolling composites on the GPU layer,
-     eliminating micro-stutter on fast swipes (especially mobile). */
-  will-change: transform;
-  transform: translateZ(0);
 `;
 const Username = styled.div<{ $sender: 'me' | 'other' }>`
   font-size: 0.75rem;
@@ -531,7 +527,7 @@ const MobileReactionPicker = styled.div<{ $sender: 'me' | 'other' }>`
 `;
 const MessageBubble = styled.div<{ $sender: string; $messageType: string; $isUploading?: boolean; $uploadError?: boolean; }>`
   position: relative;
-  max-width: ${props => props.$messageType === 'text' ? '62%' : '68%'};
+  max-width: ${props => props.$messageType === 'text' ? '62%' : 'min(88vw, 360px)'};
   padding: ${props => props.$messageType === 'text' ? '0.24rem 0.48rem 0.12rem' : '0.28rem 0.34rem'};
   border-radius: 0.82rem;
   background-color: ${props => props.$sender === 'me' ? '#3B82F6' : 'var(--bg-message-other)'};
@@ -816,9 +812,18 @@ const FileAttachmentCard = styled.div`
 
 const MediaContent = styled.div`
   user-select: none;
-  animation: ${fadeInScale} 0.3s ease-out forwards;
   p { margin-bottom: 0.5rem; }
   p + div, p + img, p + video { margin-top: 0.5rem; }
+`;
+
+const mediaFrameStyles = css`
+  position: relative;
+  display: block;
+  width: min(100%, 340px);
+  max-width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 0.75rem;
+  overflow: hidden;
 `;
 
 /* Absolutely-positioned download button that appears over images */
@@ -848,14 +853,8 @@ const MediaDownloadOverlayBtn = styled.button`
 
 /* Uniform frame wrapper for media objects to prevent scroll glitches during lazy load */
 const MediaImageWrapper = styled.div`
-  position: relative;
-  display: block;
-  width: 260px;
-  height: 260px;
-  border-radius: 0.75rem;
-  overflow: hidden;
+  ${mediaFrameStyles}
   background-color: var(--bg-hover);
-  @media (min-width: 769px) { width: 340px; height: 340px; }
 
   img {
     width: 100%;
@@ -1955,17 +1954,12 @@ const ConfirmationContent = styled.div`
 `;
 
 const VideoPlayerWrapper = styled.div`
-  position: relative;
+  ${mediaFrameStyles}
   cursor: pointer;
-  width: 260px;
-  height: 260px;
-  border-radius: 0.75rem;
-  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #000;
-  @media (min-width: 769px) { width: 340px; height: 340px; }
 
   video {
     width: 100%;
@@ -2046,7 +2040,7 @@ const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter }: { src: string; o
         src={sanitizeMediaUrl(src)}
         onLoadedMetadata={handleLoadedMetadata}
         onDoubleClick={(e) => e.preventDefault()}
-        style={{ width: '100%', maxHeight: '60vh', zIndex: 1, position: 'relative' }}
+        style={{ zIndex: 1, position: 'relative' }}
         controls
         crossOrigin="anonymous"
         preload="metadata"
@@ -4530,8 +4524,9 @@ function Chat() {
                  followOutput={(isAtBottom: boolean) => isAtBottom ? 'smooth' : false}
                  atBottomStateChange={handleAtBottomStateChange}
                  atBottomThreshold={20}
-                 increaseViewportBy={{ top: 1200, bottom: 600 }}
-                 overscan={600}
+                 defaultItemHeight={96}
+                 increaseViewportBy={{ top: 480, bottom: 320 }}
+                 overscan={240}
                  computeItemKey={(index: number, msg: Message) => msg.id || index}
                  style={{ flex: 1, overflow: 'auto' }}
                  components={{ Footer: () => <div style={{ height: '12px' }} /> }}
