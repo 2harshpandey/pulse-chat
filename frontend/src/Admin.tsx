@@ -524,9 +524,16 @@ const FilterToggleButton = styled.button<{ $open: boolean }>`
     color: var(--accent-blue);
   }
 
+  &:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 2px;
+  }
+
   @media (max-width: 768px) {
     display: inline-flex;
     align-items: center;
+    position: relative;
+    z-index: 2;
   }
 `;
 
@@ -536,12 +543,6 @@ const MessageFilterCollapse = styled.div<{ $open: boolean }>`
   opacity: ${(p: any) => (p.$open ? 1 : 0)};
   transform: translateY(${(p: any) => (p.$open ? '0' : '-6px')});
   transition: max-height 220ms ease, opacity 180ms ease, transform 180ms ease;
-
-  @media (min-width: 769px) {
-    max-height: none;
-    opacity: 1;
-    transform: none;
-  }
 `;
 
 const Button = styled.button`
@@ -1858,17 +1859,35 @@ const Admin = () => {
                 <ClearHistoryButton onClick={handlePermanentClear}>Clear Chat History</ClearHistoryButton>
               </div>
             </div>
-            {isMobileViewport && (
-              <FilterToggleButton
-                $open={showMessageFilters}
-                onClick={() => setShowMessageFilters(prev => !prev)}
-                aria-label={showMessageFilters ? 'Hide message log filters' : 'Show message log filters'}
-                title={showMessageFilters ? 'Hide filters' : 'Show filters'}
-              >
-                {showMessageFilters ? 'Hide filters' : 'Show filters'}
-              </FilterToggleButton>
-            )}
-            <MessageFilterCollapse $open={!isMobileViewport || showMessageFilters}>
+            {isMobileViewport ? (
+              <>
+                <FilterToggleButton
+                  type="button"
+                  $open={showMessageFilters}
+                  onClick={() => setShowMessageFilters(prev => !prev)}
+                  aria-label={showMessageFilters ? 'Hide message log filters' : 'Show message log filters'}
+                  title={showMessageFilters ? 'Hide filters' : 'Show filters'}
+                >
+                  {showMessageFilters ? 'Hide filters' : 'Show filters'}
+                </FilterToggleButton>
+                <MessageFilterCollapse $open={showMessageFilters}>
+                  <FilterContainer>
+                    <Input type="text" placeholder="Filter by Message ID" value={filterMessageId} onChange={(e) => setFilterMessageId(e.target.value)} />
+                    <Input type="text" placeholder="Filter by User" value={filterUser} onChange={(e) => setFilterUser(e.target.value)} />
+                    <SelectWrapper>
+                      <Select value={filterEventType} onChange={(e) => setFilterEventType(e.target.value)}>
+                        <option value="All">All Events</option>
+                        <option value="Create">Create</option>
+                        <option value="Edit">Edit</option>
+                        <option value="Upload">Upload</option>
+                        <option value="Delete (Everyone)">Delete (Everyone)</option>
+                      </Select>
+                    </SelectWrapper>
+                    <Input type="text" placeholder="Filter by Content" value={filterContent} onChange={(e) => setFilterContent(e.target.value)} />
+                  </FilterContainer>
+                </MessageFilterCollapse>
+              </>
+            ) : (
               <FilterContainer>
                 <Input type="text" placeholder="Filter by Message ID" value={filterMessageId} onChange={(e) => setFilterMessageId(e.target.value)} />
                 <Input type="text" placeholder="Filter by User" value={filterUser} onChange={(e) => setFilterUser(e.target.value)} />
@@ -1883,7 +1902,7 @@ const Admin = () => {
                 </SelectWrapper>
                 <Input type="text" placeholder="Filter by Content" value={filterContent} onChange={(e) => setFilterContent(e.target.value)} />
               </FilterContainer>
-            </MessageFilterCollapse>
+            )}
             {isLoading ? <p>Loading history...</p> : (
               <MessageLogTableWrapper>
                 <MessageLogTable>
