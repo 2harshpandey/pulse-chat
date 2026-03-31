@@ -5403,11 +5403,14 @@ function Chat() {
     // Clearing here caused a race condition where the message ID was lost.
   }, []);
 
+  // --- PRE-RENDER HOOKS (must be before any early return to satisfy Rules of Hooks) ---
+  const selectedMessageIds = useMemo(() => new Set(selectedMessages), [selectedMessages]);
+  const loadedMediaMessageSet = useMemo(() => new Set(loadedMediaMessageIds), [loadedMediaMessageIds]);
+  const virtuosoFollowOutput = useCallback((isAtBottom: boolean): 'smooth' | false => isAtBottom ? 'smooth' : false, []);
+
   // --- RENDER ---
   if (!userContext?.profile) { return <Auth onAuthSuccess={userContext!.login} tempToken={tempToken || null} />; }
 
-  const selectedMessageIds = useMemo(() => new Set(selectedMessages), [selectedMessages]);
-  const loadedMediaMessageSet = useMemo(() => new Set(loadedMediaMessageIds), [loadedMediaMessageIds]);
   const selectedMessage = messages.find(msg => msg.id === selectedMessages[0]);
   const canEditSelectedMessage = selectedMessages.length === 1 && selectedMessage && selectedMessage.userId === userIdRef.current && selectedMessage.text && (new Date().getTime() - new Date(selectedMessage.timestamp).getTime()) < 15 * 60 * 1000;
   const hasNewMessagesIndicator = newMessagesWhileScrolledUp > 0;
@@ -5422,7 +5425,6 @@ function Chat() {
     : 'Scroll to latest messages';
   const virtuosoOverscan = isMobileView ? VIRTUOSO_OVERSCAN_MOBILE : VIRTUOSO_OVERSCAN_DESKTOP;
   const virtuosoIncreaseViewportBy = isMobileView ? VIRTUOSO_VIEWPORT_BY_MOBILE : VIRTUOSO_VIEWPORT_BY_DESKTOP;
-  const virtuosoFollowOutput = (isAtBottom: boolean) => (isAtBottom ? 'smooth' : false);
  
   
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
