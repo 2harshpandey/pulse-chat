@@ -2172,6 +2172,11 @@ const EditButton = styled(SendButton)`
   &:hover:not(:disabled) { background-color: #F59E0B; box-shadow: 0 4px 16px rgba(251, 191, 36, 0.35); }
 `;
 
+const ReportButton = styled(SendButton)`
+  background-color: #F97316;
+  &:hover:not(:disabled) { background-color: #EA580C; box-shadow: 0 4px 16px rgba(249, 115, 22, 0.35); }
+`;
+
 const ConfirmationModal = styled.div`
   position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 100;
   animation: ${reactionsModalFadeIn} 0.2s ease-out forwards;
@@ -5794,6 +5799,15 @@ function Chat() {
                        <CopyButton onClick={() => { handleCopy(selectedMessage); handleCancelSelectMode(); }} title="Copy" aria-label="Copy selected message" >
                          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                        </CopyButton>
+                      )}
+                      {isMobileView && selectedMessages.length === 1 && selectedMessage && !selectedMessage.isDeleted && selectedMessage.userId !== userIdRef.current && selectedMessage.type !== 'system_notification' && (
+                        <ReportButton
+                          onClick={() => { handleOpenReport(selectedMessage); handleCancelSelectMode(); }}
+                          title="Report"
+                          aria-label="Report selected message"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18"></path><path d="M3 4h10l-1.5 3L13 10H3"></path></svg>
+                        </ReportButton>
                       )}
                     <DeleteButton onClick={handleInitiateDelete} title="Delete" aria-label="Delete selected messages">
                       <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>

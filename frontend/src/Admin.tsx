@@ -1477,9 +1477,50 @@ const Admin = () => {
     setIsLoading(true);
     setError('');
     try {
-      const headers = { 'x-admin-password': password };
-      const [usersRes, historyRes, serverLogsRes, tempLinksRes, blockedRes, lockdownRes, auditRes, reportsRes, loggedInRes] = await Promise.all([
-        fetch(`${apiUrl}/api/admin/users`, { headers }),
+      const enteredPassword = password;
+      const trimmedPassword = enteredPassword.trim();
+      if (!enteredPassword) {
+        setError('Please enter admin password.');
+        return;
+      }
+
+      const passwordAttempts = (trimmedPassword && trimmedPassword !== enteredPassword)
+        ? [enteredPassword, trimmedPassword]
+        : [enteredPassword];
+
+      let authenticatedPassword: string | null = null;
+      let usersData: UserProfile[] = [];
+
+      for (const candidate of passwordAttempts) {
+        const authHeaders = { 'x-admin-password': candidate };
+        const usersRes = await fetch(`${apiUrl}/api/admin/users`, { headers: authHeaders });
+
+        if (usersRes.status === 401) {
+          continue;
+        }
+
+        if (!usersRes.ok) {
+          setError(`Admin login service unavailable (${usersRes.status}). Please try again.`);
+          return;
+        }
+
+        usersData = await usersRes.json();
+        authenticatedPassword = candidate;
+        break;
+      }
+
+      if (!authenticatedPassword) {
+        setError('Incorrect password.');
+        return;
+      }
+
+      passwordRef.current = authenticatedPassword;
+      setPassword(authenticatedPassword);
+      setUsers(usersData);
+      setIsAuthenticated(true);
+
+      const headers = { 'x-admin-password': authenticatedPassword };
+      const [historyRes, serverLogsRes, tempLinksRes, blockedRes, lockdownRes, auditRes, reportsRes, loggedInRes] = await Promise.allSettled([
         fetch(`${apiUrl}/api/admin/history`, { headers }),
         fetch(`${apiUrl}/api/admin/server-logs`, { headers }),
         fetch(`${apiUrl}/api/admin/temp-links`, { headers }),
@@ -1489,25 +1530,44 @@ const Admin = () => {
         fetch(`${apiUrl}/api/admin/reports`, { headers }),
         fetch(`${apiUrl}/api/admin/logged-in-users`, { headers }),
       ]);
-      if (usersRes.ok && historyRes.ok) {
-        passwordRef.current = password;
-        setUsers(await usersRes.json());
-        setHistoryLogs((await historyRes.json()).sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
-        setServerLogs((await serverLogsRes.text()).split('\n').reverse());
-        if (tempLinksRes.ok) setTempLinks(await tempLinksRes.json());
-        if (blockedRes.ok) setBlockedUsers(await blockedRes.json());
-        if (lockdownRes.ok) setLockdownStatus(await lockdownRes.json());
-        if (auditRes.ok) setAuditLogs(await auditRes.json());
-        if (reportsRes.ok) setUserReports(await reportsRes.json());
-        if (loggedInRes.ok) setLoggedInUsersList(await loggedInRes.json());
-        setIsAuthenticated(true);
-      } else {
-        setError('Incorrect password.');
+
+      if (historyRes.status === 'fulfilled' && historyRes.value.ok) {
+        const historyData = await historyRes.value.json();
+        setHistoryLogs(historyData.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+      }
+
+      if (serverLogsRes.status === 'fulfilled' && serverLogsRes.value.ok) {
+        setServerLogs((await serverLogsRes.value.text()).split('\n').reverse());
+      }
+
+      if (tempLinksRes.status === 'fulfilled' && tempLinksRes.value.ok) {
+        setTempLinks(await tempLinksRes.value.json());
+      }
+
+      if (blockedRes.status === 'fulfilled' && blockedRes.value.ok) {
+        setBlockedUsers(await blockedRes.value.json());
+      }
+
+      if (lockdownRes.status === 'fulfilled' && lockdownRes.value.ok) {
+        setLockdownStatus(await lockdownRes.value.json());
+      }
+
+      if (auditRes.status === 'fulfilled' && auditRes.value.ok) {
+        setAuditLogs(await auditRes.value.json());
+      }
+
+      if (reportsRes.status === 'fulfilled' && reportsRes.value.ok) {
+        setUserReports(await reportsRes.value.json());
+      }
+
+      if (loggedInRes.status === 'fulfilled' && loggedInRes.value.ok) {
+        setLoggedInUsersList(await loggedInRes.value.json());
       }
     } catch {
       setError('An error occurred while trying to log in.');
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   const handleLogout = () => {
