@@ -166,6 +166,9 @@ const getQuotedPreviewThumbUrl = (mediaType: 'image' | 'video', mediaUrl?: strin
   return withCloudinaryTransform(safeUrl, 'f_auto,q_20,w_96,h_96,c_fill') || safeUrl;
 };
 
+const getCurrentHistoryPath = (): string =>
+  `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
 /**
  * Module-level WeakMap cache for blob: URLs.
  * Keeping creation here (outside React's render/state data-flow) ensures
@@ -3869,6 +3872,11 @@ function Chat() {
   // the ref, so the *next* effect run (triggered by closing one layer while
   // others remain) will push a fresh guard automatically.
   useEffect(() => {
+    if (!userContext?.profile) {
+      overlayGuardPushed.current = false;
+      return;
+    }
+
     const hasSelectedMessages = selectedMessages.length > 0;
     const anyOpen =
       isDeleteConfirmationVisible ||
@@ -3883,7 +3891,7 @@ function Chat() {
       !!fullEmojiPickerPosition ||
       isPlusMenuOpen;
     if (anyOpen && !overlayGuardPushed.current) {
-      window.history.pushState({ overlayGuard: true }, '');
+      window.history.pushState({ overlayGuard: true }, document.title, getCurrentHistoryPath());
       overlayGuardPushed.current = true;
     }
     if (!anyOpen) {
@@ -3901,6 +3909,7 @@ function Chat() {
     emojiPickerPosition,
     fullEmojiPickerPosition,
     isPlusMenuOpen,
+    userContext?.profile,
   ]);
 
   // --- LIFECYCLE & EVENT HANDLERS ---
@@ -3968,6 +3977,8 @@ function Chat() {
 
   // Mobile Back Button Handler
   useEffect(() => {
+    if (!userContext?.profile) return;
+
     const handlePopState = () => {
       // The browser just consumed (popped) our guard entry, so mark it gone.
       // If more layers remain open the guard-push *effect* will automatically
@@ -4019,7 +4030,7 @@ function Chat() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [closeEmojiPicker]);
+  }, [closeEmojiPicker, userContext?.profile]);
 
   // WebSocket connection with auto-reconnect on tab-resume / network-restore
   useEffect(() => {
@@ -4111,12 +4122,20 @@ function Chat() {
           // The server rejected our join because someone else already holds this username.
           // Store the error so Auth.tsx can display it, then log out back to the login screen.
           sessionStorage.setItem('authError', messageData.message || 'That username is already in use. Please choose a different one.');
+          if (overlayGuardPushed.current) {
+            window.history.replaceState(window.history.state, document.title, getCurrentHistoryPath());
+            overlayGuardPushed.current = false;
+          }
           userContext?.logout();
           return;
         }
         if (messageData.type === 'force_logout') {
           // Admin forced this user out — store message and log out
           sessionStorage.setItem('authError', messageData.message || 'You have been logged out by an administrator.');
+          if (overlayGuardPushed.current) {
+            window.history.replaceState(window.history.state, document.title, getCurrentHistoryPath());
+            overlayGuardPushed.current = false;
+          }
           userContext?.logout();
           return;
         }
@@ -4890,7 +4909,7 @@ function Chat() {
       } else if (prevSelected.length === 0) {
         setIsSelectModeActive(true);
         if (!overlayGuardPushed.current) {
-          window.history.pushState({ overlayGuard: true }, '');
+          window.history.pushState({ overlayGuard: true }, document.title, getCurrentHistoryPath());
           overlayGuardPushed.current = true;
         }
       }
@@ -4929,7 +4948,7 @@ function Chat() {
     // replaceState() silently overwrites the guard entry with no popstate,
     // so React Router never sees a navigation and the chat stays mounted.
     if (overlayGuardPushed.current) {
-      window.history.replaceState(null, '');
+      window.history.replaceState(window.history.state, document.title, getCurrentHistoryPath());
       overlayGuardPushed.current = false;
     }
     setIsDeleteConfirmationVisible(false);
@@ -4946,7 +4965,7 @@ function Chat() {
     // Same fix as handleBulkDeleteForMe — use replaceState instead of back()
     // to avoid the popstate→React Router→404 issue on desktop mouse-click path.
     if (overlayGuardPushed.current) {
-      window.history.replaceState(null, '');
+      window.history.replaceState(window.history.state, document.title, getCurrentHistoryPath());
       overlayGuardPushed.current = false;
     }
     setIsDeleteConfirmationVisible(false);
@@ -6000,6 +6019,10 @@ function Chat() {
               // Send explicit logout to server so it removes us from loggedInUsers
               if (ws.current && ws.current.readyState === WebSocket.OPEN) {
                 ws.current.send(JSON.stringify({ type: 'user_logout', userId: userIdRef.current }));
+              }
+              if (overlayGuardPushed.current) {
+                window.history.replaceState(window.history.state, document.title, getCurrentHistoryPath());
+                overlayGuardPushed.current = false;
               }
               userContext!.logout();
             }}>

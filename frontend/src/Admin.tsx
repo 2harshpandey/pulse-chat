@@ -538,11 +538,14 @@ const FilterToggleButton = styled.button<{ $open: boolean }>`
 `;
 
 const MessageFilterCollapse = styled.div<{ $open: boolean }>`
-  overflow: hidden;
-  max-height: ${(p: any) => (p.$open ? '420px' : '0')};
-  opacity: ${(p: any) => (p.$open ? 1 : 0)};
-  transform: translateY(${(p: any) => (p.$open ? '0' : '-6px')});
-  transition: max-height 220ms ease, opacity 180ms ease, transform 180ms ease;
+  @media (max-width: 768px) {
+    display: ${(p: any) => (p.$open ? 'block' : 'none')};
+    animation: ${(p: any) => (p.$open ? slideUp : 'none')} 0.22s ease;
+  }
+
+  @media (min-width: 769px) {
+    display: block;
+  }
 `;
 
 const Button = styled.button`
@@ -1322,10 +1325,8 @@ const Admin = () => {
   });
   const ws = useRef<WebSocket | null>(null);
   const activityLogRef = useRef<HTMLDivElement>(null);
+  const adminPasswordInputRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<string>('');
-  const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() =>
-    typeof window !== 'undefined' ? window.innerWidth <= 768 : false
-  );
   const [showMessageFilters, setShowMessageFilters] = useState<boolean>(() =>
     typeof window !== 'undefined' ? window.innerWidth > 768 : true
   );
@@ -1340,13 +1341,21 @@ const Admin = () => {
 
   useEffect(() => {
     const handleResize = () => {
-      const mobile = window.innerWidth <= 768;
-      setIsMobileViewport(mobile);
-      if (!mobile) setShowMessageFilters(true);
+      if (window.innerWidth > 768) setShowMessageFilters(true);
     };
     handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const focusAdminPasswordInput = useCallback(() => {
+    const input = adminPasswordInputRef.current;
+    if (!input) return;
+    try {
+      input.focus({ preventScroll: true });
+    } catch {
+      input.focus();
+    }
   }, []);
 
   // Message Log filters
@@ -1831,6 +1840,7 @@ const Admin = () => {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             </AdminInputIcon>
             <AdminStyledInput
+              ref={adminPasswordInputRef}
               id="admin-password"
               name="admin-password"
               type={isPasswordVisible ? 'text' : 'password'}
@@ -1845,7 +1855,13 @@ const Admin = () => {
             />
             <AdminEyeBtn
               type="button"
-              onClick={() => setIsPasswordVisible(prev => !prev)}
+              onMouseDown={(e) => e.preventDefault()}
+              onPointerDown={(e) => e.preventDefault()}
+              onTouchStart={(e) => e.preventDefault()}
+              onClick={() => {
+                setIsPasswordVisible(prev => !prev);
+                requestAnimationFrame(focusAdminPasswordInput);
+              }}
               aria-label={isPasswordVisible ? 'Hide password' : 'Show password'}
               title={isPasswordVisible ? 'Hide password' : 'Show password'}
             >
@@ -1919,35 +1935,16 @@ const Admin = () => {
                 <ClearHistoryButton onClick={handlePermanentClear}>Clear Chat History</ClearHistoryButton>
               </div>
             </div>
-            {isMobileViewport ? (
-              <>
-                <FilterToggleButton
-                  type="button"
-                  $open={showMessageFilters}
-                  onClick={() => setShowMessageFilters(prev => !prev)}
-                  aria-label={showMessageFilters ? 'Hide message log filters' : 'Show message log filters'}
-                  title={showMessageFilters ? 'Hide filters' : 'Show filters'}
-                >
-                  {showMessageFilters ? 'Hide filters' : 'Show filters'}
-                </FilterToggleButton>
-                <MessageFilterCollapse $open={showMessageFilters}>
-                  <FilterContainer>
-                    <Input type="text" placeholder="Filter by Message ID" value={filterMessageId} onChange={(e) => setFilterMessageId(e.target.value)} />
-                    <Input type="text" placeholder="Filter by User" value={filterUser} onChange={(e) => setFilterUser(e.target.value)} />
-                    <SelectWrapper>
-                      <Select value={filterEventType} onChange={(e) => setFilterEventType(e.target.value)}>
-                        <option value="All">All Events</option>
-                        <option value="Create">Create</option>
-                        <option value="Edit">Edit</option>
-                        <option value="Upload">Upload</option>
-                        <option value="Delete (Everyone)">Delete (Everyone)</option>
-                      </Select>
-                    </SelectWrapper>
-                    <Input type="text" placeholder="Filter by Content" value={filterContent} onChange={(e) => setFilterContent(e.target.value)} />
-                  </FilterContainer>
-                </MessageFilterCollapse>
-              </>
-            ) : (
+            <FilterToggleButton
+              type="button"
+              $open={showMessageFilters}
+              onClick={() => setShowMessageFilters(prev => !prev)}
+              aria-label={showMessageFilters ? 'Hide message log filters' : 'Show message log filters'}
+              title={showMessageFilters ? 'Hide filters' : 'Show filters'}
+            >
+              {showMessageFilters ? 'Hide filters' : 'Show filters'}
+            </FilterToggleButton>
+            <MessageFilterCollapse $open={showMessageFilters}>
               <FilterContainer>
                 <Input type="text" placeholder="Filter by Message ID" value={filterMessageId} onChange={(e) => setFilterMessageId(e.target.value)} />
                 <Input type="text" placeholder="Filter by User" value={filterUser} onChange={(e) => setFilterUser(e.target.value)} />
@@ -1962,7 +1959,7 @@ const Admin = () => {
                 </SelectWrapper>
                 <Input type="text" placeholder="Filter by Content" value={filterContent} onChange={(e) => setFilterContent(e.target.value)} />
               </FilterContainer>
-            )}
+            </MessageFilterCollapse>
             {isLoading ? <p>Loading history...</p> : (
               <MessageLogTableWrapper>
                 <MessageLogTable>

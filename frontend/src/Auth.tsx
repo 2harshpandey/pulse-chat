@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { UserProfile } from './UserContext';
 import { useTheme } from './ThemeContext';
@@ -405,6 +405,7 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [usernameFocused, setUsernameFocused] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
+  const passwordInputRef = useRef<HTMLInputElement>(null);
 
   const isTempLink = !!tempToken;
 
@@ -474,6 +475,16 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken }) => {
 
   const handleKeyDown = (e: React.KeyboardEvent) => { if (e.key === 'Enter') handleLogin(); };
 
+  const focusPasswordInput = useCallback(() => {
+    const input = passwordInputRef.current;
+    if (!input) return;
+    try {
+      input.focus({ preventScroll: true });
+    } catch {
+      input.focus();
+    }
+  }, []);
+
   return (
     <>
       <AnimatedBg>
@@ -541,6 +552,7 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken }) => {
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                 </InputIcon>
                 <StyledInput
+                  ref={passwordInputRef}
                   id="password"
                   name="password"
                   type={showPw ? 'text' : 'password'}
@@ -556,7 +568,13 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken }) => {
                 />
                 <PasswordToggle
                   type="button"
-                  onClick={() => setShowPw(p => !p)}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onPointerDown={(e) => e.preventDefault()}
+                  onTouchStart={(e) => e.preventDefault()}
+                  onClick={() => {
+                    setShowPw(p => !p);
+                    requestAnimationFrame(focusPasswordInput);
+                  }}
                   aria-label={showPw ? 'Hide password' : 'Show password'}
                   title={showPw ? 'Hide password' : 'Show password'}
                 >
