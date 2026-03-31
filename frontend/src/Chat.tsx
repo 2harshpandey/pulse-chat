@@ -1267,7 +1267,7 @@ const UserListItem = styled.li<{ index: number }>`
     transform: translateX(4px);
   }
 `;
-const MobileUserListToggle = styled(AttachButton)<{ $isOpen?: boolean }>`
+const MobileUserListToggle = styled(SendButton)<{ $isOpen?: boolean }>`
   display: none;
   @media (max-width: 768px) {
     display: flex;
