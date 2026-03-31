@@ -5073,10 +5073,14 @@ function Chat() {
   const handleScrollToBottomButtonClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
 
+    const latestMessageId = messagesRef.current[messagesRef.current.length - 1]?.id || null;
     let returnTargetId: string | null = null;
     while (quoteJumpReturnStackRef.current.length > 0) {
       const candidate = quoteJumpReturnStackRef.current.pop() || null;
       if (!candidate) continue;
+      // If hierarchy points to the bottom-most message, skip highlight behavior
+      // and fall through to the normal bottom scroll action.
+      if (latestMessageId && candidate === latestMessageId) continue;
       returnTargetId = candidate;
       break;
     }
