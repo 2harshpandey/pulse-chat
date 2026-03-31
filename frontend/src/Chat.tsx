@@ -169,6 +169,92 @@ const getQuotedPreviewThumbUrl = (mediaType: 'image' | 'video', mediaUrl?: strin
 const getCurrentHistoryPath = (): string =>
   `${window.location.pathname}${window.location.search}${window.location.hash}`;
 
+type RouterHistoryState = {
+  usr?: Record<string, unknown>;
+  key?: string;
+  idx?: number;
+  overlayGuard?: boolean;
+  [key: string]: unknown;
+};
+
+const readRouterHistoryState = (): RouterHistoryState => {
+  const raw = window.history.state;
+  if (raw && typeof raw === 'object') {
+    return { ...(raw as RouterHistoryState) };
+  }
+  return {};
+};
+
+const readRouterUserState = (state: RouterHistoryState): Record<string, unknown> => {
+  if (state.usr && typeof state.usr === 'object' && !Array.isArray(state.usr)) {
+    return { ...(state.usr as Record<string, unknown>) };
+  }
+  return {};
+};
+
+const buildOverlayGuardState = (
+  baseState: RouterHistoryState,
+  hasOverlayGuard: boolean,
+  mode: 'push' | 'replace',
+): RouterHistoryState => {
+  const nextBase = { ...baseState };
+  const nextUserState = readRouterUserState(baseState);
+
+  // Migrate older top-level overlayGuard flag to Router's user state bucket.
+  if (Object.prototype.hasOwnProperty.call(nextBase, 'overlayGuard')) {
+    if (nextBase.overlayGuard === true) {
+      nextUserState.overlayGuard = true;
+    }
+    delete nextBase.overlayGuard;
+  }
+
+  if (hasOverlayGuard) {
+    nextUserState.overlayGuard = true;
+  } else {
+    delete nextUserState.overlayGuard;
+  }
+
+  const fallbackIdx = Math.max(window.history.length - 1, 0);
+  const currentIdx = typeof nextBase.idx === 'number' ? nextBase.idx : fallbackIdx;
+  const currentKey = typeof nextBase.key === 'string' && nextBase.key
+    ? nextBase.key
+    : Math.random().toString(36).slice(2, 10);
+
+  return {
+    ...nextBase,
+    usr: nextUserState,
+    idx: mode === 'push' ? currentIdx + 1 : currentIdx,
+    key: mode === 'push' ? Math.random().toString(36).slice(2, 10) : currentKey,
+  };
+};
+
+const pushOverlayGuardHistoryEntry = (): void => {
+  const nextState = buildOverlayGuardState(readRouterHistoryState(), true, 'push');
+  window.history.pushState(nextState, document.title, getCurrentHistoryPath());
+};
+
+const clearOverlayGuardHistoryEntry = (): void => {
+  const nextState = buildOverlayGuardState(readRouterHistoryState(), false, 'replace');
+  window.history.replaceState(nextState, document.title, getCurrentHistoryPath());
+};
+
+const normalizeRouterHistoryState = (): void => {
+  const state = readRouterHistoryState();
+  const hasLegacyOverlay = Object.prototype.hasOwnProperty.call(state, 'overlayGuard');
+  const hasValidIdx = typeof state.idx === 'number';
+  const hasValidKey = typeof state.key === 'string' && state.key.length > 0;
+  const hasValidUsr =
+    state.usr === undefined ||
+    (typeof state.usr === 'object' && state.usr !== null && !Array.isArray(state.usr));
+
+  if (!hasLegacyOverlay && hasValidIdx && hasValidKey && hasValidUsr) {
+    return;
+  }
+
+  const nextState = buildOverlayGuardState(state, false, 'replace');
+  window.history.replaceState(nextState, document.title, getCurrentHistoryPath());
+};
+
 /**
  * Module-level WeakMap cache for blob: URLs.
  * Keeping creation here (outside React's render/state data-flow) ensures
@@ -3867,6 +3953,11 @@ function Chat() {
     isPlusMenuOpen,
   ]);
 
+  useEffect(() => {
+    if (!userContext?.profile) return;
+    normalizeRouterHistoryState();
+  }, [userContext?.profile]);
+
   // Push exactly ONE history guard entry when going from "nothing open" to
   // "something open".  When the popstate handler consumes the guard it resets
   // the ref, so the *next* effect run (triggered by closing one layer while
@@ -3891,7 +3982,7 @@ function Chat() {
       !!fullEmojiPickerPosition ||
       isPlusMenuOpen;
     if (anyOpen && !overlayGuardPushed.current) {
-      window.history.pushState({ overlayGuard: true }, document.title, getCurrentHistoryPath());
+      pushOverlayGuardHistoryEntry();
       overlayGuardPushed.current = true;
     }
     if (!anyOpen) {
@@ -4123,7 +4214,7 @@ function Chat() {
           // Store the error so Auth.tsx can display it, then log out back to the login screen.
           sessionStorage.setItem('authError', messageData.message || 'That username is already in use. Please choose a different one.');
           if (overlayGuardPushed.current) {
-            window.history.replaceState(window.history.state, document.title, getCurrentHistoryPath());
+            clearOverlayGuardHistoryEntry();
             overlayGuardPushed.current = false;
           }
           userContext?.logout();
@@ -4133,7 +4224,7 @@ function Chat() {
           // Admin forced this user out — store message and log out
           sessionStorage.setItem('authError', messageData.message || 'You have been logged out by an administrator.');
           if (overlayGuardPushed.current) {
-            window.history.replaceState(window.history.state, document.title, getCurrentHistoryPath());
+            clearOverlayGuardHistoryEntry();
             overlayGuardPushed.current = false;
           }
           userContext?.logout();
@@ -4909,7 +5000,7 @@ function Chat() {
       } else if (prevSelected.length === 0) {
         setIsSelectModeActive(true);
         if (!overlayGuardPushed.current) {
-          window.history.pushState({ overlayGuard: true }, document.title, getCurrentHistoryPath());
+          pushOverlayGuardHistoryEntry();
           overlayGuardPushed.current = true;
         }
       }
@@ -4948,7 +5039,7 @@ function Chat() {
     // replaceState() silently overwrites the guard entry with no popstate,
     // so React Router never sees a navigation and the chat stays mounted.
     if (overlayGuardPushed.current) {
-      window.history.replaceState(window.history.state, document.title, getCurrentHistoryPath());
+      clearOverlayGuardHistoryEntry();
       overlayGuardPushed.current = false;
     }
     setIsDeleteConfirmationVisible(false);
@@ -4965,7 +5056,7 @@ function Chat() {
     // Same fix as handleBulkDeleteForMe — use replaceState instead of back()
     // to avoid the popstate→React Router→404 issue on desktop mouse-click path.
     if (overlayGuardPushed.current) {
-      window.history.replaceState(window.history.state, document.title, getCurrentHistoryPath());
+      clearOverlayGuardHistoryEntry();
       overlayGuardPushed.current = false;
     }
     setIsDeleteConfirmationVisible(false);
@@ -6021,7 +6112,7 @@ function Chat() {
                 ws.current.send(JSON.stringify({ type: 'user_logout', userId: userIdRef.current }));
               }
               if (overlayGuardPushed.current) {
-                window.history.replaceState(window.history.state, document.title, getCurrentHistoryPath());
+                clearOverlayGuardHistoryEntry();
                 overlayGuardPushed.current = false;
               }
               userContext!.logout();
