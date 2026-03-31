@@ -238,23 +238,6 @@ const clearOverlayGuardHistoryEntry = (): void => {
   window.history.replaceState(nextState, document.title, getCurrentHistoryPath());
 };
 
-const normalizeRouterHistoryState = (): void => {
-  const state = readRouterHistoryState();
-  const hasLegacyOverlay = Object.prototype.hasOwnProperty.call(state, 'overlayGuard');
-  const hasValidIdx = typeof state.idx === 'number';
-  const hasValidKey = typeof state.key === 'string' && state.key.length > 0;
-  const hasValidUsr =
-    state.usr === undefined ||
-    (typeof state.usr === 'object' && state.usr !== null && !Array.isArray(state.usr));
-
-  if (!hasLegacyOverlay && hasValidIdx && hasValidKey && hasValidUsr) {
-    return;
-  }
-
-  const nextState = buildOverlayGuardState(state, false, 'replace');
-  window.history.replaceState(nextState, document.title, getCurrentHistoryPath());
-};
-
 /**
  * Module-level WeakMap cache for blob: URLs.
  * Keeping creation here (outside React's render/state data-flow) ensures
@@ -3953,11 +3936,6 @@ function Chat() {
     isPlusMenuOpen,
   ]);
 
-  useEffect(() => {
-    if (!userContext?.profile) return;
-    normalizeRouterHistoryState();
-  }, [userContext?.profile]);
-
   // Push exactly ONE history guard entry when going from "nothing open" to
   // "something open".  When the popstate handler consumes the guard it resets
   // the ref, so the *next* effect run (triggered by closing one layer while
@@ -4115,17 +4093,6 @@ function Chat() {
         setIsUserListVisible(false);
       } else if (replyingTo) {
         setReplyingTo(null);
-      } else {
-        // No overlay is open — the user pressed back on the browser/phone.
-        // Do NOT let React Router process this popstate or it will navigate
-        // away from "/" and land on the wildcard 404 route.
-        // Instead, silently re-push the current path so the history cursor
-        // stays on the chat page.
-        const currentPath = getCurrentHistoryPath();
-        if (currentPath === '/' || currentPath === '') {
-          const cleanState = buildOverlayGuardState(readRouterHistoryState(), false, 'push');
-          window.history.pushState(cleanState, document.title, '/');
-        }
       }
     };
 

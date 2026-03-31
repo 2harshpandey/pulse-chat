@@ -87,11 +87,11 @@ class RouteErrorBoundary extends React.Component<
           <FallbackOrb $size={420} $x="5%"  $y="10%" $color="#3b82f6" />
           <FallbackOrb $size={320} $x="65%" $y="55%" $color="#8b5cf6" />
           <FallbackOrb $size={260} $x="45%" $y="-5%" $color="#06b6d4" />
-          <FallbackCode>404</FallbackCode>
-          <FallbackTitle>Page Not Found</FallbackTitle>
+          <FallbackCode>Oops!</FallbackCode>
+          <FallbackTitle>Something went wrong</FallbackTitle>
           <FallbackDesc>
-            Looks like this page drifted away into the void. The link may be
-            broken or the page may have been removed.
+            The application encountered an unexpected error. Refreshing the page
+            usually fixes this.
           </FallbackDesc>
           <FallbackButton href="/">← Go to Chat</FallbackButton>
         </FallbackPage>
