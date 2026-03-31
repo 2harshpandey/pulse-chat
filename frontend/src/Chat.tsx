@@ -2890,23 +2890,21 @@ interface TypingIndicatorProps {
 
 const TypingIndicator = ({ onlineUsers, currentUserId }: TypingIndicatorProps) => {
   const typers = onlineUsers.filter(u => u.isTyping && u.userId !== currentUserId);
+  const visible = typers.length > 0;
+
+  if (!visible) return null;
 
   const names = typers.map(u => u.username).join(', ');
   const text = typers.length > 2 ? 'Several people are typing' : (typers.length > 1 ? `${names} are typing` : `${names} is typing`);
-  const visible = typers.length > 0;
 
   return (
-    <TypingIndicatorContainer style={{ visibility: visible ? 'visible' : 'hidden' }} aria-hidden={!visible}>
-      {visible && (
-        <>
-          <span>{text}</span>
-          <BouncingDots>
-            <div></div>
-            <div></div>
-            <div></div>
-          </BouncingDots>
-        </>
-      )}
+    <TypingIndicatorContainer aria-hidden={false}>
+      <span>{text}</span>
+      <BouncingDots>
+        <div></div>
+        <div></div>
+        <div></div>
+      </BouncingDots>
     </TypingIndicatorContainer>
   );
 };
@@ -3629,6 +3627,13 @@ function Chat() {
     if (messageInputRef.current) {
       messageInputRef.current.style.height = 'auto';
     }
+    // Clear frontend typing state so subsequent keystrokes trigger start_typing again
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+    typingCooldownRef.current = false;
+    try { ws.current?.send(JSON.stringify({ type: 'stop_typing' })); } catch (_) { /* ignore */ }
   };
 
   const handleSendMessage = async () => {
