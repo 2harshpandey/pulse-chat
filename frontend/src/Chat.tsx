@@ -23,37 +23,77 @@ const getUserId = (): string => {
 };
 
 /**
- * Trusted CDN hostnames allowed as fetch targets in downloadFile.
- * Any URL whose hostname is not in this list is opened in a new tab instead of
- * fetched — prevents Server-Side Request Forgery (SSRF) if msg.url is ever set
- * to an internal network address.
+ * Trusted CDN hostnames allowed as download targets in downloadFile.
+ * Any URL whose hostname is not in this list is ignored to prevent fetching
+ * untrusted hosts if message URLs are ever tampered with.
  */
 const ALLOWED_DOWNLOAD_HOSTS = ['res.cloudinary.com', 'media.tenor.com', 'tenor.com'];
 
 /**
  * Triggers a browser download for a file hosted on a trusted CDN.
- * Uses an invisible anchor-click — no fetch() (avoids SSRF) and no window.open()
- * (avoids unvalidated URL redirect). The browser handles the download; for
- * cross-origin CDN URLs the `download` filename hint may be ignored by the browser
- * but the file still opens/saves correctly.
+ * Uses a fetch->blob->objectURL flow so media is downloaded directly instead of
+ * opening in a new tab.
  */
 const downloadFile = (url: string, filename: string): void => {
-  // Parse and validate — do nothing if the URL is invalid or the host is not trusted.
-  let parsed: URL;
-  try { parsed = new URL(url); } catch { return; }
-  const isTrustedHost =
-    (parsed.protocol === 'https:' || parsed.protocol === 'http:') &&
-    ALLOWED_DOWNLOAD_HOSTS.some(h => parsed.hostname === h || parsed.hostname.endsWith('.' + h));
-  if (!isTrustedHost) return; // Silently reject — no redirect, no fetch.
-  // Use the canonicalized href (not the raw input string) for the anchor href.
-  const a = document.createElement('a');
-  a.href = parsed.href;
-  a.download = filename;
-  a.rel = 'noopener noreferrer';
-  a.target = '_blank';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+  const normalizeFilename = (name: string, fallback: string): string => {
+    const raw = (name || '').trim();
+    const cleaned = raw
+      .replace(/[\\/:*?"<>|\u0000-\u001F]/g, '_')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 120);
+    return cleaned || fallback;
+  };
+
+  const triggerAnchorDownload = (href: string, downloadName: string) => {
+    const anchor = document.createElement('a');
+    anchor.href = href;
+    anchor.download = downloadName;
+    anchor.rel = 'noopener noreferrer';
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+  };
+
+  void (async () => {
+    // Parse and validate — do nothing if the URL is invalid or the host is not trusted.
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      return;
+    }
+
+    const isTrustedHost =
+      (parsed.protocol === 'https:' || parsed.protocol === 'http:') &&
+      ALLOWED_DOWNLOAD_HOSTS.some(h => parsed.hostname === h || parsed.hostname.endsWith('.' + h));
+    if (!isTrustedHost) return;
+
+    const pathName = decodeURIComponent(parsed.pathname.split('/').pop() || '');
+    const fallbackName = pathName || 'download';
+    const safeFilename = normalizeFilename(filename, normalizeFilename(fallbackName, 'download'));
+
+    try {
+      const response = await fetch(parsed.href, {
+        method: 'GET',
+        mode: 'cors',
+        credentials: 'omit',
+        cache: 'no-store'
+      });
+      if (!response.ok) throw new Error('Download failed');
+
+      const blob = await response.blob();
+      if (!blob || blob.size === 0) throw new Error('Empty download');
+
+      const objectUrl = URL.createObjectURL(blob);
+      triggerAnchorDownload(objectUrl, safeFilename);
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
+    } catch {
+      // Fallback for CDNs that block CORS: still attempt browser-managed download.
+      triggerAnchorDownload(parsed.href, safeFilename);
+    }
+  })();
 };
 
 /**
