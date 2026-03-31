@@ -3187,6 +3187,8 @@ function Chat() {
   // ~300 ms after pointerdown, which would otherwise immediately close the modal.
   const gifPickerOpenedAtRef = useRef<number>(0);
   const keyboardWasOpenBeforeGifRef = useRef<boolean>(false);
+  const keyboardWasOpenBeforeEmojiRef = useRef<boolean>(false);
+  const restoreKeyboardAfterEmojiCloseRef = useRef<boolean>(false);
   const emojiPickerRef = useRef<HTMLDivElement>(null!);
   const fullEmojiPickerRef = useRef<HTMLDivElement>(null!);
   const emojiButtonRef = useRef<HTMLButtonElement>(null!);
@@ -3223,6 +3225,17 @@ function Chat() {
     } catch (_) {
       // Ignore transient send errors during reconnect windows.
     }
+  }, []);
+
+  const closeEmojiPicker = useCallback((restoreKeyboard: boolean = false) => {
+    setEmojiPickerPosition((prev) => {
+      if (!prev) return prev;
+      restoreKeyboardAfterEmojiCloseRef.current = restoreKeyboard && keyboardWasOpenBeforeEmojiRef.current;
+      if (!restoreKeyboardAfterEmojiCloseRef.current) {
+        keyboardWasOpenBeforeEmojiRef.current = false;
+      }
+      return null;
+    });
   }, []);
 
   useEffect(() => {
@@ -3287,7 +3300,17 @@ function Chat() {
     });
   };
   const replyPreviewRef = useRef<HTMLDivElement>(null);
-  const stateRef = useRef({ isSelectModeActive, isDeleteConfirmationVisible, lightboxUrl, isUserListVisible, replyingTo });
+  const stateRef = useRef({
+    isSelectModeActive,
+    isDeleteConfirmationVisible,
+    lightboxUrl,
+    isUserListVisible,
+    replyingTo,
+    showGifPicker,
+    isEmojiPickerOpen: !!emojiPickerPosition,
+    isFullEmojiPickerOpen: !!fullEmojiPickerPosition,
+    isPlusMenuOpen,
+  });
   // Tracks whether we currently have a guard entry in the history stack.
   // Using a ref (not window.history.state) avoids stale-state issues when
   // overlays are closed programmatically rather than via the back button.
@@ -3295,15 +3318,44 @@ function Chat() {
 
   // Update ref whenever any overlay state changes
   useEffect(() => {
-    stateRef.current = { isSelectModeActive, isDeleteConfirmationVisible, lightboxUrl, isUserListVisible, replyingTo };
-  }, [isSelectModeActive, isDeleteConfirmationVisible, lightboxUrl, isUserListVisible, replyingTo]);
+    stateRef.current = {
+      isSelectModeActive,
+      isDeleteConfirmationVisible,
+      lightboxUrl,
+      isUserListVisible,
+      replyingTo,
+      showGifPicker,
+      isEmojiPickerOpen: !!emojiPickerPosition,
+      isFullEmojiPickerOpen: !!fullEmojiPickerPosition,
+      isPlusMenuOpen,
+    };
+  }, [
+    isSelectModeActive,
+    isDeleteConfirmationVisible,
+    lightboxUrl,
+    isUserListVisible,
+    replyingTo,
+    showGifPicker,
+    emojiPickerPosition,
+    fullEmojiPickerPosition,
+    isPlusMenuOpen,
+  ]);
 
   // Push exactly ONE history guard entry when going from "nothing open" to
   // "something open".  When the popstate handler consumes the guard it resets
   // the ref, so the *next* effect run (triggered by closing one layer while
   // others remain) will push a fresh guard automatically.
   useEffect(() => {
-    const anyOpen = isDeleteConfirmationVisible || isSelectModeActive || !!lightboxUrl || isUserListVisible || !!replyingTo;
+    const anyOpen =
+      isDeleteConfirmationVisible ||
+      isSelectModeActive ||
+      !!lightboxUrl ||
+      isUserListVisible ||
+      !!replyingTo ||
+      showGifPicker ||
+      !!emojiPickerPosition ||
+      !!fullEmojiPickerPosition ||
+      isPlusMenuOpen;
     if (anyOpen && !overlayGuardPushed.current) {
       window.history.pushState({ overlayGuard: true }, '');
       overlayGuardPushed.current = true;
@@ -3311,7 +3363,17 @@ function Chat() {
     if (!anyOpen) {
       overlayGuardPushed.current = false;
     }
-  }, [isDeleteConfirmationVisible, isSelectModeActive, lightboxUrl, isUserListVisible, replyingTo]);
+  }, [
+    isDeleteConfirmationVisible,
+    isSelectModeActive,
+    lightboxUrl,
+    isUserListVisible,
+    replyingTo,
+    showGifPicker,
+    emojiPickerPosition,
+    fullEmojiPickerPosition,
+    isPlusMenuOpen,
+  ]);
 
   // --- LIFECYCLE & EVENT HANDLERS ---
 
@@ -3384,14 +3446,33 @@ function Chat() {
       // push a fresh guard after React re-renders with the updated state.
       overlayGuardPushed.current = false;
 
-      const { isSelectModeActive, isDeleteConfirmationVisible, lightboxUrl, isUserListVisible, replyingTo } = stateRef.current;
+      const {
+        isSelectModeActive,
+        isDeleteConfirmationVisible,
+        lightboxUrl,
+        isUserListVisible,
+        replyingTo,
+        showGifPicker,
+        isEmojiPickerOpen,
+        isFullEmojiPickerOpen,
+        isPlusMenuOpen,
+      } = stateRef.current;
 
-      // Strict hierarchy: confirm modal → select mode → lightbox → sidebar → quote.
+      // Strict hierarchy: confirm modal → select mode → full-emoji → GIF → emoji → plus menu → lightbox → sidebar → quote.
       if (isDeleteConfirmationVisible) {
         setIsDeleteConfirmationVisible(false);
       } else if (isSelectModeActive) {
         setSelectedMessages([]);
         setIsSelectModeActive(false);
+      } else if (isFullEmojiPickerOpen) {
+        setFullEmojiPickerPosition(null);
+        messageIdForFullEmojiPickerRef.current = null;
+      } else if (showGifPicker) {
+        setShowGifPicker(false);
+      } else if (isEmojiPickerOpen) {
+        closeEmojiPicker(true);
+      } else if (isPlusMenuOpen) {
+        setIsPlusMenuOpen(false);
       } else if (lightboxUrl) {
         setLightboxUrl(null);
       } else if (isUserListVisible) {
@@ -3404,7 +3485,7 @@ function Chat() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [closeEmojiPicker]);
 
   // WebSocket connection with auto-reconnect on tab-resume / network-restore
   useEffect(() => {
@@ -3623,14 +3704,14 @@ function Chat() {
         if (gifPickerRef.current && !gifPickerRef.current.contains(target)) setShowGifPicker(false);
         if (plusMenuRef.current && !plusMenuRef.current.contains(target) && !plusButtonRef.current?.contains(target)) setIsPlusMenuOpen(false);
         if (emojiPickerRef.current && !emojiPickerRef.current.contains(target) && !emojiButtonRef.current?.contains(target)) {
-          setEmojiPickerPosition(null);
+          closeEmojiPicker(false);
         }
         // Full emoji picker (reactions) is closed exclusively by its own backdrop — not here.
       }, 0);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [closeEmojiPicker]);
 
   // ── WhatsApp-style auto-focus (desktop only) ──────────────────────────────
   // When the user types any printable character while nothing (or a non-input)
@@ -3767,6 +3848,19 @@ function Chat() {
       keyboardWasOpenBeforeGifRef.current = false;
     }
   }, [setPresenceActivity, showGifPicker]);
+
+  useEffect(() => {
+    if (emojiPickerPosition) return;
+    if (restoreKeyboardAfterEmojiCloseRef.current) {
+      restoreKeyboardAfterEmojiCloseRef.current = false;
+      requestAnimationFrame(() => {
+        messageInputRef.current?.focus();
+        keyboardWasOpenBeforeEmojiRef.current = false;
+      });
+      return;
+    }
+    keyboardWasOpenBeforeEmojiRef.current = false;
+  }, [emojiPickerPosition]);
 
   // Virtuoso handles initial scroll and follow-output automatically.
   // We only need to track whether the initial load has happened to
@@ -4439,7 +4533,14 @@ function Chat() {
 
   const handleEmojiClick = (emojiData: EmojiClickData) => { setInputMessage(prev => prev + emojiData.emoji); };
   const handleOpenEmojiPicker = useCallback((rect: DOMRect) => {
-    setEmojiPickerPosition(prev => prev ? null : rect);
+    setEmojiPickerPosition((prev) => {
+      if (prev) {
+        restoreKeyboardAfterEmojiCloseRef.current = false;
+        keyboardWasOpenBeforeEmojiRef.current = false;
+        return null;
+      }
+      return rect;
+    });
   }, []);
 
   const handleOpenFullEmojiPicker = useCallback((rect: DOMRect, messageId: string) => {
@@ -4885,7 +4986,12 @@ function Chat() {
                             );
                           }
                           const prevMsg = messages[index - 1];
-                          const showUsername = !prevMsg || prevMsg.type === 'system_notification' || prevMsg.userId !== msg.userId;
+                          const currentSenderKey = (msg.username?.trim().toLowerCase() || msg.userId || '').toString();
+                          const prevSenderKey = prevMsg
+                            ? (prevMsg.username?.trim().toLowerCase() || prevMsg.userId || '').toString()
+                            : '';
+                          const isSeriesContinuation = Boolean(prevMsg) && prevMsg!.type !== 'system_notification' && prevSenderKey === currentSenderKey;
+                          const showUsername = !isSeriesContinuation;
                           return (
                             <MessageItem
                               msg={msg}
@@ -5037,7 +5143,11 @@ function Chat() {
                       onPointerDown={(e) => {
                         e.preventDefault();
                         const rect = e.currentTarget.getBoundingClientRect();
-                        if (messageInputRef.current && document.activeElement === messageInputRef.current) {
+                        const inputWasFocused = Boolean(
+                          messageInputRef.current && document.activeElement === messageInputRef.current
+                        );
+                        keyboardWasOpenBeforeEmojiRef.current = inputWasFocused;
+                        if (inputWasFocused) {
                           messageInputRef.current.blur();
                         }
                         handleOpenEmojiPicker(rect);
