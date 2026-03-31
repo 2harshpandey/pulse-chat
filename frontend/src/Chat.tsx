@@ -2935,17 +2935,37 @@ interface TypingIndicatorProps {
 }
 
 const TypingIndicator = ({ onlineUsers, currentUserId }: TypingIndicatorProps) => {
-  const typers = onlineUsers.filter(u => u.isTyping && u.userId !== currentUserId);
-  const visible = typers.length > 0;
+  const activeUsers = onlineUsers.filter(
+    (u) => u.userId !== currentUserId && (u.activity === 'gif_selecting' || u.isTyping)
+  );
 
-  if (!visible) return null;
+  if (activeUsers.length === 0) return null;
 
-  const names = typers.map(u => u.username).join(', ');
-  const text = typers.length > 2 ? 'Several people are typing' : (typers.length > 1 ? `${names} are typing` : `${names} is typing`);
+  const gifSelectors = activeUsers.filter((u) => u.activity === 'gif_selecting');
+  const typers = activeUsers.filter((u) => u.activity !== 'gif_selecting' && u.isTyping);
+
+  const formatPresence = (
+    users: UserProfile[],
+    singular: string,
+    plural: string,
+    many: string
+  ): string | null => {
+    if (users.length === 0) return null;
+    if (users.length > 2) return many;
+    const names = users.map((u) => u.username).join(', ');
+    return users.length === 1 ? `${names} ${singular}` : `${names} ${plural}`;
+  };
+
+  const parts = [
+    formatPresence(gifSelectors, 'is selecting a GIF', 'are selecting GIFs', 'Several people are selecting GIFs'),
+    formatPresence(typers, 'is typing', 'are typing', 'Several people are typing'),
+  ].filter((part): part is string => Boolean(part));
+
+  if (parts.length === 0) return null;
 
   return (
     <TypingIndicatorContainer aria-hidden={false}>
-      <span>{text}</span>
+      <span>{parts.join(' | ')}</span>
       <BouncingDots>
         <div></div>
         <div></div>
@@ -3176,6 +3196,7 @@ function Chat() {
   // Cooldown flag: true while we're within the throttle window after sending start_typing.
   // Prevents sending start_typing more than once per ~3 s even on rapid keystrokes.
   const typingCooldownRef = useRef(false);
+  const presenceActivityRef = useRef<'typing' | 'gif_selecting' | null>(null);
   const resizeRafRef = useRef<number>(0);
   // WebSocket auto-reconnect management refs
   const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -3187,6 +3208,22 @@ function Chat() {
   // lenient, which is why uploads/auth worked on WiFi but silently failed on mobile data.
   const apiBase = (process.env.REACT_APP_API_URL || '')
     .replace(/^http:\/\//, window.location.protocol === 'https:' ? 'https://' : 'http://');
+
+  const setPresenceActivity = useCallback((nextActivity: 'typing' | 'gif_selecting' | null) => {
+    if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
+    if (presenceActivityRef.current === nextActivity) return;
+
+    try {
+      if (nextActivity) {
+        ws.current.send(JSON.stringify({ type: 'start_typing', activity: nextActivity }));
+      } else {
+        ws.current.send(JSON.stringify({ type: 'stop_typing' }));
+      }
+      presenceActivityRef.current = nextActivity;
+    } catch (_) {
+      // Ignore transient send errors during reconnect windows.
+    }
+  }, []);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -3419,6 +3456,7 @@ function Chat() {
       ws.current.onopen = () => {
         // Reset the backoff delay so the next disconnect starts from 2 s again.
         reconnectDelayRef.current = 2000;
+        presenceActivityRef.current = null;
         ws.current?.send(
           JSON.stringify({ type: 'user_join', ...userContext.profile, userId: userIdRef.current })
         );
@@ -3430,6 +3468,12 @@ function Chat() {
       // this, a single dropped socket means no more messages until the user
       // manually refreshes — the most common symptom reported on mobile data.
       ws.current.onclose = () => {
+        if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current);
+          typingTimeoutRef.current = null;
+        }
+        typingCooldownRef.current = false;
+        presenceActivityRef.current = null;
         console.log('WebSocket disconnected — scheduling reconnect');
         if (shouldReconnect) {
           reconnectTimerRef.current = setTimeout(() => {
@@ -3704,13 +3748,25 @@ function Chat() {
 
   // ── Keyboard auto-restore when closing GIF picker ─────────────────
   useEffect(() => {
-    if (!showGifPicker) {
-      if (keyboardWasOpenBeforeGifRef.current) {
-        messageInputRef.current?.focus();
-        keyboardWasOpenBeforeGifRef.current = false;
+    if (showGifPicker) {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
       }
+      typingCooldownRef.current = false;
+      setPresenceActivity('gif_selecting');
+      return;
     }
-  }, [showGifPicker]);
+
+    if (presenceActivityRef.current === 'gif_selecting') {
+      setPresenceActivity(null);
+    }
+
+    if (keyboardWasOpenBeforeGifRef.current) {
+      messageInputRef.current?.focus();
+      keyboardWasOpenBeforeGifRef.current = false;
+    }
+  }, [setPresenceActivity, showGifPicker]);
 
   // Virtuoso handles initial scroll and follow-output automatically.
   // We only need to track whether the initial load has happened to
@@ -3882,7 +3938,7 @@ function Chat() {
       typingTimeoutRef.current = null;
     }
     typingCooldownRef.current = false;
-    try { ws.current?.send(JSON.stringify({ type: 'stop_typing' })); } catch (_) { /* ignore */ }
+    setPresenceActivity(null);
   };
 
   const handleSendMessage = async () => {
@@ -3990,19 +4046,19 @@ function Chat() {
     if (ws.current.bufferedAmount > 4096) return;
 
     // Throttle: only send start_typing once per cooldown window (3 s).
-    if (!typingCooldownRef.current) {
+    if (!typingCooldownRef.current || presenceActivityRef.current !== 'typing') {
       typingCooldownRef.current = true;
-      try { ws.current.send(JSON.stringify({ type: 'start_typing' })); } catch (_) { /* ignore send errors */ }
+      setPresenceActivity('typing');
     }
 
     // Reset the stop-typing timer on every keystroke (debounce).
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {
-      try { ws.current?.send(JSON.stringify({ type: 'stop_typing' })); } catch (_) { /* ignore */ }
+      setPresenceActivity(null);
       typingTimeoutRef.current = null;
       typingCooldownRef.current = false;
     }, 3000);
-  }, []);
+  }, [setPresenceActivity]);
 
   const handleClearChat = () => {
     if (window.confirm('Are you sure you want to clear the chat? All messages will be hidden for you on this device.')) {
@@ -4448,16 +4504,45 @@ function Chat() {
     if (event.target) event.target.value = '';
   };
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const files = e.clipboardData?.files;
-    if (files && files.length > 0) {
-      e.preventDefault();
-      const fileArr = Array.from(files);
-      setStagedFiles(fileArr);
-      setPreviewActiveIndex(0);
-      setPreviewCaption('');
-      setShowFilePreview(true);
-      setStagedGif(null);
-    }
+    const clipboardData = e.clipboardData;
+    if (!clipboardData) return;
+
+    const collectedFiles = new Map<string, File>();
+    const addCollectedFile = (file: File | null) => {
+      if (!file) return;
+
+      const mime = file.type || 'application/octet-stream';
+      const extensionFromMime = mime.includes('/') ? mime.split('/')[1].split('+')[0] : 'bin';
+      const safeExt = (extensionFromMime || 'bin').replace(/[^a-z0-9]/gi, '').toLowerCase() || 'bin';
+      const hasName = Boolean(file.name && file.name.trim());
+      const fileName = hasName ? file.name : `pasted-${Date.now()}.${safeExt}`;
+      const normalized = hasName
+        ? file
+        : new File([file], fileName, { type: mime, lastModified: Date.now() });
+
+      const key = `${normalized.name}:${normalized.size}:${normalized.type}`;
+      if (!collectedFiles.has(key)) collectedFiles.set(key, normalized);
+    };
+
+    Array.from(clipboardData.files || []).forEach((file) => addCollectedFile(file));
+
+    // Some mobile keyboards expose GIF/image inserts through clipboard items
+    // rather than clipboardData.files; support both paths.
+    Array.from(clipboardData.items || []).forEach((item) => {
+      if (item.kind !== 'file') return;
+      if (!item.type || !item.type.startsWith('image/')) return;
+      addCollectedFile(item.getAsFile());
+    });
+
+    const fileArr = Array.from(collectedFiles.values());
+    if (fileArr.length === 0) return;
+
+    e.preventDefault();
+    setStagedFiles(fileArr);
+    setPreviewActiveIndex(0);
+    setPreviewCaption('');
+    setShowFilePreview(true);
+    setStagedGif(null);
   };
 
   const handleSendFromPreview = async () => {

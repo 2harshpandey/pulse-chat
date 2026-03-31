@@ -5,6 +5,7 @@ export interface UserProfile {
   userId: string;
   username: string;
   isTyping?: boolean; // Added for the typing indicator
+  activity?: 'typing' | 'gif_selecting';
 }
 
 interface UserContextType {

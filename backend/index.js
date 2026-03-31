@@ -294,10 +294,15 @@ const broadcastToAdmins = (type, data) => {
 };
 
 const broadcastOnlineUsers = () => {
-  const users = Array.from(onlineUsers.values()).map(user => ({
-    ...user,
-    isTyping: typingUsers.has(user.userId)
-  }));
+  const users = Array.from(onlineUsers.values()).map(user => {
+    const rawActivity = typingUsers.get(user.userId);
+    const activity = rawActivity === 'gif_selecting' ? 'gif_selecting' : (rawActivity ? 'typing' : undefined);
+    return {
+      ...user,
+      isTyping: Boolean(activity),
+      activity,
+    };
+  });
   const message = JSON.stringify({ type: 'online_users', data: users });
   wss.clients.forEach(client => {
     if (client.readyState === WebSocket.OPEN) client.send(message);
@@ -1473,7 +1478,10 @@ wss.on('connection', (ws, req) => {
         break;
       }
       case 'start_typing': {
-        if (ws.userId) typingUsers.set(ws.userId, true);
+        if (ws.userId) {
+          const activity = parsedMessage.activity === 'gif_selecting' ? 'gif_selecting' : 'typing';
+          typingUsers.set(ws.userId, activity);
+        }
         broadcastOnlineUsers();
         break;
       }
