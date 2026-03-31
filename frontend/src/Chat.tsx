@@ -115,6 +115,10 @@ const revokeBlobUrl = (file: File): void => {
 // --- CONSTANTS ---
 /** WhatsApp-equivalent message character limit. */
 const MAX_MESSAGE_LENGTH = 65536;
+const INITIAL_HISTORY_BATCH_SIZE = 80;
+const HISTORY_PAGE_SIZE = 50;
+const INITIAL_FIRST_ITEM_INDEX = 100000;
+const MAX_LINK_PREVIEW_CACHE_ENTRIES = 250;
 
 // --- STYLED COMPONENTS ---
 export const GlobalStyle = createGlobalStyle`
@@ -2017,7 +2021,7 @@ const SystemMessage = styled.div`
 
 // --- INTERFACES ---
 interface ReplyContext { id: string; username: string; text: string; type: 'text' | 'image' | 'video' | 'file'; url?: string; isDeleted?: boolean; }
-interface Message { id: string; userId: string; username: string; type: 'text' | 'image' | 'video' | 'file' | 'system_notification'; text?: string; url?: string; originalName?: string; timestamp: string; reactions?: { [emoji: string]: { userId: string, username: string }[] }; edited?: boolean; replyingTo?: ReplyContext; isDeleted?: boolean; deletedBy?: string; isUploading?: boolean; uploadError?: boolean; }
+interface Message { id: string; userId: string; username: string; type: 'text' | 'image' | 'video' | 'file' | 'system_notification'; text?: string; url?: string; originalName?: string; timestamp: string; createdAt?: string; updatedAt?: string; reactions?: { [emoji: string]: { userId: string, username: string }[] }; edited?: boolean; replyingTo?: ReplyContext; isDeleted?: boolean; deletedBy?: string; isUploading?: boolean; uploadError?: boolean; }
 interface Gif { id: string; preview: string; url: string; }
 
 // --- CHILD COMPONENTS ---
@@ -2295,6 +2299,14 @@ interface LinkPreviewData {
 const linkPreviewCache = new Map<string, LinkPreviewData | null>();
 const linkPreviewInFlight = new Map<string, Promise<LinkPreviewData | null>>();
 
+const rememberLinkPreview = (url: string, data: LinkPreviewData | null): void => {
+  if (!linkPreviewCache.has(url) && linkPreviewCache.size >= MAX_LINK_PREVIEW_CACHE_ENTRIES) {
+    const oldestKey = linkPreviewCache.keys().next().value;
+    if (oldestKey) linkPreviewCache.delete(oldestKey);
+  }
+  linkPreviewCache.set(url, data);
+};
+
 const fetchLinkPreviewData = (url: string): Promise<LinkPreviewData | null> => {
   if (linkPreviewCache.has(url)) return Promise.resolve(linkPreviewCache.get(url) ?? null);
   if (linkPreviewInFlight.has(url)) return linkPreviewInFlight.get(url)!;
@@ -2308,10 +2320,10 @@ const fetchLinkPreviewData = (url: string): Promise<LinkPreviewData | null> => {
       const res = await fetch(previewEndpoint);
       if (!res.ok) throw new Error('bad response');
       const json: LinkPreviewData = await res.json();
-      linkPreviewCache.set(url, json);
+      rememberLinkPreview(url, json);
       return json;
     } catch {
-      linkPreviewCache.set(url, null);
+      rememberLinkPreview(url, null);
       return null;
     } finally {
       linkPreviewInFlight.delete(url);
@@ -2403,7 +2415,7 @@ interface MessageItemProps {
   setEditingText: (text: string) => void;
   handleSaveEdit: () => void;
   handleCancelEdit: () => void;
-  onVideoFullscreenEnter?: () => void;
+  onVideoFullscreenEnter?: (messageId: string) => void;
 }
 
 const MessageItem = React.memo(({
@@ -2590,6 +2602,9 @@ const MessageItem = React.memo(({
   const now = new Date().getTime();
   const canEdit = msg.userId === currentUserId && (now - messageTime) < 15 * 60 * 1000 && msg.text;
   const isDeleted = msg.isDeleted;
+  const handleVideoFullscreenEnterForMessage = useCallback(() => {
+    onVideoFullscreenEnter?.(msg.id);
+  }, [onVideoFullscreenEnter, msg.id]);
 
   const handleLongPressStart = (e: React.TouchEvent | React.MouseEvent) => {
     // Don't start a long-press timer when the touch/click lands on the
@@ -2841,7 +2856,7 @@ const MessageItem = React.memo(({
               )}
               {/* DeleteMenu rendered as fixed portal — see block after </MessageRow> */}
               {msg.type === 'text' && !msg.url && msg.text && (() => { const _u = detectFirstUrl(msg.text); return _u ? <LinkPreview url={_u} sender={sender} /> : null; })()}
-              {renderMessageContent(msg, openLightbox, isMobileView && isSelectModeActive ? () => { mediaWasTapped.current = true; } : undefined, sender, onVideoFullscreenEnter)}
+              {renderMessageContent(msg, openLightbox, isMobileView && isSelectModeActive ? () => { mediaWasTapped.current = true; } : undefined, sender, handleVideoFullscreenEnterForMessage)}
               <FooterContainer $sender={sender}>
                 <Timestamp $sender={sender}>{msg.edited && <span>(edited) </span>}{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Timestamp>
               </FooterContainer>
@@ -3060,6 +3075,10 @@ function Chat() {
   const [editingText, setEditingText] = useState<string>('');
   const [isScrollToBottomVisible, setIsScrollToBottomVisible] = useState(false);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [hasMoreOlderMessages, setHasMoreOlderMessages] = useState(true);
+  const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false);
+  const [oldestLoadedAt, setOldestLoadedAt] = useState<string | null>(null);
+  const [firstItemIndex, setFirstItemIndex] = useState(INITIAL_FIRST_ITEM_INDEX);
   // Use a ref (not state) for the message ID associated with the full emoji picker.
   // EmojiPicker from emoji-picker-react may cache its onEmojiClick prop and call
   // a stale closure — reading from a ref guarantees we always get the current value.
@@ -3078,6 +3097,8 @@ function Chat() {
 
   // --- REFS ---
   const ws = useRef<WebSocket | null>(null);
+  const messagesRef = useRef<Message[]>([]);
+  const isLoadingOlderRef = useRef(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const virtuosoRef = useRef<VirtuosoHandle>(null);
   // Tracks whether we've done the very first scroll-to-bottom after history loads.
@@ -3117,6 +3138,10 @@ function Chat() {
   // lenient, which is why uploads/auth worked on WiFi but silently failed on mobile data.
   const apiBase = (process.env.REACT_APP_API_URL || '')
     .replace(/^http:\/\//, window.location.protocol === 'https:' ? 'https://' : 'http://');
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInputMessage(e.target.value);
@@ -3349,33 +3374,20 @@ function Chat() {
           // Reset the initial-scroll flag so the new history always jumps to bottom.
           hasInitialScrolled.current = false;
           initialHistoryBottomStabilized.current = false;
-          const clearTs = Number(localStorage.getItem(`pulseClearTimestamp_${userIdRef.current}`) || '0');
-          const deletedForMeIds = getDeletedForMeIds(userIdRef.current);
-          const allMsgs: Message[] = messageData.data.map(normalizeMessage);
-          const filtered = (clearTs > 0
-            ? allMsgs.filter(m => m.type === 'system_notification' || new Date(m.timestamp).getTime() > clearTs)
-            : allMsgs
-          ).filter(m => !deletedForMeIds.has(m.id));
-          const deletedIds = new Set(allMsgs.filter(m => m.isDeleted).map(m => m.id));
-          const processed = filtered.map(m =>
-            (m.replyingTo && deletedIds.has(m.replyingTo.id))
-              ? { ...m, replyingTo: { ...m.replyingTo, isDeleted: true } }
-              : m
-          );
-
-          // Warm link-preview cache before first paint so text messages with URLs
-          // don't render plain first and then morph into preview cards.
-          const previewUrls = Array.from(new Set(
-            processed
-              .filter(m => m.type === 'text' && !m.url && !!m.text)
-              .map(m => detectFirstUrl(m.text || ''))
-              .filter((u): u is string => !!u)
-          )).slice(0, 40);
-          if (previewUrls.length > 0) {
-            await Promise.allSettled(previewUrls.map((u) => fetchLinkPreviewData(u)));
-          }
+          const rawHistory = Array.isArray(messageData.data) ? messageData.data : [];
+          const processed = filterVisibleMessages(rawHistory.map(normalizeMessage));
 
           setMessages(processed);
+          setFirstItemIndex(INITIAL_FIRST_ITEM_INDEX);
+          const cursorFromServer = typeof messageData.oldestCreatedAt === 'string' && messageData.oldestCreatedAt
+            ? messageData.oldestCreatedAt
+            : null;
+          setOldestLoadedAt(cursorFromServer || getMessageCursor(processed[0]));
+          setHasMoreOlderMessages(
+            typeof messageData.hasMoreHistory === 'boolean'
+              ? messageData.hasMoreHistory
+              : processed.length >= INITIAL_HISTORY_BATCH_SIZE
+          );
           // Mark history as loaded so the Virtuoso component renders
           // for the first time already at the bottom — no visible scroll.
           setHistoryLoaded(true);
@@ -3384,6 +3396,9 @@ function Chat() {
         } else if (messageData.type === 'chat_cleared') {
           // Admin cleared all messages — wipe the local list immediately.
           setMessages([]);
+          setHasMoreOlderMessages(false);
+          setOldestLoadedAt(null);
+          setFirstItemIndex(INITIAL_FIRST_ITEM_INDEX);
         } else if (messageData.type === 'update') {
           const normalizedUpdate = normalizeMessage(messageData.data);
           setMessages(prev =>
@@ -3634,7 +3649,7 @@ function Chat() {
   
   // --- FUNCTIONS ---
   
-  const normalizeMessage = (msg: any): Message => {
+  const normalizeMessage = useCallback((msg: any): Message => {
     if (msg.reactions) {
       const normalizedReactions: Record<string, {userId: string; username: string}[]> = {};
       // Handle both plain objects and Map instances (Mongoose .lean() may return Maps)
@@ -3653,7 +3668,101 @@ function Chat() {
       return { ...msg, reactions: normalizedReactions } as Message;
     }
     return msg as Message;
-  };
+  }, []);
+
+  const getMessageCursor = useCallback((msg?: Message): string | null => {
+    if (!msg) return null;
+    return msg.createdAt || msg.timestamp || null;
+  }, []);
+
+  const markDeletedReplyTargets = useCallback((list: Message[], deletedIds: Set<string>): Message[] => {
+    if (deletedIds.size === 0) return list;
+    return list.map((m) =>
+      m.replyingTo && deletedIds.has(m.replyingTo.id)
+        ? { ...m, replyingTo: { ...m.replyingTo, isDeleted: true } }
+        : m
+    );
+  }, []);
+
+  const filterVisibleMessages = useCallback((allMsgs: Message[]): Message[] => {
+    const clearTs = Number(localStorage.getItem(`pulseClearTimestamp_${userIdRef.current}`) || '0');
+    const deletedForMeIds = getDeletedForMeIds(userIdRef.current);
+    const filtered = (clearTs > 0
+      ? allMsgs.filter(m => m.type === 'system_notification' || new Date(m.timestamp).getTime() > clearTs)
+      : allMsgs
+    ).filter(m => !deletedForMeIds.has(m.id));
+    const deletedIds = new Set(filtered.filter(m => m.isDeleted).map(m => m.id));
+    return markDeletedReplyTargets(filtered, deletedIds);
+  }, [markDeletedReplyTargets]);
+
+  const loadOlderMessages = useCallback(async () => {
+    if (!historyLoaded || isLoadingOlderRef.current || !hasMoreOlderMessages || !oldestLoadedAt) return;
+
+    isLoadingOlderRef.current = true;
+    setIsLoadingOlderMessages(true);
+    try {
+      const before = encodeURIComponent(oldestLoadedAt);
+      const res = await fetch(`${apiBase}/api/messages?before=${before}&limit=${HISTORY_PAGE_SIZE}`);
+      if (!res.ok) throw new Error('Failed to fetch older messages');
+
+      const payload = await res.json();
+      const rawBatch: any[] = Array.isArray(payload)
+        ? payload
+        : (Array.isArray(payload.messages) ? payload.messages : []);
+      const hasMore = Array.isArray(payload)
+        ? rawBatch.length >= HISTORY_PAGE_SIZE
+        : Boolean(payload.hasMore);
+
+      if (rawBatch.length === 0) {
+        setHasMoreOlderMessages(false);
+        return;
+      }
+
+      const normalizedBatch = rawBatch.map(normalizeMessage);
+      const filteredBatch = filterVisibleMessages(normalizedBatch);
+      const oldestFromBatch = getMessageCursor(normalizedBatch[0]);
+      if (oldestFromBatch) setOldestLoadedAt(oldestFromBatch);
+
+      const existingIds = new Set(messagesRef.current.map(m => m.id));
+      const prependedCount = filteredBatch.filter(m => !existingIds.has(m.id)).length;
+
+      setMessages(prev => {
+        const prevIds = new Set(prev.map(m => m.id));
+        const uniqueOlder = filteredBatch.filter(m => !prevIds.has(m.id));
+        if (uniqueOlder.length === 0) return prev;
+
+        const combinedDeletedIds = new Set(
+          [...prev, ...uniqueOlder].filter(m => m.isDeleted).map(m => m.id)
+        );
+        const patchedOlder = markDeletedReplyTargets(uniqueOlder, combinedDeletedIds);
+        const patchedPrev = markDeletedReplyTargets(prev, combinedDeletedIds);
+        return [...patchedOlder, ...patchedPrev];
+      });
+
+      if (prependedCount > 0) {
+        setFirstItemIndex(prev => prev - prependedCount);
+      }
+      setHasMoreOlderMessages(hasMore);
+    } catch (err) {
+      console.error('Failed to load older messages:', err);
+    } finally {
+      isLoadingOlderRef.current = false;
+      setIsLoadingOlderMessages(false);
+    }
+  }, [
+    apiBase,
+    filterVisibleMessages,
+    getMessageCursor,
+    hasMoreOlderMessages,
+    historyLoaded,
+    markDeletedReplyTargets,
+    normalizeMessage,
+    oldestLoadedAt,
+  ]);
+
+  const handleVideoFullscreenEnter = useCallback((messageId: string) => {
+    fullscreenVideoMsgIdRef.current = messageId;
+  }, []);
 
   const resetInput = () => {
     setInputMessage('');
@@ -3801,6 +3910,9 @@ function Chat() {
     if (window.confirm('Are you sure you want to clear the chat? All messages will be hidden for you on this device.')) {
       localStorage.setItem(`pulseClearTimestamp_${userIdRef.current}`, Date.now().toString());
       setMessages([]);
+      setHasMoreOlderMessages(false);
+      setOldestLoadedAt(null);
+      setFirstItemIndex(INITIAL_FIRST_ITEM_INDEX);
     }
   };
 
@@ -4191,6 +4303,7 @@ function Chat() {
   // --- RENDER ---
   if (!userContext?.profile) { return <Auth onAuthSuccess={userContext!.login} tempToken={tempToken || null} />; }
 
+  const selectedMessageIds = useMemo(() => new Set(selectedMessages), [selectedMessages]);
   const selectedMessage = messages.find(msg => msg.id === selectedMessages[0]);
   const canEditSelectedMessage = selectedMessages.length === 1 && selectedMessage && selectedMessage.userId === userIdRef.current && selectedMessage.text && (new Date().getTime() - new Date(selectedMessage.timestamp).getTime()) < 15 * 60 * 1000;
  
@@ -4536,17 +4649,26 @@ function Chat() {
               {historyLoaded ? (
                <Virtuoso
                  ref={virtuosoRef}
+                 firstItemIndex={firstItemIndex}
                  data={messages}
                  initialTopMostItemIndex={messages.length > 0 ? messages.length - 1 : 0}
+                 startReached={loadOlderMessages}
                  followOutput={(isAtBottom: boolean) => isAtBottom ? 'smooth' : false}
                  atBottomStateChange={handleAtBottomStateChange}
                  atBottomThreshold={20}
-                 defaultItemHeight={96}
-                 increaseViewportBy={{ top: 480, bottom: 320 }}
-                 overscan={240}
+                 defaultItemHeight={88}
+                 increaseViewportBy={{ top: 320, bottom: 220 }}
+                 overscan={160}
                  computeItemKey={(index: number, msg: Message) => msg.id || index}
                  style={{ flex: 1, overflow: 'auto' }}
-                 components={{ Footer: () => <div style={{ height: '12px' }} /> }}
+                 components={{
+                   Header: () => isLoadingOlderMessages
+                     ? <div style={{ textAlign: 'center', padding: '0.45rem 0', fontSize: '0.78rem', opacity: 0.8 }}>Loading older messages...</div>
+                     : (!hasMoreOlderMessages && messages.length > 0
+                       ? <div style={{ textAlign: 'center', padding: '0.45rem 0', fontSize: '0.74rem', opacity: 0.65 }}>Start of chat history</div>
+                       : null),
+                   Footer: () => <div style={{ height: '12px' }} />,
+                 }}
                  itemContent={(index: number, msg: Message) => {
                           if (msg.type === 'system_notification') {
                             return (
@@ -4572,7 +4694,7 @@ function Chat() {
                               deleteForEveryone={deleteForEveryone}
                               scrollToMessage={scrollToMessage}
                               isSelectModeActive={isSelectModeActive}
-                              isSelected={selectedMessages.includes(msg.id)}
+                              isSelected={selectedMessageIds.has(msg.id)}
                               handleToggleSelectMessage={handleToggleSelectMessage}
                               setActiveDeleteMenu={setActiveDeleteMenu}
                               handleCopy={handleCopy}
@@ -4589,7 +4711,7 @@ function Chat() {
                               setEditingText={setEditingText}
                               handleSaveEdit={handleSaveEdit}
                               handleCancelEdit={handleCancelEdit}
-                              onVideoFullscreenEnter={() => { fullscreenVideoMsgIdRef.current = msg.id; }}
+                              onVideoFullscreenEnter={handleVideoFullscreenEnter}
                             />
                           );
                  }}

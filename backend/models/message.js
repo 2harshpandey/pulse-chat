@@ -29,6 +29,9 @@ const messageSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
+// Supports fast reverse-chronological pagination for chat history.
+messageSchema.index({ createdAt: -1 });
+
 const Message = mongoose.model('Message', messageSchema);
 
 module.exports = Message;

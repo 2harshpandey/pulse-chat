@@ -133,6 +133,12 @@ const typingUsers = new Map();
 const adminClients = new Set();
 const pendingDisconnects = new Map();
 
+// History/window tuning
+const INITIAL_HISTORY_BATCH_SIZE = 80;
+const DEFAULT_HISTORY_PAGE_SIZE = 50;
+const MAX_HISTORY_PAGE_SIZE = 100;
+const MAX_HISTORY = 5000;
+
 // Track logged-in users (persists across disconnects until explicit logout/force-logout)
 // Map<userId, { userId, username, loginTime, ip, userAgent }>
 const loggedInUsers = new Map();
@@ -140,6 +146,21 @@ const loggedInUsers = new Map();
 // Track user fingerprints for robust blocking
 // Map<userId, { ips: Set, userAgents: Set, screenResolution, platform, language, timezone, deviceHashes: Set }>
 const userFingerprints = new Map();
+
+// Convert Mongoose Map reactions to plain objects before JSON serialization.
+const toClientMessage = (msg) => {
+  if (!msg) return msg;
+  const plain = typeof msg.toObject === 'function' ? msg.toObject() : msg;
+  if (!(plain.reactions instanceof Map)) return plain;
+
+  const reactionsPlain = {};
+  for (const [emoji, users] of plain.reactions.entries()) {
+    reactionsPlain[emoji] = Array.isArray(users)
+      ? users.map((u) => ({ userId: u.userId, username: u.username }))
+      : users;
+  }
+  return { ...plain, reactions: reactionsPlain };
+};
 
 // --- Helper: Generate device hash from fingerprint components ---
 const generateDeviceHash = (components) => {
@@ -1113,20 +1134,33 @@ app.get('/api/admin/audit-logs', adminLimiter, adminAuth, async (req, res) => {
 // Route for fetching paginated messages for infinite scroll
 app.get('/api/messages', apiLimiter, async (req, res) => {
     try {
-        const limit = 50;
-        const { before } = req.query; // 'before' will be the 'createdAt' timestamp of the oldest message client-side
+    const requestedLimit = Number(req.query.limit);
+    const pageSize = Number.isFinite(requestedLimit)
+      ? Math.min(Math.max(Math.floor(requestedLimit), 1), MAX_HISTORY_PAGE_SIZE)
+      : DEFAULT_HISTORY_PAGE_SIZE;
+
+    const { before } = req.query; // 'before' is the createdAt timestamp of the oldest client-side message
 
         const query = {};
-        if (before) {
-            query.createdAt = { $lt: new Date(before) };
+    if (typeof before === 'string' && before.trim()) {
+      const beforeDate = new Date(before);
+      if (!Number.isNaN(beforeDate.getTime())) {
+        query.createdAt = { $lt: beforeDate };
+      }
         }
 
-        const messages = await Message.find(query)
+    const rows = await Message.find(query)
             .sort({ createdAt: -1 })
-            .limit(limit)
+      .limit(pageSize + 1)
             .lean();
+
+    const hasMore = rows.length > pageSize;
+    const pageRows = hasMore ? rows.slice(0, pageSize) : rows;
+    const messages = pageRows.reverse().map(toClientMessage);
+    const oldestCreatedAt = messages.length > 0 ? messages[0].createdAt : null;
         
-        res.json(messages.reverse()); // Send oldest-first, so client can simply prepend
+    // Send oldest-first so client can prepend while preserving chronology.
+    res.json({ messages, hasMore, oldestCreatedAt });
     } catch (error) {
         logger.error('Failed to fetch paginated messages:', { message: error.message, stack: error.stack });
         res.status(500).json({ error: 'Failed to fetch messages' });
@@ -1286,24 +1320,20 @@ wss.on('connection', (ws, req) => {
         broadcastToAdmins('logged_in_users', Array.from(loggedInUsers.values()));
         broadcastOnlineUsers();
 
-        Message.find().sort({ createdAt: 1 }).lean()
-          .then(messages => {
-            // Convert Mongoose Map fields to plain objects for JSON serialization.
-            // .lean() may return Map instances for schema fields defined as `type: Map`,
-            // which JSON.stringify converts to '{}'. We must explicitly convert them.
-            const cleanMessages = messages.map(msg => {
-              if (msg.reactions instanceof Map) {
-                const reactionsPlain = {};
-                for (const [k, v] of msg.reactions.entries()) {
-                  reactionsPlain[k] = Array.isArray(v)
-                    ? v.map(u => ({ userId: u.userId, username: u.username }))
-                    : v;
-                }
-                return { ...msg, reactions: reactionsPlain };
-              }
-              return msg;
-            });
-            ws.send(JSON.stringify({ type: 'history', data: cleanMessages }));
+        Message.find().sort({ createdAt: -1 }).limit(INITIAL_HISTORY_BATCH_SIZE + 1).lean()
+          .then(messagesDesc => {
+            const hasMoreHistory = messagesDesc.length > INITIAL_HISTORY_BATCH_SIZE;
+            const windowDesc = hasMoreHistory
+              ? messagesDesc.slice(0, INITIAL_HISTORY_BATCH_SIZE)
+              : messagesDesc;
+            const cleanMessages = windowDesc.reverse().map(toClientMessage);
+            const oldestCreatedAt = cleanMessages.length > 0 ? cleanMessages[0].createdAt : null;
+            ws.send(JSON.stringify({
+              type: 'history',
+              data: cleanMessages,
+              hasMoreHistory,
+              oldestCreatedAt,
+            }));
           })
           .catch(err => logger.error('Failed to send initial history:', err));
         break;
