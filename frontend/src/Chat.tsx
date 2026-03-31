@@ -277,6 +277,21 @@ const countBump = keyframes`
   100% { transform: scale(1); }
 `;
 
+const quoteJumpHighlight = keyframes`
+  0% {
+    box-shadow: inset 0 0 0 0 rgba(56, 189, 248, 0);
+    background-color: rgba(56, 189, 248, 0);
+  }
+  30% {
+    box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.62);
+    background-color: rgba(56, 189, 248, 0.16);
+  }
+  100% {
+    box-shadow: inset 0 0 0 0 rgba(56, 189, 248, 0);
+    background-color: rgba(56, 189, 248, 0);
+  }
+`;
+
 /* ═══ Site-Wide Premium Animations ═══ */
 const subtleSlideUp = keyframes`
   from { opacity: 0; transform: translateY(12px); }
@@ -558,6 +573,7 @@ const MessageRow = styled.div<{ $sender: string; $isSelected?: boolean; $isActiv
   display: flex;
   flex-direction: row;
   align-items: flex-start;
+  position: relative;
   background-color: ${props => props.$isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent'};
   border-radius: 8px;
   transition: background-color 0.2s ease;
@@ -567,6 +583,10 @@ const MessageRow = styled.div<{ $sender: string; $isSelected?: boolean; $isActiv
   /* Grouped = same sender continuation: tight gap; non-grouped = new sender: clear separation */
   padding-top: ${props => props.$isGrouped ? '2px' : '6px'};
   padding-bottom: 1px;
+
+  &.quote-jump-highlight {
+    animation: ${quoteJumpHighlight} 1.25s ease-out;
+  }
 `;
 const Username = styled.div<{ $sender: 'me' | 'other' }>`
   font-size: 0.75rem;
@@ -4941,13 +4961,31 @@ function Chat() {
   }, [isSelectModeActive, lightboxUrl, isDeleteConfirmationVisible, isMobileView]);
 
   const highlightMessage = useCallback((messageId: string) => {
-    const element = document.getElementById(`message-${messageId}`);
-    if (!element) return;
-    element.style.transition = 'background-color 0.5s ease';
-    element.style.backgroundColor = 'rgba(59, 130, 246, 0.2)';
-    setTimeout(() => {
-      element.style.backgroundColor = 'transparent';
-    }, 1500);
+    if (!messageId) return;
+
+    const maxAttempts = 24;
+    const attemptDelayMs = 60;
+
+    const applyHighlight = (attempt: number) => {
+      const element = document.getElementById(`message-${messageId}`);
+      if (!element) {
+        if (attempt < maxAttempts) {
+          window.setTimeout(() => applyHighlight(attempt + 1), attemptDelayMs);
+        }
+        return;
+      }
+
+      element.classList.remove('quote-jump-highlight');
+      // Restart animation even when the same message is highlighted repeatedly.
+      void element.getBoundingClientRect();
+      element.classList.add('quote-jump-highlight');
+
+      window.setTimeout(() => {
+        element.classList.remove('quote-jump-highlight');
+      }, 1300);
+    };
+
+    applyHighlight(0);
   }, []);
 
   const scrollToLoadedMessage = useCallback((messageId: string, behavior: 'auto' | 'smooth' = 'smooth') => {
@@ -4956,7 +4994,7 @@ function Chat() {
     if (msgIndex === -1) return false;
 
     virtuosoRef.current.scrollToIndex({ index: msgIndex, align: 'center', behavior });
-    setTimeout(() => highlightMessage(messageId), behavior === 'smooth' ? 300 : 90);
+    window.setTimeout(() => highlightMessage(messageId), behavior === 'smooth' ? 360 : 120);
     return true;
   }, [highlightMessage]);
 
