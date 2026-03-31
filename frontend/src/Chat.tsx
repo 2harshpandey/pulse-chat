@@ -125,6 +125,7 @@ const VIRTUOSO_VIEWPORT_BY_DESKTOP = { top: 240, bottom: 160 };
 const VIRTUOSO_VIEWPORT_BY_MOBILE = { top: 180, bottom: 120 };
 const MAX_NEW_MESSAGE_INDICATOR_COUNT = 99;
 const LONG_PRESS_CANCEL_MOVE_PX = 8;
+const COMPOSER_TEXTAREA_ID = 'chat-composer-input';
 
 // --- STYLED COMPONENTS ---
 export const GlobalStyle = createGlobalStyle`
@@ -2666,6 +2667,15 @@ const MessageItem = React.memo(({
       return;
     }
 
+    const isComposerFocused =
+      document.activeElement instanceof HTMLElement &&
+      document.activeElement.id === COMPOSER_TEXTAREA_ID;
+    if (isComposerFocused && e.nativeEvent.cancelable) {
+      // Keep focus on the composer while long-pressing a message so the
+      // on-screen keyboard doesn't collapse on touch devices.
+      e.preventDefault();
+    }
+
     if (e.touches.length !== 1) {
       return;
     }
@@ -4414,6 +4424,11 @@ function Chat() {
   };
   
   const handleToggleSelectMessage = useCallback((messageId: string) => {
+    const shouldRestoreComposerFocus =
+      isMobileView &&
+      document.activeElement instanceof HTMLElement &&
+      document.activeElement.id === COMPOSER_TEXTAREA_ID;
+
     setSelectedMessages(prevSelected => {
       const newSelected = prevSelected.includes(messageId)
         ? prevSelected.filter(id => id !== messageId)
@@ -4427,11 +4442,19 @@ function Chat() {
           window.history.pushState({ overlayGuard: true }, '');
           overlayGuardPushed.current = true;
         }
+        if (shouldRestoreComposerFocus) {
+          requestAnimationFrame(() => {
+            const composer = document.getElementById(COMPOSER_TEXTAREA_ID) as HTMLTextAreaElement | null;
+            if (composer && document.activeElement !== composer) {
+              composer.focus({ preventScroll: true });
+            }
+          });
+        }
       }
       
       return newSelected;
     });
-  }, []);
+  }, [isMobileView]);
 
   const handleCancelSelectMode = useCallback(() => {
     setIsSelectModeActive(false);
@@ -5298,6 +5321,7 @@ function Chat() {
                           </InputHighlightOverlay>
                         )}
                         <MessageInput
+                          id={COMPOSER_TEXTAREA_ID}
                           $hasUrl={hasUrl}
                           ref={messageInputRef}
                           rows={1}
