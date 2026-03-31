@@ -119,6 +119,10 @@ const INITIAL_HISTORY_BATCH_SIZE = 80;
 const HISTORY_PAGE_SIZE = 50;
 const INITIAL_FIRST_ITEM_INDEX = 100000;
 const MAX_LINK_PREVIEW_CACHE_ENTRIES = 250;
+const VIRTUOSO_OVERSCAN_DESKTOP = 128;
+const VIRTUOSO_OVERSCAN_MOBILE = 96;
+const VIRTUOSO_VIEWPORT_BY_DESKTOP = { top: 240, bottom: 160 };
+const VIRTUOSO_VIEWPORT_BY_MOBILE = { top: 180, bottom: 120 };
 
 // --- STYLED COMPONENTS ---
 export const GlobalStyle = createGlobalStyle`
@@ -4306,6 +4310,9 @@ function Chat() {
   const selectedMessageIds = useMemo(() => new Set(selectedMessages), [selectedMessages]);
   const selectedMessage = messages.find(msg => msg.id === selectedMessages[0]);
   const canEditSelectedMessage = selectedMessages.length === 1 && selectedMessage && selectedMessage.userId === userIdRef.current && selectedMessage.text && (new Date().getTime() - new Date(selectedMessage.timestamp).getTime()) < 15 * 60 * 1000;
+  const virtuosoOverscan = isMobileView ? VIRTUOSO_OVERSCAN_MOBILE : VIRTUOSO_OVERSCAN_DESKTOP;
+  const virtuosoIncreaseViewportBy = isMobileView ? VIRTUOSO_VIEWPORT_BY_MOBILE : VIRTUOSO_VIEWPORT_BY_DESKTOP;
+  const virtuosoFollowOutput = (isAtBottom: boolean) => (isAtBottom ? 'smooth' : false);
  
   
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -4653,12 +4660,12 @@ function Chat() {
                  data={messages}
                  initialTopMostItemIndex={messages.length > 0 ? messages.length - 1 : 0}
                  startReached={loadOlderMessages}
-                 followOutput={(isAtBottom: boolean) => isAtBottom ? 'smooth' : false}
+                 followOutput={virtuosoFollowOutput}
                  atBottomStateChange={handleAtBottomStateChange}
                  atBottomThreshold={20}
                  defaultItemHeight={88}
-                 increaseViewportBy={{ top: 320, bottom: 220 }}
-                 overscan={160}
+                 increaseViewportBy={virtuosoIncreaseViewportBy}
+                 overscan={virtuosoOverscan}
                  computeItemKey={(index: number, msg: Message) => msg.id || index}
                  style={{ flex: 1, overflow: 'auto' }}
                  components={{
@@ -4989,7 +4996,7 @@ function Chat() {
         </GifPickerModal>
       )}
     </>
-  );
+  );p
 }
 
 export default Chat;
