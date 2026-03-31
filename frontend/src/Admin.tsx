@@ -500,6 +500,50 @@ const FilterContainer = styled.div`
   }
 `;
 
+const FilterToggleButton = styled.button<{ $open: boolean }>`
+  align-self: flex-start;
+  display: none;
+  border: 1px solid var(--border-secondary);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border-radius: 10px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+
+  &::after {
+    content: '${(p: any) => (p.$open ? '\\25B2' : '\\25BC')}';
+    margin-left: 0.45rem;
+    font-size: 0.7rem;
+  }
+
+  &:hover {
+    border-color: var(--border-focus);
+    color: var(--accent-blue);
+  }
+
+  @media (max-width: 768px) {
+    display: inline-flex;
+    align-items: center;
+  }
+`;
+
+const MessageFilterCollapse = styled.div<{ $open: boolean }>`
+  overflow: hidden;
+  max-height: ${(p: any) => (p.$open ? '420px' : '0')};
+  opacity: ${(p: any) => (p.$open ? 1 : 0)};
+  transform: translateY(${(p: any) => (p.$open ? '0' : '-6px')});
+  transition: max-height 220ms ease, opacity 180ms ease, transform 180ms ease;
+
+  @media (min-width: 769px) {
+    max-height: none;
+    opacity: 1;
+    transform: none;
+  }
+`;
+
 const Button = styled.button`
   padding: 0.75rem 1.5rem;
   font-size: 1rem;
@@ -615,6 +659,13 @@ const Th = styled.th`
   @media (max-height: 500px) { padding: 0.3rem 0.5rem; font-size: 0.78rem; }
 `;
 
+const StickyTh = styled(Th)`
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  box-shadow: 0 1px 0 var(--border-primary);
+`;
+
 const Td = styled.td`
   padding: 0.75rem;
   text-align: left;
@@ -637,6 +688,28 @@ const TableWrapper = styled.div`
   border-radius: 8px;
 `;
 
+const MessageLogScrollContainer = styled.div`
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+`;
+
+const MessageLogTableWrapper = styled.div`
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--border-primary);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+`;
+
 // Td variant that never wraps — used for compact columns (Date, Time, Event, Message ID)
 const NoWrapTd = styled(Td)`
   white-space: nowrap;
@@ -650,6 +723,10 @@ const ExpandTd = styled(Td)`
 // Table variant with min-width for horizontal-scroll tables (audit log)
 const WideTable = styled(Table)`
   min-width: 700px;
+`;
+
+const MessageLogTable = styled(WideTable)`
+  margin-top: 0;
 `;
 
 const LogoutButton = styled(Button)`
@@ -1245,6 +1322,31 @@ const Admin = () => {
   const ws = useRef<WebSocket | null>(null);
   const activityLogRef = useRef<HTMLDivElement>(null);
   const passwordRef = useRef<string>('');
+  const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth <= 768 : false
+  );
+  const [showMessageFilters, setShowMessageFilters] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth > 768 : true
+  );
+
+  useEffect(() => {
+    const previousTitle = document.title;
+    document.title = 'Pulse - Admin Panel';
+    return () => {
+      document.title = previousTitle;
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth <= 768;
+      setIsMobileViewport(mobile);
+      if (!mobile) setShowMessageFilters(true);
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Message Log filters
   const [filterMessageId, setFilterMessageId] = useState('');
@@ -1748,7 +1850,7 @@ const Admin = () => {
       <TabContent>
         {/* ===== MESSAGE LOG ===== */}
         {activeTab === 'messages' && (
-          <>
+          <MessageLogScrollContainer>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem' }}>
               <h2 style={{ margin: 0 }}>Message Log</h2>
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -1756,25 +1858,44 @@ const Admin = () => {
                 <ClearHistoryButton onClick={handlePermanentClear}>Clear Chat History</ClearHistoryButton>
               </div>
             </div>
-            <FilterContainer>
-              <Input type="text" placeholder="Filter by Message ID" value={filterMessageId} onChange={(e) => setFilterMessageId(e.target.value)} />
-              <Input type="text" placeholder="Filter by User" value={filterUser} onChange={(e) => setFilterUser(e.target.value)} />
-              <SelectWrapper>
-                <Select value={filterEventType} onChange={(e) => setFilterEventType(e.target.value)}>
-                  <option value="All">All Events</option>
-                  <option value="Create">Create</option>
-                  <option value="Edit">Edit</option>
-                  <option value="Upload">Upload</option>
-                  <option value="Delete (Everyone)">Delete (Everyone)</option>
-                </Select>
-              </SelectWrapper>
-              <Input type="text" placeholder="Filter by Content" value={filterContent} onChange={(e) => setFilterContent(e.target.value)} />
-            </FilterContainer>
+            {isMobileViewport && (
+              <FilterToggleButton
+                $open={showMessageFilters}
+                onClick={() => setShowMessageFilters(prev => !prev)}
+                aria-label={showMessageFilters ? 'Hide message log filters' : 'Show message log filters'}
+                title={showMessageFilters ? 'Hide filters' : 'Show filters'}
+              >
+                {showMessageFilters ? 'Hide filters' : 'Show filters'}
+              </FilterToggleButton>
+            )}
+            <MessageFilterCollapse $open={!isMobileViewport || showMessageFilters}>
+              <FilterContainer>
+                <Input type="text" placeholder="Filter by Message ID" value={filterMessageId} onChange={(e) => setFilterMessageId(e.target.value)} />
+                <Input type="text" placeholder="Filter by User" value={filterUser} onChange={(e) => setFilterUser(e.target.value)} />
+                <SelectWrapper>
+                  <Select value={filterEventType} onChange={(e) => setFilterEventType(e.target.value)}>
+                    <option value="All">All Events</option>
+                    <option value="Create">Create</option>
+                    <option value="Edit">Edit</option>
+                    <option value="Upload">Upload</option>
+                    <option value="Delete (Everyone)">Delete (Everyone)</option>
+                  </Select>
+                </SelectWrapper>
+                <Input type="text" placeholder="Filter by Content" value={filterContent} onChange={(e) => setFilterContent(e.target.value)} />
+              </FilterContainer>
+            </MessageFilterCollapse>
             {isLoading ? <p>Loading history...</p> : (
-              <TableWrapper>
-                <WideTable>
+              <MessageLogTableWrapper>
+                <MessageLogTable>
                   <thead>
-                    <tr><Th>Date</Th><Th>Time</Th><Th>Event</Th><Th>User</Th><Th>Message ID</Th><Th>Details</Th></tr>
+                    <tr>
+                      <StickyTh>Date</StickyTh>
+                      <StickyTh>Time</StickyTh>
+                      <StickyTh>Event</StickyTh>
+                      <StickyTh>User</StickyTh>
+                      <StickyTh>Message ID</StickyTh>
+                      <StickyTh>Details</StickyTh>
+                    </tr>
                   </thead>
                   <tbody>
                     {filteredHistoryLogs.map((log, index) => (
@@ -1788,10 +1909,10 @@ const Admin = () => {
                       </tr>
                     ))}
                   </tbody>
-                </WideTable>
-              </TableWrapper>
+                </MessageLogTable>
+              </MessageLogTableWrapper>
             )}
-          </>
+          </MessageLogScrollContainer>
         )}
 
         {/* ===== USERS ===== */}
