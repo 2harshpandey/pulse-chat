@@ -39,6 +39,11 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const logout = () => {
     localStorage.removeItem('pulseUsername');
     sessionStorage.removeItem('chatCleared'); // Reset the chat clear flag on logout
+    // Ensure the browser URL is at "/" before React re-renders.
+    // This prevents React Router from seeing a stale path and rendering the 404 page.
+    if (window.location.pathname !== '/') {
+      window.history.replaceState(null, document.title, '/');
+    }
     setProfile(null);
   };
 

@@ -4115,8 +4115,18 @@ function Chat() {
         setIsUserListVisible(false);
       } else if (replyingTo) {
         setReplyingTo(null);
+      } else {
+        // No overlay is open — the user pressed back on the browser/phone.
+        // Do NOT let React Router process this popstate or it will navigate
+        // away from "/" and land on the wildcard 404 route.
+        // Instead, silently re-push the current path so the history cursor
+        // stays on the chat page.
+        const currentPath = getCurrentHistoryPath();
+        if (currentPath === '/' || currentPath === '') {
+          const cleanState = buildOverlayGuardState(readRouterHistoryState(), false, 'push');
+          window.history.pushState(cleanState, document.title, '/');
+        }
       }
-      // else: nothing open — the natural back navigation proceeds
     };
 
     window.addEventListener('popstate', handlePopState);
