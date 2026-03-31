@@ -3077,6 +3077,7 @@ function Chat() {
   // Used to ignore the phantom synthetic click that mobile browsers fire
   // ~300 ms after pointerdown, which would otherwise immediately close the modal.
   const gifPickerOpenedAtRef = useRef<number>(0);
+  const keyboardWasOpenBeforeGifRef = useRef<boolean>(false);
   const emojiPickerRef = useRef<HTMLDivElement>(null!);
   const fullEmojiPickerRef = useRef<HTMLDivElement>(null!);
   const emojiButtonRef = useRef<HTMLButtonElement>(null!);
@@ -3547,6 +3548,16 @@ function Chat() {
       document.removeEventListener('drop', onDrop);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Keyboard auto-restore when closing GIF picker ─────────────────
+  useEffect(() => {
+    if (!showGifPicker) {
+      if (keyboardWasOpenBeforeGifRef.current) {
+        messageInputRef.current?.focus();
+        keyboardWasOpenBeforeGifRef.current = false;
+      }
+    }
+  }, [showGifPicker]);
 
   // Virtuoso handles initial scroll and follow-output automatically.
   // We only need to track whether the initial load has happened to
@@ -4648,6 +4659,12 @@ function Chat() {
                     <PlusMenuItem
                       onPointerDown={(e) => {
                         e.preventDefault();
+                        if (messageInputRef.current && document.activeElement === messageInputRef.current) {
+                          keyboardWasOpenBeforeGifRef.current = true;
+                          messageInputRef.current.blur();
+                        } else {
+                          keyboardWasOpenBeforeGifRef.current = false;
+                        }
                         gifPickerOpenedAtRef.current = Date.now();
                         setShowGifPicker(true);
                         setIsPlusMenuOpen(false);
