@@ -3389,6 +3389,7 @@ function Chat() {
   const replyPreviewRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef({
     isSelectModeActive,
+    selectedMessageCount: selectedMessages.length,
     isDeleteConfirmationVisible,
     lightboxUrl,
     isUserListVisible,
@@ -3407,6 +3408,7 @@ function Chat() {
   useEffect(() => {
     stateRef.current = {
       isSelectModeActive,
+      selectedMessageCount: selectedMessages.length,
       isDeleteConfirmationVisible,
       lightboxUrl,
       isUserListVisible,
@@ -3418,6 +3420,7 @@ function Chat() {
     };
   }, [
     isSelectModeActive,
+    selectedMessages.length,
     isDeleteConfirmationVisible,
     lightboxUrl,
     isUserListVisible,
@@ -3433,9 +3436,11 @@ function Chat() {
   // the ref, so the *next* effect run (triggered by closing one layer while
   // others remain) will push a fresh guard automatically.
   useEffect(() => {
+    const hasSelectedMessages = selectedMessages.length > 0;
     const anyOpen =
       isDeleteConfirmationVisible ||
       isSelectModeActive ||
+      hasSelectedMessages ||
       !!lightboxUrl ||
       isUserListVisible ||
       !!replyingTo ||
@@ -3453,6 +3458,7 @@ function Chat() {
   }, [
     isDeleteConfirmationVisible,
     isSelectModeActive,
+    selectedMessages.length,
     lightboxUrl,
     isUserListVisible,
     replyingTo,
@@ -3535,6 +3541,7 @@ function Chat() {
 
       const {
         isSelectModeActive,
+        selectedMessageCount,
         isDeleteConfirmationVisible,
         lightboxUrl,
         isUserListVisible,
@@ -3551,7 +3558,7 @@ function Chat() {
       } else if (isFullEmojiPickerOpen) {
         setFullEmojiPickerPosition(null);
         messageIdForFullEmojiPickerRef.current = null;
-      } else if (isSelectModeActive) {
+      } else if (isSelectModeActive || selectedMessageCount > 0) {
         setSelectedMessages([]);
         setIsSelectModeActive(false);
       } else if (showGifPicker) {
