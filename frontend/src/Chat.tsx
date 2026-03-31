@@ -3545,15 +3545,15 @@ function Chat() {
         isPlusMenuOpen,
       } = stateRef.current;
 
-      // Strict hierarchy: confirm modal → select mode → full-emoji → GIF → emoji → plus menu → lightbox → sidebar → quote.
+      // Strict hierarchy: confirm modal → full-emoji → select mode → GIF → emoji → plus menu → lightbox → sidebar → quote.
       if (isDeleteConfirmationVisible) {
         setIsDeleteConfirmationVisible(false);
-      } else if (isSelectModeActive) {
-        setSelectedMessages([]);
-        setIsSelectModeActive(false);
       } else if (isFullEmojiPickerOpen) {
         setFullEmojiPickerPosition(null);
         messageIdForFullEmojiPickerRef.current = null;
+      } else if (isSelectModeActive) {
+        setSelectedMessages([]);
+        setIsSelectModeActive(false);
       } else if (showGifPicker) {
         setShowGifPicker(false);
       } else if (isEmojiPickerOpen) {
