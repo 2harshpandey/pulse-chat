@@ -2774,6 +2774,41 @@ const MessageItem = React.memo(({
     onVideoFullscreenEnter?.(msg.id);
   }, [onVideoFullscreenEnter, msg.id]);
 
+  const isLongPressIgnoredTarget = useCallback((target: HTMLElement) => {
+    return Boolean(
+      target.closest('.mobile-reaction-picker') ||
+      target.closest('button, a, input, textarea, [contenteditable="true"]')
+    );
+  }, []);
+
+  const shouldPreserveComposerKeyboard = useCallback((target: HTMLElement) => {
+    if (!isMobileView || isLongPressIgnoredTarget(target)) {
+      return false;
+    }
+    return (
+      document.activeElement instanceof HTMLElement &&
+      document.activeElement.id === COMPOSER_TEXTAREA_ID
+    );
+  }, [isMobileView, isLongPressIgnoredTarget]);
+
+  const handleLongPressTouchStartCapture = (e: React.TouchEvent) => {
+    if (!isMobileView || e.touches.length !== 1) return;
+    const target = e.target as HTMLElement;
+    if (shouldPreserveComposerKeyboard(target) && e.nativeEvent.cancelable) {
+      // Capture-phase preventDefault keeps textarea focus from being stolen
+      // before the long-press timer starts on some mobile browsers.
+      e.preventDefault();
+    }
+  };
+
+  const handleLongPressPointerDownCapture = (e: React.PointerEvent) => {
+    if (e.pointerType !== 'touch') return;
+    const target = e.target as HTMLElement;
+    if (shouldPreserveComposerKeyboard(target) && e.nativeEvent.cancelable) {
+      e.preventDefault();
+    }
+  };
+
   const handleLongPressStart = (e: React.TouchEvent | React.MouseEvent) => {
     if (!isMobileView || !('touches' in e)) {
       return;
@@ -2784,14 +2819,11 @@ const MessageItem = React.memo(({
     // selection (deselecting the message), and unmounts the picker before
     // the user's onClick can fire on the emoji button.
     const target = e.target as HTMLElement;
-    if (target.closest('.mobile-reaction-picker') || target.closest('button, a, input, textarea, [contenteditable="true"]')) {
+    if (isLongPressIgnoredTarget(target)) {
       return;
     }
 
-    const isComposerFocused =
-      document.activeElement instanceof HTMLElement &&
-      document.activeElement.id === COMPOSER_TEXTAREA_ID;
-    if (isComposerFocused && e.nativeEvent.cancelable) {
+    if (shouldPreserveComposerKeyboard(target) && e.nativeEvent.cancelable) {
       // Keep focus on the composer while long-pressing a message so the
       // on-screen keyboard doesn't collapse on touch devices.
       e.preventDefault();
@@ -2888,6 +2920,8 @@ const MessageItem = React.memo(({
       }}
       onMouseDown={handleLongPressStart}
       onMouseUp={handleLongPressEnd}
+      onPointerDownCapture={handleLongPressPointerDownCapture}
+      onTouchStartCapture={handleLongPressTouchStartCapture}
       onTouchStart={handleLongPressStart}
       onTouchMove={handleLongPressMove}
       onTouchEnd={handleLongPressEnd}
@@ -3359,6 +3393,7 @@ function Chat() {
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [isSelectModeActive, setIsSelectModeActive] = useState(false);
   const [selectedMessages, setSelectedMessages] = useState<string[]>([]);
+  const [preserveComposerDuringSelectMode, setPreserveComposerDuringSelectMode] = useState(false);
   const [isDeleteConfirmationVisible, setIsDeleteConfirmationVisible] = useState(false);
   const [canDeleteForEveryone, setCanDeleteForEveryone] = useState(false);
   const [fullEmojiPickerPosition, setFullEmojiPickerPosition] = useState<DOMRect | null>(null);
@@ -4553,7 +4588,7 @@ function Chat() {
   };
   
   const handleToggleSelectMessage = useCallback((messageId: string) => {
-    const shouldRestoreComposerFocus =
+    const shouldPreserveComposer =
       isMobileView &&
       document.activeElement instanceof HTMLElement &&
       document.activeElement.id === COMPOSER_TEXTAREA_ID;
@@ -4565,13 +4600,15 @@ function Chat() {
 
       if (newSelected.length === 0) {
         setIsSelectModeActive(false);
+        setPreserveComposerDuringSelectMode(false);
       } else if (prevSelected.length === 0) {
         setIsSelectModeActive(true);
+        setPreserveComposerDuringSelectMode(shouldPreserveComposer);
         if (!overlayGuardPushed.current) {
           window.history.pushState({ overlayGuard: true }, '');
           overlayGuardPushed.current = true;
         }
-        if (shouldRestoreComposerFocus) {
+        if (shouldPreserveComposer) {
           requestAnimationFrame(() => {
             const composer = document.getElementById(COMPOSER_TEXTAREA_ID) as HTMLTextAreaElement | null;
             if (composer && document.activeElement !== composer) {
@@ -4587,8 +4624,15 @@ function Chat() {
 
   const handleCancelSelectMode = useCallback(() => {
     setIsSelectModeActive(false);
+    setPreserveComposerDuringSelectMode(false);
     setSelectedMessages([]);
   }, []);
+
+  useEffect(() => {
+    if (!isSelectModeActive) {
+      setPreserveComposerDuringSelectMode(false);
+    }
+  }, [isSelectModeActive]);
 
   // Re-anchor scroll to bottom when select mode deactivates on mobile.
   // The select-mode footer swaps with the input footer, changing the chat
@@ -5356,7 +5400,7 @@ function Chat() {
             </MessagesAndScrollWrapper>
             <TypingIndicator onlineUsers={onlineUsers} currentUserId={userIdRef.current} />
             <Footer>
-              {isSelectModeActive && (
+              {isSelectModeActive && !preserveComposerDuringSelectMode && (
                 <SelectModeFooter>
                   <CancelPreviewButton onClick={handleCancelSelectMode}>&times;</CancelPreviewButton>
                   <span>{selectedMessages.length} selected</span>
@@ -5379,7 +5423,7 @@ function Chat() {
               )}
               {/* Keep the input section always mounted so the keyboard doesn't dismiss on long-press.
                   When select mode is active, hide it visually but keep the textarea in the DOM. */}
-              <div style={isSelectModeActive ? { position: 'absolute', width: 0, height: 0, overflow: 'hidden', opacity: 0, pointerEvents: 'none' } : undefined}>
+                <div style={isSelectModeActive && !preserveComposerDuringSelectMode ? { position: 'absolute', width: 0, height: 0, overflow: 'hidden', opacity: 0, pointerEvents: 'none' } : undefined}>
                {replyingTo && <ReplyPreviewContainer ref={replyPreviewRef} onClick={() => scrollToMessage(replyingTo.id)}>
                 {replyingTo.type === 'video' && replyingTo.url ? (
                   <video src={replyingTo.url} style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover' }} />
@@ -5504,6 +5548,11 @@ function Chat() {
                           onChange={handleInputChange}
                           onKeyDown={handleInputKeyDown}
                           onPaste={handlePaste}
+                          onBlur={() => {
+                            if (isSelectModeActive) {
+                              setPreserveComposerDuringSelectMode(false);
+                            }
+                          }}
                           maxLength={MAX_MESSAGE_LENGTH}
                         />
                       </>
