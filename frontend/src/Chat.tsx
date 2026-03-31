@@ -614,15 +614,84 @@ const InputContainer = styled.div`
   transition: all 0.3s ease;
 `;
 
-const ActionButtonsContainer = styled.div`
+const PlusMenuButton = styled.button<{ $isOpen?: boolean }>`
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
   display: flex;
-  flex-direction: row;
-  gap: 0.5rem;
-
-  @media (max-width: 768px) {
-    flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  svg {
+    width: 22px;
+    height: 22px;
+    stroke: currentColor;
+    stroke-width: 2;
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transform: ${props => props.$isOpen ? 'rotate(45deg)' : 'rotate(0deg)'};
+  }
+  &:hover:not(:disabled) {
+    background: var(--border-primary);
+    transform: scale(1.1);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  }
+  &:active:not(:disabled) {
+    transform: scale(0.92);
   }
 `;
+
+const plusMenuSlideIn = keyframes`
+  from { opacity: 0; transform: translateY(8px) scale(0.92); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+`;
+
+const PlusMenu = styled.div<{ $isVisible: boolean }>`
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 6px;
+  background: var(--bg-elevated);
+  border-radius: 14px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05);
+  border: 1px solid var(--border-primary);
+  overflow: hidden;
+  display: ${props => props.$isVisible ? 'flex' : 'none'};
+  flex-direction: column;
+  min-width: 150px;
+  animation: ${plusMenuSlideIn} 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  z-index: 20;
+  transition: background-color 0.3s ease;
+
+  [data-theme='dark'] & {
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06);
+  }
+`;
+
+const PlusMenuItem = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 16px;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  text-align: left;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  &:hover { background: var(--bg-hover); padding-left: 20px; }
+  &:active { background: var(--border-primary); }
+  svg { width: 18px; height: 18px; flex-shrink: 0; stroke: var(--text-secondary); transition: transform 0.2s ease, stroke 0.2s ease; }
+  &:hover svg { transform: scale(1.1); stroke: var(--accent-blue); }
+`;
+
 const MessageInput = styled.textarea<{ $hasUrl?: boolean }>`
   width: 100%;
   padding: 0.75rem;
@@ -720,18 +789,7 @@ const SendButton = styled.button`
     opacity: 0.6;
   }
 `;
-const AttachButton = styled(SendButton)`
-    background-color: var(--bg-hover);
-    color: var(--text-secondary);
-    &:hover:not(:disabled) { 
-      background-color: var(--border-primary); 
-      transform: scale(1.12) rotate(15deg);
-      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-    }
-    &:active:not(:disabled) {
-      transform: scale(0.92) rotate(0deg);
-    }
-`;
+
 const FileAttachmentCard = styled.div`
   display: flex;
   align-items: center;
@@ -1024,36 +1082,9 @@ const ConfirmationButton = styled.button`
   }
 `;
 
-const AttachmentMenuContainer = styled.div<{ isVisible: boolean }>`
-  position: absolute;
-  bottom: 100%;
-  left: 0;
-  background: var(--bg-elevated);
-  border-radius: 8px;
-  box-shadow: var(--shadow-md);
-  z-index: 20;
-  overflow: hidden;
-  border: 1px solid var(--border-primary);
-  display: ${props => props.isVisible ? 'block' : 'none'};
-  animation: ${slideIn} 0.2s ease-out forwards;
-  transition: background-color 0.3s ease;
-`;
 
-const AttachmentMenuItem = styled.button`
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 10px 15px;
-  background: none;
-  border: none;
-  color: var(--text-primary);
-  text-align: left;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  &:hover { background-color: var(--bg-hover); }
-`;
+
+
 
 const ReactionsContainer = styled.div<{ $sender: 'me' | 'other' }>`
   position: absolute;
@@ -1137,18 +1168,7 @@ const CancelPreviewButton = styled.button`
   &:hover { background-color: var(--border-primary); transform: scale(1.1) rotate(90deg); }
   &:active { transform: scale(0.9); }
 `;
-const EmojiButton = styled(SendButton)`
-  background-color: var(--bg-hover);
-  color: var(--text-secondary);
-  &:hover:not(:disabled) { 
-    background-color: var(--border-primary); 
-    transform: scale(1.12) rotate(-10deg);
-    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-  }
-  &:active:not(:disabled) {
-    transform: scale(0.92) rotate(5deg);
-  }
-`;
+
 const GifPickerModal = styled.div`
   position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 50;
   animation: ${fadeInScale} 0.3s ease-out forwards;
@@ -1981,13 +2001,31 @@ interface Gif { id: string; preview: string; url: string; }
 
 // --- CHILD COMPONENTS ---
 
-const VideoPlayer = ({ src, onPointerDown }: { src: string; onPointerDown?: () => void }) => {
+const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter }: { src: string; onPointerDown?: () => void; onFullscreenEnter?: () => void }) => {
   const videoRef = useRef<HTMLVideoElement>(null!);
 
   const handleLoadedMetadata = () => {
     // Seek slightly past 0 to generate a poster thumbnail in browsers that need it
     if (videoRef.current) videoRef.current.currentTime = 0.1;
   };
+
+  // Track fullscreen changes so we can scroll back to this video on exit
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const handleFullscreenChange = () => {
+      // Entering fullscreen — notify parent to save position
+      if (document.fullscreenElement === video || (document as any).webkitFullscreenElement === video) {
+        onFullscreenEnter?.();
+      }
+    };
+    video.addEventListener('fullscreenchange', handleFullscreenChange);
+    video.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    return () => {
+      video.removeEventListener('fullscreenchange', handleFullscreenChange);
+      video.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+    };
+  }, [onFullscreenEnter]);
 
   return (
     // No custom PlayIcon overlay — native <controls> provides the single play button
@@ -2153,6 +2191,7 @@ const renderMessageContent = (
   openLightbox: (url: string) => void,
   onMediaPointerDown?: () => void,
   sender: 'me' | 'other' = 'other',
+  onVideoFullscreenEnter?: () => void,
 ) => {
   const isVideo = msg.type === 'video' || msg.url?.match(/\.(mp4|webm|mov)$/i);
   const isImage = msg.type === 'image' || msg.url?.match(/\.(jpeg|jpg|gif|png|svg)$/i);
@@ -2188,7 +2227,7 @@ const renderMessageContent = (
   if (isVideo && msg.url) {
     return (
       <MediaContent>
-        <VideoPlayer src={msg.url} onPointerDown={onMediaPointerDown} />
+        <VideoPlayer src={msg.url} onPointerDown={onMediaPointerDown} onFullscreenEnter={onVideoFullscreenEnter} />
         <InlineDownloadBtn aria-label="Download video" onClick={() => downloadFile(msg.url!, msg.originalName || 'video')}>
           <DownloadSvg /> Download
         </InlineDownloadBtn>
@@ -2343,6 +2382,7 @@ interface MessageItemProps {
   setEditingText: (text: string) => void;
   handleSaveEdit: () => void;
   handleCancelEdit: () => void;
+  onVideoFullscreenEnter?: () => void;
 }
 
 const MessageItem = React.memo(({
@@ -2375,7 +2415,8 @@ const MessageItem = React.memo(({
   editingText,
   setEditingText,
   handleSaveEdit,
-  handleCancelEdit
+  handleCancelEdit,
+  onVideoFullscreenEnter
 }: MessageItemProps) => {
   const isEditing = editingMessageId === msg.id;
   const editInputRef = useRef<HTMLTextAreaElement>(null!);
@@ -2779,7 +2820,7 @@ const MessageItem = React.memo(({
               )}
               {/* DeleteMenu rendered as fixed portal — see block after </MessageRow> */}
               {msg.type === 'text' && !msg.url && msg.text && (() => { const _u = detectFirstUrl(msg.text); return _u ? <LinkPreview url={_u} sender={sender} /> : null; })()}
-              {renderMessageContent(msg, openLightbox, isMobileView && isSelectModeActive ? () => { mediaWasTapped.current = true; } : undefined, sender)}
+              {renderMessageContent(msg, openLightbox, isMobileView && isSelectModeActive ? () => { mediaWasTapped.current = true; } : undefined, sender, onVideoFullscreenEnter)}
               <FooterContainer $sender={sender}>
                 <Timestamp $sender={sender}>{msg.edited && <span>(edited) </span>}{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Timestamp>
               </FooterContainer>
@@ -2990,7 +3031,6 @@ function Chat() {
   const [onlineUsers, setOnlineUsers] = useState<UserProfile[]>([]);
   const [isUserListVisible, setIsUserListVisible] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
-  const [isAttachmentMenuVisible, setIsAttachmentMenuVisible] = useState(false);
   const [isSelectModeActive, setIsSelectModeActive] = useState(false);
   const [selectedMessages, setSelectedMessages] = useState<string[]>([]);
   const [isDeleteConfirmationVisible, setIsDeleteConfirmationVisible] = useState(false);
@@ -3010,6 +3050,12 @@ function Chat() {
   const [reactionsPopup, setReactionsPopup] = useState<{ messageId: string; reactions: { [emoji: string]: { userId: string; username: string; }[] }; rect: DOMRect } | null>(null);
   const [reactionPickerData, setReactionPickerData] = useState<{ messageId: string; rect: DOMRect; sender: 'me' | 'other' } | null>(null);
   const [emojiPickerPosition, setEmojiPickerPosition] = useState<DOMRect | null>(null);
+  const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
+  const plusMenuRef = useRef<HTMLDivElement>(null!);
+  const plusButtonRef = useRef<HTMLButtonElement>(null!);
+  // Ref to track which message's video is in fullscreen.
+  // On fullscreen exit we scroll back to this message.
+  const fullscreenVideoMsgIdRef = useRef<string | null>(null);
 
   // --- REFS ---
   const ws = useRef<WebSocket | null>(null);
@@ -3031,8 +3077,6 @@ function Chat() {
   // Used to ignore the phantom synthetic click that mobile browsers fire
   // ~300 ms after pointerdown, which would otherwise immediately close the modal.
   const gifPickerOpenedAtRef = useRef<number>(0);
-  const attachmentMenuRef = useRef<HTMLDivElement>(null!);
-  const attachmentButtonRef = useRef<HTMLButtonElement>(null!);
   const emojiPickerRef = useRef<HTMLDivElement>(null!);
   const fullEmojiPickerRef = useRef<HTMLDivElement>(null!);
   const emojiButtonRef = useRef<HTMLButtonElement>(null!);
@@ -3070,7 +3114,7 @@ function Chat() {
     });
   };
   const replyPreviewRef = useRef<HTMLDivElement>(null);
-  const stateRef = useRef({ isSelectModeActive, isDeleteConfirmationVisible, lightboxUrl, isUserListVisible });
+  const stateRef = useRef({ isSelectModeActive, isDeleteConfirmationVisible, lightboxUrl, isUserListVisible, replyingTo });
   // Tracks whether we currently have a guard entry in the history stack.
   // Using a ref (not window.history.state) avoids stale-state issues when
   // overlays are closed programmatically rather than via the back button.
@@ -3078,15 +3122,15 @@ function Chat() {
 
   // Update ref whenever any overlay state changes
   useEffect(() => {
-    stateRef.current = { isSelectModeActive, isDeleteConfirmationVisible, lightboxUrl, isUserListVisible };
-  }, [isSelectModeActive, isDeleteConfirmationVisible, lightboxUrl, isUserListVisible]);
+    stateRef.current = { isSelectModeActive, isDeleteConfirmationVisible, lightboxUrl, isUserListVisible, replyingTo };
+  }, [isSelectModeActive, isDeleteConfirmationVisible, lightboxUrl, isUserListVisible, replyingTo]);
 
   // Push exactly ONE history guard entry when going from "nothing open" to
   // "something open".  When the popstate handler consumes the guard it resets
   // the ref, so the *next* effect run (triggered by closing one layer while
   // others remain) will push a fresh guard automatically.
   useEffect(() => {
-    const anyOpen = isDeleteConfirmationVisible || isSelectModeActive || !!lightboxUrl || isUserListVisible;
+    const anyOpen = isDeleteConfirmationVisible || isSelectModeActive || !!lightboxUrl || isUserListVisible || !!replyingTo;
     if (anyOpen && !overlayGuardPushed.current) {
       window.history.pushState({ overlayGuard: true }, '');
       overlayGuardPushed.current = true;
@@ -3094,7 +3138,7 @@ function Chat() {
     if (!anyOpen) {
       overlayGuardPushed.current = false;
     }
-  }, [isDeleteConfirmationVisible, isSelectModeActive, lightboxUrl, isUserListVisible]);
+  }, [isDeleteConfirmationVisible, isSelectModeActive, lightboxUrl, isUserListVisible, replyingTo]);
 
   // --- LIFECYCLE & EVENT HANDLERS ---
 
@@ -3146,9 +3190,9 @@ function Chat() {
       // push a fresh guard after React re-renders with the updated state.
       overlayGuardPushed.current = false;
 
-      const { isSelectModeActive, isDeleteConfirmationVisible, lightboxUrl, isUserListVisible } = stateRef.current;
+      const { isSelectModeActive, isDeleteConfirmationVisible, lightboxUrl, isUserListVisible, replyingTo } = stateRef.current;
 
-      // Strict hierarchy: confirm modal → select mode → lightbox → sidebar.
+      // Strict hierarchy: confirm modal → select mode → lightbox → sidebar → quote.
       if (isDeleteConfirmationVisible) {
         setIsDeleteConfirmationVisible(false);
       } else if (isSelectModeActive) {
@@ -3158,6 +3202,8 @@ function Chat() {
         setLightboxUrl(null);
       } else if (isUserListVisible) {
         setIsUserListVisible(false);
+      } else if (replyingTo) {
+        setReplyingTo(null);
       }
       // else: nothing open — the natural back navigation proceeds
     };
@@ -3308,6 +3354,16 @@ function Chat() {
               return m;
             })
           );
+          // If the currently quoted message (reply preview in footer) was deleted,
+          // update the replyingTo state so the preview shows "deleted".
+          if (normalizedUpdate.isDeleted) {
+            setReplyingTo(prev => {
+              if (prev && prev.id === normalizedUpdate.id) {
+                return null; // Clear the quote — can't reply to a deleted message
+              }
+              return prev;
+            });
+          }
         } else {
           const normalized = normalizeMessage(messageData);
           setMessages(prev => {
@@ -3367,7 +3423,7 @@ function Chat() {
           if (deleteMenuRef.current && !deleteMenuRef.current.contains(target)) setActiveDeleteMenu(null);
         }
         if (gifPickerRef.current && !gifPickerRef.current.contains(target)) setShowGifPicker(false);
-        if (attachmentMenuRef.current && !attachmentMenuRef.current.contains(target) && !attachmentButtonRef.current?.contains(target)) setIsAttachmentMenuVisible(false);
+        if (plusMenuRef.current && !plusMenuRef.current.contains(target) && !plusButtonRef.current?.contains(target)) setIsPlusMenuOpen(false);
         if (emojiPickerRef.current && !emojiPickerRef.current.contains(target) && !emojiButtonRef.current?.contains(target)) {
           setEmojiPickerPosition(null);
         }
@@ -3418,6 +3474,29 @@ function Chat() {
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [replyingTo, showFilePreview]);
+
+  // ── Video fullscreen exit → restore scroll position ─────────────────
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      // When fullscreen exits (no fullscreen element), scroll back to the video message
+      if (!document.fullscreenElement && !(document as any).webkitFullscreenElement) {
+        const msgId = fullscreenVideoMsgIdRef.current;
+        if (msgId) {
+          // Small delay to let the browser settle after fullscreen exit
+          setTimeout(() => {
+            scrollToMessage(msgId);
+            fullscreenVideoMsgIdRef.current = null;
+          }, 100);
+        }
+      }
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+    };
+  }, []);
 
   // ── Drag-and-drop file upload ──────────────────────────────────────
   useEffect(() => {
@@ -3609,20 +3688,32 @@ function Chat() {
           setMessages(prev => prev.map(m => m.id === tempId ? { ...message, isUploading: false, uploadError: true, text: 'Upload failed' } : m));
         });
 
+      const hadReply = !!replyingTo;
       resetInput();
+      // After resetInput clears the reply preview, the footer height changes.
+      // A delayed scroll ensures we reach the true bottom after layout stabilizes.
+      if (hadReply) setTimeout(() => scrollToBottom(), 150);
 
     } else if (stagedGif) {
       const gifMessage: Message = { id: stagedGif.id, userId: userIdRef.current, username: userContext.profile.username, type: 'image', url: stagedGif.url, text: inputMessage, timestamp: new Date().toISOString(), replyingTo: replyContext };
       setMessages(prev => [...prev, gifMessage]);
       requestAnimationFrame(() => scrollToBottom());
       ws.current.send(JSON.stringify(gifMessage));
+      const hadReply = !!replyingTo;
       resetInput();
+      // After resetInput clears the reply preview, the footer height changes.
+      // A delayed scroll ensures we reach the true bottom after layout stabilizes.
+      if (hadReply) setTimeout(() => scrollToBottom(), 150);
     } else {
       const textMessage: Message = { id: Date.now().toString(), userId: userIdRef.current, username: userContext.profile.username, type: 'text', text: inputMessage, timestamp: new Date().toISOString(), replyingTo: replyContext };
       setMessages(prev => [...prev, textMessage]);
       requestAnimationFrame(() => scrollToBottom());
       ws.current.send(JSON.stringify(textMessage));
+      const hadReply = !!replyingTo;
       resetInput();
+      // After resetInput clears the reply preview, the footer height changes.
+      // A delayed scroll ensures we reach the true bottom after layout stabilizes.
+      if (hadReply) setTimeout(() => scrollToBottom(), 150);
     }
   };
 
@@ -4426,7 +4517,8 @@ function Chat() {
                               editingText={editingText}
                               setEditingText={setEditingText}
                               handleSaveEdit={handleSaveEdit}
-      handleCancelEdit={handleCancelEdit}
+                              handleCancelEdit={handleCancelEdit}
+                              onVideoFullscreenEnter={() => { fullscreenVideoMsgIdRef.current = msg.id; }}
                             />
                           );
                  }}
@@ -4435,9 +4527,18 @@ function Chat() {
             </MessagesContainer>
             <ScrollToBottomButton
               $isVisible={isScrollToBottomVisible}
-              onClick={scrollToBottom}
+              onClick={(e) => {
+                e.preventDefault();
+                // On touch devices, blur the active element first so the keyboard
+                // doesn't open when we scroll to bottom.
+                if (isMobileView && document.activeElement instanceof HTMLElement) {
+                  document.activeElement.blur();
+                }
+                scrollToBottom();
+              }}
               onMouseDown={(e) => e.preventDefault()}
               onPointerDown={(e) => e.preventDefault()}
+              onTouchStart={(e) => e.preventDefault()}
               aria-label="Scroll to latest messages"
               title="Scroll to latest messages"
             >
@@ -4449,7 +4550,7 @@ function Chat() {
             </MessagesAndScrollWrapper>
             <TypingIndicator onlineUsers={onlineUsers} currentUserId={userIdRef.current} />
             <Footer>
-              {isSelectModeActive ? (
+              {isSelectModeActive && (
                 <SelectModeFooter>
                   <CancelPreviewButton onClick={handleCancelSelectMode}>&times;</CancelPreviewButton>
                   <span>{selectedMessages.length} selected</span>
@@ -4469,9 +4570,11 @@ function Chat() {
                     </DeleteButton>
                   </div>
                 </SelectModeFooter>
-              ) : (
-                 <>
-              {replyingTo && <ReplyPreviewContainer ref={replyPreviewRef} onClick={() => scrollToMessage(replyingTo.id)}>
+              )}
+              {/* Keep the input section always mounted so the keyboard doesn't dismiss on long-press.
+                  When select mode is active, hide it visually but keep the textarea in the DOM. */}
+              <div style={isSelectModeActive ? { position: 'absolute', width: 0, height: 0, overflow: 'hidden', opacity: 0, pointerEvents: 'none' } : undefined}>
+               {replyingTo && <ReplyPreviewContainer ref={replyPreviewRef} onClick={() => scrollToMessage(replyingTo.id)}>
                 {replyingTo.type === 'video' && replyingTo.url ? (
                   <video src={replyingTo.url} style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover' }} />
                 ) : (replyingTo.type === 'image' || replyingTo.type === 'video') && replyingTo.url && (
@@ -4511,40 +4614,57 @@ function Chat() {
                 </FilePreviewContainer>
               )}
               {stagedGif && <FilePreviewContainer><FilePreviewImage src={stagedGif.preview} alt="GIF Preview" /><FilePreviewInfo>GIF</FilePreviewInfo><CancelPreviewButton onClick={() => setStagedGif(null)}>&times;</CancelPreviewButton></FilePreviewContainer>}
-              <InputContainer>
-                <ActionButtonsContainer>
-                  <div style={{ position: 'relative' }}>
-                    <EmojiButton
+               <InputContainer>
+                <div style={{ position: 'relative' }} ref={plusMenuRef}>
+                  <PlusMenuButton
+                    ref={plusButtonRef}
+                    $isOpen={isPlusMenuOpen}
+                    onPointerDown={(e) => e.preventDefault()}
+                    onClick={() => setIsPlusMenuOpen(prev => !prev)}
+                    aria-label="Open actions menu"
+                    title="Emoji, GIF, or File"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                  </PlusMenuButton>
+                  <PlusMenu $isVisible={isPlusMenuOpen}>
+                    <PlusMenuItem
                       ref={emojiButtonRef}
                       onPointerDown={(e) => {
-                        // Prevent the button from stealing focus — stops the
-                        // browser from shifting focus away from the input.
                         e.preventDefault();
-                        // Capture the button rect NOW, before any layout shift
-                        // from keyboard dismissal changes the button position.
                         const rect = e.currentTarget.getBoundingClientRect();
-                        // If the soft keyboard is open (input focused), dismiss it.
                         if (messageInputRef.current && document.activeElement === messageInputRef.current) {
                           messageInputRef.current.blur();
                         }
-                        // Toggle the emoji picker immediately in the same event
-                        // — no second tap needed even when the keyboard was open.
                         handleOpenEmojiPicker(rect);
+                        setIsPlusMenuOpen(false);
                       }}
-                    ><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg></EmojiButton>
-                  </div>
-                  <div style={{ position: 'relative' }} ref={attachmentMenuRef}>
-                    <AttachButton onClick={() => setIsAttachmentMenuVisible(!isAttachmentMenuVisible)} ref={attachmentButtonRef}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg></AttachButton>
-                    <AttachmentMenuContainer isVisible={isAttachmentMenuVisible}>
-                      <AttachmentMenuItem onPointerDown={(e) => { e.preventDefault(); gifPickerOpenedAtRef.current = Date.now(); setShowGifPicker(true); setIsAttachmentMenuVisible(false); }}>
-                        <FilmIcon /> <span>GIF</span>
-                      </AttachmentMenuItem>
-                      <AttachmentMenuItem onClick={() => { fileInputRef.current?.click(); setIsAttachmentMenuVisible(false); }}>
-                        <FileIcon /> <span style={{ whiteSpace: 'nowrap' }}>Send File</span>
-                      </AttachmentMenuItem>
-                    </AttachmentMenuContainer>
-                  </div>
-                </ActionButtonsContainer>
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
+                      <span>Emoji</span>
+                    </PlusMenuItem>
+                    <PlusMenuItem
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        gifPickerOpenedAtRef.current = Date.now();
+                        setShowGifPicker(true);
+                        setIsPlusMenuOpen(false);
+                      }}
+                    >
+                      <FilmIcon /> <span>GIF</span>
+                    </PlusMenuItem>
+                    <PlusMenuItem
+                      onClick={() => {
+                        fileInputRef.current?.click();
+                        setIsPlusMenuOpen(false);
+                      }}
+                    >
+                      <FileIcon /> <span>Send File</span>
+                    </PlusMenuItem>
+                  </PlusMenu>
+                </div>
                 <InputTextWrapper>
                   {(() => {
                     // Detect URL in current input — if found, render highlight overlay
@@ -4598,8 +4718,7 @@ function Chat() {
                   />
                 </div>
               )}
-            </>
-              )}
+              </div>
             </Footer>
           </ChatWindow>
           <SidebarBackdrop $isVisible={isUserListVisible} onClick={() => setIsUserListVisible(false)} />
