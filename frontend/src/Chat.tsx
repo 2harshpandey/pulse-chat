@@ -273,6 +273,10 @@ const MAX_NEW_MESSAGE_INDICATOR_COUNT = 99;
 const MAX_LOADED_MEDIA_TRACKING = 800;
 const MAX_QUOTE_JUMP_STACK_DEPTH = 64;
 const MAX_QUOTE_AUTO_LOAD_PAGES = 120;
+const PHOTO_LIGHTBOX_MIN_SCALE = 1;
+const PHOTO_LIGHTBOX_MAX_SCALE = 5;
+const PHOTO_LIGHTBOX_STEP = 0.28;
+const PHOTO_LIGHTBOX_WHEEL_SENSITIVITY = 0.00145;
 const LONG_PRESS_CANCEL_MOVE_PX = 8;
 const MIN_REPORT_REASON_LENGTH = 5;
 const MAX_REPORT_REASON_LENGTH = 500;
@@ -1401,9 +1405,101 @@ const ReactionsContainer = styled.div<{ $sender: 'me' | 'other' }>`
   }
 `;
 const Lightbox = styled.div`
-  position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); display: flex; align-items: center; justify-content: center; z-index: 1000; cursor: pointer;
-  animation: ${fadeInScale} 0.3s ease-out forwards;
-  img { max-width: 90%; max-height: 90%; border-radius: 12px; box-shadow: 0 25px 60px rgba(0,0,0,0.4); }
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+  animation: ${fadeInScale} 0.22s ease-out forwards;
+`;
+const LightboxFrame = styled.div`
+  position: relative;
+  width: min(92vw, 1280px);
+  height: min(90vh, 920px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(15, 23, 42, 0.44);
+  box-shadow: 0 28px 90px rgba(2, 6, 23, 0.6);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+
+  @media (max-width: 768px) {
+    width: 100%;
+    height: 100%;
+    border-radius: 12px;
+  }
+`;
+const LightboxImage = styled.img<{ $isZoomed: boolean; $isInteracting: boolean }>`
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transform-origin: center center;
+  will-change: transform;
+  transition: ${props => props.$isInteracting ? 'none' : 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)'};
+  cursor: ${props => props.$isInteracting && props.$isZoomed ? 'grabbing' : props.$isZoomed ? 'grab' : 'zoom-in'};
+  pointer-events: none;
+`;
+const LightboxToolbar = styled.div`
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.74);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+`;
+const LightboxZoomButton = styled.button`
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(226, 232, 240, 0.14);
+  color: #f8fafc;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.16s ease, background-color 0.16s ease, opacity 0.16s ease;
+
+  &:hover {
+    background: rgba(226, 232, 240, 0.26);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  svg {
+    width: 19px;
+    height: 19px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
 `;
 const DeleteMenu = styled.div`
   background: var(--bg-elevated); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.15); overflow: hidden; border: 1px solid var(--border-primary); pointer-events: all; transition: background-color 0.3s ease;
@@ -3691,6 +3787,13 @@ function Chat() {
   const [loadedMediaMessageIds, setLoadedMediaMessageIds] = useState<string[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [lightboxTransform, setLightboxTransform] = useState<{ scale: number; x: number; y: number }>({
+    scale: PHOTO_LIGHTBOX_MIN_SCALE,
+    x: 0,
+    y: 0,
+  });
+  const [lightboxNaturalSize, setLightboxNaturalSize] = useState<{ width: number; height: number } | null>(null);
+  const [isLightboxInteracting, setIsLightboxInteracting] = useState(false);
   const [activeDeleteMenu, setActiveDeleteMenu] = useState<string | null>(null);
   const [stagedFile, setStagedFile] = useState<File | null>(null);
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
@@ -3784,6 +3887,22 @@ function Chat() {
   const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
   const reconnectDelayRef = useRef<number>(2000); // starts at 2 s, doubles on each retry
   const quoteJumpReturnStackRef = useRef<string[]>([]);
+  const lightboxFrameRef = useRef<HTMLDivElement>(null);
+  const lightboxPointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const lightboxDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startOffsetX: number;
+    startOffsetY: number;
+  } | null>(null);
+  const lightboxPinchRef = useRef<{
+    startDistance: number;
+    startScale: number;
+    focalImageX: number;
+    focalImageY: number;
+  } | null>(null);
+  const lightboxTransformRef = useRef(lightboxTransform);
 
   // Base API URL — upgrade http:// → https:// when the page itself is on HTTPS.
   // Mobile networks (and many corporate proxies) enforce mixed-content policy strictly,
@@ -4390,6 +4509,8 @@ function Chat() {
           setStagedFiles([]);
           setPreviewCaption('');
           setPreviewActiveIndex(0);
+        } else if (lightboxUrl) {
+          setLightboxUrl(null);
         } else if (replyingTo) {
           setReplyingTo(null);
         }
@@ -4397,7 +4518,7 @@ function Chat() {
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [replyingTo, showFilePreview]);
+  }, [lightboxUrl, replyingTo, showFilePreview]);
 
   // ── Video fullscreen exit → restore scroll position ─────────────────
   useEffect(() => {
@@ -4947,7 +5068,293 @@ function Chat() {
 
   // --- OVERLAY & HISTORY MANAGEMENT ---
 
+  useEffect(() => {
+    lightboxTransformRef.current = lightboxTransform;
+  }, [lightboxTransform]);
+
+  const clampLightboxOffset = useCallback((scale: number, x: number, y: number) => {
+    const frame = lightboxFrameRef.current;
+    const natural = lightboxNaturalSize;
+    if (!frame || !natural || natural.width <= 0 || natural.height <= 0) {
+      return { x, y };
+    }
+
+    const frameWidth = frame.clientWidth;
+    const frameHeight = frame.clientHeight;
+    if (!frameWidth || !frameHeight) {
+      return { x, y };
+    }
+
+    const fitScale = Math.min(frameWidth / natural.width, frameHeight / natural.height);
+    if (!Number.isFinite(fitScale) || fitScale <= 0) {
+      return { x, y };
+    }
+
+    const baseWidth = natural.width * fitScale;
+    const baseHeight = natural.height * fitScale;
+    const scaledWidth = baseWidth * scale;
+    const scaledHeight = baseHeight * scale;
+    const maxX = Math.max((scaledWidth - baseWidth) / 2, 0);
+    const maxY = Math.max((scaledHeight - baseHeight) / 2, 0);
+
+    return {
+      x: Math.min(Math.max(x, -maxX), maxX),
+      y: Math.min(Math.max(y, -maxY), maxY),
+    };
+  }, [lightboxNaturalSize]);
+
+  const getLightboxRelativePoint = useCallback((clientX: number, clientY: number) => {
+    const frame = lightboxFrameRef.current;
+    if (!frame) return null;
+    const rect = frame.getBoundingClientRect();
+    return {
+      x: clientX - (rect.left + rect.width / 2),
+      y: clientY - (rect.top + rect.height / 2),
+    };
+  }, []);
+
+  const applyLightboxScale = useCallback((rawScale: number, focalPoint?: { x: number; y: number }) => {
+    setLightboxTransform((prev) => {
+      const nextScale = Math.min(PHOTO_LIGHTBOX_MAX_SCALE, Math.max(PHOTO_LIGHTBOX_MIN_SCALE, rawScale));
+      if (nextScale <= PHOTO_LIGHTBOX_MIN_SCALE + 0.001) {
+        return { scale: PHOTO_LIGHTBOX_MIN_SCALE, x: 0, y: 0 };
+      }
+
+      let nextX = prev.x;
+      let nextY = prev.y;
+      if (focalPoint) {
+        const baseScale = Math.max(prev.scale, PHOTO_LIGHTBOX_MIN_SCALE);
+        const focalImageX = (focalPoint.x - prev.x) / baseScale;
+        const focalImageY = (focalPoint.y - prev.y) / baseScale;
+        nextX = focalPoint.x - focalImageX * nextScale;
+        nextY = focalPoint.y - focalImageY * nextScale;
+      }
+
+      const bounded = clampLightboxOffset(nextScale, nextX, nextY);
+      return { scale: nextScale, x: bounded.x, y: bounded.y };
+    });
+  }, [clampLightboxOffset]);
+
+  const beginLightboxPinch = useCallback(() => {
+    const points = Array.from(lightboxPointersRef.current.values());
+    if (points.length < 2) return;
+
+    const [first, second] = points;
+    const distance = Math.hypot(second.x - first.x, second.y - first.y);
+    if (distance <= 0) return;
+
+    const midpointX = (first.x + second.x) / 2;
+    const midpointY = (first.y + second.y) / 2;
+    const focal = getLightboxRelativePoint(midpointX, midpointY);
+    if (!focal) return;
+
+    const current = lightboxTransformRef.current;
+    lightboxPinchRef.current = {
+      startDistance: distance,
+      startScale: current.scale,
+      focalImageX: (focal.x - current.x) / Math.max(current.scale, PHOTO_LIGHTBOX_MIN_SCALE),
+      focalImageY: (focal.y - current.y) / Math.max(current.scale, PHOTO_LIGHTBOX_MIN_SCALE),
+    };
+    lightboxDragRef.current = null;
+  }, [getLightboxRelativePoint]);
+
+  const finalizeLightboxGesture = useCallback((pointerId: number) => {
+    const frame = lightboxFrameRef.current;
+    if (frame?.hasPointerCapture(pointerId)) {
+      frame.releasePointerCapture(pointerId);
+    }
+
+    lightboxPointersRef.current.delete(pointerId);
+
+    if (lightboxPointersRef.current.size >= 2) {
+      beginLightboxPinch();
+      return;
+    }
+
+    lightboxPinchRef.current = null;
+
+    if (lightboxPointersRef.current.size === 1 && lightboxTransformRef.current.scale > PHOTO_LIGHTBOX_MIN_SCALE) {
+      const [remainingPointerId, point] = Array.from(lightboxPointersRef.current.entries())[0];
+      lightboxDragRef.current = {
+        pointerId: remainingPointerId,
+        startX: point.x,
+        startY: point.y,
+        startOffsetX: lightboxTransformRef.current.x,
+        startOffsetY: lightboxTransformRef.current.y,
+      };
+      return;
+    }
+
+    lightboxDragRef.current = null;
+    setIsLightboxInteracting(false);
+  }, [beginLightboxPinch]);
+
+  const handleLightboxPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+
+    const current = lightboxTransformRef.current;
+    const shouldTrackPointer = e.pointerType !== 'mouse' || current.scale > PHOTO_LIGHTBOX_MIN_SCALE;
+    if (!shouldTrackPointer) return;
+
+    e.stopPropagation();
+    lightboxPointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    lightboxFrameRef.current?.setPointerCapture(e.pointerId);
+    setIsLightboxInteracting(true);
+
+    if (lightboxPointersRef.current.size >= 2) {
+      beginLightboxPinch();
+      return;
+    }
+
+    if (current.scale > PHOTO_LIGHTBOX_MIN_SCALE) {
+      lightboxDragRef.current = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        startOffsetX: current.x,
+        startOffsetY: current.y,
+      };
+    }
+  }, [beginLightboxPinch]);
+
+  const handleLightboxPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!lightboxPointersRef.current.has(e.pointerId)) return;
+
+    e.stopPropagation();
+    lightboxPointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (lightboxPointersRef.current.size >= 2) {
+      if (!lightboxPinchRef.current) {
+        beginLightboxPinch();
+      }
+
+      const pinch = lightboxPinchRef.current;
+      if (!pinch) return;
+
+      const points = Array.from(lightboxPointersRef.current.values());
+      const [first, second] = points;
+      const distance = Math.hypot(second.x - first.x, second.y - first.y);
+      if (distance <= 0) return;
+
+      const midpointX = (first.x + second.x) / 2;
+      const midpointY = (first.y + second.y) / 2;
+      const focal = getLightboxRelativePoint(midpointX, midpointY);
+      if (!focal) return;
+
+      const scaled = pinch.startScale * (distance / pinch.startDistance);
+      const nextScale = Math.min(PHOTO_LIGHTBOX_MAX_SCALE, Math.max(PHOTO_LIGHTBOX_MIN_SCALE, scaled));
+
+      if (nextScale <= PHOTO_LIGHTBOX_MIN_SCALE + 0.001) {
+        setLightboxTransform({ scale: PHOTO_LIGHTBOX_MIN_SCALE, x: 0, y: 0 });
+        return;
+      }
+
+      const nextX = focal.x - pinch.focalImageX * nextScale;
+      const nextY = focal.y - pinch.focalImageY * nextScale;
+      const bounded = clampLightboxOffset(nextScale, nextX, nextY);
+      setLightboxTransform({ scale: nextScale, x: bounded.x, y: bounded.y });
+      return;
+    }
+
+    const drag = lightboxDragRef.current;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+
+    const currentScale = lightboxTransformRef.current.scale;
+    if (currentScale <= PHOTO_LIGHTBOX_MIN_SCALE) return;
+
+    const nextX = drag.startOffsetX + (e.clientX - drag.startX);
+    const nextY = drag.startOffsetY + (e.clientY - drag.startY);
+    const bounded = clampLightboxOffset(currentScale, nextX, nextY);
+    setLightboxTransform({ scale: currentScale, x: bounded.x, y: bounded.y });
+  }, [beginLightboxPinch, clampLightboxOffset, getLightboxRelativePoint]);
+
+  const handleLightboxPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    finalizeLightboxGesture(e.pointerId);
+  }, [finalizeLightboxGesture]);
+
+  const handleLightboxPointerCancel = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    finalizeLightboxGesture(e.pointerId);
+  }, [finalizeLightboxGesture]);
+
+  const handleLightboxWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    const focal = getLightboxRelativePoint(e.clientX, e.clientY);
+    if (!focal) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const currentScale = lightboxTransformRef.current.scale;
+    const factor = Math.exp(-e.deltaY * PHOTO_LIGHTBOX_WHEEL_SENSITIVITY);
+    applyLightboxScale(currentScale * factor, focal);
+  }, [applyLightboxScale, getLightboxRelativePoint]);
+
+  const handleLightboxZoomIn = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    applyLightboxScale(lightboxTransformRef.current.scale + PHOTO_LIGHTBOX_STEP);
+  }, [applyLightboxScale]);
+
+  const handleLightboxZoomOut = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    applyLightboxScale(lightboxTransformRef.current.scale - PHOTO_LIGHTBOX_STEP);
+  }, [applyLightboxScale]);
+
+  const handleLightboxImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+    const nextWidth = e.currentTarget.naturalWidth;
+    const nextHeight = e.currentTarget.naturalHeight;
+    if (nextWidth > 0 && nextHeight > 0) {
+      setLightboxNaturalSize({ width: nextWidth, height: nextHeight });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!lightboxUrl || !lightboxNaturalSize) return;
+
+    const current = lightboxTransformRef.current;
+    const bounded = clampLightboxOffset(current.scale, current.x, current.y);
+    if (bounded.x !== current.x || bounded.y !== current.y) {
+      setLightboxTransform({ scale: current.scale, x: bounded.x, y: bounded.y });
+    }
+  }, [clampLightboxOffset, lightboxNaturalSize, lightboxUrl]);
+
+  useEffect(() => {
+    if (lightboxUrl) return;
+
+    lightboxPointersRef.current.clear();
+    lightboxDragRef.current = null;
+    lightboxPinchRef.current = null;
+    setIsLightboxInteracting(false);
+    setLightboxNaturalSize((prev) => (prev ? null : prev));
+    setLightboxTransform((prev) => (
+      prev.scale === PHOTO_LIGHTBOX_MIN_SCALE && prev.x === 0 && prev.y === 0
+        ? prev
+        : { scale: PHOTO_LIGHTBOX_MIN_SCALE, x: 0, y: 0 }
+    ));
+  }, [lightboxUrl]);
+
+  useEffect(() => {
+    if (!lightboxUrl) return;
+
+    const handleResize = () => {
+      const current = lightboxTransformRef.current;
+      const bounded = clampLightboxOffset(current.scale, current.x, current.y);
+      if (bounded.x !== current.x || bounded.y !== current.y) {
+        setLightboxTransform({ scale: current.scale, x: bounded.x, y: bounded.y });
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [clampLightboxOffset, lightboxUrl]);
+
   const openLightbox = useCallback((url: string) => {
+    lightboxPointersRef.current.clear();
+    lightboxDragRef.current = null;
+    lightboxPinchRef.current = null;
+    setLightboxNaturalSize(null);
+    setIsLightboxInteracting(false);
+    setLightboxTransform({ scale: PHOTO_LIGHTBOX_MIN_SCALE, x: 0, y: 0 });
     setLightboxUrl(url);
   }, []);
 
@@ -5232,12 +5639,19 @@ function Chat() {
     applyHighlight(0);
   }, []);
 
-  const scrollToLoadedMessage = useCallback((messageId: string, behavior: 'auto' | 'smooth' = 'smooth') => {
+  const scrollToLoadedMessage = useCallback((messageId: string, behavior: 'auto' | 'smooth' = 'auto') => {
     if (!virtuosoRef.current) return false;
     const msgIndex = messagesRef.current.findIndex((m) => m.id === messageId);
     if (msgIndex === -1) return false;
 
-    virtuosoRef.current.scrollToIndex({ index: msgIndex, align: 'center', behavior });
+    const align: 'start' = 'start';
+    const scrollToTarget = (nextBehavior: 'auto' | 'smooth') => {
+      virtuosoRef.current?.scrollToIndex({ index: msgIndex, align, behavior: nextBehavior });
+    };
+
+    scrollToTarget(behavior);
+    requestAnimationFrame(() => scrollToTarget('auto'));
+    window.setTimeout(() => scrollToTarget('auto'), 110);
     window.setTimeout(() => highlightMessage(messageId), behavior === 'smooth' ? 360 : 120);
     return true;
   }, [highlightMessage]);
@@ -5256,7 +5670,7 @@ function Chat() {
     }
 
     if (!messageId) return;
-    if (scrollToLoadedMessage(messageId, 'smooth')) return;
+    if (scrollToLoadedMessage(messageId, 'auto')) return;
     if (!historyLoaded) return;
 
     void (async () => {
@@ -5291,7 +5705,7 @@ function Chat() {
       }
 
       requestAnimationFrame(() => {
-        scrollToLoadedMessage(messageId, 'smooth');
+        scrollToLoadedMessage(messageId, 'auto');
       });
     })();
   }, [fetchAndPrependOlderMessages, historyLoaded, scrollToLoadedMessage]);
@@ -5381,6 +5795,8 @@ function Chat() {
   const selectedMessage = messages.find(msg => msg.id === selectedMessages[0]);
   const canEditSelectedMessage = selectedMessages.length === 1 && selectedMessage && selectedMessage.userId === userIdRef.current && selectedMessage.text && (new Date().getTime() - new Date(selectedMessage.timestamp).getTime()) < 15 * 60 * 1000;
   const hasNewMessagesIndicator = newMessagesWhileScrolledUp > 0;
+  const canZoomOutLightbox = lightboxTransform.scale > PHOTO_LIGHTBOX_MIN_SCALE + 0.001;
+  const canZoomInLightbox = lightboxTransform.scale < PHOTO_LIGHTBOX_MAX_SCALE - 0.001;
   const newMessagesIndicatorLabel = newMessagesWhileScrolledUp > MAX_NEW_MESSAGE_INDICATOR_COUNT
     ? `${MAX_NEW_MESSAGE_INDICATOR_COUNT}+`
     : String(newMessagesWhileScrolledUp);
@@ -6164,7 +6580,51 @@ function Chat() {
 
       {lightboxUrl && (
         <Lightbox onClick={() => setLightboxUrl(null)}>
-          <img src={sanitizeMediaUrl(lightboxUrl)} alt="Lightbox" />
+          <LightboxFrame
+            ref={lightboxFrameRef}
+            onClick={(e) => e.stopPropagation()}
+            onWheel={handleLightboxWheel}
+            onPointerDown={handleLightboxPointerDown}
+            onPointerMove={handleLightboxPointerMove}
+            onPointerUp={handleLightboxPointerUp}
+            onPointerCancel={handleLightboxPointerCancel}
+          >
+            <LightboxImage
+              src={sanitizeMediaUrl(lightboxUrl)}
+              alt="Photo viewer"
+              draggable={false}
+              onDragStart={(e) => e.preventDefault()}
+              onLoad={handleLightboxImageLoad}
+              $isZoomed={lightboxTransform.scale > PHOTO_LIGHTBOX_MIN_SCALE + 0.001}
+              $isInteracting={isLightboxInteracting}
+              style={{
+                transform: `translate3d(${lightboxTransform.x}px, ${lightboxTransform.y}px, 0) scale(${lightboxTransform.scale})`
+              }}
+            />
+            <LightboxToolbar
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <LightboxZoomButton
+                type="button"
+                title="Zoom out"
+                aria-label="Zoom out"
+                disabled={!canZoomOutLightbox}
+                onClick={handleLightboxZoomOut}
+              >
+                <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12" /></svg>
+              </LightboxZoomButton>
+              <LightboxZoomButton
+                type="button"
+                title="Zoom in"
+                aria-label="Zoom in"
+                disabled={!canZoomInLightbox}
+                onClick={handleLightboxZoomIn}
+              >
+                <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
+              </LightboxZoomButton>
+            </LightboxToolbar>
+          </LightboxFrame>
         </Lightbox>
       )}
        {showGifPicker && (
