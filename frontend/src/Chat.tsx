@@ -3901,9 +3901,14 @@ function Chat() {
   const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
   const plusMenuRef = useRef<HTMLDivElement>(null!);
   const plusButtonRef = useRef<HTMLButtonElement>(null!);
-  // Ref to track which message's video is in fullscreen.
-  // On fullscreen exit we scroll back to this message.
+  // Refs to track video fullscreen context so we can restore the exact
+  // pre-fullscreen scroll position when the user exits fullscreen.
   const fullscreenVideoMsgIdRef = useRef<string | null>(null);
+  const fullscreenVideoScrollSnapshotRef = useRef<{
+    messageId: string;
+    scrollTop: number;
+    messageTopOffset: number | null;
+  } | null>(null);
 
   // --- REFS ---
   const ws = useRef<WebSocket | null>(null);
@@ -4579,28 +4584,70 @@ function Chat() {
     return () => document.removeEventListener('keydown', handler);
   }, [lightboxUrl, replyingTo, showFilePreview]);
 
+  const getChatScrollerElement = useCallback((): HTMLElement | null => {
+    if (!chatContainerRef.current) return null;
+    return (chatContainerRef.current.querySelector('[data-virtuoso-scroller]') as HTMLElement | null) || chatContainerRef.current;
+  }, []);
+
+  const restoreFullscreenVideoScroll = useCallback(() => {
+    const snapshot = fullscreenVideoScrollSnapshotRef.current;
+    if (!snapshot) return false;
+
+    const scroller = getChatScrollerElement();
+    if (!scroller) return false;
+
+    let targetTop = snapshot.scrollTop;
+
+    if (snapshot.messageTopOffset !== null) {
+      const messageElement = document.getElementById(`message-${snapshot.messageId}`);
+      if (messageElement) {
+        const scrollerRect = scroller.getBoundingClientRect();
+        const msgRect = messageElement.getBoundingClientRect();
+        const currentTopOffset = msgRect.top - scrollerRect.top;
+        targetTop = scroller.scrollTop + (currentTopOffset - snapshot.messageTopOffset);
+      }
+    }
+
+    const maxScrollTop = Math.max(scroller.scrollHeight - scroller.clientHeight, 0);
+    const boundedTop = Math.min(Math.max(targetTop, 0), maxScrollTop);
+    scroller.scrollTo({ top: boundedTop, behavior: 'auto' });
+    return true;
+  }, [getChatScrollerElement]);
+
   // ── Video fullscreen exit → restore scroll position ─────────────────
   useEffect(() => {
+    const pendingTimers: ReturnType<typeof setTimeout>[] = [];
+
     const handleFullscreenChange = () => {
-      // When fullscreen exits (no fullscreen element), scroll back to the video message
-      if (!document.fullscreenElement && !(document as any).webkitFullscreenElement) {
-        const msgId = fullscreenVideoMsgIdRef.current;
-        if (msgId) {
-          // Small delay to let the browser settle after fullscreen exit
-          setTimeout(() => {
-            scrollToMessage(msgId);
-            fullscreenVideoMsgIdRef.current = null;
-          }, 100);
-        }
-      }
+      if (document.fullscreenElement || (document as any).webkitFullscreenElement) return;
+
+      const snapshot = fullscreenVideoScrollSnapshotRef.current;
+      if (!snapshot && !fullscreenVideoMsgIdRef.current) return;
+
+      // Fullscreen exit can trigger viewport/layout settling over a few frames.
+      // Re-apply restore a few times so final position remains exact.
+      [0, 70, 180, 340].forEach((delay) => {
+        const timerId = setTimeout(() => {
+          restoreFullscreenVideoScroll();
+        }, delay);
+        pendingTimers.push(timerId);
+      });
+
+      const cleanupTimerId = setTimeout(() => {
+        fullscreenVideoMsgIdRef.current = null;
+        fullscreenVideoScrollSnapshotRef.current = null;
+      }, 460);
+      pendingTimers.push(cleanupTimerId);
     };
+
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
     return () => {
+      pendingTimers.forEach(clearTimeout);
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
     };
-  }, []);
+  }, [restoreFullscreenVideoScroll]);
 
   // ── Drag-and-drop file upload ──────────────────────────────────────
   useEffect(() => {
@@ -4837,7 +4884,31 @@ function Chat() {
 
   const handleVideoFullscreenEnter = useCallback((messageId: string) => {
     fullscreenVideoMsgIdRef.current = messageId;
-  }, []);
+
+    const scroller = getChatScrollerElement();
+    if (!scroller) {
+      fullscreenVideoScrollSnapshotRef.current = {
+        messageId,
+        scrollTop: 0,
+        messageTopOffset: null,
+      };
+      return;
+    }
+
+    const messageElement = document.getElementById(`message-${messageId}`);
+    let messageTopOffset: number | null = null;
+    if (messageElement) {
+      const scrollerRect = scroller.getBoundingClientRect();
+      const msgRect = messageElement.getBoundingClientRect();
+      messageTopOffset = msgRect.top - scrollerRect.top;
+    }
+
+    fullscreenVideoScrollSnapshotRef.current = {
+      messageId,
+      scrollTop: scroller.scrollTop,
+      messageTopOffset,
+    };
+  }, [getChatScrollerElement]);
 
   const resetInput = () => {
     setInputMessage('');
