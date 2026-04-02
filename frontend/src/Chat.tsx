@@ -3918,6 +3918,7 @@ function Chat() {
   // Must be a ref (not state) so it doesn't trigger re-renders.
   const hasInitialScrolled = useRef(false);
   const initialHistoryBottomStabilized = useRef(false);
+  const suppressInitialBottomPinRef = useRef(false);
   // Tracks whether the user is currently at the bottom of the chat.
   const isAtBottomRef = useRef(true);
   const messageTailSnapshotRef = useRef<{ length: number; lastId: string | null }>({ length: 0, lastId: null });
@@ -4392,6 +4393,7 @@ function Chat() {
           // Reset the initial-scroll flag so the new history always jumps to bottom.
           hasInitialScrolled.current = false;
           initialHistoryBottomStabilized.current = false;
+          suppressInitialBottomPinRef.current = false;
           const rawHistory = Array.isArray(messageData.data) ? messageData.data : [];
           const processed = filterVisibleMessages(rawHistory.map(normalizeMessage));
 
@@ -4780,6 +4782,7 @@ function Chat() {
     const delays = [0, 250, 900, 1800];
     const timers = delays.map((ms) => setTimeout(() => {
       if (!virtuosoRef.current) return;
+      if (suppressInitialBottomPinRef.current || !isAtBottomRef.current) return;
       virtuosoRef.current.scrollToIndex({ index: targetIndex, align: 'end', behavior: 'auto' });
     }, ms));
 
@@ -5741,6 +5744,11 @@ function Chat() {
   const handleAtBottomStateChange = useCallback((atBottom: boolean) => {
     isAtBottomRef.current = atBottom;
     setIsScrollToBottomVisible(!atBottom);
+    if (!atBottom) {
+      // After first history render, user scroll-up should immediately cancel
+      // any pending auto-pin-to-bottom stabilization timers.
+      suppressInitialBottomPinRef.current = true;
+    }
     if (atBottom) {
       setNewMessagesWhileScrolledUp(0);
       quoteJumpReturnStackRef.current = [];
@@ -5804,37 +5812,27 @@ function Chat() {
     const msgIndex = messagesRef.current.findIndex((m) => m.id === messageId);
     if (msgIndex === -1) return false;
 
-    const scrollToTarget = (align: 'start' | 'center' | 'end', nextBehavior: 'auto' | 'smooth') => {
-      virtuosoRef.current?.scrollToIndex({ index: msgIndex, align, behavior: nextBehavior });
-    };
-
-    const settleMessageInViewport = (nextBehavior: 'auto' | 'smooth' = 'auto') => {
-      const messageElement = document.getElementById(`message-${messageId}`);
+    const scrollToTarget = (nextBehavior: 'auto' | 'smooth') => {
       const scroller = getChatScrollerElement();
-      if (!messageElement || !scroller) return;
+      const offset = scroller
+        ? Math.round(-scroller.clientHeight * QUOTE_JUMP_TARGET_TOP_RATIO)
+        : 0;
 
-      const scrollerRect = scroller.getBoundingClientRect();
-      const msgRect = messageElement.getBoundingClientRect();
-      const targetTop = scrollerRect.top + (scrollerRect.height * QUOTE_JUMP_TARGET_TOP_RATIO);
-      const delta = msgRect.top - targetTop;
-
-      if (Math.abs(delta) <= 1) return;
-      scroller.scrollBy({ top: delta, behavior: nextBehavior });
+      virtuosoRef.current?.scrollToIndex({
+        index: msgIndex,
+        align: 'start',
+        behavior: nextBehavior,
+        offset: Number.isFinite(offset) ? offset : 0,
+      });
     };
 
     if (behavior === 'smooth') {
-      // Smoothly slide toward the target message, then settle it to a stable
-      // position slightly above center so it's fully visible and never clipped.
-      scrollToTarget('center', 'smooth');
-      window.setTimeout(() => settleMessageInViewport('auto'), 340);
-      window.setTimeout(() => settleMessageInViewport('auto'), 460);
+      scrollToTarget('smooth');
       window.setTimeout(() => highlightMessage(messageId), 430);
       return true;
     }
 
-    scrollToTarget('center', 'auto');
-    requestAnimationFrame(() => settleMessageInViewport('auto'));
-    window.setTimeout(() => settleMessageInViewport('auto'), 110);
+    scrollToTarget('auto');
     window.setTimeout(() => highlightMessage(messageId), 120);
     return true;
   }, [getChatScrollerElement, highlightMessage]);
