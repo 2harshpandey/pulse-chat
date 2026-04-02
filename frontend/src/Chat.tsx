@@ -274,6 +274,7 @@ const MAX_LOADED_MEDIA_TRACKING = 800;
 const MAX_QUOTE_JUMP_STACK_DEPTH = 64;
 const MAX_QUOTE_AUTO_LOAD_PAGES = 120;
 const QUOTE_JUMP_TARGET_TOP_RATIO = 0.42;
+const FULLSCREEN_RESTORE_VISIBILITY_MARGIN = 12;
 const PHOTO_LIGHTBOX_MIN_SCALE = 1;
 const PHOTO_LIGHTBOX_MAX_SCALE = 5;
 const PHOTO_LIGHTBOX_STEP = 0.28;
@@ -1035,21 +1036,19 @@ const MediaContent = styled.div`
 const mediaFrameStyles = css`
   position: relative;
   display: block;
-  width: min(100%, 320px);
-  min-width: 208px;
+  width: clamp(208px, 58vw, 320px);
   max-width: 100%;
+  flex: 0 0 auto;
   aspect-ratio: 1 / 1;
   border-radius: 0.75rem;
   overflow: hidden;
 
   @media (max-width: 768px) {
-    width: min(100%, 236px);
-    min-width: 182px;
+    width: clamp(182px, 66vw, 236px);
   }
 
   @media (max-width: 420px) {
-    width: min(100%, 212px);
-    min-width: 164px;
+    width: clamp(164px, 68vw, 212px);
   }
 `;
 
@@ -2861,13 +2860,11 @@ const renderMessageContent = (
             </MediaLoadGate>
           </VideoPlayerWrapper>
         ) : (
-          <>
-            <VideoPlayer src={msg.url} onPointerDown={onMediaPointerDown} onFullscreenEnter={onVideoFullscreenEnter} />
-            <InlineDownloadBtn aria-label="Download video" onClick={() => downloadFile(msg.url!, msg.originalName || 'video')}>
-              <DownloadSvg /> Download
-            </InlineDownloadBtn>
-          </>
+          <VideoPlayer src={msg.url} onPointerDown={onMediaPointerDown} onFullscreenEnter={onVideoFullscreenEnter} />
         )}
+        <InlineDownloadBtn aria-label="Download video" onClick={() => downloadFile(msg.url!, msg.originalName || 'video')}>
+          <DownloadSvg /> Download
+        </InlineDownloadBtn>
         {msg.text && <MessageText style={{ paddingTop: '0.5rem' }}>{renderTextWithLinks(msg.text, sender)}</MessageText>}
       </MediaContent>
     );
@@ -4612,6 +4609,29 @@ function Chat() {
     const maxScrollTop = Math.max(scroller.scrollHeight - scroller.clientHeight, 0);
     const boundedTop = Math.min(Math.max(targetTop, 0), maxScrollTop);
     scroller.scrollTo({ top: boundedTop, behavior: 'auto' });
+
+    // Guard against post-fullscreen viewport shifts that can leave the last
+    // video partially hidden under the footer area.
+    const messageElement = document.getElementById(`message-${snapshot.messageId}`);
+    if (messageElement) {
+      const scrollerRect = scroller.getBoundingClientRect();
+      const msgRect = messageElement.getBoundingClientRect();
+      const visibleTop = scrollerRect.top + FULLSCREEN_RESTORE_VISIBILITY_MARGIN;
+      const visibleBottom = scrollerRect.bottom - FULLSCREEN_RESTORE_VISIBILITY_MARGIN;
+
+      let correctedTop = boundedTop;
+      if (msgRect.bottom > visibleBottom) {
+        correctedTop += msgRect.bottom - visibleBottom;
+      } else if (msgRect.top < visibleTop) {
+        correctedTop += msgRect.top - visibleTop;
+      }
+
+      const boundedCorrectedTop = Math.min(Math.max(correctedTop, 0), maxScrollTop);
+      if (Math.abs(boundedCorrectedTop - boundedTop) > 0.5) {
+        scroller.scrollTo({ top: boundedCorrectedTop, behavior: 'auto' });
+      }
+    }
+
     return true;
   }, [getChatScrollerElement]);
 
@@ -4625,9 +4645,14 @@ function Chat() {
       const snapshot = fullscreenVideoScrollSnapshotRef.current;
       if (!snapshot && !fullscreenVideoMsgIdRef.current) return;
 
+      // Prevent browser focus restoration from nudging the chat viewport.
+      if (document.activeElement instanceof HTMLVideoElement) {
+        document.activeElement.blur();
+      }
+
       // Fullscreen exit can trigger viewport/layout settling over a few frames.
       // Re-apply restore a few times so final position remains exact.
-      [0, 70, 180, 340].forEach((delay) => {
+      [0, 70, 180, 340, 560].forEach((delay) => {
         const timerId = setTimeout(() => {
           restoreFullscreenVideoScroll();
         }, delay);
@@ -4637,7 +4662,7 @@ function Chat() {
       const cleanupTimerId = setTimeout(() => {
         fullscreenVideoMsgIdRef.current = null;
         fullscreenVideoScrollSnapshotRef.current = null;
-      }, 460);
+      }, 760);
       pendingTimers.push(cleanupTimerId);
     };
 
