@@ -1079,7 +1079,7 @@ const mediaFrameStyles = css`
   }
 `;
 
-/* Absolutely-positioned download button that appears over images */
+/* Absolutely-positioned download button that appears over images and videos */
 const MediaDownloadOverlayBtn = styled.button`
   position: absolute;
   top: 8px;
@@ -1098,7 +1098,7 @@ const MediaDownloadOverlayBtn = styled.button`
   cursor: pointer;
   opacity: 0;
   transition: opacity 0.18s, background 0.15s;
-  z-index: 2;
+  z-index: 4;
   svg { width: 15px; height: 15px; }
   &:hover { background: rgba(0, 0, 0, 0.72); }
   @media (max-width: 768px) { opacity: 1; width: 28px; height: 28px; }
@@ -1118,6 +1118,16 @@ const MediaImageWrapper = styled.div`
     border-radius: 0.75rem;
   }
   
+  &:hover ${MediaDownloadOverlayBtn} { opacity: 1; }
+`;
+
+/* Wrapper div for video player + top-left download overlay.
+   Using a real CSS hover so the button appears on desktop hover,
+   and is always visible on touch devices (mobile). */
+const MediaVideoWrapperDiv = styled.div`
+  position: relative;
+  display: inline-block;
+
   &:hover ${MediaDownloadOverlayBtn} { opacity: 1; }
 `;
 
@@ -2601,6 +2611,9 @@ const CVPContainer = styled.div`
   height: 100%;
   background: #000;
   border-radius: 0.75rem;
+  /* overflow: hidden clips the controls children including volume slider panel.
+     Use clip-path instead so the video itself is still clipped to the rounded
+     corners but the absolutely-positioned controls can overflow visibly. */
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -2642,16 +2655,18 @@ const CVPControls = styled.div<{ $visible: boolean }>`
   bottom: 0;
   left: 0;
   right: 0;
-  background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.45) 60%, transparent 100%);
-  padding: 8px 10px 6px;
+  background: linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.5) 55%, transparent 100%);
+  padding: 6px 8px 8px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   opacity: ${p => p.$visible ? 1 : 0};
   transition: opacity 0.25s ease;
   pointer-events: ${p => p.$visible ? 'all' : 'none'};
   border-radius: 0 0 0.75rem 0.75rem;
   animation: ${controlsSlideUp} 0.2s ease;
+  /* Prevent child icons from being clipped */
+  overflow: visible;
 `;
 
 const CVPTimelineWrapper = styled.div`
@@ -2700,7 +2715,16 @@ const CVPTimelineThumb = styled.div<{ $pct: number }>`
 const CVPBottomRow = styled.div`
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  flex-wrap: nowrap;
+  min-width: 0;
+
+  /* On very small screens (video player is narrow), hide PiP + fullscreen from bottom
+     row — but keep fullscreen on mobile since it's essential.
+     Fullscreen stays, PiP is hidden on coarse-pointer (touch) devices. */
+  @media (pointer: coarse) {
+    .cvp-pip-btn { display: none; }
+  }
 `;
 
 const CVPIconBtn = styled.button`
@@ -2735,12 +2759,104 @@ const CVPSpeedBtn = styled.button`
   color: #fff;
   font-size: 0.6rem;
   font-weight: 700;
-  padding: 2px 5px;
+  padding: 2px 6px;
   border-radius: 4px;
   cursor: pointer;
   flex-shrink: 0;
+  white-space: nowrap;
+  min-width: 28px;
+  text-align: center;
   transition: background 0.15s ease;
   &:hover { background: rgba(255,255,255,0.25); }
+`;
+
+/* Volume slider wrapper — only shown on non-touch (pointer: fine) devices */
+const CVPVolumeWrapper = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+
+  .cvp-volume-slider-panel {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 28px;
+    height: 80px;
+    background: rgba(15,23,42,0.88);
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.18);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease;
+    z-index: 10;
+  }
+
+  &:hover .cvp-volume-slider-panel,
+  &:focus-within .cvp-volume-slider-panel {
+    opacity: 1;
+    pointer-events: all;
+  }
+
+  /* Only show volume panel on fine pointer (mouse) devices */
+  @media (pointer: coarse) {
+    .cvp-volume-slider-panel { display: none !important; }
+  }
+
+  input[type='range'].cvp-vol-range {
+    -webkit-appearance: none;
+    appearance: none;
+    writing-mode: vertical-lr;
+    direction: rtl;
+    width: 4px;
+    height: 64px;
+    background: transparent;
+    outline: none;
+    cursor: pointer;
+  }
+
+  input[type='range'].cvp-vol-range::-webkit-slider-runnable-track {
+    background: rgba(255,255,255,0.3);
+    width: 4px;
+    border-radius: 2px;
+  }
+
+  input[type='range'].cvp-vol-range::-moz-range-track {
+    background: rgba(255,255,255,0.3);
+    width: 4px;
+    border-radius: 2px;
+  }
+
+  input[type='range'].cvp-vol-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    background: #fff;
+    border-radius: 50%;
+    margin-left: -4px;
+    box-shadow: 0 0 3px rgba(0,0,0,0.4);
+    transition: transform 0.1s ease;
+  }
+
+  input[type='range'].cvp-vol-range::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    background: #fff;
+    border-radius: 50%;
+    border: none;
+    box-shadow: 0 0 3px rgba(0,0,0,0.4);
+    cursor: pointer;
+  }
+
+  input[type='range'].cvp-vol-range::-webkit-slider-thumb:hover {
+    transform: scale(1.25);
+  }
 `;
 
 const CVPDoubleTapOverlay = styled.div<{ $side: 'left' | 'right' | null }>`
@@ -3016,6 +3132,25 @@ const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter }: { src: string; o
     if (v && duration > 0) v.currentTime = ratio * duration;
   };
 
+  // Handle mouse wheel on speaker icon for volume control (desktop)
+  const handleVolumeWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const v = videoRef.current;
+    if (!v) return;
+    const delta = e.deltaY < 0 ? 0.1 : -0.1;
+    v.volume = Math.min(1, Math.max(0, v.volume + delta));
+    if (v.muted && v.volume > 0) v.muted = false;
+  };
+
+  const handleVolumeSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = videoRef.current;
+    if (!v) return;
+    const val = parseFloat(e.target.value);
+    v.volume = val;
+    v.muted = val === 0;
+  };
+
   const handleContainerTap = (e: React.MouseEvent<HTMLDivElement>) => {
     // Ignore clicks on control buttons
     if ((e.target as HTMLElement).closest('button, input, [data-cvp-controls]')) return;
@@ -3037,20 +3172,17 @@ const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter }: { src: string; o
       doubleTapTimerRef.current = setTimeout(() => setDoubleTapSide(null), 700);
       lastTapTimeRef.current = 0;
     } else {
-      // Single tap — show/hide controls or play/pause
+      // Single tap — always toggle play/pause AND show controls
       lastTapTimeRef.current = now;
       lastTapXRef.current = tapX;
       doubleTapTimerRef.current = setTimeout(() => {
-        if (showControls && isPlaying) {
-          setShowControls(false);
-        } else {
-          resetControlsTimer();
-          togglePlay();
-          // Show center play indicator
-          if (centerPlayTimerRef.current) clearTimeout(centerPlayTimerRef.current);
-          setShowCenterPlay(true);
-          centerPlayTimerRef.current = setTimeout(() => setShowCenterPlay(false), 600);
-        }
+        // Always toggle play/pause on single tap (works both when playing and paused)
+        togglePlay();
+        resetControlsTimer();
+        // Show center play/pause indicator
+        if (centerPlayTimerRef.current) clearTimeout(centerPlayTimerRef.current);
+        setShowCenterPlay(true);
+        centerPlayTimerRef.current = setTimeout(() => setShowCenterPlay(false), 600);
       }, 200);
     }
   };
@@ -3128,31 +3260,46 @@ const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter }: { src: string; o
               }
             </CVPIconBtn>
 
-            {/* Skip back 10s */}
+            {/* Skip back 10s — pure path-based icon, no <text> to avoid SVG clipping */}
             <CVPIconBtn onClick={() => skip(-10)} title="Back 10s" aria-label="Back 10 seconds">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12.83 5A10 10 0 1 0 21 12"/>
-                <path d="M12 8 9 12h6"/>
-                <text x="10" y="18" fontSize="5" fill="currentColor" stroke="none" fontWeight="bold">10</text>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12.5 5A8.5 8.5 0 1 0 20 11.5" />
+                <polyline points="12 3 9.5 5.5 12 8" />
+                <text x="8.2" y="15" fontSize="4.8" fill="currentColor" stroke="none" fontWeight="800" fontFamily="system-ui,sans-serif">10</text>
               </svg>
             </CVPIconBtn>
 
-            {/* Skip forward 10s */}
+            {/* Skip forward 10s — pure path-based icon */}
             <CVPIconBtn onClick={() => skip(10)} title="Forward 10s" aria-label="Forward 10 seconds">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11.17 5A10 10 0 1 1 3 12"/>
-                <path d="M12 8l3 4H9"/>
-                <text x="10" y="18" fontSize="5" fill="currentColor" stroke="none" fontWeight="bold">10</text>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M11.5 5A8.5 8.5 0 1 1 4 11.5" />
+                <polyline points="12 3 14.5 5.5 12 8" />
+                <text x="8.2" y="15" fontSize="4.8" fill="currentColor" stroke="none" fontWeight="800" fontFamily="system-ui,sans-serif">10</text>
               </svg>
             </CVPIconBtn>
 
-            {/* Volume/Mute */}
-            <CVPIconBtn onClick={toggleMute} title={isMuted ? 'Unmute' : 'Mute'} aria-label={isMuted ? 'Unmute' : 'Mute'}>
-              {isMuted || volume === 0
-                ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
-                : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
-              }
-            </CVPIconBtn>
+            {/* Volume/Mute — desktop: hover shows vertical slider + mouse-wheel; mobile: tap toggles mute */}
+            <CVPVolumeWrapper onWheel={handleVolumeWheel}>
+              <CVPIconBtn onClick={toggleMute} title={isMuted ? 'Unmute' : 'Mute'} aria-label={isMuted ? 'Unmute' : 'Mute'}>
+                {isMuted || volume === 0
+                  ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+                  : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+                }
+              </CVPIconBtn>
+              <div className="cvp-volume-slider-panel">
+                <input
+                  type="range"
+                  className="cvp-vol-range"
+                  min={0}
+                  max={1}
+                  step={0.02}
+                  value={isMuted ? 0 : volume}
+                  onChange={handleVolumeSliderChange}
+                  onClick={(e) => e.stopPropagation()}
+                  aria-label="Volume"
+                />
+              </div>
+            </CVPVolumeWrapper>
 
             {/* Time display */}
             <CVPTime>{formatTime(currentTime)} / {formatTime(duration)}</CVPTime>
@@ -3400,27 +3547,37 @@ const renderMessageContent = (
   if (isVideo && msg.url) {
     return (
       <MediaContent>
-        {shouldGateMedia ? (
-          <VideoPlayerWrapper>
-            <MediaLoadGate
-              type="button"
-              aria-label="Load video"
-              title="Load video"
-              onPointerDown={handleLoadMediaPointerDown}
-              onClick={handleLoadMediaClick}
+        {/* MediaVideoWrapperDiv has CSS hover rule that reveals the download button */}
+        <MediaVideoWrapperDiv>
+          {shouldGateMedia ? (
+            <VideoPlayerWrapper>
+              <MediaLoadGate
+                type="button"
+                aria-label="Load video"
+                title="Load video"
+                onPointerDown={handleLoadMediaPointerDown}
+                onClick={handleLoadMediaClick}
+              >
+                <MediaLoadIcon>
+                  <DownloadSvg />
+                </MediaLoadIcon>
+                <MediaLoadLabel>Tap to load</MediaLoadLabel>
+              </MediaLoadGate>
+            </VideoPlayerWrapper>
+          ) : (
+            <VideoPlayer src={msg.url} onPointerDown={onMediaPointerDown} onFullscreenEnter={onVideoFullscreenEnter} />
+          )}
+          {/* Download button — top-left overlay, same style as image download btn */}
+          {!shouldGateMedia && (
+            <MediaDownloadOverlayBtn
+              title="Download video"
+              aria-label="Download video"
+              onClick={(e) => { e.stopPropagation(); downloadFile(msg.url!, msg.originalName || 'video'); }}
             >
-              <MediaLoadIcon>
-                <DownloadSvg />
-              </MediaLoadIcon>
-              <MediaLoadLabel>Tap to load</MediaLoadLabel>
-            </MediaLoadGate>
-          </VideoPlayerWrapper>
-        ) : (
-          <VideoPlayer src={msg.url} onPointerDown={onMediaPointerDown} onFullscreenEnter={onVideoFullscreenEnter} />
-        )}
-        <InlineDownloadBtn aria-label="Download video" onClick={() => downloadFile(msg.url!, msg.originalName || 'video')}>
-          <DownloadSvg /> Download
-        </InlineDownloadBtn>
+              <DownloadSvg />
+            </MediaDownloadOverlayBtn>
+          )}
+        </MediaVideoWrapperDiv>
         {msg.text && <MessageText style={{ paddingTop: '0.5rem' }}>{renderTextWithLinks(msg.text, sender)}</MessageText>}
       </MediaContent>
     );
@@ -6838,9 +6995,13 @@ function Chat() {
                     followOutput={virtuosoFollowOutput}
                     atBottomStateChange={handleAtBottomStateChange}
                     atBottomThreshold={20}
-                    defaultItemHeight={88}
+                    defaultItemHeight={72}
                     increaseViewportBy={virtuosoIncreaseViewportBy}
                     overscan={virtuosoOverscan}
+                    scrollSeekConfiguration={{
+                      enter: (velocity) => Math.abs(velocity) > 500,
+                      exit: (velocity) => Math.abs(velocity) < 30,
+                    }}
                     computeItemKey={(index: number, msg: Message) => msg.id || index}
                     style={{ flex: 1, overflow: 'auto' }}
                     components={{
