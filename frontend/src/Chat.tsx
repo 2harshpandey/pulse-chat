@@ -1071,11 +1071,11 @@ const mediaFrameStyles = css`
   overflow: hidden;
 
   @media (max-width: 768px) {
-    width: clamp(182px, 66vw, 236px);
+    width: clamp(192px, 70vw, 260px);
   }
 
   @media (max-width: 420px) {
-    width: clamp(164px, 68vw, 212px);
+    width: clamp(176px, 72vw, 236px);
   }
 `;
 
@@ -2611,10 +2611,9 @@ const CVPContainer = styled.div`
   height: 100%;
   background: #000;
   border-radius: 0.75rem;
-  /* overflow: hidden clips the controls children including volume slider panel.
-     Use clip-path instead so the video itself is still clipped to the rounded
-     corners but the absolutely-positioned controls can overflow visibly. */
-  overflow: hidden;
+  /* clip-path keeps the video clipped to rounded corners without cutting
+     absolutely-positioned controls children (overflow: hidden would clip them). */
+  clip-path: inset(0 round 0.75rem);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2656,27 +2655,28 @@ const CVPControls = styled.div<{ $visible: boolean }>`
   left: 0;
   right: 0;
   background: linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.5) 55%, transparent 100%);
-  padding: 6px 8px 8px;
+  padding: 4px 6px 6px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
   opacity: ${p => p.$visible ? 1 : 0};
   transition: opacity 0.25s ease;
   pointer-events: ${p => p.$visible ? 'all' : 'none'};
   border-radius: 0 0 0.75rem 0.75rem;
   animation: ${controlsSlideUp} 0.2s ease;
-  /* Prevent child icons from being clipped */
   overflow: visible;
 `;
 
 const CVPTimelineWrapper = styled.div`
   width: 100%;
-  height: 20px;
+  height: 24px;
   display: flex;
   align-items: center;
   cursor: pointer;
-  padding: 6px 0;
+  padding: 8px 0;
   position: relative;
+  /* Prevent the timeline drag from propagating to the message swipe gesture */
+  touch-action: none;
 `;
 
 const CVPTimelineTrack = styled.div`
@@ -2715,13 +2715,17 @@ const CVPTimelineThumb = styled.div<{ $pct: number }>`
 const CVPBottomRow = styled.div`
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   flex-wrap: nowrap;
   min-width: 0;
+  overflow: hidden;
 
-  /* On very small screens (video player is narrow), hide PiP + fullscreen from bottom
-     row — but keep fullscreen on mobile since it's essential.
-     Fullscreen stays, PiP is hidden on coarse-pointer (touch) devices. */
+  /* Shrink icon buttons on small frames */
+  @media (max-width: 420px) {
+    gap: 1px;
+  }
+
+  /* Hide PiP on touch devices (rarely supported + wastes space) */
   @media (pointer: coarse) {
     .cvp-pip-btn { display: none; }
   }
@@ -2739,13 +2743,13 @@ const CVPIconBtn = styled.button`
   border-radius: 50%;
   transition: background 0.15s ease, transform 0.15s ease;
   flex-shrink: 0;
-  svg { width: 17px; height: 17px; }
+  svg { width: 16px; height: 16px; overflow: visible; }
   &:hover { background: rgba(255,255,255,0.15); transform: scale(1.12); }
   &:active { transform: scale(0.9); }
 `;
 
 const CVPTime = styled.span`
-  font-size: 0.65rem;
+  font-size: 0.6rem;
   color: rgba(255,255,255,0.9);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -2757,14 +2761,14 @@ const CVPSpeedBtn = styled.button`
   background: rgba(255,255,255,0.15);
   border: 1px solid rgba(255,255,255,0.25);
   color: #fff;
-  font-size: 0.6rem;
+  font-size: 0.58rem;
   font-weight: 700;
-  padding: 2px 6px;
+  padding: 2px 5px;
   border-radius: 4px;
   cursor: pointer;
   flex-shrink: 0;
   white-space: nowrap;
-  min-width: 28px;
+  min-width: 26px;
   text-align: center;
   transition: background 0.15s ease;
   &:hover { background: rgba(255,255,255,0.25); }
