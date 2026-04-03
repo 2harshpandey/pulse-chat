@@ -762,7 +762,7 @@ const MobileReactionPicker = styled.div<{ $sender: 'me' | 'other' }>`
 `;
 const MessageBubble = styled.div<{ $sender: string; $messageType: string; $isUploading?: boolean; $uploadError?: boolean; }>`
   position: relative;
-  max-width: ${props => props.$messageType === 'text' ? '62%' : 'min(82vw, 340px)'};
+  max-width: ${props => props.$messageType === 'text' ? '62%' : 'min(84vw, 356px)'};
   padding: ${props => props.$messageType === 'text' ? '0.24rem 0.48rem 0.12rem' : '0.28rem 0.34rem'};
   border-radius: 0.82rem;
   background-color: ${props => props.$sender === 'me' ? '#3B82F6' : 'var(--bg-message-other)'};
@@ -777,11 +777,11 @@ const MessageBubble = styled.div<{ $sender: string; $messageType: string; $isUpl
   align-self: ${props => props.$sender === 'me' ? 'flex-end' : 'flex-start'};
 
   @media (max-width: 768px) {
-    max-width: ${props => props.$messageType === 'text' ? '68%' : 'min(72vw, 252px)'};
+    max-width: ${props => props.$messageType === 'text' ? '68%' : 'min(76vw, 272px)'};
   }
 
   @media (max-width: 420px) {
-    max-width: ${props => props.$messageType === 'text' ? '72%' : 'min(68vw, 232px)'};
+    max-width: ${props => props.$messageType === 'text' ? '72%' : 'min(72vw, 248px)'};
   }
 
   [data-theme='dark'] & {
@@ -1063,7 +1063,7 @@ const MediaContent = styled.div`
 const mediaFrameStyles = css`
   position: relative;
   display: block;
-  width: clamp(208px, 58vw, 328px);
+  width: min(100%, clamp(208px, 58vw, 320px));
   max-width: 100%;
   flex: 0 0 auto;
   aspect-ratio: 1 / 1;
@@ -1071,11 +1071,11 @@ const mediaFrameStyles = css`
   overflow: hidden;
 
   @media (max-width: 768px) {
-    width: clamp(188px, 66vw, 240px);
+    width: min(100%, clamp(192px, 70vw, 260px));
   }
 
   @media (max-width: 420px) {
-    width: clamp(168px, 64vw, 220px);
+    width: min(100%, clamp(176px, 72vw, 236px));
   }
 `;
 
@@ -2586,6 +2586,8 @@ const controlsSlideUp = keyframes`
 
 const VideoPlayerWrapper = styled.div`
   ${mediaFrameStyles}
+  width: clamp(220px, 62vw, 340px);
+  max-width: 100%;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -2603,9 +2605,31 @@ const VideoPlayerWrapper = styled.div`
     background: #000;
     border-radius: 0.75rem;
   }
+
+  @media (max-width: 768px) {
+    width: clamp(198px, 70vw, 252px);
+  }
+
+  @media (max-width: 420px) {
+    width: clamp(182px, 70vw, 232px);
+  }
 `;
 
 const CVPContainer = styled.div`
+  --cvp-controls-padding: 4px 6px 6px;
+  --cvp-row-gap: 2px;
+  --cvp-icon-size: 16px;
+  --cvp-icon-pad: 3px;
+  --cvp-time-size: 0.6rem;
+  --cvp-speed-font-size: 0.58rem;
+  --cvp-speed-width: 40px;
+  --cvp-speed-pad-y: 2px;
+  --cvp-speed-pad-x: 5px;
+  --cvp-timeline-height: 24px;
+  --cvp-timeline-padding: 8px 0;
+  --cvp-track-height: 3px;
+  --cvp-thumb-size: 11px;
+
   position: relative;
   width: 100%;
   height: 100%;
@@ -2626,6 +2650,21 @@ const CVPContainer = styled.div`
     width: 100vw;
     height: 100vh;
     background: #000;
+    clip-path: inset(0);
+
+    --cvp-controls-padding: 12px 16px 14px;
+    --cvp-row-gap: 8px;
+    --cvp-icon-size: 24px;
+    --cvp-icon-pad: 8px;
+    --cvp-time-size: 0.92rem;
+    --cvp-speed-font-size: 0.9rem;
+    --cvp-speed-width: 64px;
+    --cvp-speed-pad-y: 6px;
+    --cvp-speed-pad-x: 10px;
+    --cvp-timeline-height: 34px;
+    --cvp-timeline-padding: 12px 0;
+    --cvp-track-height: 5px;
+    --cvp-thumb-size: 16px;
   }
 
   video {
@@ -2655,7 +2694,7 @@ const CVPControls = styled.div<{ $visible: boolean }>`
   left: 0;
   right: 0;
   background: linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.5) 55%, transparent 100%);
-  padding: 4px 6px 6px;
+  padding: var(--cvp-controls-padding, 4px 6px 6px);
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -2669,11 +2708,11 @@ const CVPControls = styled.div<{ $visible: boolean }>`
 
 const CVPTimelineWrapper = styled.div`
   width: 100%;
-  height: 24px;
+  height: var(--cvp-timeline-height, 24px);
   display: flex;
   align-items: center;
   cursor: pointer;
-  padding: 8px 0;
+  padding: var(--cvp-timeline-padding, 8px 0);
   position: relative;
   /* Prevent the timeline drag from propagating to the message swipe gesture */
   touch-action: none;
@@ -2681,7 +2720,7 @@ const CVPTimelineWrapper = styled.div`
 
 const CVPTimelineTrack = styled.div`
   width: 100%;
-  height: 3px;
+  height: var(--cvp-track-height, 3px);
   background: rgba(255,255,255,0.3);
   border-radius: 2px;
   position: relative;
@@ -2704,8 +2743,8 @@ const CVPTimelineThumb = styled.div<{ $pct: number }>`
   top: 50%;
   left: ${p => p.$pct}%;
   transform: translate(-50%, -50%);
-  width: 11px;
-  height: 11px;
+  width: var(--cvp-thumb-size, 11px);
+  height: var(--cvp-thumb-size, 11px);
   background: #fff;
   border-radius: 50%;
   box-shadow: 0 0 4px rgba(0,0,0,0.5);
@@ -2715,7 +2754,7 @@ const CVPTimelineThumb = styled.div<{ $pct: number }>`
 const CVPBottomRow = styled.div`
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--cvp-row-gap, 2px);
   flex-wrap: nowrap;
   min-width: 0;
   overflow: hidden;
@@ -2736,20 +2775,20 @@ const CVPIconBtn = styled.button`
   border: none;
   color: #fff;
   cursor: pointer;
-  padding: 3px;
+  padding: var(--cvp-icon-pad, 3px);
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 50%;
   transition: background 0.15s ease, transform 0.15s ease;
   flex-shrink: 0;
-  svg { width: 16px; height: 16px; overflow: visible; }
+  svg { width: var(--cvp-icon-size, 16px); height: var(--cvp-icon-size, 16px); overflow: visible; }
   &:hover { background: rgba(255,255,255,0.15); transform: scale(1.12); }
   &:active { transform: scale(0.9); }
 `;
 
 const CVPTime = styled.span`
-  font-size: 0.6rem;
+  font-size: var(--cvp-time-size, 0.6rem);
   color: rgba(255,255,255,0.9);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -2761,15 +2800,17 @@ const CVPSpeedBtn = styled.button`
   background: rgba(255,255,255,0.15);
   border: 1px solid rgba(255,255,255,0.25);
   color: #fff;
-  font-size: 0.58rem;
+  font-size: var(--cvp-speed-font-size, 0.58rem);
   font-weight: 700;
-  padding: 2px 5px;
+  padding: var(--cvp-speed-pad-y, 2px) var(--cvp-speed-pad-x, 5px);
   border-radius: 4px;
   cursor: pointer;
   flex-shrink: 0;
   white-space: nowrap;
-  min-width: 26px;
+  min-width: var(--cvp-speed-width, 40px);
+  width: var(--cvp-speed-width, 40px);
   text-align: center;
+  font-variant-numeric: tabular-nums;
   transition: background 0.15s ease;
   &:hover { background: rgba(255,255,255,0.25); }
 `;
