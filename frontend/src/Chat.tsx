@@ -1940,6 +1940,7 @@ const QuotedMessageContainer = styled.div<{ $sender: 'me' | 'other' }>`
   align-items: center;
   gap: 8px;
   overflow: hidden;
+  touch-action: manipulation;
   transition: all 0.2s ease;
   &:hover { opacity: 0.85; transform: scale(0.99); }
   &:active { transform: scale(0.97); }
@@ -4375,6 +4376,8 @@ const MessageItem = React.memo(({
             {msg.replyingTo && (
               <QuotedMessageContainer
                 $sender={sender}
+                data-quote-swipe-ignore
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -4734,6 +4737,8 @@ const ScrollToBottomButton = styled.button<{ $isVisible: boolean }>`
   align-items: center;
   justify-content: center;
   box-shadow: var(--shadow-md);
+  touch-action: manipulation;
+  user-select: none;
   transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.3s ease;
   opacity: ${props => props.$isVisible ? 1 : 0};
   transform: ${props => props.$isVisible ? 'scale(1)' : 'scale(0.5)'};
@@ -7202,20 +7207,26 @@ function Chat() {
     })();
   }, [fetchAndPrependOlderMessages, historyLoaded, scrollToLoadedMessage]);
 
-  const scrollToBottom = useCallback(() => {
+  const scrollToBottom = useCallback((behavior: 'auto' | 'smooth' = 'auto') => {
     if (shouldSuppressProgrammaticScroll()) return;
-    if (virtuosoRef.current) {
-      // Use an outrageously large index to guarantee anchoring to the end,
-      // bypassing stale closure limits when called asynchronously.
-      virtuosoRef.current.scrollToIndex({ index: 9999999, align: 'end', behavior: 'smooth' });
+    const latestIndex = firstItemIndexRef.current + messagesRef.current.length - 1;
+    if (virtuosoRef.current && latestIndex >= firstItemIndexRef.current) {
+      virtuosoRef.current.scrollToIndex({ index: latestIndex, align: 'end', behavior });
     }
-  }, [shouldSuppressProgrammaticScroll]);
+    const scroller = getChatScrollerElement();
+    if (scroller) {
+      requestAnimationFrame(() => {
+        if (shouldSuppressProgrammaticScroll()) return;
+        scroller.scrollTop = scroller.scrollHeight;
+      });
+    }
+  }, [getChatScrollerElement, shouldSuppressProgrammaticScroll]);
 
   const forceScrollToBottomAsync = useCallback(() => {
     clearPendingBottomScrollTimers();
     if (shouldSuppressProgrammaticScroll()) return;
 
-    scrollToBottom();
+    scrollToBottom('auto');
     // Re-issue the scroll over the next 500ms to guarantee anchoring.
     // This perfectly tracks the mobile OS virtual keyboard retracting animation
     // and layout flex reflows (like reply previews unmounting).
@@ -7223,7 +7234,7 @@ function Chat() {
     pendingBottomScrollTimeoutsRef.current = delays.map((delay) =>
       window.setTimeout(() => {
         if (shouldSuppressProgrammaticScroll()) return;
-        scrollToBottom();
+        scrollToBottom('auto');
       }, delay)
     );
   }, [clearPendingBottomScrollTimers, scrollToBottom, shouldSuppressProgrammaticScroll]);
@@ -7240,6 +7251,7 @@ function Chat() {
 
   const handleScrollToBottomButtonClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
+    e.stopPropagation();
 
     const latestMessageId = messagesRef.current[messagesRef.current.length - 1]?.id || null;
     let returnTargetId: string | null = null;
@@ -7253,8 +7265,7 @@ function Chat() {
       break;
     }
 
-    if (returnTargetId) {
-      scrollToMessage(returnTargetId);
+    if (returnTargetId && scrollToLoadedMessage(returnTargetId, 'auto')) {
       return;
     }
 
@@ -7265,7 +7276,7 @@ function Chat() {
     }
     setNewMessagesWhileScrolledUp(0);
     forceScrollToBottomAsync();
-  }, [forceScrollToBottomAsync, isMobileView, scrollToMessage]);
+  }, [forceScrollToBottomAsync, isMobileView, scrollToLoadedMessage]);
 
   const handleEmojiClick = (emojiData: EmojiClickData) => { setInputMessage(prev => prev + emojiData.emoji); };
   const handleOpenEmojiPicker = useCallback((rect: DOMRect) => {
@@ -7805,9 +7816,6 @@ function Chat() {
               <ScrollToBottomButton
                 $isVisible={isScrollToBottomVisible}
                 onClick={handleScrollToBottomButtonClick}
-                onMouseDown={(e) => e.preventDefault()}
-                onPointerDown={(e) => e.preventDefault()}
-                onTouchStart={(e) => e.preventDefault()}
                 aria-label={scrollToLatestLabel}
                 title={scrollToLatestTitle}
               >
