@@ -331,6 +331,14 @@ const _scrollDebug = (() => {
 const scrollLog = _scrollDebug
   ? (...args: unknown[]) => console.log('[PulseScroll]', ...args)
   : () => {};
+// Set PULSE_QUOTE_DEBUG=true in localStorage to enable quote-target diagnostics.
+const _quoteDebug = (() => {
+  try { return localStorage.getItem('PULSE_QUOTE_DEBUG') === 'true'; } catch { return false; }
+})();
+const quoteLog = _quoteDebug
+  ? (...args: unknown[]) => console.log('[PulseQuote]', ...args)
+  : () => {};
+const quoteWarn = (...args: unknown[]) => console.warn('[PulseQuote]', ...args);
 const MAX_LINK_PREVIEW_CACHE_ENTRIES = 250;
 const VIRTUOSO_OVERSCAN_DESKTOP = 128;
 const VIRTUOSO_OVERSCAN_MOBILE = 96;
@@ -4394,6 +4402,11 @@ const MessageItem = React.memo(({
                   e.stopPropagation();
                   if (msg.replyingTo) {
                     const replyTargetId = resolveReplyTargetId(msg.replyingTo, msg.id);
+                    quoteLog('quoted-window click', {
+                      sourceMessageId: msg.id,
+                      rawReplyingTo: msg.replyingTo,
+                      resolvedReplyTargetId: replyTargetId,
+                    });
                     if (replyTargetId) scrollToMessage(replyTargetId, msg.id, 'auto', true, msg.replyingTo);
                   }
                 }}
@@ -7091,11 +7104,25 @@ function Chat() {
   }, []);
 
   const scrollToLoadedMessage = useCallback((messageId: string, behavior: 'auto' | 'smooth' = 'auto', force = false) => {
-    if (!virtuosoRef.current) return false;
+    if (!virtuosoRef.current) {
+      quoteWarn('scrollToLoadedMessage aborted: virtuosoRef missing', { messageId, behavior, force });
+      return false;
+    }
     const targetId = normalizeMessageId(messageId);
-    if (!targetId) return false;
+    if (!targetId) {
+      quoteWarn('scrollToLoadedMessage aborted: targetId empty', { messageId });
+      return false;
+    }
     const msgIndex = messagesRef.current.findIndex((m) => normalizeMessageId(m.id) === targetId);
-    if (msgIndex === -1) return false;
+    if (msgIndex === -1) {
+      quoteWarn('scrollToLoadedMessage target not in loaded messages', {
+        targetId,
+        loadedMessageCount: messagesRef.current.length,
+        firstLoadedId: messagesRef.current[0]?.id,
+        lastLoadedId: messagesRef.current[messagesRef.current.length - 1]?.id,
+      });
+      return false;
+    }
 
     // ─── FIX: Quote-jump going to bottom ────────────────────────────────────
     // Virtuoso's followOutput can override scrollToIndex because smooth animations
@@ -7110,6 +7137,16 @@ function Chat() {
     isAtBottomRef.current = false;
     setIsScrollToBottomVisible(true);
     scrollLog('quote-jump to', targetId, 'msgIndex', msgIndex, 'firstItemIndex(ref)', firstItemIndexRef.current);
+    quoteLog('scrollToLoadedMessage start', {
+      targetId,
+      msgIndex,
+      behavior,
+      force,
+      firstItemIndexRef: firstItemIndexRef.current,
+      suppressUntilMs: suppressProgrammaticScrollUntilRef.current,
+      nowMs: performance.now(),
+      quoteJumpLocked: quoteJumpLockRef.current,
+    });
 
     const scroller = getChatScrollerElement();
     const offset = scroller
@@ -7119,7 +7156,14 @@ function Chat() {
     const primaryIndex = firstItemIndexRef.current + msgIndex;
     const fallbackIndex = firstItemIndexRef.current + msgIndex;
 
-    if (!force && shouldSuppressProgrammaticScroll()) return false;
+    if (!force && shouldSuppressProgrammaticScroll()) {
+      quoteWarn('scrollToLoadedMessage blocked by suppression window', {
+        targetId,
+        nowMs: performance.now(),
+        suppressUntilMs: suppressProgrammaticScrollUntilRef.current,
+      });
+      return false;
+    }
 
     virtuosoRef.current?.scrollToIndex({
       index: primaryIndex,
@@ -7127,12 +7171,19 @@ function Chat() {
       behavior,
       offset: Number.isFinite(offset) ? offset : 0,
     });
+    quoteLog('scrollToIndex issued', { targetId, primaryIndex, fallbackIndex, offset, behavior });
 
     const ensureVisibleAndHighlight = (attempt: number) => {
       const element = document.getElementById(`message-${targetId}`) as HTMLElement | null;
       const currentScroller = getChatScrollerElement();
 
       if (!element || !currentScroller) {
+        quoteLog('ensureVisibleAndHighlight waiting for DOM element/scroller', {
+          targetId,
+          attempt,
+          hasElement: !!element,
+          hasScroller: !!currentScroller,
+        });
         if (attempt < 8) window.setTimeout(() => ensureVisibleAndHighlight(attempt + 1), 40);
         return;
       }
@@ -7145,6 +7196,7 @@ function Chat() {
         elementRect.bottom <= scrollerRect.bottom - margin;
 
       if (!isInsideViewport && attempt === 0 && fallbackIndex !== primaryIndex) {
+        quoteLog('retrying with fallback index', { targetId, fallbackIndex, primaryIndex });
         virtuosoRef.current?.scrollToIndex({
           index: fallbackIndex,
           align: 'start',
@@ -7156,10 +7208,12 @@ function Chat() {
       }
 
       if (!isInsideViewport) {
+        quoteLog('target outside viewport; using scrollIntoView fallback', { targetId, attempt });
         element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
       }
 
       highlightMessage(targetId);
+      quoteLog('target highlighted', { targetId, attempt });
     };
 
     requestAnimationFrame(() => ensureVisibleAndHighlight(0));
@@ -7182,12 +7236,25 @@ function Chat() {
       normalizeMessageId(replyingToPayload?._id),
     ].filter(Boolean);
 
+    quoteLog('resolveReplyNavigationTargetId candidates', {
+      requestedMessageId,
+      sourceMessageId,
+      candidateIds,
+      inMemoryCount: idsInMemory.size,
+    });
+
     for (const candidate of candidateIds) {
       if (sourceId && candidate === sourceId) continue;
-      if (idsInMemory.has(candidate)) return candidate;
+      if (idsInMemory.has(candidate)) {
+        quoteLog('resolveReplyNavigationTargetId resolved by direct candidate', { candidate });
+        return candidate;
+      }
     }
 
-    if (!replyingToPayload) return directRequested;
+    if (!replyingToPayload) {
+      quoteWarn('resolveReplyNavigationTargetId no payload; falling back to requested id', { directRequested });
+      return directRequested;
+    }
 
     const replyText = typeof replyingToPayload.text === 'string' ? replyingToPayload.text.trim() : '';
     const replyUsername = typeof replyingToPayload.username === 'string' ? replyingToPayload.username.trim() : '';
@@ -7210,7 +7277,16 @@ function Chat() {
         return true;
       });
 
-    if (metadataMatches.length === 0) return directRequested;
+    if (metadataMatches.length === 0) {
+      quoteWarn('resolveReplyNavigationTargetId metadata matching failed; using requested id', {
+        directRequested,
+        replyUsername,
+        replyType,
+        hasReplyText: !!replyText,
+        hasReplyUrl: !!replyUrl,
+      });
+      return directRequested;
+    }
 
     const preferred = sourceIndex > 0
       ? metadataMatches.filter(({ index }) => index < sourceIndex)
@@ -7220,14 +7296,35 @@ function Chat() {
       ? preferred[preferred.length - 1]
       : metadataMatches[metadataMatches.length - 1];
 
-    return normalizeMessageId(chosen.m.id) || directRequested;
+    const resolved = normalizeMessageId(chosen.m.id) || directRequested;
+    quoteLog('resolveReplyNavigationTargetId resolved via metadata', {
+      resolved,
+      metadataMatchCount: metadataMatches.length,
+      sourceIndex,
+      chosenIndex: chosen.index,
+      chosenId: chosen.m.id,
+    });
+    return resolved;
   }, []);
 
   const scrollToMessage = useCallback((messageId: string, sourceMessageId?: string, behavior: 'auto' | 'smooth' = 'auto', force = false, replyingToPayload?: any) => {
     const targetId = resolveReplyNavigationTargetId(messageId, sourceMessageId, replyingToPayload);
     const sourceId = normalizeMessageId(sourceMessageId);
 
-    if (targetId && sourceId && targetId === sourceId) return;
+    quoteLog('scrollToMessage requested', {
+      messageId,
+      resolvedTargetId: targetId,
+      sourceId,
+      behavior,
+      force,
+      historyLoaded,
+      loadedMessageCount: messagesRef.current.length,
+    });
+
+    if (targetId && sourceId && targetId === sourceId) {
+      quoteWarn('scrollToMessage aborted: resolved target equals source', { targetId, sourceId });
+      return;
+    }
 
     if (sourceId && sourceId !== targetId) {
       const stack = quoteJumpReturnStackRef.current;
@@ -7241,9 +7338,18 @@ function Chat() {
       }
     }
 
-    if (!targetId) return;
-    if (scrollToLoadedMessage(targetId, behavior, force)) return;
-    if (!historyLoaded) return;
+    if (!targetId) {
+      quoteWarn('scrollToMessage aborted: no resolved target id', { messageId, sourceId });
+      return;
+    }
+    if (scrollToLoadedMessage(targetId, behavior, force)) {
+      quoteLog('scrollToMessage resolved within loaded window', { targetId });
+      return;
+    }
+    if (!historyLoaded) {
+      quoteWarn('scrollToMessage aborted: history not loaded yet', { targetId });
+      return;
+    }
 
     void (async () => {
       let cursor = oldestLoadedAtRef.current;
@@ -7275,6 +7381,14 @@ function Chat() {
 
         await new Promise((resolve) => setTimeout(resolve, 0));
       }
+
+      quoteLog('scrollToMessage auto-load loop finished', {
+        targetId,
+        fetchedPages,
+        hasMore,
+        cursor,
+        nowContainsTarget: messagesRef.current.some((m) => normalizeMessageId(m.id) === targetId),
+      });
 
       requestAnimationFrame(() => {
         scrollToLoadedMessage(targetId, behavior, force);
@@ -7340,7 +7454,14 @@ function Chat() {
       break;
     }
 
+    quoteLog('scroll-to-bottom button clicked', {
+      latestMessageId,
+      returnStackSize: quoteJumpReturnStackRef.current.length,
+      returnTargetId,
+    });
+
     if (returnTargetId && scrollToLoadedMessage(returnTargetId, 'auto', true)) {
+      quoteLog('scroll-to-bottom performed quote-return jump', { returnTargetId });
       return;
     }
 
@@ -7350,6 +7471,7 @@ function Chat() {
       document.activeElement.blur();
     }
     setNewMessagesWhileScrolledUp(0);
+    quoteLog('scroll-to-bottom falling back to bottom anchor');
     forceScrollToBottomAsync();
   }, [forceScrollToBottomAsync, isMobileView, scrollToLoadedMessage]);
 
@@ -7937,6 +8059,10 @@ function Chat() {
                 <div>
                   {replyingTo && <ReplyPreviewContainer ref={replyPreviewRef} onClick={() => {
                     const replyTargetId = resolveReplyTargetId(replyingTo);
+                    quoteLog('reply-preview click', {
+                      rawReplyingTo: replyingTo,
+                      resolvedReplyTargetId: replyTargetId,
+                    });
                     if (replyTargetId) scrollToMessage(replyTargetId, undefined, 'auto', true, replyingTo);
                   }}>
                     {replyingTo.type === 'video' && replyingTo.url ? (
