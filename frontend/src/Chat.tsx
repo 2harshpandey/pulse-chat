@@ -38,6 +38,22 @@ const getMessageElementId = (rawId: any): string => {
   return `message-${encodeURIComponent(normalized)}`;
 };
 
+const findMessageElement = (rawId: any): HTMLElement | null => {
+  const normalized = normalizeMessageId(rawId);
+  if (!normalized) return null;
+
+  const byId = document.getElementById(getMessageElementId(normalized)) as HTMLElement | null;
+  if (byId) return byId;
+
+  const candidates = document.querySelectorAll<HTMLElement>('[data-message-id]');
+  for (const candidate of Array.from(candidates)) {
+    if (normalizeMessageId(candidate.dataset.messageId) === normalized) {
+      return candidate;
+    }
+  }
+  return null;
+};
+
 const resolveReplyTargetId = (replyingTo: any, sourceMessageId?: string): string => {
   const sourceId = normalizeMessageId(sourceMessageId);
   const candidates = [replyingTo?.id, replyingTo?.messageId, replyingTo?._id];
@@ -4348,6 +4364,7 @@ const MessageItem = React.memo(({
     <React.Fragment>
       <MessageRow
         id={getMessageElementId(msg.id)}
+        data-message-id={normalizeMessageId(msg.id)}
         ref={messageRowRef}
         $sender={sender}
         $isSelected={isSelected}
@@ -6369,7 +6386,7 @@ function Chat() {
     // (footer has grown to include the reply preview, container has shrunk).
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        const msgElement = document.getElementById(getMessageElementId(replyingTo.id));
+        const msgElement = findMessageElement(replyingTo.id);
         const container = chatContainerRef.current?.querySelector('[data-virtuoso-scroller]') as HTMLElement || chatContainerRef.current;
         if (!msgElement || !container) return;
         const containerRect = container.getBoundingClientRect();
@@ -7088,7 +7105,7 @@ function Chat() {
     const attemptDelayMs = 60;
 
     const applyHighlight = (attempt: number) => {
-      const element = document.getElementById(getMessageElementId(messageId));
+      const element = findMessageElement(messageId);
       if (!element) {
         if (attempt < maxAttempts) {
           window.setTimeout(() => applyHighlight(attempt + 1), attemptDelayMs);
@@ -7180,7 +7197,7 @@ function Chat() {
     quoteLog('scrollToIndex issued', { targetId, primaryIndex, fallbackIndex, offset, behavior });
 
     const ensureVisibleAndHighlight = (attempt: number) => {
-      const element = document.getElementById(getMessageElementId(targetId)) as HTMLElement | null;
+      const element = findMessageElement(targetId);
       const currentScroller = getChatScrollerElement();
 
       if (!element || !currentScroller) {
