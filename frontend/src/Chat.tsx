@@ -795,8 +795,9 @@ const MessageBubble = styled.div<{ $sender: string; $messageType: string; $isUpl
   cursor: pointer;
   min-width: ${props => props.$messageType === 'text' ? '4.5rem' : '0'};
   opacity: ${props => props.$isUploading ? 0.5 : 1};
-  /* CSS transitions on message bubbles cause visual flicker when Virtuoso recycles rows for\n     different senders (which changes background-color). Disable on mobile to prevent jitter. */\n  transition: opacity 0.3s ease, background-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease, transform 0.2s ease;
-  @media (max-width: 768px) {\n    & { transition: none !important; }\n  }
+    /* Keep message geometry and paint stable while virtualized rows are recycled.
+      Animated transitions here can look like shaking/blinking during fast scroll. */
+    transition: none;
   border: ${props => props.$uploadError ? '1px solid #ef4444' : (props.$sender === 'me' ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(15,23,42,0.08)')};
   will-change: transform;
   align-self: ${props => props.$sender === 'me' ? 'flex-end' : 'flex-start'};
@@ -3931,7 +3932,7 @@ interface MessageItemProps {
   downloadProgress: number;
   deleteForMe: (messageId: string) => void;
   deleteForEveryone: (messageId: string) => void;
-  scrollToMessage: (messageId: string, sourceMessageId?: string) => void;
+  scrollToMessage: (messageId: string, sourceMessageId?: string, behavior?: 'auto' | 'smooth') => void;
   isSelectModeActive: boolean;
   isSelected: boolean;
   handleToggleSelectMessage: (messageId: string) => void;
@@ -4362,7 +4363,14 @@ const MessageItem = React.memo(({
             style={{ marginBottom: (!isDeleted && msg.reactions && Object.keys(msg.reactions).length > 0) ? '18px' : undefined }}
           >
             {msg.replyingTo && (
-              <QuotedMessageContainer $sender={sender} onClick={() => { if (msg.replyingTo) scrollToMessage(msg.replyingTo.id, msg.id); }}>
+              <QuotedMessageContainer
+                $sender={sender}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (msg.replyingTo) scrollToMessage(msg.replyingTo.id, msg.id, 'auto');
+                }}
+              >
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p>{msg.replyingTo.username}</p>
                   <span style={msg.replyingTo.isDeleted ? { fontStyle: 'italic', opacity: 0.7 } : undefined}>
@@ -7010,7 +7018,7 @@ function Chat() {
     applyHighlight(0);
   }, []);
 
-  const scrollToLoadedMessage = useCallback((messageId: string, behavior: 'auto' | 'smooth' = 'smooth') => {
+  const scrollToLoadedMessage = useCallback((messageId: string, behavior: 'auto' | 'smooth' = 'auto') => {
     if (!virtuosoRef.current) return false;
     const msgIndex = messagesRef.current.findIndex((m) => m.id === messageId);
     if (msgIndex === -1) return false;
@@ -7022,27 +7030,62 @@ function Chat() {
     // 2. Suppress all bottom-pinning for 5+ seconds
     // 3. Track if the user manually scrolled during this window
     clearPendingBottomScrollTimers();
-    scheduleProgrammaticScrollSuppression(5000);  // Long enough to ensure user can't re-trigger bottom-pin
+    scheduleProgrammaticScrollSuppression(2200);
     lastAtBottomStateRef.current = false;
-    scrollLog('quote-jump to msgIndex', msgIndex, 'firstItemIndex', firstItemIndexRef.current);
+    scrollLog('quote-jump to msgIndex', msgIndex, 'firstItemIndex(state/ref)', firstItemIndex, firstItemIndexRef.current);
 
     const scroller = getChatScrollerElement();
     const offset = scroller
       ? Math.round(-scroller.clientHeight * QUOTE_JUMP_TARGET_TOP_RATIO)
       : 0;
 
-    // ALWAYS use 'auto' for quote-jumps to avoid smooth animation triggering bottom-pin
+    const primaryIndex = firstItemIndex + msgIndex;
+    const fallbackIndex = firstItemIndexRef.current + msgIndex;
+
     virtuosoRef.current?.scrollToIndex({
-      index: firstItemIndexRef.current + msgIndex,
+      index: primaryIndex,
       align: 'start',
-      behavior: 'auto',  // Instant jump, never smooth for quotes
+      behavior,
       offset: Number.isFinite(offset) ? offset : 0,
     });
 
-    // Highlight the message immediately since it's now on-screen
-    window.setTimeout(() => highlightMessage(messageId), 50);
+    const ensureVisibleAndHighlight = (attempt: number) => {
+      const element = document.getElementById(`message-${messageId}`) as HTMLElement | null;
+      const currentScroller = getChatScrollerElement();
+
+      if (!element || !currentScroller) {
+        if (attempt < 8) window.setTimeout(() => ensureVisibleAndHighlight(attempt + 1), 40);
+        return;
+      }
+
+      const elementRect = element.getBoundingClientRect();
+      const scrollerRect = currentScroller.getBoundingClientRect();
+      const margin = 10;
+      const isInsideViewport =
+        elementRect.top >= scrollerRect.top + margin &&
+        elementRect.bottom <= scrollerRect.bottom - margin;
+
+      if (!isInsideViewport && attempt === 0 && fallbackIndex !== primaryIndex) {
+        virtuosoRef.current?.scrollToIndex({
+          index: fallbackIndex,
+          align: 'start',
+          behavior: 'auto',
+          offset: Number.isFinite(offset) ? offset : 0,
+        });
+        window.setTimeout(() => ensureVisibleAndHighlight(attempt + 1), 40);
+        return;
+      }
+
+      if (!isInsideViewport) {
+        element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
+      }
+
+      highlightMessage(messageId);
+    };
+
+    requestAnimationFrame(() => ensureVisibleAndHighlight(0));
     return true;
-  }, [clearPendingBottomScrollTimers, getChatScrollerElement, highlightMessage, scheduleProgrammaticScrollSuppression]);
+  }, [clearPendingBottomScrollTimers, firstItemIndex, getChatScrollerElement, highlightMessage, scheduleProgrammaticScrollSuppression]);
 
   const scrollToMessage = useCallback((messageId: string, sourceMessageId?: string, behavior: 'auto' | 'smooth' = 'auto') => {
     if (sourceMessageId && sourceMessageId !== messageId) {
@@ -7058,7 +7101,7 @@ function Chat() {
     }
 
     if (!messageId) return;
-    if (scrollToLoadedMessage(messageId, 'auto')) return;
+    if (scrollToLoadedMessage(messageId, behavior)) return;
     if (!historyLoaded) return;
 
     void (async () => {
@@ -7093,7 +7136,7 @@ function Chat() {
       }
 
       requestAnimationFrame(() => {
-        scrollToLoadedMessage(messageId, 'auto');
+        scrollToLoadedMessage(messageId, behavior);
       });
     })();
   }, [fetchAndPrependOlderMessages, historyLoaded, scrollToLoadedMessage]);
@@ -7205,15 +7248,10 @@ function Chat() {
     return isAtBottomRef.current ? 'auto' : false;
   }, []);
 
-  // Scroll seek is useful on desktop, but on touch devices it can swap rows
-  // into placeholders during fast flicks, which reads as blinking/jitter in
-  // a chat transcript. Keep mobile rows fully rendered for stable scrolling.
-  const virtuosoScrollSeekConfiguration = isMobileView
-    ? undefined
-    : {
-        enter: (velocity: number) => Math.abs(velocity) > 500,
-        exit: (velocity: number) => Math.abs(velocity) < 30,
-      };
+  // Disable scroll-seek placeholders on all devices.
+  // In a chat transcript, placeholder swapping can appear as blink/shake
+  // during fast upward scroll (desktop trackpad/mouse included).
+  const virtuosoScrollSeekConfiguration = undefined;
 
   // --- RENDER ---
   if (!userContext?.profile) { return <Auth onAuthSuccess={userContext!.login} tempToken={tempToken || null} />; }
