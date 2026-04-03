@@ -3943,7 +3943,7 @@ interface MessageItemProps {
   downloadProgress: number;
   deleteForMe: (messageId: string) => void;
   deleteForEveryone: (messageId: string) => void;
-  scrollToMessage: (messageId: string, sourceMessageId?: string, behavior?: 'auto' | 'smooth') => void;
+  scrollToMessage: (messageId: string, sourceMessageId?: string, behavior?: 'auto' | 'smooth', force?: boolean) => void;
   isSelectModeActive: boolean;
   isSelected: boolean;
   handleToggleSelectMessage: (messageId: string) => void;
@@ -4379,11 +4379,7 @@ const MessageItem = React.memo(({
                 data-quote-swipe-ignore
                 role="button"
                 tabIndex={0}
-                onPointerUp={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  if (msg.replyingTo) scrollToMessage(msg.replyingTo.id, msg.id, 'auto', true);
-                }}
+                onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -7101,14 +7097,14 @@ function Chat() {
     lastAtBottomStateRef.current = false;
     isAtBottomRef.current = false;
     setIsScrollToBottomVisible(true);
-    scrollLog('quote-jump to', targetId, 'msgIndex', msgIndex, 'firstItemIndex(state/ref)', firstItemIndex, firstItemIndexRef.current);
+    scrollLog('quote-jump to', targetId, 'msgIndex', msgIndex, 'firstItemIndex(ref)', firstItemIndexRef.current);
 
     const scroller = getChatScrollerElement();
     const offset = scroller
       ? Math.round(-scroller.clientHeight * QUOTE_JUMP_TARGET_TOP_RATIO)
       : 0;
 
-    const primaryIndex = firstItemIndex + msgIndex;
+    const primaryIndex = firstItemIndexRef.current + msgIndex;
     const fallbackIndex = firstItemIndexRef.current + msgIndex;
 
     if (!force && shouldSuppressProgrammaticScroll()) return false;
