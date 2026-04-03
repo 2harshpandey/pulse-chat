@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useContext, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useContext, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import styled, { createGlobalStyle, keyframes, css } from 'styled-components';
 import EmojiPicker, { EmojiClickData, EmojiStyle, Theme } from 'emoji-picker-react';
@@ -836,7 +836,9 @@ const MessageRow = styled.div<{ $sender: string; $isSelected?: boolean; $isActiv
   position: relative;
   background-color: ${props => props.$isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent'};
   border-radius: 8px;
-  transition: background-color 0.2s ease;
+  /* Keep row paint deterministic while Virtuoso recycles DOM nodes.
+     Animated row-level transitions can look like shaking during fast scroll. */
+  transition: none;
   user-select: none;
   touch-action: pan-y; /* Allow vertical scrolling, while manually handling horizontal drag */
   z-index: ${props => props.$isActiveDeleteMenu ? 40 : 'auto'};
@@ -920,7 +922,7 @@ const MessageBubble = styled.div<{ $sender: string; $messageType: string; $isUpl
       Animated transitions here can look like shaking/blinking during fast scroll. */
     transition: none;
   border: ${props => props.$uploadError ? '1px solid #ef4444' : (props.$sender === 'me' ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(15,23,42,0.08)')};
-  will-change: transform;
+  will-change: auto;
   align-self: ${props => props.$sender === 'me' ? 'flex-end' : 'flex-start'};
 
   @media (max-width: 768px) {
@@ -4306,6 +4308,7 @@ const MessageItem = React.memo(({
   // can open without also selecting the message.
   const mediaWasTapped = useRef(false);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const swipeTransitionResetTimerRef = useRef<number | null>(null);
   const reactButtonRef = useRef<HTMLButtonElement>(null!);
   const wasLongPressed = useRef(false);
   const touchStartPointRef = useRef<{ x: number; y: number } | null>(null);
@@ -4316,8 +4319,21 @@ const MessageItem = React.memo(({
   const resetSwipePosition = useCallback((animate: boolean) => {
     if (!messageRowRef.current) return;
     swipeOffsetRef.current = 0;
+    if (swipeTransitionResetTimerRef.current !== null) {
+      window.clearTimeout(swipeTransitionResetTimerRef.current);
+      swipeTransitionResetTimerRef.current = null;
+    }
+
     messageRowRef.current.style.transform = 'translateX(0px)';
     messageRowRef.current.style.transition = animate ? 'transform 0.2s ease-out' : 'none';
+
+    if (animate) {
+      swipeTransitionResetTimerRef.current = window.setTimeout(() => {
+        if (!messageRowRef.current) return;
+        messageRowRef.current.style.transition = 'none';
+        swipeTransitionResetTimerRef.current = null;
+      }, 220);
+    }
   }, []);
 
   const isSwipeQuoteIgnoredTarget = useCallback((target: HTMLElement) => {
@@ -4444,6 +4460,9 @@ const MessageItem = React.memo(({
 
     // During a valid horizontal drag, update position with sane bounds.
     const newX = Math.min(Math.max(mx, 0), 80);
+    if (newX === swipeOffsetRef.current) {
+      return;
+    }
     swipeOffsetRef.current = newX;
     messageRowRef.current.style.transform = `translateX(${newX}px)`;
     messageRowRef.current.style.transition = 'none';
@@ -4466,7 +4485,7 @@ const MessageItem = React.memo(({
 
   // Reset gesture refs when Virtuoso recycles this component for a different message
   const prevMsgIdRef = useRef(msg.id);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (prevMsgIdRef.current !== msg.id) {
       prevMsgIdRef.current = msg.id;
       wasLongPressed.current = false;
@@ -4481,6 +4500,15 @@ const MessageItem = React.memo(({
       resetSwipePosition(false);
     }
   }, [msg.id, resetSwipePosition]);
+
+  useEffect(() => {
+    return () => {
+      if (swipeTransitionResetTimerRef.current !== null) {
+        window.clearTimeout(swipeTransitionResetTimerRef.current);
+        swipeTransitionResetTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // Reset wasLongPressed only when select mode is DEACTIVATED.
   // We must NOT reset it when select mode is activated — the long-press
