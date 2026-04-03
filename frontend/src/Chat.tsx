@@ -295,6 +295,14 @@ const revokeBlobUrl = (file: File): void => {
 const MAX_MESSAGE_LENGTH = 65536;
 const INITIAL_HISTORY_BATCH_SIZE = 80;
 const HISTORY_PAGE_SIZE = 50;
+// Minimum ms between two consecutive startReached triggers.
+// Virtuoso fires startReached on EVERY scroll frame when the user is near the
+// top. Without a cooldown the lock (isLoadingOlderRef) prevents parallel
+// fetches but the constant state thrashing (isLoadingOlderMessages toggling)
+// still causes a flicker.  A 1.5 s cooldown means we only prepend once the
+// user has slowed/stopped, matching the user's mental model of "load a page,
+// scroll through it, load next page".
+const START_REACHED_COOLDOWN_MS = 1500;
 const INITIAL_FIRST_ITEM_INDEX = 100000;
 // ─── SCROLL INSTRUMENTATION ──────────────────────────────────────────────────
 // Set PULSE_SCROLL_DEBUG=true in localStorage to enable verbose scroll logging.
@@ -3645,14 +3653,25 @@ const renderMessageContent = (
     </svg>
   );
 
+  // Cancel / X icon shown in the center of the progress ring.
+  // Using a separate SVG (not DownloadSvg) makes the intent clear:
+  // "tap to cancel" rather than "tap to download again".
+  const CancelSvg = () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="6" y1="6" x2="18" y2="18" />
+      <line x1="18" y1="6" x2="6" y2="18" />
+    </svg>
+  );
+
   const RingedDownloadIcon = ({ progress }: { progress: number }) => (
     <DownloadProgressRing $progress={progress} $visible={true}>
       <svg className="ring-svg" width="36" height="36" viewBox="0 0 36 36" aria-hidden="true" style={{ width: '100%', height: '100%' }}>
         <circle className="track" cx="18" cy="18" r="15.8" />
         <circle className="progress" cx="18" cy="18" r="15.8" />
       </svg>
+      {/* Show X cross so user knows tapping will cancel the operation */}
       <span className="cancel-icon">
-        <DownloadSvg />
+        <CancelSvg />
       </span>
     </DownloadProgressRing>
   );
@@ -3700,14 +3719,13 @@ const renderMessageContent = (
           ) : null}
           {msg.url && !shouldGateMedia && (
             <MediaDownloadOverlayBtn
-              title={isDownloadInProgress ? 'Downloading...' : 'Download'}
-              aria-label="Download image"
+              title={isDownloadInProgress ? 'Tap to cancel' : 'Download'}
+              aria-label={isDownloadInProgress ? 'Cancel download' : 'Download image'}
               onClick={(e) => {
                 e.stopPropagation();
-                if (isDownloadInProgress) return;
+                // Always call triggerDownload — it toggles cancel if in-flight
                 triggerDownload(msg.originalName || 'image');
               }}
-              disabled={isDownloadInProgress}
             >
               {isDownloadInProgress ? <RingedDownloadIcon progress={clampedDownloadProgress} /> : <DownloadSvg />}
             </MediaDownloadOverlayBtn>
@@ -3744,14 +3762,13 @@ const renderMessageContent = (
           {/* Download button — top-left overlay, same style as image download btn */}
           {!shouldGateMedia && (
             <MediaDownloadOverlayBtn
-              title={isDownloadInProgress ? 'Downloading...' : 'Download video'}
-              aria-label="Download video"
+              title={isDownloadInProgress ? 'Tap to cancel' : 'Download video'}
+              aria-label={isDownloadInProgress ? 'Cancel download' : 'Download video'}
               onClick={(e) => {
                 e.stopPropagation();
-                if (isDownloadInProgress) return;
+                // Always call triggerDownload — it toggles cancel if in-flight
                 triggerDownload(msg.originalName || 'video');
               }}
-              disabled={isDownloadInProgress}
             >
               {isDownloadInProgress ? <RingedDownloadIcon progress={clampedDownloadProgress} /> : <DownloadSvg />}
             </MediaDownloadOverlayBtn>
@@ -4929,6 +4946,12 @@ function Chat() {
   const downloadInFlightRef = useRef<Set<string>>(new Set());
   const downloadAbortControllersRef = useRef(new Map<string, AbortController>());
   const mediaLoadAbortControllersRef = useRef(new Map<string, AbortController>());
+  // Cooldown timestamp: prevents startReached from firing more often than
+  // START_REACHED_COOLDOWN_MS. Virtuoso calls startReached on every scroll
+  // frame near the top; without throttling, the "Loading..." banner toggling
+  // 60×/s causes the list to jump and flicker even when isLoadingOlderRef
+  // correctly blocks parallel fetches.
+  const lastStartReachedAtRef = useRef<number>(0);
   const quoteJumpReturnStackRef = useRef<string[]>([]);
   const lightboxFrameRef = useRef<HTMLDivElement>(null);
   const lightboxPointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
@@ -5963,6 +5986,17 @@ function Chat() {
 
   const loadOlderMessages = useCallback(async () => {
     if (!historyLoaded || isLoadingOlderRef.current || !hasMoreOlderMessagesRef.current || !oldestLoadedAtRef.current) return;
+
+    // ─── FIX: Throttle startReached ────────────────────────────────────────
+    // Virtuoso fires startReached on every scroll frame near the top — up to
+    // 60 calls per second. The isLoadingOlderRef lock prevents parallel fetches
+    // but each call still toggles setIsLoadingOlderMessages, which re-renders
+    // the Header component ("Loading older messages...") 60×/s, causing visible
+    // flicker even when no new data arrives. The cooldown ensures we only
+    // prepend once per 1.5 s window so the banner toggling is invisible.
+    const now = performance.now();
+    if (now - lastStartReachedAtRef.current < START_REACHED_COOLDOWN_MS) return;
+    lastStartReachedAtRef.current = now;
 
     isLoadingOlderRef.current = true;
     setIsLoadingOlderMessages(true);
