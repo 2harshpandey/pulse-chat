@@ -22,6 +22,16 @@ const getUserId = (): string => {
   return userId;
 };
 
+const normalizeMessageId = (rawId: any): string => {
+  if (rawId === null || rawId === undefined) return '';
+  if (typeof rawId === 'string' || typeof rawId === 'number') return String(rawId);
+  if (typeof rawId === 'object') {
+    const nested = (rawId as any).id ?? (rawId as any)._id ?? (rawId as any).messageId;
+    if (nested !== null && nested !== undefined) return String(nested);
+  }
+  return '';
+};
+
 /**
  * Trusted CDN hostnames allowed as download targets in downloadFile.
  * Any URL whose hostname is not in this list is ignored to prevent fetching
@@ -4606,6 +4616,10 @@ const MessageItem = React.memo(({
               </DeleteMenuItem>
             ) : (
               <>
+                <DeleteMenuItem onClick={() => { handleSetReply(msg); setActiveDeleteMenu(null); }}>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>
+                  Reply
+                </DeleteMenuItem>
                 {canEdit && (
                   <DeleteMenuItem onClick={() => handleStartEdit(msg)}>
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
@@ -5882,12 +5896,22 @@ function Chat() {
   // --- FUNCTIONS ---
 
   const normalizeMessage = useCallback((msg: any): Message => {
-    if (msg.reactions) {
+    const normalizedId = normalizeMessageId(msg?.id ?? msg?._id);
+    const normalizedReplyId = normalizeMessageId(msg?.replyingTo?.id ?? msg?.replyingTo?.messageId ?? msg?.replyingTo?._id);
+    const baseMsg: any = {
+      ...msg,
+      ...(normalizedId ? { id: normalizedId } : {}),
+      ...(msg?.replyingTo && normalizedReplyId
+        ? { replyingTo: { ...msg.replyingTo, id: normalizedReplyId } }
+        : {}),
+    };
+
+    if (baseMsg.reactions) {
       const normalizedReactions: Record<string, { userId: string; username: string }[]> = {};
       // Handle both plain objects and Map instances (Mongoose .lean() may return Maps)
-      const entries: [string, any][] = msg.reactions instanceof Map
-        ? Array.from(msg.reactions.entries())
-        : Object.entries(msg.reactions);
+      const entries: [string, any][] = baseMsg.reactions instanceof Map
+        ? Array.from(baseMsg.reactions.entries())
+        : Object.entries(baseMsg.reactions);
       for (const [emoji, users] of entries) {
         if (Array.isArray(users)) {
           normalizedReactions[emoji] = users.map((user: any) =>
@@ -5897,9 +5921,9 @@ function Chat() {
           );
         }
       }
-      return { ...msg, reactions: normalizedReactions } as Message;
+      return { ...baseMsg, reactions: normalizedReactions } as Message;
     }
-    return msg as Message;
+    return baseMsg as Message;
   }, []);
 
   const getMessageCursor = useCallback((msg?: Message): string | null => {
@@ -7020,7 +7044,9 @@ function Chat() {
 
   const scrollToLoadedMessage = useCallback((messageId: string, behavior: 'auto' | 'smooth' = 'auto') => {
     if (!virtuosoRef.current) return false;
-    const msgIndex = messagesRef.current.findIndex((m) => m.id === messageId);
+    const targetId = normalizeMessageId(messageId);
+    if (!targetId) return false;
+    const msgIndex = messagesRef.current.findIndex((m) => normalizeMessageId(m.id) === targetId);
     if (msgIndex === -1) return false;
 
     // ─── FIX: Quote-jump going to bottom ────────────────────────────────────
@@ -7032,7 +7058,7 @@ function Chat() {
     clearPendingBottomScrollTimers();
     scheduleProgrammaticScrollSuppression(2200);
     lastAtBottomStateRef.current = false;
-    scrollLog('quote-jump to msgIndex', msgIndex, 'firstItemIndex(state/ref)', firstItemIndex, firstItemIndexRef.current);
+    scrollLog('quote-jump to', targetId, 'msgIndex', msgIndex, 'firstItemIndex(state/ref)', firstItemIndex, firstItemIndexRef.current);
 
     const scroller = getChatScrollerElement();
     const offset = scroller
@@ -7050,7 +7076,7 @@ function Chat() {
     });
 
     const ensureVisibleAndHighlight = (attempt: number) => {
-      const element = document.getElementById(`message-${messageId}`) as HTMLElement | null;
+      const element = document.getElementById(`message-${targetId}`) as HTMLElement | null;
       const currentScroller = getChatScrollerElement();
 
       if (!element || !currentScroller) {
@@ -7080,7 +7106,7 @@ function Chat() {
         element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
       }
 
-      highlightMessage(messageId);
+      highlightMessage(targetId);
     };
 
     requestAnimationFrame(() => ensureVisibleAndHighlight(0));
@@ -7088,20 +7114,23 @@ function Chat() {
   }, [clearPendingBottomScrollTimers, firstItemIndex, getChatScrollerElement, highlightMessage, scheduleProgrammaticScrollSuppression]);
 
   const scrollToMessage = useCallback((messageId: string, sourceMessageId?: string, behavior: 'auto' | 'smooth' = 'auto') => {
-    if (sourceMessageId && sourceMessageId !== messageId) {
+    const targetId = normalizeMessageId(messageId);
+    const sourceId = normalizeMessageId(sourceMessageId);
+
+    if (sourceId && sourceId !== targetId) {
       const stack = quoteJumpReturnStackRef.current;
       const lastSourceId = stack[stack.length - 1];
-      if (lastSourceId !== sourceMessageId) {
+      if (lastSourceId !== sourceId) {
         const nextStack = stack.length >= MAX_QUOTE_JUMP_STACK_DEPTH
           ? stack.slice(stack.length - MAX_QUOTE_JUMP_STACK_DEPTH + 1)
           : stack.slice();
-        nextStack.push(sourceMessageId);
+        nextStack.push(sourceId);
         quoteJumpReturnStackRef.current = nextStack;
       }
     }
 
-    if (!messageId) return;
-    if (scrollToLoadedMessage(messageId, behavior)) return;
+    if (!targetId) return;
+    if (scrollToLoadedMessage(targetId, behavior)) return;
     if (!historyLoaded) return;
 
     void (async () => {
@@ -7109,7 +7138,7 @@ function Chat() {
       let hasMore = hasMoreOlderMessagesRef.current;
       let fetchedPages = 0;
 
-      while (!messagesRef.current.some((m) => m.id === messageId) && hasMore && cursor && fetchedPages < MAX_QUOTE_AUTO_LOAD_PAGES) {
+      while (!messagesRef.current.some((m) => normalizeMessageId(m.id) === targetId) && hasMore && cursor && fetchedPages < MAX_QUOTE_AUTO_LOAD_PAGES) {
         if (isLoadingOlderRef.current) {
           await new Promise((resolve) => setTimeout(resolve, 80));
           cursor = oldestLoadedAtRef.current;
@@ -7136,7 +7165,7 @@ function Chat() {
       }
 
       requestAnimationFrame(() => {
-        scrollToLoadedMessage(messageId, behavior);
+        scrollToLoadedMessage(targetId, behavior);
       });
     })();
   }, [fetchAndPrependOlderMessages, historyLoaded, scrollToLoadedMessage]);
