@@ -2190,9 +2190,9 @@ const LinkPreviewCard = styled.a<{ $sender: 'me' | 'other' }>`
   margin-bottom: 4px;
   background: ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.18)' : 'var(--bg-hover)'};
   border: 1px solid ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.18)' : 'var(--border-primary)'};
-  transition: all 0.25s ease;
-  animation: ${subtleSlideUp} 0.3s ease-out forwards;
-  &:hover { opacity: 0.95; transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+  min-height: 80px;
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+  &:hover { opacity: 0.95; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
   ${props => props.$sender === 'other' && `
     [data-theme='dark'] & { background: #253348; border-color: rgba(255,255,255,0.08); }
   `}
@@ -4058,6 +4058,15 @@ interface LinkPreviewData {
 const linkPreviewCache = new Map<string, LinkPreviewData | null>();
 const linkPreviewInFlight = new Map<string, Promise<LinkPreviewData | null>>();
 
+const getLinkPreviewFallback = (url: string): LinkPreviewData => {
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./i, '');
+    return { hostname };
+  } catch {
+    return { hostname: 'link' };
+  }
+};
+
 const rememberLinkPreview = (url: string, data: LinkPreviewData | null): void => {
   if (!linkPreviewCache.has(url) && linkPreviewCache.size >= MAX_LINK_PREVIEW_CACHE_ENTRIES) {
     const oldestKey = linkPreviewCache.keys().next().value;
@@ -4095,17 +4104,20 @@ const fetchLinkPreviewData = (url: string): Promise<LinkPreviewData | null> => {
 
 const LinkPreview: React.FC<{ url: string; sender: 'me' | 'other' }> = React.memo(({ url, sender }) => {
   const [data, setData] = useState<LinkPreviewData | null | undefined>(
-    () => linkPreviewCache.has(url) ? (linkPreviewCache.get(url) ?? null) : undefined
+    () => {
+      if (!linkPreviewCache.has(url)) return getLinkPreviewFallback(url);
+      return linkPreviewCache.get(url) ?? getLinkPreviewFallback(url);
+    }
   );
   useEffect(() => {
     if (linkPreviewCache.has(url)) {
-      setData(linkPreviewCache.get(url) ?? null);
+      setData(linkPreviewCache.get(url) ?? getLinkPreviewFallback(url));
       return;
     }
     let cancelled = false;
     (async () => {
       const result = await fetchLinkPreviewData(url);
-      if (!cancelled) setData(result);
+      if (!cancelled) setData(result ?? getLinkPreviewFallback(url));
     })();
     return () => { cancelled = true; };
   }, [url]);
@@ -4131,7 +4143,7 @@ const LinkPreview: React.FC<{ url: string; sender: 'me' | 'other' }> = React.mem
             e.currentTarget.setAttribute('src', secondaryImage);
             return;
           }
-          e.currentTarget.style.display = 'none';
+          e.currentTarget.style.visibility = 'hidden';
         }}
       />
       <LinkPreviewBody>
