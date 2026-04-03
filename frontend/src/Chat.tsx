@@ -5808,24 +5808,37 @@ function Chat() {
     }
   }, [messages]);
 
-  // Keep the viewport pinned to the latest message for a short period after
-  // initial history load. Late-loading media/previews can change row heights and
-  // otherwise nudge the list upward by a few pixels.
+  // Keep the viewport pinned to the latest message ONCE after initial history
+  // load — for the first 1.5 s only, to handle late-loading images/previews.
+  // IMPORTANT: Do NOT include messages.length in the dependency array.
+  // Adding it caused this effect to re-run on every prepend, which re-fired
+  // the staggered scrollToIndex timers and snapped the view back to the bottom
+  // while the user was scrolling upward — the primary remaining flicker cause.
   useEffect(() => {
-    if (!historyLoaded || messages.length === 0 || initialHistoryBottomStabilized.current) return;
+    if (!historyLoaded) return;
+    if (initialHistoryBottomStabilized.current) return;
     initialHistoryBottomStabilized.current = true;
 
-    const targetIndex = messages.length - 1;
-    const delays = [0, 250, 900, 1800];
-    const timers = delays.map((ms) => setTimeout(() => {
+    // Capture the target index at the moment history loads.
+    // DO NOT read messages.length inside the timer callbacks — that would
+    // be a stale closure and could target the wrong row after prepends.
+    const capturedTargetIndex = messagesRef.current.length - 1;
+    if (capturedTargetIndex < 0) return;
+
+    // Only ONE deferred pin at 300ms — enough to handle image load shifts.
+    // The 900ms and 1800ms timers were causing the visible snap-to-bottom
+    // that users reported when scrolling up through history.
+    const timer = setTimeout(() => {
       if (!virtuosoRef.current) return;
       if (shouldSuppressProgrammaticScroll()) return;
       if (suppressInitialBottomPinRef.current || !isAtBottomRef.current) return;
-      virtuosoRef.current.scrollToIndex({ index: firstItemIndexRef.current + targetIndex, align: 'end', behavior: 'auto' });
-    }, ms));
+      const safeIndex = firstItemIndexRef.current + (messagesRef.current.length - 1);
+      virtuosoRef.current.scrollToIndex({ index: safeIndex, align: 'end', behavior: 'auto' });
+    }, 300);
 
-    return () => timers.forEach(clearTimeout);
-  }, [historyLoaded, messages.length, shouldSuppressProgrammaticScroll]);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyLoaded, shouldSuppressProgrammaticScroll]);
 
 
   useEffect(() => {
@@ -6956,6 +6969,16 @@ function Chat() {
     const msgIndex = messagesRef.current.findIndex((m) => m.id === messageId);
     if (msgIndex === -1) return false;
 
+    // ─── FIX: Quote-jump going to bottom ────────────────────────────────────
+    // When scrollToIndex fires, Virtuoso briefly emits atBottomStateChange(false)
+    // then the followOutput callback can re-pin to the bottom, overriding the
+    // quote-jump position. Suppress ALL programmatic bottom-pinning for 1.2 s
+    // after a quote-jump so the scroll lands and stays at the target.
+    // This also cancels any pending forceScrollToBottomAsync timers.
+    clearPendingBottomScrollTimers();
+    scheduleProgrammaticScrollSuppression(1200);
+    scrollLog('quote-jump to msgIndex', msgIndex, 'firstItemIndex', firstItemIndexRef.current);
+
     const scrollToTarget = (nextBehavior: 'auto' | 'smooth') => {
       const scroller = getChatScrollerElement();
       const offset = scroller
@@ -6979,7 +7002,7 @@ function Chat() {
     scrollToTarget('auto');
     window.setTimeout(() => highlightMessage(messageId), 120);
     return true;
-  }, [getChatScrollerElement, highlightMessage]);
+  }, [clearPendingBottomScrollTimers, getChatScrollerElement, highlightMessage, scheduleProgrammaticScrollSuppression]);
 
   const scrollToMessage = useCallback((messageId: string, sourceMessageId?: string) => {
     if (sourceMessageId && sourceMessageId !== messageId) {
