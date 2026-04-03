@@ -423,11 +423,9 @@ const INITIAL_HISTORY_BATCH_SIZE = 80;
 const HISTORY_PAGE_SIZE = 50;
 // Minimum ms between two consecutive startReached triggers.
 // Virtuoso fires startReached on EVERY scroll frame when the user is near the
-// top. Without a cooldown the lock (isLoadingOlderRef) prevents parallel
-// fetches but the constant state thrashing (isLoadingOlderMessages toggling)
-// still causes a flicker.  A 1.5 s cooldown means we only prepend once the
-// user has slowed/stopped, matching the user's mental model of "load a page,
-// scroll through it, load next page".
+// top. Without a cooldown we can repeatedly prepend near the threshold, which
+// causes visible anchor adjustments during slow upward scroll. A 1.5 s cooldown
+// means we only prepend once the user has slowed/stopped.
 const START_REACHED_COOLDOWN_MS = 1500;
 const INITIAL_FIRST_ITEM_INDEX = 100000;
 const scrollLog = (..._args: unknown[]) => {};
@@ -5206,7 +5204,6 @@ function Chat() {
   const [newMessagesWhileScrolledUp, setNewMessagesWhileScrolledUp] = useState(0);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [hasMoreOlderMessages, setHasMoreOlderMessages] = useState(true);
-  const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false);
   const [oldestLoadedAt, setOldestLoadedAt] = useState<string | null>(null);
   // ─── FIX: Unified firstItemIndex — single source of truth ───────────────
   // The ref and state are kept perfectly in sync via setFirstItemIndex().
@@ -6443,24 +6440,19 @@ function Chat() {
 
     // ─── FIX: Throttle startReached ────────────────────────────────────────
     // Virtuoso fires startReached on every scroll frame near the top — up to
-    // 60 calls per second. The isLoadingOlderRef lock prevents parallel fetches
-    // but each call still toggles setIsLoadingOlderMessages, which re-renders
-    // the Header component ("Loading older messages...") 60×/s, causing visible
-    // flicker even when no new data arrives. The cooldown ensures we only
-    // prepend once per 1.5 s window so the banner toggling is invisible.
+    // 60 calls per second. The lock prevents parallel fetches and the cooldown
+    // ensures we only prepend once per 1.5 s window.
     const now = performance.now();
     if (now - lastStartReachedAtRef.current < START_REACHED_COOLDOWN_MS) return;
     lastStartReachedAtRef.current = now;
 
     isLoadingOlderRef.current = true;
-    setIsLoadingOlderMessages(true);
     try {
       await fetchAndPrependOlderMessages(oldestLoadedAtRef.current);
     } catch (err) {
       console.error('Failed to load older messages:', err);
     } finally {
       isLoadingOlderRef.current = false;
-      setIsLoadingOlderMessages(false);
     }
   }, [fetchAndPrependOlderMessages, historyLoaded]);
 
@@ -7784,7 +7776,6 @@ function Chat() {
         }
 
         isLoadingOlderRef.current = true;
-        setIsLoadingOlderMessages(true);
         try {
           const result = await fetchAndPrependOlderMessages(cursor);
           fetchedPages += 1;
@@ -7795,7 +7786,6 @@ function Chat() {
           break;
         } finally {
           isLoadingOlderRef.current = false;
-          setIsLoadingOlderMessages(false);
         }
 
         await new Promise((resolve) => setTimeout(resolve, 0));
@@ -8399,11 +8389,7 @@ function Chat() {
                     computeItemKey={(index: number, msg: Message) => msg.id || index}
                     style={{ flex: 1, overflow: 'auto' }}
                     components={{
-                      Header: () => isLoadingOlderMessages
-                        ? <div style={{ textAlign: 'center', padding: '0.45rem 0', fontSize: '0.78rem', opacity: 0.8 }}>Loading older messages...</div>
-                        : (!hasMoreOlderMessages && messages.length > 0
-                          ? <div style={{ textAlign: 'center', padding: '0.45rem 0', fontSize: '0.74rem', opacity: 0.65 }}>Start of chat history</div>
-                          : null),
+                      Header: () => null,
                       Footer: () => <div style={{ height: '12px' }} />,
                     }}
                     itemContent={(index: number, msg: Message) => {
