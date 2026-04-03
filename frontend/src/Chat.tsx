@@ -809,6 +809,10 @@ const MessagesContainer = styled.div<{ $isScrollButtonVisible?: boolean; $isMobi
   & [data-virtuoso-scroller] {
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch;
+    overflow-anchor: none;
+  }
+  & [data-test-id="virtuoso-item-list"] {
+    overflow-anchor: none;
   }
   & [data-test-id="virtuoso-item-list"] > div {
     padding-top: 0;
@@ -5294,6 +5298,7 @@ function Chat() {
   const mediaLoadAbortControllersRef = useRef(new Map<string, AbortController>());
   const isVirtuosoScrollingRef = useRef(false);
   const pendingTopLoadAfterScrollRef = useRef(false);
+  const pendingTopLoadTimerRef = useRef<number | null>(null);
   // Cooldown timestamp: prevents startReached from firing more often than
   // START_REACHED_COOLDOWN_MS. Virtuoso calls startReached on every scroll
   // frame near the top; without throttling, repeated prepends near the
@@ -5365,6 +5370,11 @@ function Chat() {
 
   useEffect(() => {
     return () => {
+      if (pendingTopLoadTimerRef.current !== null) {
+        window.clearTimeout(pendingTopLoadTimerRef.current);
+        pendingTopLoadTimerRef.current = null;
+      }
+      pendingTopLoadAfterScrollRef.current = false;
       mediaBlobUrlMapRef.current.forEach((url) => URL.revokeObjectURL(url));
       mediaBlobUrlMapRef.current.clear();
       mediaCacheHydrationInFlightRef.current.clear();
@@ -5375,6 +5385,12 @@ function Chat() {
 
   useEffect(() => {
     if (userContext?.profile) return;
+
+    if (pendingTopLoadTimerRef.current !== null) {
+      window.clearTimeout(pendingTopLoadTimerRef.current);
+      pendingTopLoadTimerRef.current = null;
+    }
+    pendingTopLoadAfterScrollRef.current = false;
 
     mediaLoadAbortControllersRef.current.forEach((controller) => controller.abort());
     mediaLoadAbortControllersRef.current.clear();
@@ -6391,6 +6407,14 @@ function Chat() {
     const filteredBatch = filterVisibleMessages(normalizedBatch);
     const nextCursor = getMessageCursor(normalizedBatch[0]) || beforeCursor;
 
+    const scrollerBeforePrepend = getChatScrollerElement();
+    const prependAnchorSnapshot = scrollerBeforePrepend
+      ? {
+          scrollTop: scrollerBeforePrepend.scrollTop,
+          scrollHeight: scrollerBeforePrepend.scrollHeight,
+        }
+      : null;
+
     setOldestLoadedAt(nextCursor);
     oldestLoadedAtRef.current = nextCursor;
 
@@ -6431,8 +6455,24 @@ function Chat() {
     setHasMoreOlderMessages(hasMore);
     hasMoreOlderMessagesRef.current = hasMore;
 
+    if (prependAnchorSnapshot && prependedCount > 0) {
+      const restoreAnchor = () => {
+        const scroller = getChatScrollerElement();
+        if (!scroller) return;
+        const delta = scroller.scrollHeight - prependAnchorSnapshot.scrollHeight;
+        if (delta !== 0) {
+          scroller.scrollTop = prependAnchorSnapshot.scrollTop + delta;
+        }
+      };
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(restoreAnchor);
+      });
+      window.setTimeout(restoreAnchor, 32);
+    }
+
     return { prependedCount, hasMore, nextCursor };
-  }, [apiBase, filterVisibleMessages, getMessageCursor, markDeletedReplyTargets, normalizeMessage]);
+  }, [apiBase, filterVisibleMessages, getChatScrollerElement, getMessageCursor, markDeletedReplyTargets, normalizeMessage]);
 
   const loadOlderMessages = useCallback(async () => {
     if (!historyLoaded || isLoadingOlderRef.current || !hasMoreOlderMessagesRef.current || !oldestLoadedAtRef.current) return;
@@ -6440,6 +6480,10 @@ function Chat() {
     // Avoid prepending while the user is actively dragging/scrolling near top.
     // Prepending mid-drag is a primary source of visible up/down jitter.
     if (isVirtuosoScrollingRef.current) {
+      if (pendingTopLoadTimerRef.current !== null) {
+        window.clearTimeout(pendingTopLoadTimerRef.current);
+        pendingTopLoadTimerRef.current = null;
+      }
       pendingTopLoadAfterScrollRef.current = true;
       return;
     }
@@ -6466,9 +6510,23 @@ function Chat() {
   const handleVirtuosoIsScrolling = useCallback((isScrolling: boolean) => {
     isVirtuosoScrollingRef.current = isScrolling;
 
-    if (!isScrolling && pendingTopLoadAfterScrollRef.current) {
-      pendingTopLoadAfterScrollRef.current = false;
-      void loadOlderMessages();
+    if (isScrolling) {
+      if (pendingTopLoadTimerRef.current !== null) {
+        window.clearTimeout(pendingTopLoadTimerRef.current);
+        pendingTopLoadTimerRef.current = null;
+      }
+      return;
+    }
+
+    if (pendingTopLoadAfterScrollRef.current) {
+      if (pendingTopLoadTimerRef.current !== null) {
+        window.clearTimeout(pendingTopLoadTimerRef.current);
+      }
+      pendingTopLoadTimerRef.current = window.setTimeout(() => {
+        pendingTopLoadTimerRef.current = null;
+        pendingTopLoadAfterScrollRef.current = false;
+        void loadOlderMessages();
+      }, 140);
     }
   }, [loadOlderMessages]);
 
