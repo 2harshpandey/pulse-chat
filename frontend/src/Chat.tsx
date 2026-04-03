@@ -4377,11 +4377,17 @@ const MessageItem = React.memo(({
               <QuotedMessageContainer
                 $sender={sender}
                 data-quote-swipe-ignore
-                onPointerDown={(e) => e.stopPropagation()}
+                role="button"
+                tabIndex={0}
+                onPointerUp={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (msg.replyingTo) scrollToMessage(msg.replyingTo.id, msg.id, 'auto', true);
+                }}
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  if (msg.replyingTo) scrollToMessage(msg.replyingTo.id, msg.id, 'auto');
+                  if (msg.replyingTo) scrollToMessage(msg.replyingTo.id, msg.id, 'auto', true);
                 }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -7076,7 +7082,7 @@ function Chat() {
     applyHighlight(0);
   }, []);
 
-  const scrollToLoadedMessage = useCallback((messageId: string, behavior: 'auto' | 'smooth' = 'auto') => {
+  const scrollToLoadedMessage = useCallback((messageId: string, behavior: 'auto' | 'smooth' = 'auto', force = false) => {
     if (!virtuosoRef.current) return false;
     const targetId = normalizeMessageId(messageId);
     if (!targetId) return false;
@@ -7104,6 +7110,8 @@ function Chat() {
 
     const primaryIndex = firstItemIndex + msgIndex;
     const fallbackIndex = firstItemIndexRef.current + msgIndex;
+
+    if (!force && shouldSuppressProgrammaticScroll()) return false;
 
     virtuosoRef.current?.scrollToIndex({
       index: primaryIndex,
@@ -7148,9 +7156,9 @@ function Chat() {
 
     requestAnimationFrame(() => ensureVisibleAndHighlight(0));
     return true;
-  }, [clearPendingBottomScrollTimers, engageQuoteJumpLock, firstItemIndex, getChatScrollerElement, highlightMessage, scheduleProgrammaticScrollSuppression]);
+  }, [clearPendingBottomScrollTimers, engageQuoteJumpLock, firstItemIndex, getChatScrollerElement, highlightMessage, scheduleProgrammaticScrollSuppression, shouldSuppressProgrammaticScroll]);
 
-  const scrollToMessage = useCallback((messageId: string, sourceMessageId?: string, behavior: 'auto' | 'smooth' = 'auto') => {
+  const scrollToMessage = useCallback((messageId: string, sourceMessageId?: string, behavior: 'auto' | 'smooth' = 'auto', force = false) => {
     const targetId = normalizeMessageId(messageId);
     const sourceId = normalizeMessageId(sourceMessageId);
 
@@ -7167,7 +7175,7 @@ function Chat() {
     }
 
     if (!targetId) return;
-    if (scrollToLoadedMessage(targetId, behavior)) return;
+    if (scrollToLoadedMessage(targetId, behavior, force)) return;
     if (!historyLoaded) return;
 
     void (async () => {
@@ -7202,13 +7210,13 @@ function Chat() {
       }
 
       requestAnimationFrame(() => {
-        scrollToLoadedMessage(targetId, behavior);
+        scrollToLoadedMessage(targetId, behavior, force);
       });
     })();
   }, [fetchAndPrependOlderMessages, historyLoaded, scrollToLoadedMessage]);
 
-  const scrollToBottom = useCallback((behavior: 'auto' | 'smooth' = 'auto') => {
-    if (shouldSuppressProgrammaticScroll()) return;
+  const scrollToBottom = useCallback((behavior: 'auto' | 'smooth' = 'auto', force = false) => {
+    if (!force && shouldSuppressProgrammaticScroll()) return;
     const latestIndex = firstItemIndexRef.current + messagesRef.current.length - 1;
     if (virtuosoRef.current && latestIndex >= firstItemIndexRef.current) {
       virtuosoRef.current.scrollToIndex({ index: latestIndex, align: 'end', behavior });
@@ -7216,7 +7224,7 @@ function Chat() {
     const scroller = getChatScrollerElement();
     if (scroller) {
       requestAnimationFrame(() => {
-        if (shouldSuppressProgrammaticScroll()) return;
+        if (!force && shouldSuppressProgrammaticScroll()) return;
         scroller.scrollTop = scroller.scrollHeight;
       });
     }
@@ -7226,7 +7234,7 @@ function Chat() {
     clearPendingBottomScrollTimers();
     if (shouldSuppressProgrammaticScroll()) return;
 
-    scrollToBottom('auto');
+    scrollToBottom('auto', true);
     // Re-issue the scroll over the next 500ms to guarantee anchoring.
     // This perfectly tracks the mobile OS virtual keyboard retracting animation
     // and layout flex reflows (like reply previews unmounting).
@@ -7234,7 +7242,7 @@ function Chat() {
     pendingBottomScrollTimeoutsRef.current = delays.map((delay) =>
       window.setTimeout(() => {
         if (shouldSuppressProgrammaticScroll()) return;
-        scrollToBottom('auto');
+        scrollToBottom('auto', true);
       }, delay)
     );
   }, [clearPendingBottomScrollTimers, scrollToBottom, shouldSuppressProgrammaticScroll]);
@@ -7265,7 +7273,7 @@ function Chat() {
       break;
     }
 
-    if (returnTargetId && scrollToLoadedMessage(returnTargetId, 'auto')) {
+    if (returnTargetId && scrollToLoadedMessage(returnTargetId, 'auto', true)) {
       return;
     }
 
