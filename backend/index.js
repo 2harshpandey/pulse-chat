@@ -593,6 +593,7 @@ app.post('/api/upload', uploadLimiter, (req, res) => {
       type: fileType,
       url: req.file.path,
       originalName: req.file.originalname,
+      size: req.file.size,
       text: req.body.text,
     });
   });
@@ -1698,6 +1699,7 @@ wss.on('connection', (ws, req) => {
                         text: undefined, 
                         url: undefined, 
                         originalName: undefined, 
+                    size: undefined,
                         reactions: undefined,
                         isDeleted: true,
                         deletedBy: ws.userId 

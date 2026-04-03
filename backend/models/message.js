@@ -16,6 +16,7 @@ const messageSchema = new mongoose.Schema({
   type: { type: String, default: 'text' }, // 'text', 'image', 'video'
   url: { type: String },
   originalName: { type: String },
+  size: { type: Number },
   isDeleted: { type: Boolean, default: false },
   deletedBy: { type: String, default: null },
   edited: { type: Boolean, default: false },

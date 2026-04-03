@@ -163,7 +163,11 @@ const downloadFile = async (url: string, filename: string, onProgress?: Download
     const objectUrl = URL.createObjectURL(blob);
     triggerAnchorDownload(objectUrl, safeFilename);
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
-  } catch {
+  } catch (error: any) {
+    if (error?.name === 'AbortError' || abortSignal?.aborted) {
+      onProgress?.(0);
+      return;
+    }
     onProgress?.(0);
     triggerAnchorDownload(parsed.href, safeFilename);
   }
@@ -237,6 +241,36 @@ const getQuotedPreviewThumbUrl = (mediaType: 'image' | 'video', mediaUrl?: strin
 
   // Prefer a tiny compressed image variant for quoted previews.
   return withCloudinaryTransform(safeUrl, 'f_auto,q_20,w_96,h_96,c_fill') || safeUrl;
+};
+
+const getMediaGatePreviewUrl = (mediaType: 'image' | 'video', mediaUrl?: string): string => {
+  const safeUrl = sanitizeMediaUrl(mediaUrl);
+  if (!safeUrl) return '';
+
+  if (mediaType === 'video') {
+    // For gated videos, use a larger first-frame thumbnail so loading feels smooth.
+    return withCloudinaryTransform(safeUrl, 'so_0,f_jpg,q_55,w_720,h_720,c_fill') || '';
+  }
+
+  // For images, keep quality enough for a tasteful preview while reducing transfer cost.
+  return withCloudinaryTransform(safeUrl, 'f_auto,q_55,w_720,h_720,c_fill') || safeUrl;
+};
+
+const formatMediaSize = (bytes?: number): string => {
+  const numericBytes = typeof bytes === 'number' ? bytes : Number(bytes);
+  if (!Number.isFinite(numericBytes) || numericBytes <= 0) return '';
+
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = numericBytes;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  const precision = value >= 100 || unitIndex === 0 ? 0 : value >= 10 ? 1 : 2;
+  return `${value.toFixed(precision)} ${units[unitIndex]}`;
 };
 
 const getCurrentHistoryPath = (): string =>
@@ -1194,26 +1228,43 @@ const MediaVideoWrapperDiv = styled.div`
   &:hover ${MediaDownloadOverlayBtn} { opacity: 1; }
 `;
 
-const MediaLoadGate = styled.button`
+const MediaLoadGate = styled.button<{ $isLoading: boolean }>`
   position: absolute;
   inset: 0;
   border: none;
   border-radius: 0.75rem;
   cursor: pointer;
   color: #f8fafc;
-  background:
-    radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 45%),
-    linear-gradient(160deg, rgba(15, 23, 42, 0.85), rgba(30, 41, 59, 0.78));
+  background: transparent;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 0.45rem;
+  overflow: hidden;
+  isolation: isolate;
+  z-index: 2;
   transition: transform 0.18s ease, filter 0.18s ease;
 
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: ${p => p.$isLoading
+    ? 'radial-gradient(circle at 24% 20%, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 48%), linear-gradient(162deg, rgba(2, 6, 23, 0.38), rgba(15, 23, 42, 0.22))'
+    : 'radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 45%), linear-gradient(160deg, rgba(15, 23, 42, 0.82), rgba(30, 41, 59, 0.74))'};
+    transition: background 0.22s ease;
+  }
+
+  & > * {
+    position: relative;
+    z-index: 1;
+  }
+
   &:hover {
-    transform: scale(1.015);
-    filter: brightness(1.08);
+    transform: scale(1.012);
+    filter: brightness(${p => p.$isLoading ? 1.04 : 1.08});
   }
 
   &:active {
@@ -1255,6 +1306,47 @@ const MediaLoadLabel = styled.span`
   opacity: 0.95;
   text-align: center;
   padding: 0 0.35rem;
+`;
+
+const MediaLoadPreview = styled.img<{ $isLoading: boolean }>`
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  border-radius: 0.75rem;
+  pointer-events: none;
+  user-select: none;
+  opacity: ${p => p.$isLoading ? 0.92 : 0.66};
+  transform: scale(${p => p.$isLoading ? 1.02 : 1});
+  filter: ${p => p.$isLoading ? 'saturate(1.08) contrast(1.03)' : 'saturate(0.92) brightness(0.74)'};
+  transition: opacity 0.24s ease, transform 0.24s ease, filter 0.24s ease;
+  z-index: 1;
+`;
+
+const MediaSizeBadge = styled.span`
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  z-index: 4;
+  pointer-events: none;
+  padding: 0.22rem 0.52rem;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: rgba(248, 250, 252, 0.95);
+  background: rgba(15, 23, 42, 0.58);
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  box-shadow: 0 6px 18px rgba(2, 6, 23, 0.25);
+
+  @media (max-width: 768px) {
+    font-size: 0.62rem;
+    padding: 0.2rem 0.48rem;
+  }
 `;
 
 /* Small inline download button for videos and file cards */
@@ -3078,7 +3170,7 @@ const SystemMessage = styled.div`
 
 // --- INTERFACES ---
 interface ReplyContext { id: string; username: string; text: string; type: 'text' | 'image' | 'video' | 'file'; url?: string; isDeleted?: boolean; }
-interface Message { id: string; userId: string; username: string; type: 'text' | 'image' | 'video' | 'file' | 'system_notification'; text?: string; url?: string; originalName?: string; timestamp: string; createdAt?: string; updatedAt?: string; reactions?: { [emoji: string]: { userId: string, username: string }[] }; edited?: boolean; replyingTo?: ReplyContext; isDeleted?: boolean; deletedBy?: string; isUploading?: boolean; uploadError?: boolean; }
+interface Message { id: string; userId: string; username: string; type: 'text' | 'image' | 'video' | 'file' | 'system_notification'; text?: string; url?: string; originalName?: string; size?: number; timestamp: string; createdAt?: string; updatedAt?: string; reactions?: { [emoji: string]: { userId: string, username: string }[] }; edited?: boolean; replyingTo?: ReplyContext; isDeleted?: boolean; deletedBy?: string; isUploading?: boolean; uploadError?: boolean; }
 interface Gif { id: string; preview: string; url: string; }
 
 // --- CHILD COMPONENTS ---
@@ -3671,6 +3763,10 @@ const renderMessageContent = (
   const resolvedMediaUrl = loadedMediaSrc || msg.url || '';
   const clampedLoadProgress = Math.max(0, Math.min(1, mediaLoadProgress || 0));
   const clampedDownloadProgress = Math.max(0, Math.min(1, downloadProgress || 0));
+  const mediaSizeLabel = formatMediaSize(msg.size);
+  const gatePreviewUrl = shouldGateMedia
+    ? sanitizeMediaUrl(getMediaGatePreviewUrl(isVideo ? 'video' : 'image', resolvedMediaUrl || msg.url))
+    : '';
 
   const DownloadSvg = () => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -3729,19 +3825,31 @@ const renderMessageContent = (
       <MediaContent>
         <MediaImageWrapper>
           {msg.url && shouldGateMedia ? (
-            <MediaLoadGate
-              type="button"
-              data-allow-quote-swipe
-              aria-label="Load image"
-              title="Load image"
-              onPointerDown={handleLoadMediaPointerDown}
-              onClick={handleLoadMediaClick}
-            >
-              <MediaLoadIcon>
-                {isMediaLoadInProgress ? <RingedDownloadIcon progress={clampedLoadProgress} /> : <DownloadSvg />}
-              </MediaLoadIcon>
-              <MediaLoadLabel>{isMediaLoadInProgress ? `Loading ${Math.round(clampedLoadProgress * 100)}%` : 'Tap to load'}</MediaLoadLabel>
-            </MediaLoadGate>
+            <>
+              {gatePreviewUrl && (
+                <MediaLoadPreview
+                  src={gatePreviewUrl}
+                  alt=""
+                  aria-hidden="true"
+                  $isLoading={isMediaLoadInProgress}
+                />
+              )}
+              <MediaLoadGate
+                type="button"
+                data-allow-quote-swipe
+                aria-label="Load image"
+                title="Load image"
+                onPointerDown={handleLoadMediaPointerDown}
+                onClick={handleLoadMediaClick}
+                $isLoading={isMediaLoadInProgress}
+              >
+                <MediaLoadIcon>
+                  {isMediaLoadInProgress ? <RingedDownloadIcon progress={clampedLoadProgress} /> : <DownloadSvg />}
+                </MediaLoadIcon>
+                <MediaLoadLabel>{isMediaLoadInProgress ? `Loading ${Math.round(clampedLoadProgress * 100)}%` : 'Tap to load'}</MediaLoadLabel>
+              </MediaLoadGate>
+              {mediaSizeLabel && <MediaSizeBadge>{mediaSizeLabel}</MediaSizeBadge>}
+            </>
           ) : msg.url ? (
             <img src={sanitizeMediaUrl(resolvedMediaUrl)} alt={msg.originalName} onClick={() => { const u = sanitizeMediaUrl(resolvedMediaUrl); if (u) openLightbox(u); }} onPointerDown={() => onMediaPointerDown?.()} onDoubleClick={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} />
           ) : null}
@@ -3771,6 +3879,14 @@ const renderMessageContent = (
         <MediaVideoWrapperDiv>
           {shouldGateMedia ? (
             <VideoPlayerWrapper>
+              {gatePreviewUrl && (
+                <MediaLoadPreview
+                  src={gatePreviewUrl}
+                  alt=""
+                  aria-hidden="true"
+                  $isLoading={isMediaLoadInProgress}
+                />
+              )}
               <MediaLoadGate
                 type="button"
                 data-allow-quote-swipe
@@ -3778,12 +3894,14 @@ const renderMessageContent = (
                 title="Load video"
                 onPointerDown={handleLoadMediaPointerDown}
                 onClick={handleLoadMediaClick}
+                $isLoading={isMediaLoadInProgress}
               >
                 <MediaLoadIcon>
                   {isMediaLoadInProgress ? <RingedDownloadIcon progress={clampedLoadProgress} /> : <DownloadSvg />}
                 </MediaLoadIcon>
                 <MediaLoadLabel>{isMediaLoadInProgress ? `Loading ${Math.round(clampedLoadProgress * 100)}%` : 'Tap to load'}</MediaLoadLabel>
               </MediaLoadGate>
+              {mediaSizeLabel && <MediaSizeBadge>{mediaSizeLabel}</MediaSizeBadge>}
             </VideoPlayerWrapper>
           ) : (
             <VideoPlayer src={resolvedMediaUrl} onPointerDown={onMediaPointerDown} onFullscreenEnter={onVideoFullscreenEnter} />
@@ -6178,6 +6296,8 @@ function Chat() {
         username: userContext.profile.username,
         type: stagedFile.type.startsWith('image/') ? 'image' : stagedFile.type.startsWith('video/') ? 'video' : 'file',
         url: URL.createObjectURL(stagedFile),
+        originalName: stagedFile.name,
+        size: stagedFile.size,
         text: inputMessage,
         timestamp: new Date().toISOString(),
         replyingTo: replyContext,
@@ -7714,6 +7834,7 @@ function Chat() {
         type: fileType,
         url: URL.createObjectURL(file),
         originalName: file.name,
+        size: file.size,
         text: i === 0 ? caption : undefined,
         timestamp: new Date().toISOString(),
         replyingTo: i === 0 ? replyContext : undefined,
