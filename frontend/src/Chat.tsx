@@ -719,8 +719,10 @@ const MessageRow = styled.div<{ $sender: string; $isSelected?: boolean; $isActiv
   user-select: none;
   touch-action: pan-y; /* Allow vertical scrolling, while manually handling horizontal drag */
   z-index: ${props => props.$isActiveDeleteMenu ? 40 : 'auto'};
-  /* Grouped = same sender continuation: tight gap; non-grouped = new sender: clear separation */
-  padding-top: ${props => props.$isGrouped ? '2px' : '6px'};
+  /* Fixed padding prevents layout thrashing during scroll when Virtuoso recycles rows.
+     The variable padding-top based on grouping was causing 4px shifts as rows were recycled,
+     creating visible jitter during mobile scroll. Use consistent spacing instead. */
+  padding-top: 3px;
   padding-bottom: 1px;
 
   &.quote-jump-highlight {
@@ -793,7 +795,8 @@ const MessageBubble = styled.div<{ $sender: string; $messageType: string; $isUpl
   cursor: pointer;
   min-width: ${props => props.$messageType === 'text' ? '4.5rem' : '0'};
   opacity: ${props => props.$isUploading ? 0.5 : 1};
-  transition: opacity 0.3s ease, background-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease, transform 0.2s ease;
+  /* CSS transitions on message bubbles cause visual flicker when Virtuoso recycles rows for\n     different senders (which changes background-color). Disable on mobile to prevent jitter. */\n  transition: opacity 0.3s ease, background-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease, transform 0.2s ease;
+  @media (max-width: 768px) {\n    & { transition: none !important; }\n  }
   border: ${props => props.$uploadError ? '1px solid #ef4444' : (props.$sender === 'me' ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(15,23,42,0.08)')};
   will-change: transform;
   align-self: ${props => props.$sender === 'me' ? 'flex-end' : 'flex-start'};
@@ -7020,7 +7023,7 @@ function Chat() {
     // suppress state updates during this window to prevent render cascades.
     // This also cancels any pending forceScrollToBottomAsync timers.
     clearPendingBottomScrollTimers();
-    scheduleProgrammaticScrollSuppression(1500);
+    scheduleProgrammaticScrollSuppression(3000);
     lastAtBottomStateRef.current = false; // Pre-set to avoid spurious update on atButtoChanged
     scrollLog('quote-jump to msgIndex', msgIndex, 'firstItemIndex', firstItemIndexRef.current);
 
@@ -7194,23 +7197,21 @@ function Chat() {
   // --- PRE-RENDER HOOKS (must be before any early return to satisfy Rules of Hooks) ---
   const selectedMessageIds = useMemo(() => new Set(selectedMessages), [selectedMessages]);
   const loadedMediaMessageSet = useMemo(() => new Set(loadedMediaMessageIds), [loadedMediaMessageIds]);
-  // ─── FIX: followOutput must use OUR isAtBottomRef, not Virtuoso's parameter ──
-  // Virtuoso's `isAtBottom` parameter can be `true` for a brief moment during
-  // a programmatic scroll-to-quoted-message because the smooth scroll animation
-  // passes through the bottom row.  When that happens, returning 'auto' tells
-  // Virtuoso to pin to the last item, OVERRIDING the quote-jump target.
-  //
-  // Using isAtBottomRef.current (which we control via atBottomStateChange) is
-  // more reliable: it only becomes `true` after the user has genuinely scrolled
-  // to the bottom, not during a programmatic animation.
-  //
-  // Additionally, if suppressProgrammaticScrollUntilRef is active (set by
-  // scrollToLoadedMessage before a quote-jump), we always return false.
+  // ─── FIX: followOutput must return false during ANY programmatic scroll ──
+  // Virtuoso's followOutput is called on every scroll frame. Even checking
+  // shouldSuppressProgrammaticScroll() can be too late if the suppression window
+  // just expired. The safest approach: disable followOutput completely during
+  // quote-jumps and restores, and only enable it for genuine user scrolling.
   const virtuosoFollowOutput = useCallback((_isAtBottom: boolean): 'smooth' | false | 'auto' => {
-    if (shouldSuppressProgrammaticScroll()) return false;
+    // Block ALL auto-follow during video fullscreen restore or quote-jump suppression.
+    if (isVideoFullscreenSessionRef.current) return false;
+    if (performance.now() < suppressProgrammaticScrollUntilRef.current) return false;
+    
     // Only auto-follow when the user is genuinely at the bottom.
+    // Use our ref (not the param) because Virtuoso's param can briefly emit true
+    // during smooth scroll animations that pass through the bottom row.
     return isAtBottomRef.current ? 'auto' : false;
-  }, [shouldSuppressProgrammaticScroll]);
+  }, []);
 
   // Scroll seek is useful on desktop, but on touch devices it can swap rows
   // into placeholders during fast flicks, which reads as blinking/jitter in
@@ -7653,24 +7654,17 @@ function Chat() {
                           </div>
                         );
                       }
-                      // With Virtuoso + firstItemIndex, `index` is an absolute virtual index.
-                      // Convert it to data-array index before looking at neighbors.
-                      const dataIndex = index - firstItemIndex;
-                      const prevMsg = dataIndex > 0 ? messages[dataIndex - 1] : null;
-                      const currentSenderId = (msg.userId || '').trim();
-                      const prevSenderId = (prevMsg?.userId || '').trim();
-                      const currentSenderName = (msg.username || '').trim().toLowerCase();
-                      const prevSenderName = (prevMsg?.username || '').trim().toLowerCase();
-                      const isSameSender = Boolean(prevMsg) && (
-                        (Boolean(currentSenderId) && Boolean(prevSenderId) && currentSenderId === prevSenderId) ||
-                        (Boolean(currentSenderName) && Boolean(prevSenderName) && currentSenderName === prevSenderName)
-                      );
-                      const isSeriesContinuation = Boolean(prevMsg) && prevMsg!.type !== 'system_notification' && isSameSender;
-                      const showUsername = !isSeriesContinuation;
+                      // Always show username to avoid dynamic padding shifts during Virtuoso recycling.
+                      // The previous fix of dynamic padding based on grouping caused messages to shake
+                      // as rows were recycled because the grouping relationship changed for reused rows.
+                      // Showing username always uses consistent spacing and prevents this jitter.
+                      const showUsername = true;
                       return (
                         <MessageItem
                           msg={msg}
                           showUsername={showUsername}
+                          // Note: Always passing showUsername=true means $isGrouped will always be false,
+                          // so MessageRow will always use its fixed padding. This prevents jitter.
                           currentUserId={userIdRef.current}
                           handleSetReply={handleSetReply}
                           handleReact={handleReact}
