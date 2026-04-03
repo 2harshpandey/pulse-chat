@@ -7455,15 +7455,50 @@ function Chat() {
     const latestIndex = firstItemIndexRef.current + messagesRef.current.length - 1;
     if (virtuosoRef.current && latestIndex >= firstItemIndexRef.current) {
       virtuosoRef.current.scrollToIndex({ index: latestIndex, align: 'end', behavior });
+      (virtuosoRef.current as any)?.scrollTo?.({ top: Number.MAX_SAFE_INTEGER, behavior: 'auto' });
     }
-    const scroller = getChatScrollerElement();
-    if (scroller) {
-      requestAnimationFrame(() => {
-        if (!force && shouldSuppressProgrammaticScroll()) return;
+
+    const applyScrollerBottom = () => {
+      if (!force && shouldSuppressProgrammaticScroll()) return;
+      const scroller = getChatScrollerElement();
+      if (!scroller) return;
+      try {
+        scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'auto' });
+      } catch {
         scroller.scrollTop = scroller.scrollHeight;
+      }
+      scroller.scrollTop = scroller.scrollHeight;
+      quoteLog('scrollToBottom applyScrollerBottom', {
+        scrollTop: scroller.scrollTop,
+        scrollHeight: scroller.scrollHeight,
+        clientHeight: scroller.clientHeight,
       });
-    }
+    };
+
+    applyScrollerBottom();
+    requestAnimationFrame(applyScrollerBottom);
   }, [getChatScrollerElement, shouldSuppressProgrammaticScroll]);
+
+  const syncBottomStateFromScroller = useCallback(() => {
+    const scroller = getChatScrollerElement();
+    if (!scroller) return;
+    const distanceFromBottom = scroller.scrollHeight - (scroller.scrollTop + scroller.clientHeight);
+    const atBottom = distanceFromBottom <= 2;
+    isAtBottomRef.current = atBottom;
+    lastAtBottomStateRef.current = atBottom;
+    setIsScrollToBottomVisible(!atBottom);
+    if (atBottom) {
+      setNewMessagesWhileScrolledUp(0);
+      quoteJumpReturnStackRef.current = [];
+    }
+    quoteLog('syncBottomStateFromScroller', {
+      atBottom,
+      distanceFromBottom,
+      scrollTop: scroller.scrollTop,
+      scrollHeight: scroller.scrollHeight,
+      clientHeight: scroller.clientHeight,
+    });
+  }, [getChatScrollerElement]);
 
   const forceScrollToBottomAsync = useCallback((allowDuringSuppression = false) => {
     clearPendingBottomScrollTimers();
@@ -7528,7 +7563,10 @@ function Chat() {
     clearQuoteJumpSuppression();
     quoteLog('scroll-to-bottom falling back to bottom anchor');
     forceScrollToBottomAsync(true);
-  }, [clearQuoteJumpSuppression, forceScrollToBottomAsync, isMobileView, scrollToLoadedMessage]);
+    requestAnimationFrame(() => syncBottomStateFromScroller());
+    window.setTimeout(() => syncBottomStateFromScroller(), 80);
+    window.setTimeout(() => syncBottomStateFromScroller(), 220);
+  }, [clearQuoteJumpSuppression, forceScrollToBottomAsync, isMobileView, scrollToLoadedMessage, syncBottomStateFromScroller]);
 
   const handleEmojiClick = (emojiData: EmojiClickData) => { setInputMessage(prev => prev + emojiData.emoji); };
   const handleOpenEmojiPicker = useCallback((rect: DOMRect) => {
