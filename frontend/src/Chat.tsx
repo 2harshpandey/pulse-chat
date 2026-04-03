@@ -32,6 +32,15 @@ const normalizeMessageId = (rawId: any): string => {
   return '';
 };
 
+const resolveReplyTargetId = (replyingTo: any, sourceMessageId?: string): string => {
+  const sourceId = normalizeMessageId(sourceMessageId);
+  const candidates = [replyingTo?.id, replyingTo?.messageId, replyingTo?._id];
+  const normalized = candidates.map((candidate) => normalizeMessageId(candidate)).filter(Boolean);
+  if (normalized.length === 0) return '';
+  const nonSelf = normalized.find((candidate) => !sourceId || candidate !== sourceId);
+  return nonSelf || normalized[0];
+};
+
 /**
  * Trusted CDN hostnames allowed as download targets in downloadFile.
  * Any URL whose hostname is not in this list is ignored to prevent fetching
@@ -4383,7 +4392,10 @@ const MessageItem = React.memo(({
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  if (msg.replyingTo) scrollToMessage(msg.replyingTo.id, msg.id, 'auto', true);
+                  if (msg.replyingTo) {
+                    const replyTargetId = resolveReplyTargetId(msg.replyingTo, msg.id);
+                    if (replyTargetId) scrollToMessage(replyTargetId, msg.id, 'auto', true);
+                  }
                 }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -7158,6 +7170,8 @@ function Chat() {
     const targetId = normalizeMessageId(messageId);
     const sourceId = normalizeMessageId(sourceMessageId);
 
+    if (targetId && sourceId && targetId === sourceId) return;
+
     if (sourceId && sourceId !== targetId) {
       const stack = quoteJumpReturnStackRef.current;
       const lastSourceId = stack[stack.length - 1];
@@ -7864,7 +7878,10 @@ function Chat() {
               )}
               {!isSelectModeActive && (
                 <div>
-                  {replyingTo && <ReplyPreviewContainer ref={replyPreviewRef} onClick={() => scrollToMessage(replyingTo.id)}>
+                  {replyingTo && <ReplyPreviewContainer ref={replyPreviewRef} onClick={() => {
+                    const replyTargetId = resolveReplyTargetId(replyingTo);
+                    if (replyTargetId) scrollToMessage(replyTargetId);
+                  }}>
                     {replyingTo.type === 'video' && replyingTo.url ? (
                       <video src={replyingTo.url} style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover' }} />
                     ) : (replyingTo.type === 'image' || replyingTo.type === 'video') && replyingTo.url && (
