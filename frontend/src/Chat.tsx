@@ -5416,6 +5416,19 @@ function Chat() {
     }
   }, []);
 
+  useEffect(() => {
+    const primaryInput = fileInputRef.current;
+    const addInput = addFileInputRef.current;
+
+    if (primaryInput) primaryInput.addEventListener('cancel', markNativeFilePickerClosed);
+    if (addInput) addInput.addEventListener('cancel', markNativeFilePickerClosed);
+
+    return () => {
+      if (primaryInput) primaryInput.removeEventListener('cancel', markNativeFilePickerClosed);
+      if (addInput) addInput.removeEventListener('cancel', markNativeFilePickerClosed);
+    };
+  }, [markNativeFilePickerClosed]);
+
   const setPresenceActivity = useCallback((nextActivity: 'typing' | 'gif_selecting' | null) => {
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
     if (presenceActivityRef.current === nextActivity) return;
@@ -9030,8 +9043,8 @@ function Chat() {
                       </CharacterCounter>
                     )}
                     <SendButton onMouseDown={(e) => e.preventDefault()} onClick={handleSendMessage} disabled={(!inputMessage.trim() && !stagedFile && !stagedGif && stagedFiles.length === 0)}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></SendButton>
-                    <input type="file" ref={fileInputRef} onClick={notifyNativeFilePickerOpen} onChange={handleFileChange} onCancel={markNativeFilePickerClosed as any} style={{ display: 'none' }} accept="image/*,video/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.txt,.html" multiple />
-                    <input type="file" ref={addFileInputRef} onClick={notifyNativeFilePickerOpen} onChange={(e) => { markNativeFilePickerClosed(); if (e.target.files) { setStagedFiles(prev => [...prev, ...Array.from(e.target.files!)]); } if (e.target) e.target.value = ''; }} onCancel={markNativeFilePickerClosed as any} style={{ display: 'none' }} accept="image/*,video/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.txt,.html" multiple />
+                    <input type="file" ref={fileInputRef} onClick={notifyNativeFilePickerOpen} onChange={handleFileChange} style={{ display: 'none' }} accept="image/*,video/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.txt,.html" multiple />
+                    <input type="file" ref={addFileInputRef} onClick={notifyNativeFilePickerOpen} onChange={(e) => { markNativeFilePickerClosed(); if (e.target.files) { setStagedFiles(prev => [...prev, ...Array.from(e.target.files!)]); } if (e.target) e.target.value = ''; }} style={{ display: 'none' }} accept="image/*,video/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.txt,.html" multiple />
                   </InputContainer>
                   {/* Mobile emoji picker for typing.
                   Rendered here (inside the Footer's normal DOM flow) so the footer
