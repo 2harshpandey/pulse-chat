@@ -831,6 +831,7 @@ const MessagesAndScrollWrapper = styled.div`
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  overflow-anchor: none;
 `;
 
 const MessageRow = styled.div<{ $sender: string; $isSelected?: boolean; $isActiveDeleteMenu?: boolean; $isGrouped?: boolean; }>`
@@ -5321,6 +5322,7 @@ function Chat() {
   const typingCooldownRef = useRef(false);
   const presenceActivityRef = useRef<'typing' | 'gif_selecting' | null>(null);
   const resizeRafRef = useRef<number>(0);
+  const lastInputHeightRef = useRef<number>(0);
   const stableViewportHeightRef = useRef<number>(window.innerHeight);
   const stableViewportWidthRef = useRef<number>(window.innerWidth);
   const appliedViewportHeightRef = useRef<number>(0);
@@ -5600,10 +5602,18 @@ function Chat() {
     // so layout thrashing doesn't block the input on low-end devices.
     cancelAnimationFrame(resizeRafRef.current);
     const textarea = e.target;
+    const wasAtBottom = isAtBottomRef.current;
     resizeRafRef.current = requestAnimationFrame(() => {
-      textarea.style.height = 'auto';
-      textarea.style.height = `${textarea.scrollHeight}px`;
-      textarea.style.overflowY = textarea.scrollHeight > 120 ? 'auto' : 'hidden';
+      const nextHeight = textarea.scrollHeight;
+      if (lastInputHeightRef.current !== nextHeight) {
+        textarea.style.height = 'auto';
+        textarea.style.height = `${nextHeight}px`;
+        textarea.style.overflowY = nextHeight > 120 ? 'auto' : 'hidden';
+        lastInputHeightRef.current = nextHeight;
+        if (wasAtBottom) {
+          requestAnimationFrame(() => scrollToBottom('auto', true));
+        }
+      }
       syncInputOverlayScroll();
     });
   };
