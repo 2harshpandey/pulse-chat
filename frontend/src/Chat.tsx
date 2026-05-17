@@ -1121,7 +1121,7 @@ const MessageInput = styled.textarea<{ $hasUrl?: boolean }>`
   caret-color: var(--text-primary);
   position: relative;
   z-index: 1;
-  &::selection { color: transparent; background: rgba(59, 130, 246, 0.35); }
+  &::selection { color: transparent !important; background: rgba(0, 123, 255, 0.3); }
   &:focus { 
     outline: none; 
     border-color: #3B82F6; 
@@ -1172,6 +1172,7 @@ const InputHighlightOverlay = styled.div`
   &::-webkit-scrollbar { width: 8px; }
   &::-webkit-scrollbar-track { background: transparent; }
   &::-webkit-scrollbar-thumb { background: transparent; }
+  &::selection { background: transparent; color: inherit; }
 `;
 const CharacterCounter = styled.span<{ $warning: boolean }>`
   position: absolute;
