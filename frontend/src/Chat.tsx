@@ -41,13 +41,26 @@ const getMessageElementId = (rawId: any): string => {
 
 const normalizeOverlayText = (value: string): string => value.replace(/\u00A0/g, ' ');
 
-const EMOJI_ONLY_RE = /^(?:\s|[\u2600-\u27BF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|\uD83E[\uDC00-\uDFFF]|\u200D|\uFE0F)+$/;
+const EMOJI_SEQUENCE_RE = /(?:[\u2600-\u27BF]|[\uD83C-\uDBFF][\uDC00-\uDFFF])(?:\uFE0F|\u200D(?:[\u2600-\u27BF]|[\uD83C-\uDBFF][\uDC00-\uDFFF]))*/g;
 
-const isEmojiOnlyMessage = (value: string | undefined | null): boolean => {
-  if (!value) return false;
-  const trimmed = value.trim();
-  if (!trimmed) return false;
-  return EMOJI_ONLY_RE.test(trimmed);
+const wrapEmojis = (value: string): React.ReactNode[] => {
+  const result: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  EMOJI_SEQUENCE_RE.lastIndex = 0;
+  while ((match = EMOJI_SEQUENCE_RE.exec(value)) !== null) {
+    if (match.index > lastIndex) {
+      result.push(value.slice(lastIndex, match.index));
+    }
+    result.push(
+      <span key={`emoji-${match.index}`} className="emoji-inline">{match[0]}</span>
+    );
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < value.length) {
+    result.push(value.slice(lastIndex));
+  }
+  return result;
 };
 
 const findMessageElement = (rawId: any): HTMLElement | null => {
@@ -963,26 +976,135 @@ const MessageBubble = styled.div<{ $sender: string; $messageType: string; $isUpl
   }
 `;
 
-const EditInput = styled.textarea`
-  width: 100%;
-  border: none;
-  background: transparent;
-  color: white;
-  font-family: inherit;
-  font-size: 1rem;
-  line-height: 1.5;
-  resize: none;
-  outline: none;
-  padding: 0;
-  margin: 0;
-  height: auto;
+/* ═══ Premium Edit Context Banner (shown above the main composer) ═══ */
+const editSlideIn = keyframes`
+  from { opacity: 0; transform: translateY(6px) scaleY(0.92); }
+  to   { opacity: 1; transform: translateY(0) scaleY(1); }
 `;
 
-const EditActions = styled.div`
+const EditPreviewContainer = styled.div`
   display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  margin-top: 0.5rem;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 1rem;
+  background: linear-gradient(
+    135deg,
+    rgba(99, 102, 241, 0.08) 0%,
+    rgba(59, 130, 246, 0.06) 100%
+  );
+  border-top: 1px solid rgba(99, 102, 241, 0.22);
+  border-bottom: 1px solid rgba(99, 102, 241, 0.12);
+  animation: ${editSlideIn} 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: linear-gradient(180deg, #6366f1, #3b82f6);
+    border-radius: 0 2px 2px 0;
+  }
+
+  [data-theme='dark'] & {
+    background: linear-gradient(
+      135deg,
+      rgba(99, 102, 241, 0.13) 0%,
+      rgba(59, 130, 246, 0.09) 100%
+    );
+    border-top-color: rgba(99, 102, 241, 0.3);
+    border-bottom-color: rgba(99, 102, 241, 0.18);
+  }
+`;
+
+const EditPreviewIcon = styled.div`
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.18), rgba(59, 130, 246, 0.14));
+  border: 1px solid rgba(99, 102, 241, 0.28);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #6366f1;
+
+  [data-theme='dark'] & {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(59, 130, 246, 0.2));
+    border-color: rgba(99, 102, 241, 0.4);
+    color: #818cf8;
+  }
+
+  svg {
+    width: 15px;
+    height: 15px;
+  }
+`;
+
+const EditPreviewText = styled.div`
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+
+  p {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #6366f1;
+    margin: 0 0 2px;
+
+    [data-theme='dark'] & {
+      color: #818cf8;
+    }
+  }
+
+  span {
+    font-size: 0.88rem;
+    color: var(--text-secondary);
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0.85;
+  }
+`;
+
+const EditPreviewDismiss = styled.button`
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: 1.1rem;
+  line-height: 1;
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  &:hover {
+    background: rgba(239, 68, 68, 0.12);
+    color: #ef4444;
+    transform: scale(1.12) rotate(90deg);
+  }
+
+  &:active {
+    transform: scale(0.9);
+  }
+
+  [data-theme='dark'] & {
+    background: rgba(99, 102, 241, 0.15);
+    &:hover {
+      background: rgba(239, 68, 68, 0.18);
+    }
+  }
 `;
 const FooterContainer = styled.div<{ $sender: 'me' | 'other' }>`
   display: flex;
@@ -3271,7 +3393,7 @@ const DownloadProgressRing = styled.div<{ $progress: number; $visible: boolean }
   }
 `;
 
-const MessageText = styled.p<{ $isEmojiOnly?: boolean }>`
+const MessageText = styled.p`
   user-select: text; /* Allow selection on PC */
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -3279,18 +3401,20 @@ const MessageText = styled.p<{ $isEmojiOnly?: boolean }>`
   margin: 0;
   font-size: 0.92rem;
   line-height: 1.35;
-  ${p => p.$isEmojiOnly && css`
+  .emoji-inline {
+    display: inline-block;
     font-size: 1.8rem;
     line-height: 1.15;
     letter-spacing: 0.02em;
-  `}
+    vertical-align: -0.1em;
+  }
   @media (max-width: 768px) {
     user-select: none; /* Disable selection on mobile */
     font-size: 0.9rem;
-    ${p => p.$isEmojiOnly && css`
+    .emoji-inline {
       font-size: 1.5rem;
       line-height: 1.2;
-    `}
+    }
   }
 `;
 
@@ -3843,10 +3967,10 @@ const safeHref = (url: string): string => {
 
 const renderTextWithLinks = (text: string, sender: 'me' | 'other'): React.ReactNode => {
   const parts = text.split(CANDIDATE_URL_RE);
-  if (parts.length === 1) return text;
+  if (parts.length === 1) return wrapEmojis(text);
   const result: React.ReactNode[] = [];
   parts.forEach((part, i) => {
-    if (i % 2 === 0) { if (part) result.push(part); return; }
+    if (i % 2 === 0) { if (part) result.push(...wrapEmojis(part)); return; }
     const norm = normalizeUrl(part);
     if (!norm) { result.push(part); return; }
     const trailing = part.slice(norm.display.length);
@@ -3863,7 +3987,7 @@ const renderTextWithLinks = (text: string, sender: 'me' | 'other'): React.ReactN
             wordBreak: 'break-all',
           }}
         >{norm.display}</a>
-        {trailing}
+        {trailing ? wrapEmojis(trailing) : null}
       </React.Fragment>
     );
   });
@@ -3908,7 +4032,6 @@ const renderMessageContent = (
   const fileContainerLabel = getFileContainerLabel(msg.originalName, msg.url);
   const fileMetaLabel = [formatMediaSize(msg.size), fileContainerLabel].filter(Boolean).join(' • ');
   const canDownload = sender === 'other';
-  const isEmojiOnly = isEmojiOnlyMessage(msg.text);
   const gatePreviewUrl = shouldGateMedia
     ? sanitizeMediaUrl(getMediaGatePreviewUrl(isVideo ? 'video' : 'image', resolvedMediaUrl || msg.url))
     : '';
@@ -4012,7 +4135,7 @@ const renderMessageContent = (
             </MediaDownloadOverlayBtn>
           )}
         </MediaImageWrapper>
-        {msg.text && <MessageText $isEmojiOnly={isEmojiOnly} style={{ paddingTop: '0.5rem' }}>{renderTextWithLinks(msg.text, sender)}</MessageText>}
+        {msg.text && <MessageText style={{ paddingTop: '0.5rem' }}>{renderTextWithLinks(msg.text, sender)}</MessageText>}
       </MediaContent>
     );
   }
@@ -4066,7 +4189,7 @@ const renderMessageContent = (
             </MediaDownloadOverlayBtn>
           )}
         </MediaVideoWrapperDiv>
-        {msg.text && <MessageText $isEmojiOnly={isEmojiOnly} style={{ paddingTop: '0.5rem' }}>{renderTextWithLinks(msg.text, sender)}</MessageText>}
+        {msg.text && <MessageText style={{ paddingTop: '0.5rem' }}>{renderTextWithLinks(msg.text, sender)}</MessageText>}
       </MediaContent>
     );
   }
@@ -4095,13 +4218,13 @@ const renderMessageContent = (
             </svg>
           ) : null}
         </FileAttachmentCard>
-        {msg.text && <MessageText $isEmojiOnly={isEmojiOnly} style={{ paddingTop: '0.5rem' }}>{renderTextWithLinks(msg.text, sender)}</MessageText>}
+        {msg.text && <MessageText style={{ paddingTop: '0.5rem' }}>{renderTextWithLinks(msg.text, sender)}</MessageText>}
       </MediaContent>
     );
   }
 
   if (msg.text) {
-    return <MessageText $isEmojiOnly={isEmojiOnly}>{renderTextWithLinks(msg.text, sender)}</MessageText>;
+    return <MessageText>{renderTextWithLinks(msg.text, sender)}</MessageText>;
   }
 
   return null;
@@ -4251,9 +4374,6 @@ interface MessageItemProps {
   handleOpenFullEmojiPicker: (rect: DOMRect, messageId: string) => void;
   reactionPickerData: { messageId: string; rect: DOMRect; sender: 'me' | 'other' } | null;
   editingMessageId: string | null;
-  editingText: string;
-  setEditingText: (text: string) => void;
-  handleSaveEdit: () => void;
   handleCancelEdit: () => void;
   onVideoFullscreenEnter?: (messageId: string) => void;
 }
@@ -4294,18 +4414,13 @@ const MessageItem = React.memo(({
   handleOpenFullEmojiPicker,
   reactionPickerData,
   editingMessageId,
-  editingText,
-  setEditingText,
-  handleSaveEdit,
   handleCancelEdit,
   onVideoFullscreenEnter
 }: MessageItemProps) => {
   const isEditing = editingMessageId === msg.id;
-  const isEmojiOnly = isEmojiOnlyMessage(msg.text);
   const quotedPreviewThumbUrl = msg.replyingTo && !msg.replyingTo.isDeleted && (msg.replyingTo.type === 'image' || msg.replyingTo.type === 'video')
     ? getQuotedPreviewThumbUrl(msg.replyingTo.type, msg.replyingTo.url)
     : '';
-  const editInputRef = useRef<HTMLTextAreaElement>(null!);
   const messageRowRef = useRef<HTMLDivElement>(null!);
   const messageBubbleRef = useRef<HTMLDivElement>(null!);
   const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; right?: number; left?: number } | null>(null);
@@ -4423,17 +4538,6 @@ const MessageItem = React.memo(({
       target.closest('button, a, input, textarea, [contenteditable="true"]')
     );
   }, []);
-
-  useEffect(() => {
-    if (isEditing && editInputRef.current) {
-      editInputRef.current.focus();
-      // Move cursor to end of text
-      const len = editInputRef.current.value.length;
-      editInputRef.current.setSelectionRange(len, len);
-      editInputRef.current.style.height = 'auto';
-      editInputRef.current.style.height = `${editInputRef.current.scrollHeight}px`;
-    }
-  }, [isEditing]);
 
   useDrag(({ active, movement: [mx, my], last, tap, first, event }) => {
     const target = event.target as HTMLElement;
@@ -4692,16 +4796,6 @@ const MessageItem = React.memo(({
     resetSwipePosition(true);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSaveEdit();
-    }
-    if (e.key === 'Escape') {
-      handleCancelEdit();
-    }
-  };
-
   return (
     <React.Fragment>
       <MessageRow
@@ -4753,7 +4847,14 @@ const MessageItem = React.memo(({
             $messageType={msg.type}
             $isUploading={msg.isUploading}
             $uploadError={msg.uploadError}
-            style={{ marginBottom: (!isDeleted && msg.reactions && Object.keys(msg.reactions).length > 0) ? '18px' : undefined }}
+            style={{
+              marginBottom: (!isDeleted && msg.reactions && Object.keys(msg.reactions).length > 0) ? '18px' : undefined,
+              ...(isEditing ? {
+                outline: '2px solid rgba(99, 102, 241, 0.55)',
+                outlineOffset: '2px',
+                boxShadow: '0 0 0 4px rgba(99, 102, 241, 0.12)',
+              } : {}),
+            }}
           >
             {msg.replyingTo && (
               <QuotedMessageContainer
@@ -4850,47 +4951,6 @@ const MessageItem = React.memo(({
                   <Timestamp $sender={sender}>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Timestamp>
                 </FooterContainer>
               </>
-            ) : isEditing ? (
-              msg.url ? (
-                <MediaContent>
-                  <MediaDisplay msg={msg} openLightbox={openLightbox} />
-                  <div style={{ paddingTop: '0.5rem' }}>
-                    <EditInput
-                      ref={editInputRef}
-                      value={editingText}
-                      onChange={(e) => {
-                        setEditingText(e.target.value);
-                        e.target.style.height = 'auto';
-                        e.target.style.height = `${e.target.scrollHeight}px`;
-                      }}
-                      onKeyDown={handleKeyDown}
-                      rows={1}
-                    />
-                    <EditActions>
-                      <ConfirmationButton className="cancel" onClick={handleCancelEdit}>Cancel</ConfirmationButton>
-                      <ConfirmationButton className="delete" onClick={handleSaveEdit}>Save</ConfirmationButton>
-                    </EditActions>
-                  </div>
-                </MediaContent>
-              ) : (
-                <>
-                  <EditInput
-                    ref={editInputRef}
-                    value={editingText}
-                    onChange={(e) => {
-                      setEditingText(e.target.value);
-                      e.target.style.height = 'auto';
-                      e.target.style.height = `${e.target.scrollHeight}px`;
-                    }}
-                    onKeyDown={handleKeyDown}
-                    rows={1}
-                  />
-                  <EditActions>
-                    <ConfirmationButton className="cancel" onClick={handleCancelEdit}>Cancel</ConfirmationButton>
-                    <ConfirmationButton className="delete" onClick={handleSaveEdit}>Save</ConfirmationButton>
-                  </EditActions>
-                </>
-              )
             ) : (
               <>
                 {selectedMessages[0] === msg.id && selectedMessages.length === 1 && (
@@ -5277,7 +5337,8 @@ function Chat() {
   const [fullEmojiPickerPosition, setFullEmojiPickerPosition] = useState<DOMRect | null>(null);
   const [isMobileView, setIsMobileView] = useState(window.innerWidth <= 768);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
-  const [editingText, setEditingText] = useState<string>('');
+  const [editingMessageOriginalText, setEditingMessageOriginalText] = useState<string>('');
+  const [priorDraftBeforeEdit, setPriorDraftBeforeEdit] = useState<string>('');
   const [isScrollToBottomVisible, setIsScrollToBottomVisible] = useState(false);
   const [newMessagesWhileScrolledUp, setNewMessagesWhileScrolledUp] = useState(0);
   const [historyLoaded, setHistoryLoaded] = useState(false);
@@ -6295,7 +6356,7 @@ function Chat() {
       const tag = (document.activeElement as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       // Don't redirect when overlays or select mode are active.
-      if (isSelectModeActive || !!lightboxUrl || isDeleteConfirmationVisible || isUserListVisible || editingMessageId) return;
+      if (isSelectModeActive || !!lightboxUrl || isDeleteConfirmationVisible || isUserListVisible) return;
       // Don't redirect on mobile – mobile keyboard requires explicit tap.
       if (isMobileView) return;
       messageInputRef.current?.focus();
@@ -6303,7 +6364,7 @@ function Chat() {
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [isSelectModeActive, lightboxUrl, isDeleteConfirmationVisible, isUserListVisible, editingMessageId, isMobileView]);
+  }, [isSelectModeActive, lightboxUrl, isDeleteConfirmationVisible, isUserListVisible, isMobileView]);
 
   const closeFilePreviewAndRestoreDraft = useCallback(() => {
     setShowFilePreview(false);
@@ -6322,6 +6383,14 @@ function Chat() {
           closeFilePreviewAndRestoreDraft();
         } else if (lightboxUrl) {
           setLightboxUrl(null);
+        } else if (editingMessageId) {
+          // Cancel edit: restore prior draft and clear editing state
+          setEditingMessageId(null);
+          setEditingMessageOriginalText('');
+          setInputMessage(priorDraftBeforeEdit);
+          setPriorDraftBeforeEdit('');
+          resetInputLayerHeight();
+          requestAnimationFrame(() => { messageInputRef.current?.focus(); });
         } else if (replyingTo) {
           setReplyingTo(null);
         }
@@ -6329,7 +6398,7 @@ function Chat() {
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [closeFilePreviewAndRestoreDraft, lightboxUrl, replyingTo, showFilePreview]);
+  }, [closeFilePreviewAndRestoreDraft, editingMessageId, lightboxUrl, priorDraftBeforeEdit, replyingTo, showFilePreview]);
 
   const getChatScrollerElement = useCallback((): HTMLElement | null => {
     if (!chatContainerRef.current) return null;
@@ -6914,6 +6983,24 @@ function Chat() {
   };
 
   const handleSendMessage = async () => {
+    // If editing a message, save the edit instead of sending a new message
+    if (editingMessageId) {
+      const trimmed = inputMessage.trim();
+      if (trimmed && ws.current && ws.current.readyState === WebSocket.OPEN) {
+        ws.current.send(JSON.stringify({
+          type: 'edit',
+          messageId: editingMessageId,
+          newText: trimmed,
+        }));
+      }
+      setEditingMessageId(null);
+      setEditingMessageOriginalText('');
+      setInputMessage(priorDraftBeforeEdit);
+      setPriorDraftBeforeEdit('');
+      resetInputLayerHeight();
+      requestAnimationFrame(() => { messageInputRef.current?.focus(); });
+      return;
+    }
     // If multi-file preview is open, send from there instead
     if (showFilePreview && stagedFiles.length > 0) {
       handleSendFromPreview();
@@ -7616,10 +7703,24 @@ function Chat() {
   }, []);
 
   const handleStartEdit = useCallback((message: Message) => {
+    const draft = inputMessage;
+    setPriorDraftBeforeEdit(draft);
+    setEditingMessageOriginalText(message.text || '');
     setEditingMessageId(message.id);
-    setEditingText(message.text || '');
+    setInputMessage(message.text || '');
     setActiveDeleteMenu(null);
-  }, []);
+    // Focus the main composer and move cursor to end
+    requestAnimationFrame(() => {
+      const ta = messageInputRef.current;
+      if (ta) {
+        ta.focus();
+        const len = ta.value.length;
+        ta.setSelectionRange(len, len);
+        syncInputLayerLayout(ta, message.text || '', true);
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inputMessage]);
 
   const handleOpenReport = useCallback((message: Message) => {
     if (!message || message.userId === userIdRef.current || message.isDeleted || message.type === 'system_notification') {
@@ -7673,26 +7774,13 @@ function Chat() {
 
   const handleCancelEdit = useCallback(() => {
     setEditingMessageId(null);
-    setEditingText('');
-  }, []);
-
-  const handleSaveEdit = useCallback(() => {
-    setEditingMessageId(currentId => {
-      setEditingText(currentText => {
-        if (!currentId || !currentText.trim()) {
-          // nothing to save – reset
-        } else if (ws.current) {
-          ws.current.send(JSON.stringify({
-            type: 'edit',
-            messageId: currentId,
-            newText: currentText,
-          }));
-        }
-        return '';
-      });
-      return null;
-    });
-  }, []);
+    setEditingMessageOriginalText('');
+    setInputMessage(priorDraftBeforeEdit);
+    setPriorDraftBeforeEdit('');
+    resetInputLayerHeight();
+    requestAnimationFrame(() => { messageInputRef.current?.focus(); });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [priorDraftBeforeEdit]);
 
   // Ref to track the last emitted atBottom state to avoid redundant updates
   const lastAtBottomStateRef = useRef(true);
@@ -8415,6 +8503,11 @@ function Chat() {
 
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Escape' && editingMessageId) {
+      e.preventDefault();
+      handleCancelEdit();
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       // On touchscreen devices (mobile/tablet) the on-screen keyboard's
       // Enter key is expected to insert a newline. Avoid intercepting it
@@ -8913,9 +9006,6 @@ function Chat() {
                           handleOpenFullEmojiPicker={handleOpenFullEmojiPicker}
                           reactionPickerData={reactionPickerData}
                           editingMessageId={editingMessageId}
-                          editingText={editingText}
-                          setEditingText={setEditingText}
-                          handleSaveEdit={handleSaveEdit}
                           handleCancelEdit={handleCancelEdit}
                           onVideoFullscreenEnter={handleVideoFullscreenEnter}
                         />
@@ -8971,6 +9061,25 @@ function Chat() {
               )}
               {!isSelectModeActive && (
                 <div>
+                  {editingMessageId && (
+                    <EditPreviewContainer>
+                      <EditPreviewIcon>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                      </EditPreviewIcon>
+                      <EditPreviewText>
+                        <p>Editing message</p>
+                        <span>{editingMessageOriginalText || 'Message'}</span>
+                      </EditPreviewText>
+                      <EditPreviewDismiss
+                        onClick={handleCancelEdit}
+                        title="Cancel editing"
+                        aria-label="Cancel editing"
+                      >&times;</EditPreviewDismiss>
+                    </EditPreviewContainer>
+                  )}
                   {replyingTo && <ReplyPreviewContainer ref={replyPreviewRef} onClick={() => {
                     const replyTargetId = resolveReplyTargetId(replyingTo);
                     quoteLog('reply-preview click', {
@@ -9097,7 +9206,7 @@ function Chat() {
                               $hasUrl={hasUrl}
                               ref={messageInputRef}
                               rows={1}
-                              placeholder={stagedFile || stagedGif ? 'Add a caption...' : 'Type your message...'}
+                              placeholder={editingMessageId ? 'Edit message...' : stagedFile || stagedGif ? 'Add a caption...' : 'Type your message...'}
                               value={inputMessage}
                               onChange={handleInputChange}
                               onKeyDown={handleInputKeyDown}
@@ -9114,7 +9223,22 @@ function Chat() {
                         {MAX_MESSAGE_LENGTH - inputMessage.length}
                       </CharacterCounter>
                     )}
-                    <SendButton onMouseDown={(e) => e.preventDefault()} onClick={handleSendMessage} disabled={(!inputMessage.trim() && !stagedFile && !stagedGif && stagedFiles.length === 0)}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></SendButton>
+                    <SendButton
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={handleSendMessage}
+                      disabled={(!inputMessage.trim() && !stagedFile && !stagedGif && stagedFiles.length === 0)}
+                      title={editingMessageId ? 'Save edit' : 'Send message'}
+                      aria-label={editingMessageId ? 'Save edit' : 'Send message'}
+                      style={editingMessageId ? { background: 'linear-gradient(135deg, #6366f1, #4f46e5)' } : undefined}
+                    >
+                      {editingMessageId ? (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                      )}
+                    </SendButton>
                     <input type="file" ref={fileInputRef} onClick={notifyNativeFilePickerOpen} onChange={handleFileChange} style={{ display: 'none' }} accept="image/*,video/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.txt,.html" multiple />
                     <input type="file" ref={addFileInputRef} onClick={notifyNativeFilePickerOpen} onChange={(e) => { markNativeFilePickerClosed(); if (e.target.files) { setStagedFiles(prev => [...prev, ...Array.from(e.target.files!)]); } if (e.target) e.target.value = ''; }} style={{ display: 'none' }} accept="image/*,video/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.txt,.html" multiple />
                   </InputContainer>
