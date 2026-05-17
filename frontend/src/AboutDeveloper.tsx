@@ -27,16 +27,19 @@ const sheen = keyframes`
 `;
 
 const PageShell = styled.main`
-  min-height: 100dvh;
+  position: fixed;
+  inset: 0;
+  height: 100dvh;
   width: 100%;
   overflow-y: auto;
   overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
   background:
     radial-gradient(circle at 16% 12%, rgba(59, 130, 246, 0.24), transparent 34rem),
     radial-gradient(circle at 84% 8%, rgba(129, 140, 248, 0.2), transparent 30rem),
     linear-gradient(135deg, var(--bg-primary), var(--bg-secondary));
   color: var(--text-primary);
-  position: relative;
   padding: 2rem;
 
   @media (max-width: 640px) {
