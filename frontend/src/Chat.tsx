@@ -1121,7 +1121,7 @@ const MessageInput = styled.textarea<{ $hasUrl?: boolean }>`
   caret-color: var(--text-primary);
   position: relative;
   z-index: 1;
-  &::selection { color: transparent !important; background: rgba(0, 123, 255, 0.3); }
+  &::selection { color: transparent !important; background: rgba(50, 150, 255, 0.4); }
   &:focus { 
     outline: none; 
     border-color: #3B82F6; 
@@ -1162,6 +1162,8 @@ const InputHighlightOverlay = styled.div`
   border-radius: calc(0.75rem - 1px);
   background: var(--bg-input);
   pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
   max-height: 120px;
   overflow-y: auto;
   overflow-x: hidden;
@@ -1172,7 +1174,6 @@ const InputHighlightOverlay = styled.div`
   &::-webkit-scrollbar { width: 8px; }
   &::-webkit-scrollbar-track { background: transparent; }
   &::-webkit-scrollbar-thumb { background: transparent; }
-  &::selection { background: transparent; color: inherit; }
 `;
 const CharacterCounter = styled.span<{ $warning: boolean }>`
   position: absolute;
