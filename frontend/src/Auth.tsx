@@ -144,7 +144,8 @@ const GlassCard = styled.div<{ $hasError?: boolean }>`
 
 const TopBar = styled.div`
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   margin-bottom: 0.25rem;
 `;
 
@@ -369,13 +370,9 @@ const SubmitBtn = styled.button<{ $loading?: boolean }>`
 
 const QuickLinks = styled.div`
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 0.75rem;
   margin-top: 0.85rem;
-
-  @media (max-width: 420px) {
-    grid-template-columns: 1fr;
-  }
 `;
 
 const QuickLinkButton = styled.a`
@@ -385,6 +382,7 @@ const QuickLinkButton = styled.a`
   gap: 0.55rem;
   min-height: 48px;
   padding: 0.85rem 1rem;
+  width: 100%;
   border-radius: 12px;
   border: 1px solid var(--border-primary);
   background: linear-gradient(135deg, rgba(255,255,255,0.95), rgba(241,245,249,0.95));
@@ -449,6 +447,88 @@ const QuickLinkInternal = styled(Link)`
     width: 18px;
     height: 18px;
     flex-shrink: 0;
+  }
+`;
+
+const infoSpin = keyframes`
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+`;
+
+const infoPulse = keyframes`
+  0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.35); }
+  70% { box-shadow: 0 0 0 10px rgba(99, 102, 241, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+`;
+
+const DeveloperInfoButton = styled(Link)`
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-elevated);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-heading);
+  text-decoration: none;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  animation: ${infoPulse} 2.8s ease-in-out infinite;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    border-radius: 50%;
+    background: conic-gradient(from 0deg, rgba(99,102,241,0.9), rgba(59,130,246,0.2), rgba(99,102,241,0.9));
+    opacity: 0.65;
+    animation: ${infoSpin} 8s linear infinite;
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+    mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+  }
+
+  &:hover {
+    transform: translateY(-2px) scale(1.03);
+    border-color: var(--accent-indigo);
+    box-shadow: 0 12px 24px rgba(59, 130, 246, 0.2);
+  }
+
+  &:active {
+    transform: translateY(0) scale(0.98);
+  }
+
+  &::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border: 1px solid var(--border-primary);
+    border-radius: 10px;
+    padding: 0.35rem 0.55rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    white-space: nowrap;
+    opacity: 0;
+    transform: translateY(-6px);
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.12);
+  }
+
+  &:hover::after {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  svg {
+    width: 18px;
+    height: 18px;
+    position: relative;
+    z-index: 1;
   }
 `;
 
@@ -583,6 +663,18 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken }) => {
         <FormContainer>
           <GlassCard $hasError={!!error}>
             <TopBar>
+              <DeveloperInfoButton
+                to="/about-developer"
+                aria-label="Know about developer"
+                title="Know about developer"
+                data-tooltip="Know about developer"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="8.5" />
+                  <path d="M12 16v-4" />
+                  <path d="M12 8h.01" />
+                </svg>
+              </DeveloperInfoButton>
               <ThemeToggle onClick={toggleTheme} title={isDark ? 'Switch to light mode' : 'Switch to dark mode'} aria-label="Toggle theme">
                 {isDark ? (
                   <svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -682,10 +774,6 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken }) => {
                 <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.42-4.04-1.42-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.21.08 1.85 1.24 1.85 1.24 1.07 1.84 2.81 1.31 3.5 1 .11-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.66.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.63-5.49 5.93.43.37.81 1.1.81 2.22v3.29c0 .32.22.69.83.57A12 12 0 0 0 12 .5Z" /></svg>
                 GitHub Repo
               </QuickLinkButton>
-              <QuickLinkInternal to="/about-developer" aria-label="Open the About the Developer page">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-                About Developer
-              </QuickLinkInternal>
             </QuickLinks>
 
             {error && <ErrorText>{error}</ErrorText>}
