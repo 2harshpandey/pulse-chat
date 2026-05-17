@@ -1121,7 +1121,10 @@ const MessageInput = styled.textarea<{ $hasUrl?: boolean }>`
   caret-color: var(--text-primary);
   position: relative;
   z-index: 1;
-  &::selection { color: transparent !important; background: rgba(50, 150, 255, 0.4); }
+  &::selection {
+    color: ${p => p.$hasUrl ? 'transparent' : 'var(--text-primary)'} !important;
+    background: rgba(50, 150, 255, 0.4);
+  }
   &:focus { 
     outline: none; 
     border-color: #3B82F6; 
