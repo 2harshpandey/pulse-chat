@@ -3,6 +3,7 @@ import styled, { keyframes } from 'styled-components';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import Chat from './Chat';
 import Admin from './Admin';
+import AboutDeveloper from './AboutDeveloper';
 import { GlobalStyle } from './Chat';
 import { NotFoundPage, ForbiddenPage, ServerErrorPage, TimeoutPage, RateLimitPage, MaintenancePage } from './ErrorPages';
 
@@ -110,6 +111,7 @@ function AppRoutes() {
         <Route path="/" element={<Chat />} />
         <Route path="/join/:token" element={<Chat />} />
         <Route path="/admin" element={<Admin />} />
+        <Route path="/about-developer" element={<AboutDeveloper />} />
         {/* Explicit error pages */}
         <Route path="/error/403" element={<ForbiddenPage />} />
         <Route path="/error/404" element={<NotFoundPage />} />

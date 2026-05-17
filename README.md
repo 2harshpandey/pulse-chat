@@ -1,273 +1,162 @@
-# Pulse Chat
-
-Pulse Chat is a lightweight, real-time chat application designed for small teams and communities. This repository contains a full-stack implementation (React + TypeScript frontend, Node.js + Express backend, WebSocket real-time transport) with an admin monitoring panel, media uploads, and production-focused deployment workflows.
-
-This README documents the project architecture, setup, environment variables, deployment, security considerations, and a progress log describing the improvements and bug fixes made during development.
-
---
-
-## Table of Contents
-
-- Project overview
-- Technology stack
-- Architecture and key components
-- Quick start (dev)
-- Production build & deploy
-- Environment variables
-- Security notes
-- Admin panel
-- UX & behavior details
-- Testing & CI
-- Troubleshooting
-- Changelog (Session summaries)
-- Contributing
-- License
-
---
-
-## Project overview
-
-Pulse Chat is a real-time chat application that supports text, images, video, GIFs, reactions, message editing, delete-for-everyone, and an admin monitoring interface. The design emphasizes: reliability, predictable mobile UX, secure admin access, and clear operational deployment steps.
-
-The repository is organized with a frontend React app (TypeScript) under `frontend/` and the backend Node/Express server under `backend/`.
-
-## Technology stack
-
-- Frontend: React (TypeScript), styled-components, react-scripts
-- Real-time: WebSockets (`ws`) between clients and server
-- Backend: Node.js, Express.js, Mongoose (MongoDB Atlas)
-- Storage for uploads: Cloudinary
-- CI/CD: GitHub Actions; frontend typically deployed to Netlify, backend to Azure App Service
-- Other: dotenv for config, multer for upload handling
-
-## Architecture and key components
-
-- `frontend/` - React single-page app. Main entry is `src/index.tsx`, chat UI in `src/Chat.tsx`, and admin client under `src/Admin.tsx`.
-- `backend/` - Express API and WebSocket server. Primary server code is `backend/index.js`. Persistent data models live in `backend/models/`.
-- Realtime: The server keeps a WS feed for live updates consumed by the admin panel and clients.
-- Media: Uploads are forwarded to Cloudinary and references (URLs) are stored in MongoDB.
-
-## Quick start (development)
-
-Prerequisites:
-
-- Node.js 18+ (or current LTS)
-- npm
-- MongoDB Atlas connection string (or a local MongoDB)
-- Cloudinary account credentials if enabling media uploads
-
-Steps (frontend and backend in parallel)
-
-1. Clone the repo and install dependencies:
-
-```powershell
-git clone https://github.com/<your-org>/pulse-chat.git
-cd "pulse-chat"
-```
-
-2. Backend (in a terminal):
-
-```powershell
-cd backend
+Pulse Chat — Real-time scalable web messaging application
+Live: https://pulsechat.tech
+Pulse Chat is a production-grade, real-time scalable web messaging application engineered for high fidelity conversations, rich media exchange, and robust moderation. It combines instant WebSocket messaging with carefully secured REST services and a premium, responsive UI designed for both desktop and mobile.
+________________________________________
+✅ Real-time scalable web messaging application — Core Capabilities
+•	Real-time multi-user chat powered by persistent WebSocket connections with heartbeat ping/pong for reliability.
+•	Instant join/leave system notifications that announce arrivals and departures to all participants.
+•	Unique username enforcement across HTTP and WebSocket layers to prevent duplicates and stale sessions.
+•	Session-aware reconnect handling to avoid false leave notifications on refreshes.
+•	Persistent user identity with cryptographically strong client-generated user IDs stored locally.
+•	Server side user tracking with last seen and join history for moderation insights.
+•	Initial history window delivered on connect, then paginated infinite scroll for deeper history.
+•	Chronological ordering preserved with oldest first delivery and safe prepend on history loads.
+•	Virtualized message list for smooth performance even with large histories.
+•	Adaptive overscan and viewport tuning for desktop vs. mobile scroll efficiency.
+•	Quote jump navigation with highlight animation and intelligent auto loading to reach quoted messages.
+________________________________________
+✅ Real-time scalable web messaging application — Messaging UX
+•	Reply / quote system with preview bar, sender context, and clickable quoted blocks.
+•	Quoted media thumbnails with smart Cloudinary transformations for low latency previews.
+•	Inline editing with edit state, history logging, and live updates to all clients.
+•	Delete for everyone with content redaction and event logging.
+•	Local delete / remove flow for uploaded media when applicable.
+•	Message action toolbar with contextual actions on hover/touch.
+•	Selection mode with checkbox UI for multi message actions.
+•	Bulk actions including delete, copy, edit, and report where relevant.
+•	Typing indicators with animated dots and live activity states.
+•	GIF selecting presence distinct from typing activity.
+________________________________________
+✅ Real-time scalable web messaging application — Reactions & Engagement
+•	Message reactions with emoji palette, quick tap selection, and animated pills.
+•	One reaction per user enforcement with toggle and replace behavior.
+•	Reactions popup with tabs per emoji, counts, and an “All” view.
+•	Self reaction removal directly from the popup list.
+•	Reactions persistence in the database with safe Map serialization to clients.
+________________________________________
+✅ Real-time scalable web messaging application — Media & File Power
+•	Full media pipeline with support for images, videos, and generic files.
+•	Cloudinary backed uploads via secure multi part handling and file metadata preservation.
+•	Upload size enforcement with clear error messaging (100 MB max).
+•	Drag and drop uploads with full screen overlay and animated affordances.
+•	WhatsApp style file preview modal with:
+o	Multi file carousel preview
+o	Add/remove attachments
+o	Caption input per send batch
+o	Thumbnail strip navigation
+•	Inline media rendering with consistent frame sizing to prevent scroll jitter.
+•	Image lightbox with zoom controls, wheel scaling, and polished overlay.
+•	Custom video player featuring:
+o	Play/pause, timeline scrub, and duration display
+o	Playback speed cycling
+o	Fullscreen mode with layout reflow
+o	Picture in Picture support
+o	Loop toggle
+o	Mute + volume slider (mouse only panel)
+o	Double tap seek shortcuts
+o	Auto hide controls
+•	Media download overlay for images/videos with hover only visibility.
+•	Download progress ring with cancel capability and transfer feedback.
+•	Secure downloads through allowlisted hosts and a hardened proxy fallback.
+•	IndexedDB media cache keyed by user/message/source for fast reloads.
+•	Safe media URL sanitation to block unsafe protocols and prevent XSS.
+________________________________________
+✅ Real-time scalable web messaging application — Link Intelligence
+•	Automatic link preview cards with site name, title, description, and image.
+•	Preview caching to reduce redundant fetches and improve performance.
+•	SSRF hardened metadata fetcher with:
+o	DNS resolution checks
+o	Private/internal IP blocks
+o	Port restrictions
+o	Redirect limits
+o	Size capped HTML reads
+________________________________________
+✅ Real-time scalable web messaging application — Security & Privacy
+•	Multi layer rate limiting for auth, uploads, API endpoints, and admin routes.
+•	Strict input validation for usernames, tokens, and report reasons.
+•	Device fingerprinting (screen, platform, language, timezone, UA) for robust blocking.
+•	User/IP/Device block enforcement across HTTP and WebSocket pathways.
+•	Login lockdown mode with timed or indefinite enforcement.
+•	Download proxy hardening with:
+o	Host allowlisting
+o	Redirect safety checks
+o	Private IP resolution blocks
+o	Sanitized filenames
+•	Safe URL sanitizer preventing javascript: or data: attacks.
+________________________________________
+✅ Real-time scalable web messaging application — Moderation & Admin Control
+•	Dedicated admin dashboard with password protection.
+•	Live admin WebSocket channel for instant updates and telemetry.
+•	User management with online list, logged in sessions, and status tracking.
+•	Force logout for a specific user or all users.
+•	User blocking & unblocking with fingerprint merging.
+•	Temporary invite links:
+o	Time boxed creation
+o	Revocation
+o	Usage tracking
+o	Copy to clipboard UI
+•	Login lockdown controls with preset or custom durations.
+•	Message history log showing edits, deletions, uploads, and create events.
+•	Audit log stream with categorized events and timestamps.
+•	User report intake with full context: message snapshot, session data, join history, and metadata.
+•	Server log tailing with live refresh and WebSocket pushes.
+•	Permanent history purge and frontend only hide controls for compliance workflows.
+________________________________________
+✅ Real-time scalable web messaging application — UX & Visual Polish
+•	Theme toggle with persisted preference and system theme default.
+•	Animated UI layers (glow, shimmer, floating orbs, premium transitions).
+•	Adaptive mobile layouts with touch optimized controls.
+•	Keyboard aware login UX for mobile viewport shifts.
+•	Custom scrollbars and stable layout behavior for long lists.
+•	Error boundaries & themed error pages for 403/404/408/429/500/503 flows.
+________________________________________
+High Level Architecture (Real-time scalable web messaging application)
+•	Client Application
+o	React + TypeScript UI
+o	Styled Components system for themeable design
+o	WebSocket for real time chat
+o	REST for auth, uploads, previews, GIFs, and admin
+•	Server Application
+o	Express HTTP API + WebSocket server
+o	MongoDB persistence for users, messages, events, reports, and state
+o	Cloudinary storage for media
+o	Tenor API for GIF discovery
+•	Data Flow
+o	WebSocket for live message stream
+o	REST for auth, uploads, moderation, and previews
+o	Audit events written to persistent history
+________________________________________
+Tech Stack
+•	Frontend: React 18, TypeScript, Vite, Styled Components, React Router, React Virtuoso, Emoji Picker, @use gesture
+•	Backend: Node.js, Express, WebSocket (ws), MongoDB (Mongoose), Cloudinary, Multer, Axios, Winston
+•	Services: Tenor GIF API, Cloudinary media CDN
+________________________________________
+Setup Instructions
+1) Environment Variables
+Server
+•	MONGODB_URI
+•	ADMIN_PASSWORD
+•	CLIENT_PASSWORD
+•	ADMIN_SECRET
+•	CLOUDINARY_CLOUD_NAME
+•	CLOUDINARY_API_KEY
+•	CLOUDINARY_API_SECRET
+•	TENOR_API_KEY
+Client
+•	REACT_APP_API_URL
+•	REACT_APP_ADMIN_SECRET
+________________________________________
+2) Install & Run (Development)
+Server
 npm install
-# create a .env with required variables (see below)
 npm run dev
-# or: node index.js
-```
 
-3. Frontend (in another terminal):
-
-```powershell
-cd frontend
+Client
 npm install
-npm start
-```
+npm run start
 
-The frontend dev server will proxy API requests to the backend if configured (see `REACT_APP_API_URL`).
-
-## Production build & deploy
-
-Build frontend:
-
-```powershell
-cd frontend
+3) Build (Production)
 npm run build
-```
 
-Build/deploy backend according to your chosen host. This project uses GitHub Actions to push built artifacts and (for the backend) update Azure App Service app settings for production environment variables. See `.github/workflows/` for action definitions.
-
-## Environment variables
-
-The app relies on a few environment variables; do NOT commit `.env` files. Examples:
-
-Backend `.env` (required in production):
-
-- `PORT` (optional) — port for Express server
-- `MONGODB_URI` — MongoDB connection string
-- `CLIENT_PASSWORD` — client login password (moved to backend verification)
-- `ADMIN_PASSWORD` — admin panel password (kept secret, not in front-end)
-- `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` — if using Cloudinary
-- `TENOR_API_KEY` — if GIF search is integrated
-
-Frontend `.env` (only flags/URLs):
-
-- `REACT_APP_API_URL` — optional API base url (defaults to same-origin)
-
-Production deployment note: set these variables in Azure App Settings / Netlify environment settings or via GitHub Secrets used by the workflow.
-
-## Security notes
-
-- Secrets and passwords were removed from the frontend code. Admin authentication occurs via a secure backend `POST /api/auth/verify` endpoint and the admin WebSocket handshake uses an in-message handshake (not query parameters) to avoid leaking secrets.
-- DO NOT commit `.env` files or secrets to Git.
-- The repo includes a `.gitignore` entry for `frontend/old_chats/` (local notes) to prevent accidental push.
-
-## Admin panel
-
-The admin panel provides:
-
-- Real-time message logs
-- Live activity feed
-- Server logs viewer
-- Online user list
-
-Admin access is password-protected. The admin client uses WebSockets to receive live updates; the server pushes events whenever messages or user-connection state change.
-
-## UX & behavior details (notable implementations)
-
-- Mobile-first UX improvements: careful handling of on-screen keyboard, `Enter` behavior set to insert new line on mobile, keyboard not minimized when tapping the “scroll-to-bottom” control.
-- **2026-03-02 update:**
-  - Emoji picker now opens and keyboard closes in a single tap on mobile, with no focus-jank or two-tap issues.
-  - Keyboard minimization is now smooth on all keyboards except Gboard (which has a known Android bug outside app control).
-  - Checkbox selection in select mode now works reliably on the first tap on mobile (no double-tap needed).
-- Overlay/back-button behavior: mobile back button closes overlays in a strict hierarchy (delete modal → select mode → lightbox → user list) rather than exiting the app.
-- Selection mode: synchronous guard push into history to avoid race conditions when enabling message-select mode.
-- Copy behavior: the footer `Copy` action is mobile-only and appears only when exactly one message is selected; it hides when multiple messages are selected.
-- Media interaction: tapping an image/video/GIF preview opens the lightbox/player without selecting the message; selecting a message still works when tapping the side-area or for plain text/quoted messages.
-
-## Testing & CI
-
-- The project uses a GitHub Actions workflow to build and deploy. Workflows include steps to push app settings to Azure when deploying the backend.
-- Recommended: add a Playwright or Puppeteer test suite to assert mobile behaviors (keyboard, copy button visibility, double-click quoting behavior) where needed.
-
-## Troubleshooting
-
-- If the backend fails to start on Azure, check that all required env vars (notably `MONGODB_URI`) are present in App Settings.
-- If the admin login fails in production, ensure `CLIENT_PASSWORD` and `ADMIN_PASSWORD` are set as production app settings / GitHub Secrets used by the workflow.
-
-## Changelog / Project Progress (Session summaries)
-
-This project progressed through multiple focused sessions. Brief highlights by session:
-
-- Session 1: Security cleanup - removed hardcoded client/admin passwords, moved verification to backend.
-- Session 2: Admin panel converted to real-time via WebSockets and bug fixes to live activity.
-- Session 3: Integrated MongoDB Atlas and persisted messages and events.
-- Session 4: Refinement for deployment readiness; removed unused features and improved environment abstraction.
-- Session 5: Production stability - CI changes to avoid backend crash loops and persistent user identity fixes.
-- Session 6: UX - added "Scroll to Bottom" button, fixed scroll-on-refresh, and build stability fixes.
-- Session 7: Advanced mobile UX fixes - refined scroll button and resolved mobile reaction/select conflicts.
-- Session 8: Final stability - fixed reaction-related crashes and polished mobile gestures.
-- Session 9: Deployment and UX polishing; fixed Netlify/CI related issues.
-- Session 10: Styling and build fixes; finalized system message styling and TypeScript issues.
-- Session 11: Advanced UX: delete-for-everyone, hierarchical mobile back button behavior, presence debouncing.
-  - Footer copy: mobile `Copy` action appears only when exactly one message selected.
-  - Media preview taps: tapping image/video/GIF opens lightbox/player without selecting message; selection occurs from side-area taps or text taps.
-
-- Session 12: Security & Production Polish.
-  - Removed hardcoded passwords and secret leaks; moved auth fully backend-side (POST /api/auth/verify), admin WS auth via in-socket handshake; backend now fails fast if env vars are missing.
-  - Chat UI polish (Chat.tsx): unified back-button handling, fixed select-mode/history race, added sidebar backdrop, stabilized scroll-to-bottom (no keyboard focus steal), limited double-click quoting to desktop, improved media-tap vs selection behavior, cleaned up mobile Copy + typing-indicator UX.
-  - Backend/CI: cleaned secret logs, updated GitHub Actions to push Azure App Settings. Action: add prod secrets.
-
-- Session 13: Mobile Keyboard & Emoji UX Polish.
-  - Fixed emoji picker so that tapping the emoji button while the keyboard is open now closes the keyboard and opens the emoji picker in a single, smooth action (no more two-tap or focus-jank issues).
-  - Improved keyboard minimization smoothness on all mobile keyboards by avoiding focus/blur fights and deferring menu-closing logic.
-  - Checkbox selection in select mode now works reliably on the first tap on mobile (no double-tap needed).
-
-- Session 13B: Multi-File Upload, WhatsApp-Style Preview Modal, and Robust File Handling
-  - Added WhatsApp-style full-screen multi-file preview modal (horizontal thumbnails, caption input, send/cancel) — responsive on mobile/tablet/desktop, touch + mouse support.
-  - Multi-file upload via drag-and-drop, paste, or picker; all files previewed pre-send with per-file error feedback for unsupported types/size.
-  - Backend hardened: mimetype-based type detection, size/type limits, clear error responses surfaced to the UI.
-  - Download UX improved: original filename & extension preserved (including cross-origin blobs); download button left-aligned for accessibility.
-  - UI polish: modal, overlay, thumbnail strip styled for a professional, WhatsApp-like experience; accessibility & responsiveness validated.
-  - Bug fixes: fixed non-image/video upload failures, resolved modal/chat layout overlaps, tightened error-path handling.
-  - Business rules enforced: multi-file support + clear errors; downloads keep original names; all UI responsive & accessible.
-  - Validation & commits: build-verified and tested across devices/browsers — only remaining minor Gboard top-bar stutter attributed to Gboard, not the app.
-  ESC to unquote: pressing Esc now removes the quoted message.
-  - Quoted-preview polish: quote-preview cross stays perfectly circular, slightly larger hit area; long quote text is responsively truncated with an ellipsis (no visual distortion) across all screen sizes (touch + non-touch).
-    - Admin panel: Tables are now fully responsive. Message Log table uses horizontal scroll only when needed; Users table never scrolls horizontally and always fits on mobile.
-    - Table word-break: Table cells now wrap only at word boundaries, never splitting words mid-character, for a cleaner look.
-  - Scroll-to-bottom positioning: repositioned so it never overlaps send/other buttons — on desktop it's raised above the send button; on mobile it's placed just above the quoted-preview.
-  - Menu/reaction toggles: clicking the same react icon or three-dots now toggles (closes) the menu instead of blinking.
-  - Prevent quoting deleted messages on touch: blocked quoting of deleted messages on touchscreen devices (non-touch behavior unchanged).
-  - Auto-scroll fixes: when quote-preview or a message menu would overlap the original message or be hidden by the textbox, chat auto-scrolls smoothly so the item’s end sits just above the preview/menu.
-  - Unselectable deleted-text: in-place “You deleted this message.” text is now user-select: none.
-  - Reaction bar dismiss: reaction bar closes when clicking anywhere outside it (blank canvas).
-  - Cross-cutting: all changes are responsive, smooth, and tested on touch & non-touch devices; added small UI checks for these flows.
-
-- Session 14: Security Hardening & Vulnerability Remediation.
-  - Fixed all CodeQL/GitHub scan alerts: DOM-XSS in Chat.tsx (introduced `getBlobUrl` + `sanitizeMediaUrl` taint-breaking pattern with WeakMap cache), XSS in Chat.tsx and Admin.tsx, SSRF/URL-redirect, insecure randomness, and cleartext secret logging on the backend.
-  - Added `express-rate-limit` to all admin and destructive backend routes (auth, message log, user list, clear chat, file upload).
-    - resolve-url-loader v5
-    - Replaced `resolve-url-loader@4` (bundled vulnerable `postcss@7.0.39`).  
-    - Migrated to `v5.0.0` for PostCSS v8 compatibility.  
-    - No webpack changes required; build clean, CVE resolved.
-  - Resolved all high-severity npm audit vulnerabilities: upgraded `bfj` to `9.1.3` via package.json overrides, removing the transitive `jsonpath` ReDoS vulnerability.
-  - Remaining 2 moderate vulnerabilities (`webpack-dev-server`) are dev/build-tool-only with no production exposure; not fixable without migrating away from Create React App.
-  - Fixed backend rate limiter to handle IPv6 users correctly and prevent bypass (now uses ipKeyGenerator, Azure proxy port stripping still supported).
-  -Bug fixes:
-    - GIF button now works reliably on mobile devices (phantom click issue fixed).
-    - Clear chat action now persists across page refreshes (per-user localStorage timestamp).
-    - Duplicate usernames are now prevented in the chat room (server-side and client-side checks).
-    - Copy button is now hidden for videos on all devices (PC and mobile).
-    - Copying an image now copies the actual image to the clipboard (not just the URL), for both PC and mobile, using the Clipboard API.
-
-- Session 15: Post-d47c6b3 Updates & Improvements
-
-  Project Goal: Real-time, secure, user-friendly chat with advanced admin controls, premium UX, and robust emoji & file handling.
-
-  Tech Stack 
-   - Frontend: React (TypeScript), styled-components, emoji-picker-react, Virtuoso.  
-   - Backend: Node.js, Express, MongoDB (Mongoose), `ws`, Cloudinary, dotenv, custom logger, express-rate-limit.  
-   - CI/CD: GitHub Actions, Azure App Service, Netlify; Dependabot for deps.  
-   - Admin: audit logs, blocking, lockdown, temp links, responsive tables.
-
-  Highlights (since d47c6b3)
-   -Custom Emoji Reactions: reliability fixes; cross-device stability.  
-   -Emoji Picker: smoother mobile/desktop pickers; overlay/tap issues resolved.  
-   -Chat UI: centered system notices, tighter spacing, quoted text color, instant scroll-to-bottom, refreshed logo/favicon.  
-   -Virtualized Scrolling: improved message loading & performance.  
-   - Auth & Theming: premium login flow; animated dark-mode toggle.  
-   - Admin Panel: fixed logs/tables, temp links, blocking, lockdown, audit trails, mobile friendly.  
-   - Security: dependency fixes, better rate limiting (IPv6/Azure), backend hardening.  
-   - UX: quoted media thumbnails, video play control, reliable copy, username grouping — responsive & accessible.  
-   - Docs & Cleanup: updated changelogs, docs, .gitignore; removed legacy files.
-
-  Business Rules  
-   - Emoji reactions must never break UI or message interactivity.  
-   - Admin controls are secure, auditable, and reliable.  
-   - Uploads/downloads preserve filenames and surface clear errors.  
-   - UI must be responsive, accessible, and informative.  
-   - Security fixes must maintain build stability and be documented.  
-   - Sessions/identity must be stable and persistent.
-
-  Impact: Improved reliability, security, performance, and UX across chat, emoji, admin, and login flows; modernized UI and clearer documentation.
-
-## Contributing
-
-1. Fork and clone.
-2. Create a feature branch: `git checkout -b feat/your-thing`.
-3. Run tests / linters.
-4. Create a PR with a clear description of the change and relevant screenshots / reproduction steps.
-
-## License
-
-This project does not include an explicit license file in this repository. Add a suitable license (e.g., MIT) if you plan to open-source the project.
-
---
-
-If you want, I can also:
-
-- Add a short `Makefile` or `npm` scripts to streamline environment setup.
-- Generate a `deployment.md` with step-by-step Azure + Netlify deployment instructions.
-- Add Playwright tests for the three mobile behaviors we recently hardened.
-
-Let me know which follow-up you'd like.
+License
+All rights reserved.
