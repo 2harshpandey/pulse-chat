@@ -5593,29 +5593,83 @@ function Chat() {
     inputOverlayRef.current.scrollLeft = messageInputRef.current.scrollLeft;
   }, []);
 
+  const resetInputLayerHeight = () => {
+    const textarea = messageInputRef.current;
+    const overlay = inputOverlayRef.current;
+
+    cancelAnimationFrame(resizeRafRef.current);
+    lastInputHeightRef.current = 0;
+
+    if (textarea) {
+      textarea.style.height = 'auto';
+      textarea.style.overflowY = 'hidden';
+      textarea.scrollTop = 0;
+      textarea.scrollLeft = 0;
+    }
+
+    if (overlay) {
+      overlay.style.height = 'auto';
+      overlay.style.overflowY = 'hidden';
+      overlay.scrollTop = 0;
+      overlay.scrollLeft = 0;
+    }
+  };
+
+  const syncInputLayerLayout = (textarea: HTMLTextAreaElement | null = messageInputRef.current, value?: string, shouldMaintainBottom = true) => {
+    if (!textarea) return;
+
+    const overlay = inputOverlayRef.current;
+    const nextValue = value ?? textarea.value;
+
+    cancelAnimationFrame(resizeRafRef.current);
+    const wasAtBottom = isAtBottomRef.current;
+
+    resizeRafRef.current = requestAnimationFrame(() => {
+      if (!nextValue) {
+        resetInputLayerHeight();
+        return;
+      }
+
+      textarea.style.height = 'auto';
+      if (overlay) overlay.style.height = 'auto';
+
+      const nextHeight = Math.min(textarea.scrollHeight, 120);
+      const nextHeightPx = `${nextHeight}px`;
+      const nextOverflowY = textarea.scrollHeight > 120 ? 'auto' : 'hidden';
+
+      if (lastInputHeightRef.current !== nextHeight || textarea.style.height !== nextHeightPx) {
+        textarea.style.height = nextHeightPx;
+        if (overlay) overlay.style.height = nextHeightPx;
+        lastInputHeightRef.current = nextHeight;
+
+        if (shouldMaintainBottom && wasAtBottom) {
+          requestAnimationFrame(() => scrollToBottom('auto', true));
+        }
+      } else if (overlay) {
+        overlay.style.height = nextHeightPx;
+      }
+
+      textarea.style.overflowY = nextOverflowY;
+      if (overlay) overlay.style.overflowY = nextOverflowY;
+      syncInputOverlayScroll();
+    });
+  };
+
+  useLayoutEffect(() => {
+    if (inputMessage) {
+      syncInputLayerLayout(messageInputRef.current, inputMessage, true);
+    } else {
+      resetInputLayerHeight();
+    }
+  }, [inputMessage]);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInputMessage(e.target.value);
+    const nextValue = e.target.value;
+    setInputMessage(nextValue);
     // Fire typing indicator outside of React's render cycle so it never
     // delays the state update that makes the character appear.
     handleTyping();
-    // Debounce the DOM measurement (auto-resize) to the next animation frame
-    // so layout thrashing doesn't block the input on low-end devices.
-    cancelAnimationFrame(resizeRafRef.current);
-    const textarea = e.target;
-    const wasAtBottom = isAtBottomRef.current;
-    resizeRafRef.current = requestAnimationFrame(() => {
-      const nextHeight = textarea.scrollHeight;
-      if (lastInputHeightRef.current !== nextHeight) {
-        textarea.style.height = 'auto';
-        textarea.style.height = `${nextHeight}px`;
-        textarea.style.overflowY = nextHeight > 120 ? 'auto' : 'hidden';
-        lastInputHeightRef.current = nextHeight;
-        if (wasAtBottom) {
-          requestAnimationFrame(() => scrollToBottom('auto', true));
-        }
-      }
-      syncInputOverlayScroll();
-    });
+    syncInputLayerLayout(e.target, nextValue, true);
   };
   const replyPreviewRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef({
@@ -6617,9 +6671,7 @@ function Chat() {
     setShowFilePreview(false);
     setPreviewCaption('');
     setPreviewActiveIndex(0);
-    if (messageInputRef.current) {
-      messageInputRef.current.style.height = 'auto';
-    }
+    resetInputLayerHeight();
     // Clear frontend typing state so subsequent keystrokes trigger start_typing again
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
@@ -8159,6 +8211,9 @@ function Chat() {
     const clipboardData = e.clipboardData;
     if (!clipboardData) return;
 
+    const pastedText = clipboardData.getData('text');
+    const textarea = e.currentTarget;
+
     const collectedFiles = new Map<string, File>();
     const addCollectedFile = (file: File | null) => {
       if (!file) return;
@@ -8187,7 +8242,22 @@ function Chat() {
     });
 
     const fileArr = Array.from(collectedFiles.values());
-    if (fileArr.length === 0) return;
+    if (fileArr.length === 0) {
+      if (!pastedText) return;
+
+      e.preventDefault();
+      const selectionStart = textarea.selectionStart ?? inputMessage.length;
+      const selectionEnd = textarea.selectionEnd ?? selectionStart;
+      const nextValue = `${inputMessage.slice(0, selectionStart)}${pastedText}${inputMessage.slice(selectionEnd)}`.slice(0, MAX_MESSAGE_LENGTH);
+      const nextCaretPosition = Math.min(selectionStart + pastedText.length, nextValue.length);
+
+      setInputMessage(nextValue);
+      textarea.value = nextValue;
+      requestAnimationFrame(() => textarea.setSelectionRange(nextCaretPosition, nextCaretPosition));
+      handleTyping();
+      syncInputLayerLayout(textarea, nextValue, true);
+      return;
+    }
 
     e.preventDefault();
     setStagedFiles(fileArr);
