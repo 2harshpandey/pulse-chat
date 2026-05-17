@@ -5328,6 +5328,8 @@ function Chat() {
   const presenceActivityRef = useRef<'typing' | 'gif_selecting' | null>(null);
   const resizeRafRef = useRef<number>(0);
   const lastInputHeightRef = useRef<number>(0);
+  const lastInputValueLengthRef = useRef<number>(0);
+  const skipNextInputLayoutSyncRef = useRef(false);
   const stableViewportHeightRef = useRef<number>(window.innerHeight);
   const stableViewportWidthRef = useRef<number>(window.innerWidth);
   const appliedViewportHeightRef = useRef<number>(0);
@@ -5625,6 +5627,7 @@ function Chat() {
 
     const overlay = inputOverlayRef.current;
     const nextValue = value ?? textarea.value;
+    const isShrinking = nextValue.length < lastInputValueLengthRef.current;
 
     cancelAnimationFrame(resizeRafRef.current);
     const wasAtBottom = isAtBottomRef.current;
@@ -5632,11 +5635,14 @@ function Chat() {
     resizeRafRef.current = requestAnimationFrame(() => {
       if (!nextValue) {
         resetInputLayerHeight();
+        lastInputValueLengthRef.current = 0;
         return;
       }
 
-      textarea.style.height = 'auto';
-      if (overlay) overlay.style.height = 'auto';
+      if (isShrinking) {
+        textarea.style.height = 'auto';
+        if (overlay) overlay.style.height = 'auto';
+      }
 
       const nextHeight = Math.min(textarea.scrollHeight, 120);
       const nextHeightPx = `${nextHeight}px`;
@@ -5656,11 +5662,16 @@ function Chat() {
 
       textarea.style.overflowY = nextOverflowY;
       if (overlay) overlay.style.overflowY = nextOverflowY;
+      lastInputValueLengthRef.current = nextValue.length;
       syncInputOverlayScroll();
     });
   };
 
   useLayoutEffect(() => {
+    if (skipNextInputLayoutSyncRef.current) {
+      skipNextInputLayoutSyncRef.current = false;
+      return;
+    }
     if (inputMessage) {
       syncInputLayerLayout(messageInputRef.current, inputMessage, true);
     } else {
@@ -5670,6 +5681,7 @@ function Chat() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const nextValue = e.target.value;
+    skipNextInputLayoutSyncRef.current = true;
     setInputMessage(nextValue);
     // Fire typing indicator outside of React's render cycle so it never
     // delays the state update that makes the character appear.
