@@ -5327,6 +5327,7 @@ function Chat() {
   const emojiPickerRef = useRef<HTMLDivElement>(null!);
   const fullEmojiPickerRef = useRef<HTMLDivElement>(null!);
   const emojiButtonRef = useRef<HTMLButtonElement>(null!);
+  const gifSearchInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null!);
   const inputOverlayRef = useRef<HTMLDivElement>(null);
   const userIdRef = useRef<string>(getUserId());
@@ -6516,6 +6517,56 @@ function Chat() {
     document.addEventListener('keydown', handleDesktopPreviewTyping, true);
     return () => document.removeEventListener('keydown', handleDesktopPreviewTyping, true);
   }, [isDesktopInteraction, previewCaption, showFilePreview, stagedFiles.length]);
+
+  useEffect(() => {
+    if (!showGifPicker || !isDesktopInteraction) return;
+    requestAnimationFrame(() => {
+      const input = gifSearchInputRef.current;
+      if (!input) return;
+      input.focus();
+      const end = input.value.length;
+      input.setSelectionRange(end, end);
+    });
+  }, [isDesktopInteraction, showGifPicker]);
+
+  useEffect(() => {
+    if (!showGifPicker || !isDesktopInteraction) return;
+
+    const handleDesktopGifTyping = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const target = e.target as Element | null;
+      if (target instanceof HTMLElement && target.closest('input, textarea, [contenteditable="true"]')) return;
+
+      const input = gifSearchInputRef.current;
+      if (!input) return;
+
+      if (e.key === 'Backspace') {
+        if (!gifSearchTerm) return;
+        e.preventDefault();
+        const nextTerm = gifSearchTerm.slice(0, -1);
+        setGifSearchTerm(nextTerm);
+        requestAnimationFrame(() => {
+          input.focus();
+          const end = nextTerm.length;
+          input.setSelectionRange(end, end);
+        });
+        return;
+      }
+
+      if (e.key.length !== 1) return;
+      e.preventDefault();
+      const nextTerm = `${gifSearchTerm}${e.key}`;
+      setGifSearchTerm(nextTerm);
+      requestAnimationFrame(() => {
+        input.focus();
+        const end = nextTerm.length;
+        input.setSelectionRange(end, end);
+      });
+    };
+
+    document.addEventListener('keydown', handleDesktopGifTyping, true);
+    return () => document.removeEventListener('keydown', handleDesktopGifTyping, true);
+  }, [gifSearchTerm, isDesktopInteraction, showGifPicker]);
 
   // ── Keyboard auto-restore when closing GIF picker ─────────────────
   useEffect(() => {
@@ -9239,7 +9290,7 @@ function Chat() {
           closeGifPicker();
         }}>
           <GifPickerContent ref={gifPickerRef} onClick={(e) => e.stopPropagation()}>
-            <GifSearchBar type="text" placeholder="Search for GIFs..." value={gifSearchTerm} onChange={(e) => setGifSearchTerm(e.target.value)} />
+            <GifSearchBar ref={gifSearchInputRef} type="text" placeholder="Search for GIFs..." value={gifSearchTerm} onChange={(e) => setGifSearchTerm(e.target.value)} />
             {isLoadingGifs ? <p style={{ textAlign: 'center', padding: '1rem' }}>Loading...</p> : <GifGrid>{gifResults.map(gif => <GifGridItem key={gif.id} src={gif.preview} onClick={() => handleGifSelect(gif)} />)}</GifGrid>}
           </GifPickerContent>
         </GifPickerModal>
