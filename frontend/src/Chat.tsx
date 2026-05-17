@@ -41,6 +41,15 @@ const getMessageElementId = (rawId: any): string => {
 
 const normalizeOverlayText = (value: string): string => value.replace(/\u00A0/g, ' ');
 
+const EMOJI_ONLY_RE = /^(?:\s|[\u2600-\u27BF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|\uD83E[\uDC00-\uDFFF]|\u200D|\uFE0F)+$/;
+
+const isEmojiOnlyMessage = (value: string | undefined | null): boolean => {
+  if (!value) return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  return EMOJI_ONLY_RE.test(trimmed);
+};
+
 const findMessageElement = (rawId: any): HTMLElement | null => {
   const normalized = normalizeMessageId(rawId);
   if (!normalized) return null;
@@ -3262,7 +3271,7 @@ const DownloadProgressRing = styled.div<{ $progress: number; $visible: boolean }
   }
 `;
 
-const MessageText = styled.p`
+const MessageText = styled.p<{ $isEmojiOnly?: boolean }>`
   user-select: text; /* Allow selection on PC */
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -3270,9 +3279,18 @@ const MessageText = styled.p`
   margin: 0;
   font-size: 0.92rem;
   line-height: 1.35;
+  ${p => p.$isEmojiOnly && css`
+    font-size: 2.4rem;
+    line-height: 1.15;
+    letter-spacing: 0.02em;
+  `}
   @media (max-width: 768px) {
     user-select: none; /* Disable selection on mobile */
     font-size: 0.9rem;
+    ${p => p.$isEmojiOnly && css`
+      font-size: 2rem;
+      line-height: 1.2;
+    `}
   }
 `;
 
@@ -3993,7 +4011,7 @@ const renderMessageContent = (
             </MediaDownloadOverlayBtn>
           )}
         </MediaImageWrapper>
-        {msg.text && <MessageText style={{ paddingTop: '0.5rem' }}>{renderTextWithLinks(msg.text, sender)}</MessageText>}
+        {msg.text && <MessageText $isEmojiOnly={isEmojiOnly} style={{ paddingTop: '0.5rem' }}>{renderTextWithLinks(msg.text, sender)}</MessageText>}
       </MediaContent>
     );
   }
@@ -4047,7 +4065,7 @@ const renderMessageContent = (
             </MediaDownloadOverlayBtn>
           )}
         </MediaVideoWrapperDiv>
-        {msg.text && <MessageText style={{ paddingTop: '0.5rem' }}>{renderTextWithLinks(msg.text, sender)}</MessageText>}
+        {msg.text && <MessageText $isEmojiOnly={isEmojiOnly} style={{ paddingTop: '0.5rem' }}>{renderTextWithLinks(msg.text, sender)}</MessageText>}
       </MediaContent>
     );
   }
@@ -4076,13 +4094,13 @@ const renderMessageContent = (
             </svg>
           ) : null}
         </FileAttachmentCard>
-        {msg.text && <MessageText style={{ paddingTop: '0.5rem' }}>{renderTextWithLinks(msg.text, sender)}</MessageText>}
+        {msg.text && <MessageText $isEmojiOnly={isEmojiOnly} style={{ paddingTop: '0.5rem' }}>{renderTextWithLinks(msg.text, sender)}</MessageText>}
       </MediaContent>
     );
   }
 
   if (msg.text) {
-    return <MessageText>{renderTextWithLinks(msg.text, sender)}</MessageText>;
+    return <MessageText $isEmojiOnly={isEmojiOnly}>{renderTextWithLinks(msg.text, sender)}</MessageText>;
   }
 
   return null;
@@ -4282,6 +4300,7 @@ const MessageItem = React.memo(({
   onVideoFullscreenEnter
 }: MessageItemProps) => {
   const isEditing = editingMessageId === msg.id;
+  const isEmojiOnly = isEmojiOnlyMessage(msg.text);
   const quotedPreviewThumbUrl = msg.replyingTo && !msg.replyingTo.isDeleted && (msg.replyingTo.type === 'image' || msg.replyingTo.type === 'video')
     ? getQuotedPreviewThumbUrl(msg.replyingTo.type, msg.replyingTo.url)
     : '';
