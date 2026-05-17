@@ -39,6 +39,8 @@ const getMessageElementId = (rawId: any): string => {
   return `message-${encodeURIComponent(normalized)}`;
 };
 
+const normalizeOverlayText = (value: string): string => value.replace(/\u00A0/g, ' ');
+
 const findMessageElement = (rawId: any): HTMLElement | null => {
   const normalized = normalizeMessageId(rawId);
   if (!normalized) return null;
@@ -1107,6 +1109,7 @@ const MessageInput = styled.textarea<{ $hasUrl?: boolean }>`
   resize: none;
   max-height: 120px;
   overflow-y: hidden;
+  scrollbar-gutter: stable;
   touch-action: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) transparent;
@@ -1157,8 +1160,12 @@ const InputHighlightOverlay = styled.div`
   overflow-y: auto;
   overflow-x: hidden;
   z-index: 0;
-  scrollbar-width: none;
-  &::-webkit-scrollbar { display: none; }
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  &::-webkit-scrollbar { width: 8px; }
+  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar-thumb { background: transparent; }
 `;
 const CharacterCounter = styled.span<{ $warning: boolean }>`
   position: absolute;
@@ -5196,6 +5203,7 @@ function Chat() {
   const [loadedMediaSrcById, setLoadedMediaSrcById] = useState<Record<string, string>>({});
   const [downloadProgressById, setDownloadProgressById] = useState<Record<string, number>>({});
   const [inputMessage, setInputMessage] = useState('');
+  const normalizedOverlayMessage = useMemo(() => normalizeOverlayText(inputMessage), [inputMessage]);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [lightboxTransform, setLightboxTransform] = useState<{ scale: number; x: number; y: number }>({
     scale: PHOTO_LIGHTBOX_MIN_SCALE,
@@ -8726,13 +8734,13 @@ function Chat() {
                       {(() => {
                         // Detect URL in current input — if found, render highlight overlay
                         CANDIDATE_URL_RE.lastIndex = 0;
-                        const hasUrl = CANDIDATE_URL_RE.test(inputMessage);
+                        const hasUrl = CANDIDATE_URL_RE.test(normalizedOverlayMessage);
                         CANDIDATE_URL_RE.lastIndex = 0;
                         return (
                           <>
                             {hasUrl && (
                               <InputHighlightOverlay ref={inputOverlayRef} aria-hidden="true">
-                                {renderTextWithLinks(inputMessage, 'other')}
+                                {renderTextWithLinks(normalizedOverlayMessage, 'other')}
                               </InputHighlightOverlay>
                             )}
                             <MessageInput
