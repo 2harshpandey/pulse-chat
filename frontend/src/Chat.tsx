@@ -1098,9 +1098,11 @@ const MessageInput = styled.textarea<{ $hasUrl?: boolean }>`
   transition: all 0.2s;
   font-family: inherit;
   font-size: 1rem;
-  line-height: 1.5;
+  line-height: 24px;
   letter-spacing: inherit;
   font-weight: inherit;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   white-space: pre-wrap;
   word-wrap: break-word;
   overflow-wrap: break-word;
@@ -1118,6 +1120,7 @@ const MessageInput = styled.textarea<{ $hasUrl?: boolean }>`
   caret-color: var(--text-primary);
   position: relative;
   z-index: 1;
+  &::selection { color: transparent; background: rgba(59, 130, 246, 0.35); }
   &:focus { 
     outline: none; 
     border-color: #3B82F6; 
@@ -1144,9 +1147,11 @@ const InputHighlightOverlay = styled.div`
   padding: 0.75rem;
   font-family: inherit;
   font-size: 1rem;
-  line-height: 1.5;
+  line-height: 24px;
   letter-spacing: inherit;
   font-weight: inherit;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   box-sizing: border-box;
   white-space: pre-wrap;
   word-wrap: break-word;
