@@ -5705,12 +5705,13 @@ function Chat() {
       const nextHeightPx = `${nextHeight}px`;
       const nextOverflowY = textarea.scrollHeight > 120 ? 'auto' : 'hidden';
 
-      if (lastInputHeightRef.current !== nextHeight || textarea.style.height !== nextHeightPx) {
+      const previousHeight = lastInputHeightRef.current;
+      if (previousHeight !== nextHeight || textarea.style.height !== nextHeightPx) {
         textarea.style.height = nextHeightPx;
         if (overlay) overlay.style.height = nextHeightPx;
         lastInputHeightRef.current = nextHeight;
 
-        if (shouldMaintainBottom && wasAtBottom) {
+        if (shouldMaintainBottom && wasAtBottom && nextHeight > previousHeight) {
           requestAnimationFrame(() => scrollToBottom('auto', true));
         }
       } else if (overlay) {
