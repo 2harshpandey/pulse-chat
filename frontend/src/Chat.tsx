@@ -3280,7 +3280,7 @@ const MessageText = styled.p<{ $isEmojiOnly?: boolean }>`
   font-size: 0.92rem;
   line-height: 1.35;
   ${p => p.$isEmojiOnly && css`
-    font-size: 2.4rem;
+    font-size: 1.2rem;
     line-height: 1.15;
     letter-spacing: 0.02em;
   `}
@@ -3288,7 +3288,7 @@ const MessageText = styled.p<{ $isEmojiOnly?: boolean }>`
     user-select: none; /* Disable selection on mobile */
     font-size: 0.9rem;
     ${p => p.$isEmojiOnly && css`
-      font-size: 2rem;
+      font-size: 1rem;
       line-height: 1.2;
     `}
   }
