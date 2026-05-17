@@ -5220,6 +5220,7 @@ function Chat() {
   const [loadedMediaSrcById, setLoadedMediaSrcById] = useState<Record<string, string>>({});
   const [downloadProgressById, setDownloadProgressById] = useState<Record<string, number>>({});
   const [inputMessage, setInputMessage] = useState('');
+  const [preMediaDraft, setPreMediaDraft] = useState('');
   const normalizedOverlayMessage = useMemo(() => normalizeOverlayText(inputMessage), [inputMessage]);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [lightboxTransform, setLightboxTransform] = useState<{ scale: number; x: number; y: number }>({
@@ -6269,15 +6270,21 @@ function Chat() {
     return () => document.removeEventListener('keydown', handler);
   }, [isSelectModeActive, lightboxUrl, isDeleteConfirmationVisible, isUserListVisible, editingMessageId, isMobileView]);
 
+  const closeFilePreviewAndRestoreDraft = useCallback(() => {
+    setShowFilePreview(false);
+    setStagedFiles([]);
+    setPreviewCaption('');
+    setPreviewActiveIndex(0);
+    setInputMessage(preMediaDraft);
+    setPreMediaDraft('');
+  }, [preMediaDraft]);
+
   // ── Unquote on Escape / Close file preview ─────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (showFilePreview) {
-          setShowFilePreview(false);
-          setStagedFiles([]);
-          setPreviewCaption('');
-          setPreviewActiveIndex(0);
+          closeFilePreviewAndRestoreDraft();
         } else if (lightboxUrl) {
           setLightboxUrl(null);
         } else if (replyingTo) {
@@ -6287,7 +6294,7 @@ function Chat() {
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [lightboxUrl, replyingTo, showFilePreview]);
+  }, [closeFilePreviewAndRestoreDraft, lightboxUrl, replyingTo, showFilePreview]);
 
   const getChatScrollerElement = useCallback((): HTMLElement | null => {
     if (!chatContainerRef.current) return null;
@@ -6408,6 +6415,7 @@ function Chat() {
       if (files && files.length > 0) {
         const fileArr = Array.from(files);
         const carriedCaption = inputMessage;
+        setPreMediaDraft(carriedCaption);
         setStagedFiles(fileArr);
         setPreviewActiveIndex(0);
         setPreviewCaption(carriedCaption);
@@ -6800,6 +6808,7 @@ function Chat() {
 
   const resetInput = () => {
     setInputMessage('');
+    setPreMediaDraft('');
     setReplyingTo(null);
     setStagedFile(null);
     // Revoke blob URLs for any files being cleared so the browser can free memory.
@@ -8335,6 +8344,7 @@ function Chat() {
   const stageFilesForPreview = (files: File[]) => {
     if (files.length === 0) return;
     const carriedCaption = inputMessage;
+    setPreMediaDraft(carriedCaption);
     setStagedFiles(files);
     setPreviewActiveIndex(0);
     setPreviewCaption(carriedCaption);
@@ -8527,7 +8537,7 @@ function Chat() {
         return (
           <FilePreviewModal>
             <FilePreviewModalHeader>
-              <FilePreviewModalClose aria-label="Close preview" onClick={() => { setShowFilePreview(false); setStagedFiles([]); setPreviewCaption(''); setPreviewActiveIndex(0); }}>
+              <FilePreviewModalClose aria-label="Close preview" onClick={closeFilePreviewAndRestoreDraft}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
               </FilePreviewModalClose>
               <FilePreviewModalFilename>{activeFile?.name}</FilePreviewModalFilename>
@@ -8560,7 +8570,7 @@ function Chat() {
                           <svg viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>
                         )}
                       </FilePreviewThumb>
-                      <FilePreviewRemoveBtn onClick={(e) => { e.stopPropagation(); setStagedFiles(prev => { const next = prev.filter((_, i) => i !== idx); if (next.length === 0) { setShowFilePreview(false); setPreviewCaption(''); setPreviewActiveIndex(0); } else if (previewActiveIndex >= next.length) { setPreviewActiveIndex(next.length - 1); } return next; }); }}>&times;</FilePreviewRemoveBtn>
+                      <FilePreviewRemoveBtn onClick={(e) => { e.stopPropagation(); setStagedFiles(prev => { const next = prev.filter((_, i) => i !== idx); if (next.length === 0) { closeFilePreviewAndRestoreDraft(); } else if (previewActiveIndex >= next.length) { setPreviewActiveIndex(next.length - 1); } return next; }); }}>&times;</FilePreviewRemoveBtn>
                     </div>
                   );
                 })}
