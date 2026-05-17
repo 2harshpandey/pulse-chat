@@ -301,6 +301,7 @@ const onlineUsers = new Map();
 const typingUsers = new Map();
 const adminClients = new Set();
 const pendingDisconnects = new Map();
+const filePickerPresenceGrace = new Map();
 
 // History/window tuning
 const INITIAL_HISTORY_BATCH_SIZE = 80;
@@ -1790,6 +1791,17 @@ wss.on('connection', (ws, req) => {
         wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(JSON.stringify(updateMsg)); });
         break;
       }
+      case 'file_picker_open': {
+        if (ws.userId) {
+          const ttlMs = Math.max(10000, Math.min(Number(parsedMessage.ttlMs) || 120000, 180000));
+          filePickerPresenceGrace.set(ws.userId, Date.now() + ttlMs);
+        }
+        break;
+      }
+      case 'file_picker_close': {
+        if (ws.userId) filePickerPresenceGrace.delete(ws.userId);
+        break;
+      }
       case 'user_logout': {
         // Explicit logout from the client — remove from loggedInUsers
         // so the admin panel's "Logged-In Sessions" list stays accurate.
@@ -1800,6 +1812,7 @@ wss.on('connection', (ws, req) => {
           loggedInUsers.delete(logoutUserId);
           onlineUsers.delete(logoutUserId);
           typingUsers.delete(logoutUserId);
+          filePickerPresenceGrace.delete(logoutUserId);
           if (pendingDisconnects.has(logoutUserId)) {
             clearTimeout(pendingDisconnects.get(logoutUserId));
             pendingDisconnects.delete(logoutUserId);
@@ -2038,12 +2051,15 @@ wss.on('connection', (ws, req) => {
   ws.on('close', () => {
     if (ws.userId && onlineUsers.has(ws.userId)) {
       const user = onlineUsers.get(ws.userId);
-      logger.info(`User '${user.username}' disconnected. Starting 10s timer.`);
+      const filePickerGraceUntil = filePickerPresenceGrace.get(ws.userId) || 0;
+      const disconnectDelayMs = filePickerGraceUntil > Date.now() ? 120000 : 10000;
+      logger.info(`User '${user.username}' disconnected. Starting ${Math.round(disconnectDelayMs / 1000)}s timer.`);
       
       const timerId = setTimeout(() => {
         logger.info(`User '${user.username}' truly left.`);
         onlineUsers.delete(ws.userId);
         typingUsers.delete(ws.userId);
+        filePickerPresenceGrace.delete(ws.userId);
 
         broadcast({
           type: 'system_notification',
@@ -2056,7 +2072,7 @@ wss.on('connection', (ws, req) => {
         broadcastToAdmins('user_left', { userId: ws.userId });
         broadcastToAdmins('activity', `User '${user.username}' disconnected.`);
         pendingDisconnects.delete(ws.userId);
-      }, 10000);
+      }, disconnectDelayMs);
 
       pendingDisconnects.set(ws.userId, timerId);
     }

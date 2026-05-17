@@ -421,6 +421,12 @@ const revokeBlobUrl = (file: File): void => {
 // --- CONSTANTS ---
 /** WhatsApp-equivalent message character limit. */
 const MAX_MESSAGE_LENGTH = 65536;
+const GIF_FETCH_LIMIT = 80;
+const getInputDraftKey = (userId: string): string => `pulseInputDraft_${userId}`;
+const isDesktopInteractionDevice = (): boolean => {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+};
 const INITIAL_HISTORY_BATCH_SIZE = 80;
 const HISTORY_PAGE_SIZE = 50;
 // Minimum ms between two consecutive startReached triggers.
@@ -5234,6 +5240,7 @@ function Chat() {
   const [gifResults, setGifResults] = useState<Gif[]>([]);
   const [gifSearchTerm, setGifSearchTerm] = useState('');
   const [isLoadingGifs, setIsLoadingGifs] = useState(false);
+  const [isDesktopInteraction, setIsDesktopInteraction] = useState(isDesktopInteractionDevice);
   const [onlineUsers, setOnlineUsers] = useState<UserProfile[]>([]);
   const [isUserListVisible, setIsUserListVisible] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
@@ -5304,6 +5311,7 @@ function Chat() {
   const messageTailSnapshotRef = useRef<{ length: number; lastId: string | null }>({ length: 0, lastId: null });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addFileInputRef = useRef<HTMLInputElement>(null);
+  const previewCaptionInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
   const [isDragging, setIsDragging] = useState(false);
   const deleteMenuRef = useRef<HTMLDivElement>(null!);
@@ -5326,6 +5334,7 @@ function Chat() {
   // Prevents sending start_typing more than once per ~3 s even on rapid keystrokes.
   const typingCooldownRef = useRef(false);
   const presenceActivityRef = useRef<'typing' | 'gif_selecting' | null>(null);
+  const isNativeFilePickerOpenRef = useRef(false);
   const resizeRafRef = useRef<number>(0);
   const lastInputHeightRef = useRef<number>(0);
   const lastInputValueLengthRef = useRef<number>(0);
@@ -5381,6 +5390,31 @@ function Chat() {
   const apiBase = (process.env.REACT_APP_API_URL || '')
     .replace(/^http:\/\//, window.location.protocol === 'https:' ? 'https://' : 'http://');
 
+  const notifyNativeFilePickerOpen = useCallback(() => {
+    isNativeFilePickerOpenRef.current = true;
+    window.setTimeout(() => {
+      isNativeFilePickerOpenRef.current = false;
+    }, 120000);
+    try {
+      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+        ws.current.send(JSON.stringify({ type: 'file_picker_open', ttlMs: 120000 }));
+      }
+    } catch (_) {
+      // Best-effort presence grace only.
+    }
+  }, []);
+
+  const markNativeFilePickerClosed = useCallback(() => {
+    isNativeFilePickerOpenRef.current = false;
+    try {
+      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+        ws.current.send(JSON.stringify({ type: 'file_picker_close' }));
+      }
+    } catch (_) {
+      // Best-effort presence cleanup only.
+    }
+  }, []);
+
   const setPresenceActivity = useCallback((nextActivity: 'typing' | 'gif_selecting' | null) => {
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
     if (presenceActivityRef.current === nextActivity) return;
@@ -5406,6 +5440,15 @@ function Chat() {
       }
       return null;
     });
+  }, []);
+
+  useEffect(() => {
+    const media = window.matchMedia?.('(hover: hover) and (pointer: fine)');
+    if (!media) return;
+    const update = () => setIsDesktopInteraction(media.matches);
+    update();
+    media.addEventListener?.('change', update);
+    return () => media.removeEventListener?.('change', update);
   }, []);
 
   useEffect(() => {
@@ -5794,7 +5837,7 @@ function Chat() {
       try {
         const q = gifSearchTerm.trim() ? encodeURIComponent(gifSearchTerm.trim()) : 'trending';
         const key = process.env.REACT_APP_TENOR_KEY || 'LIVDSRZULELA';
-        const url = `https://g.tenor.com/v1/search?q=${q}&key=${key}&limit=24`;
+        const url = `https://g.tenor.com/v1/search?q=${q}&key=${key}&limit=${GIF_FETCH_LIMIT}`;
         const res = await fetch(url);
         if (!res.ok) throw new Error('Failed to fetch GIFs');
         const data = await res.json();
@@ -5822,6 +5865,13 @@ function Chat() {
       if (timer) clearTimeout(timer);
     };
   }, [showGifPicker, gifSearchTerm]);
+
+  useEffect(() => {
+    if (showGifPicker) return;
+    setGifSearchTerm('');
+    setGifResults([]);
+    setIsLoadingGifs(false);
+  }, [showGifPicker]);
 
   // ── Mobile Visual Viewport Tracker (Keyboard Fix) ───────────────────
   // Modern mobile browsers (especially Android Chrome) dynamically change the visual viewport
@@ -5916,7 +5966,7 @@ function Chat() {
         setSelectedMessages([]);
         setIsSelectModeActive(false);
       } else if (showGifPicker) {
-        setShowGifPicker(false);
+        closeGifPicker();
       } else if (isEmojiPickerOpen) {
         closeEmojiPicker(true);
       } else if (isPlusMenuOpen) {
@@ -5996,6 +6046,9 @@ function Chat() {
       // this, a single dropped socket means no more messages until the user
       // manually refreshes — the most common symptom reported on mobile data.
       ws.current.onclose = () => {
+        if (isNativeFilePickerOpenRef.current) {
+          isNativeFilePickerOpenRef.current = false;
+        }
         if (typingTimeoutRef.current) {
           clearTimeout(typingTimeoutRef.current);
           typingTimeoutRef.current = null;
@@ -6181,7 +6234,7 @@ function Chat() {
         if (!targetEl.closest('.more-action-button')) {
           if (deleteMenuRef.current && !deleteMenuRef.current.contains(target)) setActiveDeleteMenu(null);
         }
-        if (gifPickerRef.current && !gifPickerRef.current.contains(target)) setShowGifPicker(false);
+        if (gifPickerRef.current && !gifPickerRef.current.contains(target)) closeGifPicker();
         if (plusMenuRef.current && !plusMenuRef.current.contains(target) && !plusButtonRef.current?.contains(target)) setIsPlusMenuOpen(false);
         if (emojiPickerRef.current && !emojiPickerRef.current.contains(target) && !emojiButtonRef.current?.contains(target)) {
           closeEmojiPicker(false);
@@ -6354,9 +6407,14 @@ function Chat() {
       const files = e.dataTransfer?.files;
       if (files && files.length > 0) {
         const fileArr = Array.from(files);
+        const carriedCaption = inputMessage;
         setStagedFiles(fileArr);
         setPreviewActiveIndex(0);
-        setPreviewCaption('');
+        setPreviewCaption(carriedCaption);
+        if (carriedCaption) {
+          setInputMessage('');
+          localStorage.removeItem(getInputDraftKey(userIdRef.current));
+        }
         setShowFilePreview(true);
         setStagedGif(null);
       }
@@ -6373,6 +6431,69 @@ function Chat() {
       document.removeEventListener('drop', onDrop);
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const draftKey = getInputDraftKey(userIdRef.current);
+    if (!userContext?.profile) {
+      setInputMessage('');
+      return;
+    }
+
+    try {
+      const savedDraft = localStorage.getItem(draftKey);
+      if (savedDraft) setInputMessage(savedDraft.slice(0, MAX_MESSAGE_LENGTH));
+    } catch (_) {
+      // Ignore unavailable storage.
+    }
+  }, [userContext?.profile]);
+
+  useEffect(() => {
+    if (!userContext?.profile) return;
+    try {
+      const draftKey = getInputDraftKey(userIdRef.current);
+      if (inputMessage) localStorage.setItem(draftKey, inputMessage);
+      else localStorage.removeItem(draftKey);
+    } catch (_) {
+      // Ignore unavailable storage.
+    }
+  }, [inputMessage, userContext?.profile]);
+
+  useEffect(() => {
+    if (!showFilePreview || stagedFiles.length === 0 || !isDesktopInteraction) return;
+    requestAnimationFrame(() => {
+      const input = previewCaptionInputRef.current;
+      if (!input) return;
+      input.focus();
+      const end = input.value.length;
+      input.setSelectionRange(end, end);
+    });
+  }, [isDesktopInteraction, showFilePreview, stagedFiles.length]);
+
+  useEffect(() => {
+    if (!showFilePreview || stagedFiles.length === 0 || !isDesktopInteraction) return;
+
+    const handleDesktopPreviewTyping = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.key.length !== 1) return;
+      const target = e.target as Element | null;
+      if (target instanceof HTMLElement && target.closest('input, textarea, [contenteditable="true"]')) return;
+
+      const input = previewCaptionInputRef.current;
+      if (!input) return;
+      e.preventDefault();
+      const start = input.selectionStart ?? previewCaption.length;
+      const end = input.selectionEnd ?? start;
+      const nextCaption = `${previewCaption.slice(0, start)}${e.key}${previewCaption.slice(end)}`;
+      setPreviewCaption(nextCaption);
+      requestAnimationFrame(() => {
+        input.focus();
+        const nextCaret = start + e.key.length;
+        input.setSelectionRange(nextCaret, nextCaret);
+      });
+    };
+
+    document.addEventListener('keydown', handleDesktopPreviewTyping, true);
+    return () => document.removeEventListener('keydown', handleDesktopPreviewTyping, true);
+  }, [isDesktopInteraction, previewCaption, showFilePreview, stagedFiles.length]);
 
   // ── Keyboard auto-restore when closing GIF picker ─────────────────
   useEffect(() => {
@@ -8211,15 +8332,26 @@ function Chat() {
       handleSendMessage();
     }
   };
+  const stageFilesForPreview = (files: File[]) => {
+    if (files.length === 0) return;
+    const carriedCaption = inputMessage;
+    setStagedFiles(files);
+    setPreviewActiveIndex(0);
+    setPreviewCaption(carriedCaption);
+    if (carriedCaption) {
+      setInputMessage('');
+      localStorage.removeItem(getInputDraftKey(userIdRef.current));
+      resetInputLayerHeight();
+    }
+    setShowFilePreview(true);
+    setStagedGif(null);
+  };
+
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    markNativeFilePickerClosed();
     const files = event.target.files;
     if (files && files.length > 0) {
-      const fileArr = Array.from(files);
-      setStagedFiles(fileArr);
-      setPreviewActiveIndex(0);
-      setPreviewCaption('');
-      setShowFilePreview(true);
-      setStagedGif(null);
+      stageFilesForPreview(Array.from(files));
     }
     // Reset the input so re-selecting the same file triggers onChange
     if (event.target) event.target.value = '';
@@ -8268,20 +8400,26 @@ function Chat() {
       const nextValue = `${inputMessage.slice(0, selectionStart)}${pastedText}${inputMessage.slice(selectionEnd)}`.slice(0, MAX_MESSAGE_LENGTH);
       const nextCaretPosition = Math.min(selectionStart + pastedText.length, nextValue.length);
 
+      skipNextInputLayoutSyncRef.current = true;
       setInputMessage(nextValue);
       textarea.value = nextValue;
-      requestAnimationFrame(() => textarea.setSelectionRange(nextCaretPosition, nextCaretPosition));
+      requestAnimationFrame(() => {
+        textarea.focus();
+        textarea.setSelectionRange(nextCaretPosition, nextCaretPosition);
+        textarea.scrollTop = textarea.scrollHeight;
+        if (inputOverlayRef.current) inputOverlayRef.current.scrollTop = inputOverlayRef.current.scrollHeight;
+        requestAnimationFrame(() => {
+          textarea.scrollTop = textarea.scrollHeight;
+          if (inputOverlayRef.current) inputOverlayRef.current.scrollTop = inputOverlayRef.current.scrollHeight;
+        });
+      });
       handleTyping();
       syncInputLayerLayout(textarea, nextValue, true);
       return;
     }
 
     e.preventDefault();
-    setStagedFiles(fileArr);
-    setPreviewActiveIndex(0);
-    setPreviewCaption('');
-    setShowFilePreview(true);
-    setStagedGif(null);
+    stageFilesForPreview(fileArr);
   };
 
   const handleSendFromPreview = async () => {
@@ -8345,7 +8483,20 @@ function Chat() {
     resetInput();
   };
 
-  const handleGifSelect = (gif: Gif) => { setStagedGif(gif); setStagedFile(null); setStagedFiles([]); setShowFilePreview(false); setShowGifPicker(false); };
+  const openGifPicker = () => {
+    setGifSearchTerm('');
+    setGifResults([]);
+    setShowGifPicker(true);
+  };
+
+  const closeGifPicker = () => {
+    setShowGifPicker(false);
+    setGifSearchTerm('');
+    setGifResults([]);
+    setIsLoadingGifs(false);
+  };
+
+  const handleGifSelect = (gif: Gif) => { setStagedGif(gif); setStagedFile(null); setStagedFiles([]); setShowFilePreview(false); closeGifPicker(); };
 
 
 
@@ -8413,20 +8564,21 @@ function Chat() {
                     </div>
                   );
                 })}
-                <FilePreviewAddBtn onClick={() => addFileInputRef.current?.click()}>
+                <FilePreviewAddBtn onClick={() => { notifyNativeFilePickerOpen(); addFileInputRef.current?.click(); }}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
                 </FilePreviewAddBtn>
               </FilePreviewThumbStrip>
             )}
             {stagedFiles.length === 1 && (
               <FilePreviewThumbStrip>
-                <FilePreviewAddBtn onClick={() => addFileInputRef.current?.click()}>
+                <FilePreviewAddBtn onClick={() => { notifyNativeFilePickerOpen(); addFileInputRef.current?.click(); }}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
                 </FilePreviewAddBtn>
               </FilePreviewThumbStrip>
             )}
             <FilePreviewModalFooter>
               <FilePreviewCaptionInput
+                ref={previewCaptionInputRef}
                 placeholder="Add a caption..."
                 value={previewCaption}
                 onChange={(e) => setPreviewCaption(e.target.value)}
@@ -8816,7 +8968,7 @@ function Chat() {
                               keyboardWasOpenBeforeGifRef.current = false;
                             }
                             gifPickerOpenedAtRef.current = Date.now();
-                            setShowGifPicker(true);
+                            openGifPicker();
                             setIsPlusMenuOpen(false);
                           }}
                         >
@@ -8824,6 +8976,7 @@ function Chat() {
                         </PlusMenuItem>
                         <PlusMenuItem
                           onClick={() => {
+                            notifyNativeFilePickerOpen();
                             fileInputRef.current?.click();
                             setIsPlusMenuOpen(false);
                           }}
@@ -8867,8 +9020,8 @@ function Chat() {
                       </CharacterCounter>
                     )}
                     <SendButton onMouseDown={(e) => e.preventDefault()} onClick={handleSendMessage} disabled={(!inputMessage.trim() && !stagedFile && !stagedGif && stagedFiles.length === 0)}><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></SendButton>
-                    <input type="file" ref={fileInputRef} onChange={handleFileChange} style={{ display: 'none' }} accept="image/*,video/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.txt,.html" multiple />
-                    <input type="file" ref={addFileInputRef} onChange={(e) => { if (e.target.files) { setStagedFiles(prev => [...prev, ...Array.from(e.target.files!)]); } if (e.target) e.target.value = ''; }} style={{ display: 'none' }} accept="image/*,video/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.txt,.html" multiple />
+                    <input type="file" ref={fileInputRef} onClick={notifyNativeFilePickerOpen} onChange={handleFileChange} onCancel={markNativeFilePickerClosed as any} style={{ display: 'none' }} accept="image/*,video/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.txt,.html" multiple />
+                    <input type="file" ref={addFileInputRef} onClick={notifyNativeFilePickerOpen} onChange={(e) => { markNativeFilePickerClosed(); if (e.target.files) { setStagedFiles(prev => [...prev, ...Array.from(e.target.files!)]); } if (e.target) e.target.value = ''; }} onCancel={markNativeFilePickerClosed as any} style={{ display: 'none' }} accept="image/*,video/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.txt,.html" multiple />
                   </InputContainer>
                   {/* Mobile emoji picker for typing.
                   Rendered here (inside the Footer's normal DOM flow) so the footer
@@ -8912,6 +9065,7 @@ function Chat() {
               Clear Chat
             </ClearChatButton>
             <LogoutButton onClick={() => {
+              localStorage.removeItem(getInputDraftKey(userIdRef.current));
               // Send explicit logout to server so it removes us from loggedInUsers
               if (ws.current && ws.current.readyState === WebSocket.OPEN) {
                 ws.current.send(JSON.stringify({ type: 'user_logout', userId: userIdRef.current }));
@@ -9058,7 +9212,7 @@ function Chat() {
           // synthetic click events that mobile browsers generate after a pointerdown,
           // which would otherwise close the picker immediately after it opens.
           if (Date.now() - gifPickerOpenedAtRef.current < 500) return;
-          setShowGifPicker(false);
+          closeGifPicker();
         }}>
           <GifPickerContent ref={gifPickerRef} onClick={(e) => e.stopPropagation()}>
             <GifSearchBar type="text" placeholder="Search for GIFs..." value={gifSearchTerm} onChange={(e) => setGifSearchTerm(e.target.value)} />
