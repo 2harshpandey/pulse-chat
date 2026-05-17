@@ -35,5 +35,5 @@ export const developerData: DeveloperProfile = {
     "Space-themed cinema and science-driven storytelling",
     "Performance-centric UX expectations shaped by real-time digital arenas"
   ],
-  education: "Pursuing a BA (Hons) English at Motilal Nehru College, University of Delhi—leveraging the discipline as an asset for critical thinking, structural narrative design, and precise technical communication."
+  education: "Pursuing a BA (Hons) English at Motilal Nehru College, University of Delhi; leveraging the discipline as an asset for critical thinking, structural narrative design, and precise technical communication."
 };
