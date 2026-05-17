@@ -3908,6 +3908,7 @@ const renderMessageContent = (
   const fileContainerLabel = getFileContainerLabel(msg.originalName, msg.url);
   const fileMetaLabel = [formatMediaSize(msg.size), fileContainerLabel].filter(Boolean).join(' • ');
   const canDownload = sender === 'other';
+  const isEmojiOnly = isEmojiOnlyMessage(msg.text);
   const gatePreviewUrl = shouldGateMedia
     ? sanitizeMediaUrl(getMediaGatePreviewUrl(isVideo ? 'video' : 'image', resolvedMediaUrl || msg.url))
     : '';
