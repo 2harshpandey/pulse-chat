@@ -221,6 +221,7 @@ Pulse Chat includes a dedicated administrative control plane for live moderation
 The interface is designed to feel premium, responsive, and stable under heavy interaction.
 
 - Theme toggle with persisted preference and system-theme default.
+- Contextual notification sound system providing audio cues for new messages and user joins. To prevent audio fatigue, it intelligently gates sounds to play only when the chat tab is backgrounded or the device is locked. Users can control this behavior via an animated toggle that persists their preferences locally.
 - Animated UI layers including glow, shimmer, floating orbs, and smooth transitions.
 - Adaptive mobile layouts with touch-optimized controls.
 - Keyboard-aware login experience for mobile viewport changes.
