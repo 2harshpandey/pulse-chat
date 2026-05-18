@@ -843,17 +843,17 @@ const SoundToggleButton = styled.button<{ $enabled: boolean }>`
   @media (max-width: 768px) { padding: 0.35rem 0.55rem; }
 `;
 
-const SoundToggleIcon = styled.svg<{ $enabled: boolean }>`
+const SoundToggleIcon = styled.svg<{ $enabled: boolean; $animate: boolean }>`
   width: 22px;
   height: 22px;
   flex-shrink: 0;
   .speaker-core {
-    animation: ${speakerPulse} 2.4s ease-in-out infinite;
+    animation: ${p => p.$animate ? css`${speakerPulse} 0.7s ease-in-out` : 'none'};
     transform-origin: center;
     opacity: ${p => p.$enabled ? 1 : 0.6};
   }
   .speaker-wave {
-    animation: ${speakerWave} 1.6s ease-in-out infinite;
+    animation: ${p => p.$animate ? css`${speakerWave} 0.7s ease-in-out` : 'none'};
     stroke-dasharray: 14;
     stroke-dashoffset: 0;
     opacity: ${p => p.$enabled ? 1 : 0};
@@ -5381,6 +5381,7 @@ function Chat() {
     const stored = localStorage.getItem('pulseSoundEnabled');
     return stored === null ? true : stored === 'true';
   });
+  const [isSoundToggleAnimating, setIsSoundToggleAnimating] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [isSelectModeActive, setIsSelectModeActive] = useState(false);
   const [selectedMessages, setSelectedMessages] = useState<string[]>([]);
@@ -5660,6 +5661,12 @@ function Chat() {
       // Ignore storage errors.
     }
   }, [isSoundEnabled]);
+
+  useEffect(() => {
+    if (!isSoundToggleAnimating) return;
+    const timer = window.setTimeout(() => setIsSoundToggleAnimating(false), 700);
+    return () => window.clearTimeout(timer);
+  }, [isSoundToggleAnimating]);
 
   const setPresenceActivity = useCallback((nextActivity: 'typing' | 'gif_selecting' | null) => {
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
@@ -9091,12 +9098,15 @@ function Chat() {
             <SoundToggleButton
               type="button"
               $enabled={isSoundEnabled}
-              onClick={() => setIsSoundEnabled(prev => !prev)}
+              onClick={() => {
+                setIsSoundEnabled(prev => !prev);
+                setIsSoundToggleAnimating(true);
+              }}
               aria-pressed={isSoundEnabled}
               aria-label={isSoundEnabled ? 'Disable notification sounds' : 'Enable notification sounds'}
               title={isSoundEnabled ? 'Notification sounds on' : 'Notification sounds off'}
             >
-              <SoundToggleIcon $enabled={isSoundEnabled} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+              <SoundToggleIcon $enabled={isSoundEnabled} $animate={isSoundToggleAnimating} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
                 <defs>
                   <linearGradient id="soundGradient" x1="0" y1="0" x2="1" y2="1">
                     <stop offset="0%" stopColor="#3b82f6" />
