@@ -5533,13 +5533,6 @@ function Chat() {
   const apiBase = (process.env.REACT_APP_API_URL || '')
     .replace(/^http:\/\//, window.location.protocol === 'https:' ? 'https://' : 'http://');
 
-  const isMobileOrTablet = () => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-      return window.innerWidth <= 1024;
-    }
-    return window.matchMedia('(hover: none) and (pointer: coarse)').matches;
-  };
-
   const ensureAudioContext = useCallback(async () => {
     const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioCtx) return null;
@@ -5559,10 +5552,9 @@ function Chat() {
   const shouldPlayNotificationSound = () => {
     if (typeof document === 'undefined') return false;
     if (!isSoundEnabled) return false;
-    const isMobile = isMobileOrTablet();
-    return isMobile
-      ? document.visibilityState === 'visible'
-      : document.visibilityState !== 'visible';
+    const isHidden = document.visibilityState !== 'visible';
+    if (isHidden) return true;
+    return false;
   };
 
   const playNotificationSound = useCallback(async (variant: 'join' | 'message') => {
