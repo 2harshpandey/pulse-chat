@@ -618,16 +618,16 @@ const shimmerOverlay = keyframes`
   100% { background-position: 200% 0; }
 `;
 
-const livePulse = keyframes`
-  0% { transform: scale(0.9); opacity: 0.35; }
-  50% { transform: scale(1); opacity: 0.7; }
-  100% { transform: scale(0.9); opacity: 0.35; }
+const speakerPulse = keyframes`
+  0% { transform: scale(0.92); opacity: 0.45; }
+  50% { transform: scale(1); opacity: 0.9; }
+  100% { transform: scale(0.92); opacity: 0.45; }
 `;
 
-const liveRing = keyframes`
-  0% { transform: scale(0.7); opacity: 0.0; }
-  45% { opacity: 0.45; }
-  100% { transform: scale(1.35); opacity: 0; }
+const speakerWave = keyframes`
+  0% { stroke-dashoffset: 16; opacity: 0.25; }
+  60% { opacity: 0.9; }
+  100% { stroke-dashoffset: 0; opacity: 0.25; }
 `;
 
 const sendPulse = keyframes`
@@ -823,47 +823,46 @@ const HeaderTitle = styled.h1`
     pointer-events: none;
   }
 `;
-const LiveStatusBadge = styled.div`
+const SoundToggleButton = styled.button<{ $enabled: boolean }>`
   display: inline-flex;
   align-items: center;
-  gap: 0.55rem;
-  padding: 0.4rem 0.75rem;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.65rem;
   border-radius: 999px;
   border: 1px solid var(--border-primary);
-  background: linear-gradient(135deg, rgba(59,130,246,0.12), rgba(99,102,241,0.08));
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
+  background: ${p => p.$enabled
+    ? 'linear-gradient(135deg, rgba(59,130,246,0.16), rgba(99,102,241,0.12))'
+    : 'linear-gradient(135deg, rgba(148,163,184,0.16), rgba(71,85,105,0.12))'};
   color: var(--text-secondary);
-  font-size: 0.78rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  [data-theme='dark'] & {
-    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.45);
-  }
-  @media (max-width: 768px) {
-    padding: 0.35rem 0.65rem;
-    font-size: 0.7rem;
-  }
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  &:hover { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(15, 23, 42, 0.22); }
+  &:active { transform: translateY(0); }
+  @media (max-width: 768px) { padding: 0.35rem 0.55rem; }
 `;
 
-const LiveStatusIcon = styled.svg`
+const SoundToggleIcon = styled.svg<{ $enabled: boolean }>`
   width: 22px;
   height: 22px;
   flex-shrink: 0;
-  .pulse-core {
-    animation: ${livePulse} 2.2s ease-in-out infinite;
+  .speaker-core {
+    animation: ${speakerPulse} 2.4s ease-in-out infinite;
     transform-origin: center;
+    opacity: ${p => p.$enabled ? 1 : 0.6};
   }
-  .pulse-ring {
-    animation: ${liveRing} 2.2s ease-out infinite;
-    transform-origin: center;
+  .speaker-wave {
+    animation: ${speakerWave} 1.6s ease-in-out infinite;
+    stroke-dasharray: 14;
+    stroke-dashoffset: 0;
+    opacity: ${p => p.$enabled ? 1 : 0};
+    transition: opacity 0.2s ease;
   }
-`;
-
-const LiveStatusLabel = styled.span`
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
+  .speaker-muted {
+    opacity: ${p => p.$enabled ? 0 : 1};
+    transition: opacity 0.2s ease;
+  }
 `;
 const LayoutContainer = styled.div`
   display: flex;
@@ -5378,6 +5377,10 @@ function Chat() {
   const [isDesktopInteraction, setIsDesktopInteraction] = useState(isDesktopInteractionDevice);
   const [onlineUsers, setOnlineUsers] = useState<UserProfile[]>([]);
   const [isUserListVisible, setIsUserListVisible] = useState(false);
+  const [isSoundEnabled, setIsSoundEnabled] = useState(() => {
+    const stored = localStorage.getItem('pulseSoundEnabled');
+    return stored === null ? true : stored === 'true';
+  });
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [isSelectModeActive, setIsSelectModeActive] = useState(false);
   const [selectedMessages, setSelectedMessages] = useState<string[]>([]);
@@ -5554,6 +5557,7 @@ function Chat() {
 
   const shouldPlayNotificationSound = () => {
     if (typeof document === 'undefined') return false;
+    if (!isSoundEnabled) return false;
     const isMobile = isMobileOrTablet();
     return isMobile
       ? document.visibilityState === 'visible'
@@ -5593,7 +5597,7 @@ function Chat() {
     osc2.start(baseTime + 0.01);
     osc1.stop(baseTime + 0.32);
     osc2.stop(baseTime + 0.38);
-  }, [ensureAudioContext]);
+  }, [ensureAudioContext, isSoundEnabled]);
 
   const notifyNativeFilePickerOpen = useCallback(() => {
     isNativeFilePickerOpenRef.current = true;
@@ -5648,6 +5652,14 @@ function Chat() {
       window.removeEventListener('keydown', unlockAudio);
     };
   }, [ensureAudioContext, userContext?.profile]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('pulseSoundEnabled', String(isSoundEnabled));
+    } catch {
+      // Ignore storage errors.
+    }
+  }, [isSoundEnabled]);
 
   const setPresenceActivity = useCallback((nextActivity: 'typing' | 'gif_selecting' | null) => {
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
@@ -9076,20 +9088,28 @@ function Chat() {
         <Header>
           <HeaderTitle><a href="/"><img src="/pulse_logo.webp" alt="Pulse Chat" /><span>Pulse</span> Chat</a></HeaderTitle>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <LiveStatusBadge aria-label="Live status">
-              <LiveStatusIcon viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            <SoundToggleButton
+              type="button"
+              $enabled={isSoundEnabled}
+              onClick={() => setIsSoundEnabled(prev => !prev)}
+              aria-pressed={isSoundEnabled}
+              aria-label={isSoundEnabled ? 'Disable notification sounds' : 'Enable notification sounds'}
+              title={isSoundEnabled ? 'Notification sounds on' : 'Notification sounds off'}
+            >
+              <SoundToggleIcon $enabled={isSoundEnabled} viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
                 <defs>
-                  <linearGradient id="liveGradient" x1="0" y1="0" x2="1" y2="1">
+                  <linearGradient id="soundGradient" x1="0" y1="0" x2="1" y2="1">
                     <stop offset="0%" stopColor="#3b82f6" />
                     <stop offset="100%" stopColor="#6366f1" />
                   </linearGradient>
                 </defs>
-                <circle className="pulse-ring" cx="16" cy="16" r="9" stroke="url(#liveGradient)" fill="none" />
-                <circle className="pulse-core" cx="16" cy="16" r="4.4" fill="url(#liveGradient)" />
-                <path d="M6 16h4l2-4 3 8 3-6 2 2h4" stroke="url(#liveGradient)" />
-              </LiveStatusIcon>
-              <LiveStatusLabel>Live</LiveStatusLabel>
-            </LiveStatusBadge>
+                <path className="speaker-core" d="M6 13h6l6-5v16l-6-5H6z" fill="url(#soundGradient)" stroke="url(#soundGradient)" />
+                <path className="speaker-wave" d="M22 12c2 2 2 6 0 8" stroke="url(#soundGradient)" />
+                <path className="speaker-wave" d="M25 9c3.5 3.5 3.5 10.5 0 14" stroke="url(#soundGradient)" />
+                <path className="speaker-muted" d="M21 12l7 7" stroke="url(#soundGradient)" />
+                <path className="speaker-muted" d="M28 12l-7 7" stroke="url(#soundGradient)" />
+              </SoundToggleIcon>
+            </SoundToggleButton>
             <ThemeToggleBtn onClick={toggleTheme} title={isDark ? 'Switch to light mode' : 'Switch to dark mode'} aria-label="Toggle theme">
               {isDark ? (
                 <svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" /></svg>
