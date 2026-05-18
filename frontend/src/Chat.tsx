@@ -618,6 +618,18 @@ const shimmerOverlay = keyframes`
   100% { background-position: 200% 0; }
 `;
 
+const livePulse = keyframes`
+  0% { transform: scale(0.9); opacity: 0.35; }
+  50% { transform: scale(1); opacity: 0.7; }
+  100% { transform: scale(0.9); opacity: 0.35; }
+`;
+
+const liveRing = keyframes`
+  0% { transform: scale(0.7); opacity: 0.0; }
+  45% { opacity: 0.45; }
+  100% { transform: scale(1.35); opacity: 0; }
+`;
+
 const sendPulse = keyframes`
   0%   { transform: scale(1); }
   50%  { transform: scale(0.88); }
@@ -810,6 +822,48 @@ const HeaderTitle = styled.h1`
     -webkit-user-drag: none;
     pointer-events: none;
   }
+`;
+const LiveStatusBadge = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-primary);
+  background: linear-gradient(135deg, rgba(59,130,246,0.12), rgba(99,102,241,0.08));
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  [data-theme='dark'] & {
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.45);
+  }
+  @media (max-width: 768px) {
+    padding: 0.35rem 0.65rem;
+    font-size: 0.7rem;
+  }
+`;
+
+const LiveStatusIcon = styled.svg`
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  .pulse-core {
+    animation: ${livePulse} 2.2s ease-in-out infinite;
+    transform-origin: center;
+  }
+  .pulse-ring {
+    animation: ${liveRing} 2.2s ease-out infinite;
+    transform-origin: center;
+  }
+`;
+
+const LiveStatusLabel = styled.span`
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
 `;
 const LayoutContainer = styled.div`
   display: flex;
@@ -5425,6 +5479,8 @@ function Chat() {
   const stableViewportHeightRef = useRef<number>(window.innerHeight);
   const stableViewportWidthRef = useRef<number>(window.innerWidth);
   const appliedViewportHeightRef = useRef<number>(0);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const lastNotificationSoundAtRef = useRef<number>(0);
   const fullscreenScrollSnapshotRef = useRef<{ messageId: string; scrollTop: number; bottomOffset: number } | null>(null);
   const isVideoFullscreenSessionRef = useRef(false);
   const suppressProgrammaticScrollUntilRef = useRef<number>(0);
@@ -5473,6 +5529,72 @@ function Chat() {
   const apiBase = (process.env.REACT_APP_API_URL || '')
     .replace(/^http:\/\//, window.location.protocol === 'https:' ? 'https://' : 'http://');
 
+  const isMobileOrTablet = () => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return window.innerWidth <= 1024;
+    }
+    return window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+  };
+
+  const ensureAudioContext = useCallback(async () => {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+      audioContextRef.current = new AudioCtx();
+    }
+    if (audioContextRef.current.state === 'suspended') {
+      try {
+        await audioContextRef.current.resume();
+      } catch {
+        return null;
+      }
+    }
+    return audioContextRef.current;
+  }, []);
+
+  const shouldPlayNotificationSound = () => {
+    if (typeof document === 'undefined') return false;
+    const isMobile = isMobileOrTablet();
+    return isMobile
+      ? document.visibilityState === 'visible'
+      : document.visibilityState !== 'visible';
+  };
+
+  const playNotificationSound = useCallback(async (variant: 'join' | 'message') => {
+    if (!shouldPlayNotificationSound()) return;
+    const now = Date.now();
+    if (now - lastNotificationSoundAtRef.current < 420) return;
+    lastNotificationSoundAtRef.current = now;
+
+    const ctx = await ensureAudioContext();
+    if (!ctx) return;
+
+    const baseTime = ctx.currentTime;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, baseTime);
+    gain.gain.linearRampToValueAtTime(0.16, baseTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, baseTime + 0.45);
+    gain.connect(ctx.destination);
+
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    osc1.type = 'sine';
+    osc2.type = 'triangle';
+    if (variant === 'join') {
+      osc1.frequency.setValueAtTime(660, baseTime);
+      osc2.frequency.setValueAtTime(880, baseTime + 0.02);
+    } else {
+      osc1.frequency.setValueAtTime(520, baseTime);
+      osc2.frequency.setValueAtTime(740, baseTime + 0.02);
+    }
+    osc1.connect(gain);
+    osc2.connect(gain);
+    osc1.start(baseTime);
+    osc2.start(baseTime + 0.01);
+    osc1.stop(baseTime + 0.32);
+    osc2.stop(baseTime + 0.38);
+  }, [ensureAudioContext]);
+
   const notifyNativeFilePickerOpen = useCallback(() => {
     isNativeFilePickerOpenRef.current = true;
     window.setTimeout(() => {
@@ -5510,6 +5632,22 @@ function Chat() {
       if (addInput) addInput.removeEventListener('cancel', markNativeFilePickerClosed);
     };
   }, [markNativeFilePickerClosed]);
+
+  useEffect(() => {
+    if (!userContext?.profile) return;
+
+    const unlockAudio = () => {
+      void ensureAudioContext();
+    };
+
+    window.addEventListener('pointerdown', unlockAudio, { once: true });
+    window.addEventListener('keydown', unlockAudio, { once: true });
+
+    return () => {
+      window.removeEventListener('pointerdown', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
+    };
+  }, [ensureAudioContext, userContext?.profile]);
 
   const setPresenceActivity = useCallback((nextActivity: 'typing' | 'gif_selecting' | null) => {
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
@@ -5970,10 +6108,11 @@ function Chat() {
     setIsLoadingGifs(false);
   }, [showGifPicker]);
 
-  // ── Mobile Visual Viewport Tracker (Keyboard Fix) ───────────────────
+  // ── Mobile Visual Viewport Tracker (Keyboard + URL bar Fix) ──────────
   // Modern mobile browsers (especially Android Chrome) dynamically change the visual viewport
-  // when the software keyboard shifts between Letters <-> Emojis without scaling layout bounds.
-  // This explicitly guarantees our root wrapper mathematically fits within the visible space to avoid obscuring the chat box.
+  // when the software keyboard shifts between Letters <-> Emojis or when the URL bar expands
+  // or collapses. We clamp the app height to the visible viewport to prevent the footer or
+  // last messages from rendering below the screen on initial login.
   useEffect(() => {
     const isTextInput = (el: Element | null): boolean => {
       if (!(el instanceof HTMLElement)) return false;
@@ -5981,20 +6120,30 @@ function Chat() {
     };
 
     const applyAppHeight = (nextHeight: number) => {
+      if (!Number.isFinite(nextHeight) || nextHeight <= 0) return;
       const rounded = Math.round(nextHeight);
       if (Math.abs(rounded - appliedViewportHeightRef.current) < 1) return;
       appliedViewportHeightRef.current = rounded;
       document.documentElement.style.setProperty('--app-height', `${rounded}px`);
     };
 
+    const getVisibleViewportHeight = () => {
+      const vvHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+      const layoutHeight = window.innerHeight;
+      const clamped = Math.min(layoutHeight, vvHeight);
+      return Number.isFinite(clamped) && clamped > 0 ? clamped : layoutHeight;
+    };
+
     const updateStableViewportBaseline = () => {
       stableViewportWidthRef.current = window.innerWidth;
-      stableViewportHeightRef.current = window.innerHeight;
+      stableViewportHeightRef.current = getVisibleViewportHeight();
       applyAppHeight(stableViewportHeightRef.current);
     };
 
     const handleViewportResize = () => {
       const vvHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+      const layoutHeight = window.innerHeight;
+      const visibleHeight = Math.min(layoutHeight, vvHeight);
       const widthDelta = Math.abs(window.innerWidth - stableViewportWidthRef.current);
 
       // Width changes indicate orientation/device rotation; accept a new baseline.
@@ -6008,20 +6157,26 @@ function Chat() {
 
       // Keep a stable height while scrolling (browser bars animating), but
       // still adapt immediately to keyboard-open viewport shrink.
-      const targetHeight = keyboardLikelyOpen ? vvHeight : stableViewportHeightRef.current;
+      const targetHeight = keyboardLikelyOpen
+        ? vvHeight
+        : Math.min(stableViewportHeightRef.current, visibleHeight);
       applyAppHeight(targetHeight);
     };
 
     updateStableViewportBaseline();
     handleViewportResize();
     window.visualViewport?.addEventListener('resize', handleViewportResize);
+    window.visualViewport?.addEventListener('scroll', handleViewportResize);
     window.addEventListener('resize', handleViewportResize);
     window.addEventListener('orientationchange', handleViewportResize);
+    window.addEventListener('focus', handleViewportResize);
 
     return () => {
       window.visualViewport?.removeEventListener('resize', handleViewportResize);
+      window.visualViewport?.removeEventListener('scroll', handleViewportResize);
       window.removeEventListener('resize', handleViewportResize);
       window.removeEventListener('orientationchange', handleViewportResize);
+      window.removeEventListener('focus', handleViewportResize);
     };
   }, []);
 
@@ -6275,6 +6430,15 @@ function Chat() {
           }
         } else {
           const normalized = normalizeMessage(messageData);
+          const isJoinNotification =
+            normalized.type === 'system_notification' &&
+            /has joined the chat/i.test(normalized.text || '');
+          const isIncomingMessage =
+            normalized.type !== 'system_notification' &&
+            normalized.userId !== userIdRef.current;
+          if (isJoinNotification || isIncomingMessage) {
+            void playNotificationSound(isJoinNotification ? 'join' : 'message');
+          }
           setMessages(prev => {
             // Deduplicate: system_notification messages (join/leave) can arrive
             // via broadcast while a reconnect also triggers a fresh history load.
@@ -8912,6 +9076,20 @@ function Chat() {
         <Header>
           <HeaderTitle><a href="/"><img src="/pulse_logo.webp" alt="Pulse Chat" /><span>Pulse</span> Chat</a></HeaderTitle>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <LiveStatusBadge aria-label="Live status">
+              <LiveStatusIcon viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <defs>
+                  <linearGradient id="liveGradient" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stopColor="#3b82f6" />
+                    <stop offset="100%" stopColor="#6366f1" />
+                  </linearGradient>
+                </defs>
+                <circle className="pulse-ring" cx="16" cy="16" r="9" stroke="url(#liveGradient)" fill="none" />
+                <circle className="pulse-core" cx="16" cy="16" r="4.4" fill="url(#liveGradient)" />
+                <path d="M6 16h4l2-4 3 8 3-6 2 2h4" stroke="url(#liveGradient)" />
+              </LiveStatusIcon>
+              <LiveStatusLabel>Live</LiveStatusLabel>
+            </LiveStatusBadge>
             <ThemeToggleBtn onClick={toggleTheme} title={isDark ? 'Switch to light mode' : 'Switch to dark mode'} aria-label="Toggle theme">
               {isDark ? (
                 <svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" /></svg>
@@ -9206,6 +9384,8 @@ function Chat() {
                               $hasUrl={hasUrl}
                               ref={messageInputRef}
                               rows={1}
+                              id="chat-message-input"
+                              name="chatMessage"
                               placeholder={editingMessageId ? 'Edit message...' : stagedFile || stagedGif ? 'Add a caption...' : 'Type your message...'}
                               value={inputMessage}
                               onChange={handleInputChange}
