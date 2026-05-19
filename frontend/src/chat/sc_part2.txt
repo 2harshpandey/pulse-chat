@@ -1,0 +1,90 @@
+const ScrollToBottomButton = styled.button<{ $isVisible: boolean }>`
+  position: absolute;
+  bottom: 16px;
+  right: 20px;
+  width: 44px;
+  height: 44px;
+  background-color: var(--bg-elevated);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--border-primary);
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-md);
+  touch-action: manipulation;
+  user-select: none;
+  transition: opacity 0.3s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.3s ease;
+  opacity: ${props => props.$isVisible ? 1 : 0};
+  transform: ${props => props.$isVisible ? 'scale(1)' : 'scale(0.5)'};
+  pointer-events: ${props => props.$isVisible ? 'auto' : 'none'};
+  z-index: 20;
+
+  svg {
+    width: 24px;
+    height: 24px;
+    stroke: var(--text-secondary);
+    stroke-width: 2.5;
+    animation: ${props => props.$isVisible ? scrollBtnBounce : 'none'} 2s ease-in-out infinite;
+  }
+
+  &:hover {
+    transform: scale(1.15);
+    background-color: var(--bg-hover);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+  }
+  &:active {
+    transform: scale(0.9);
+  }
+
+  @media (max-width: 768px) {
+    width: 38px;
+    height: 38px;
+    bottom: 12px;
+    right: 16px;
+    
+    svg {
+      width: 20px;
+      height: 20px;
+    }
+  }
+`;
+
+const NewMessagesBadge = styled.span<{ $isVisible: boolean }>`
+  position: absolute;
+  top: -6px;
+  right: -7px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #2563eb 0%, #06b6d4 100%);
+  color: #ffffff;
+  font-size: 0.64rem;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.74);
+  opacity: ${props => props.$isVisible ? 1 : 0};
+  transform: ${props => props.$isVisible ? 'translateY(0) scale(1)' : 'translateY(4px) scale(0.72)'};
+  transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: ${props => props.$isVisible ? newMessageBadgeGlow : 'none'} 2.2s ease-in-out infinite;
+  pointer-events: none;
+
+  [data-theme='dark'] & {
+    border-color: rgba(148, 197, 255, 0.82);
+  }
+
+  @media (max-width: 768px) {
+    top: -5px;
+    right: -5px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    font-size: 0.58rem;
+  }
+`;

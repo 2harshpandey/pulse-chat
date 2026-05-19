@@ -1,0 +1,3005 @@
+// --- STYLED COMPONENTS ---
+export const GlobalStyle = createGlobalStyle`
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body, #root { height: var(--app-height, 100dvh); width: 100%; overflow: hidden; overscroll-behavior: none; position: fixed; inset: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: var(--bg-primary); color: var(--text-primary); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; transition: background-color 0.3s ease, color 0.3s ease; }
+  * { -webkit-tap-highlight-color: transparent; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
+`;
+
+const slideIn = keyframes`
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+`;
+
+const fadeInScale = keyframes`
+  from { opacity: 0; transform: scale(0.8); }
+  to { opacity: 1; transform: scale(1); }
+`;
+
+const lightboxControlReveal = keyframes`
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.86);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+`;
+
+/* ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â Premium Reaction Animations ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â */
+const reactionBounceIn = keyframes`
+  0%   { transform: scale(0); opacity: 0; }
+  50%  { transform: scale(1.3); opacity: 1; }
+  70%  { transform: scale(0.9); }
+  85%  { transform: scale(1.06); }
+  100% { transform: scale(1); }
+`;
+
+const reactionPillPop = keyframes`
+  0%   { transform: scale(0.3) translateY(8px); opacity: 0; }
+  60%  { transform: scale(1.08) translateY(-2px); opacity: 1; }
+  80%  { transform: scale(0.97) translateY(1px); }
+  100% { transform: scale(1) translateY(0); }
+`;
+
+const staggerFadeIn = keyframes`
+  from { opacity: 0; transform: translateY(6px) scale(0.8); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+`;
+
+const mediaLoadPulse = keyframes`
+  0%, 100% { transform: scale(1); opacity: 0.92; }
+  50% { transform: scale(1.06); opacity: 1; }
+`;
+
+const emojiPopTap = keyframes`
+  0%   { transform: scale(1); }
+  40%  { transform: scale(0.75); }
+  70%  { transform: scale(1.25); }
+  100% { transform: scale(1); }
+`;
+
+const reactionPickerSlideIn = keyframes`
+  0%   { opacity: 0; transform: scale(0.8) translateY(10px); }
+  60%  { opacity: 1; transform: scale(1.03) translateY(-2px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+`;
+
+const countBump = keyframes`
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.35); color: var(--accent-blue); }
+  100% { transform: scale(1); }
+`;
+
+const quoteJumpHighlight = keyframes`
+  0% {
+    box-shadow: inset 0 0 0 0 rgba(56, 189, 248, 0);
+    background-color: rgba(56, 189, 248, 0);
+  }
+  30% {
+    box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.62);
+    background-color: rgba(56, 189, 248, 0.16);
+  }
+  100% {
+    box-shadow: inset 0 0 0 0 rgba(56, 189, 248, 0);
+    background-color: rgba(56, 189, 248, 0);
+  }
+`;
+
+/* ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â Site-Wide Premium Animations ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â */
+const subtleSlideUp = keyframes`
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+`;
+
+const inputFocusGlow = keyframes`
+  0%   { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
+  50%  { box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.12); }
+  100% { box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.08); }
+`;
+
+const modalSlideUp = keyframes`
+  0%   { opacity: 0; transform: translateY(30px) scale(0.95); }
+  60%  { opacity: 1; transform: translateY(-4px) scale(1.01); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+`;
+
+const gifItemReveal = keyframes`
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+`;
+
+const replySlideIn = keyframes`
+  from { opacity: 0; transform: translateY(8px) scaleY(0.9); }
+  to   { opacity: 1; transform: translateY(0) scaleY(1); }
+`;
+
+const selectModeSlideUp = keyframes`
+  from { opacity: 0; transform: translateY(100%); }
+  to   { opacity: 1; transform: translateY(0); }
+`;
+
+const shimmerOverlay = keyframes`
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+`;
+
+const speakerPulse = keyframes`
+  0% { transform: scale(0.92); opacity: 0.45; }
+  50% { transform: scale(1); opacity: 0.9; }
+  100% { transform: scale(0.92); opacity: 0.45; }
+`;
+
+const speakerWave = keyframes`
+  0% { stroke-dashoffset: 16; opacity: 0.25; }
+  60% { opacity: 0.9; }
+  100% { stroke-dashoffset: 0; opacity: 0.25; }
+`;
+
+const sendPulse = keyframes`
+  0%   { transform: scale(1); }
+  50%  { transform: scale(0.88); }
+  100% { transform: scale(1); }
+`;
+
+const systemMsgFade = keyframes`
+  from { opacity: 0; transform: scale(0.9); }
+  to   { opacity: 1; transform: scale(1); }
+`;
+
+const filePreviewEnter = keyframes`
+  from { opacity: 0; backdrop-filter: blur(0px); }
+  to   { opacity: 1; backdrop-filter: blur(24px); }
+`;
+
+const sidebarItemSlide = keyframes`
+  from { opacity: 0; transform: translateX(-10px); }
+  to   { opacity: 1; transform: translateX(0); }
+`;
+
+const scrollBtnBounce = keyframes`
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-3px); }
+`;
+
+const newMessageBadgeGlow = keyframes`
+  0%, 100% { box-shadow: 0 3px 10px rgba(37, 99, 235, 0.35); }
+  50%      { box-shadow: 0 5px 14px rgba(14, 165, 233, 0.48); }
+`;
+
+const EmojiPickerWrapper = styled.div`
+  animation: ${fadeInScale} 0.2s ease-out forwards;
+`;
+
+/** WhatsApp-style bottom panel for emoji pickers on mobile.
+ *  Sits exactly where the keyboard would be, below the footer. */
+const MobileEmojiPanel = styled.div`
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border-primary);
+  display: flex;
+  flex-direction: column;
+  max-height: 45vh;
+  animation: ${slideIn} 0.2s ease-out forwards;
+  .epr-main {
+    width: 100% !important;
+    border: none !important;
+    border-radius: 0 !important;
+  }
+`;
+
+const pulseBorderAnim = keyframes`
+  0%, 100% { border-color: rgba(99, 179, 237, 0.5); box-shadow: 0 0 0 0 rgba(99, 179, 237, 0); }
+  50% { border-color: rgba(147, 210, 255, 0.95); box-shadow: 0 0 28px 6px rgba(99, 179, 237, 0.18); }
+`;
+
+const floatAnim = keyframes`
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+`;
+
+const DragDropOverlay = styled.div<{ $isVisible: boolean }>`
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: ${props => props.$isVisible ? 'all' : 'none'};
+  opacity: ${props => props.$isVisible ? 1 : 0};
+  transition: opacity 0.2s ease;
+  background: rgba(10, 18, 35, 0.78);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+`;
+
+const DragDropCard = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 48px 72px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 2.5px dashed rgba(99, 179, 237, 0.55);
+  border-radius: 28px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  animation: ${pulseBorderAnim} 2s ease-in-out infinite;
+  @media (max-width: 768px) {
+    padding: 36px 44px;
+    gap: 14px;
+  }
+`;
+
+const DragDropIconWrapper = styled.div`
+  color: rgba(147, 210, 255, 0.92);
+  animation: ${floatAnim} 3s ease-in-out infinite;
+  filter: drop-shadow(0 4px 16px rgba(99, 179, 237, 0.4));
+`;
+
+const DragDropTitle = styled.p`
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.97);
+  letter-spacing: -0.015em;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  @media (max-width: 768px) { font-size: 1.25rem; }
+`;
+
+const DragDropSubtitle = styled.p`
+  font-size: 0.92rem;
+  color: rgba(255, 255, 255, 0.52);
+  letter-spacing: 0.02em;
+  @media (max-width: 768px) { font-size: 0.82rem; }
+`;
+
+const AppContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  height: var(--app-height, 100dvh);
+`;
+const Header = styled.header`
+  background-color: var(--bg-header);
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-primary);
+  box-shadow: var(--shadow-sm);
+  flex-shrink: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+  animation: ${subtleSlideUp} 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent-blue), transparent);
+    opacity: 0.4;
+    animation: ${shimmerOverlay} 3s ease-in-out infinite;
+  }
+
+  @media (max-width: 768px) {
+    padding: 0.5rem 1rem;
+  }
+`;
+const HeaderTitle = styled.h1`
+  font-size: 1.25rem;
+  font-weight: bold;
+  color: var(--text-heading);
+  text-align: center;
+  flex-grow: 1;
+  transition: color 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  a {
+    color: inherit;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: color 0.2s ease;
+  }
+  a:hover {
+    color: var(--accent-blue);
+  }
+  span {
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-indigo));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  img {
+    height: 44px;
+    width: auto;
+    object-fit: contain;
+    user-select: none;
+    -webkit-user-drag: none;
+    pointer-events: none;
+  }
+`;
+const SoundToggleButton = styled.button<{ $enabled: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-primary);
+  background: ${p => p.$enabled
+    ? 'linear-gradient(135deg, rgba(59,130,246,0.16), rgba(99,102,241,0.12))'
+    : 'linear-gradient(135deg, rgba(148,163,184,0.16), rgba(71,85,105,0.12))'};
+  color: var(--text-secondary);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  &:hover { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(15, 23, 42, 0.22); }
+  &:active { transform: translateY(0); }
+  @media (max-width: 768px) { padding: 0.35rem 0.55rem; }
+`;
+
+const SoundToggleIcon = styled.svg<{ $enabled: boolean; $animate: boolean }>`
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  .speaker-core {
+    animation: ${p => p.$animate ? css`${speakerPulse} 0.7s ease-in-out` : 'none'};
+    transform-origin: center;
+    opacity: ${p => p.$enabled ? 1 : 0.6};
+  }
+  .speaker-wave {
+    animation: ${p => p.$animate ? css`${speakerWave} 0.7s ease-in-out` : 'none'};
+    stroke-dasharray: 14;
+    stroke-dashoffset: 0;
+    opacity: ${p => p.$enabled ? 1 : 0};
+    transition: opacity 0.2s ease;
+  }
+  .speaker-muted {
+    opacity: ${p => p.$enabled ? 0 : 1};
+    transition: opacity 0.2s ease;
+  }
+`;
+const LayoutContainer = styled.div`
+  display: flex;
+  flex-grow: 1;
+  overflow: hidden;
+`;
+const ChatWindow = styled.main`
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: ${slideIn} 0.5s ease-out forwards;
+  -webkit-overflow-scrolling: touch; /* Enable momentum scrolling on iOS */
+  touch-action: pan-y; /* Allow vertical panning */
+`;
+const MessagesContainer = styled.div<{ $isScrollButtonVisible?: boolean; $isMobileView?: boolean; }>`
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow: hidden;
+  padding: 0 1rem;
+  padding-right: ${props => !props.$isMobileView && props.$isScrollButtonVisible ? '64px' : '1rem'};
+  transition: none;
+  /* Virtuoso items need gap via item wrapper since Virtuoso manages its own scroll */
+  & [data-virtuoso-scroller] {
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    overflow-anchor: none;
+  }
+  & [data-test-id="virtuoso-item-list"] {
+    overflow-anchor: none;
+  }
+  & [data-test-id="virtuoso-item-list"] > div {
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+`;
+
+/* Wraps MessagesContainer + ScrollToBottomButton so the button is anchored
+   to the bottom of the messages area ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â automatically above whatever the footer contains */
+const MessagesAndScrollWrapper = styled.div`
+  flex: 1;
+  position: relative;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  overflow-anchor: none;
+`;
+
+const MessageRow = styled.div<{ $sender: string; $isSelected?: boolean; $isActiveDeleteMenu?: boolean; $isGrouped?: boolean; }>`
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  position: relative;
+  background-color: ${props => props.$isSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent'};
+  border-radius: 8px;
+  /* Keep row paint deterministic while Virtuoso recycles DOM nodes.
+     Animated row-level transitions can look like shaking during fast scroll. */
+  transition: none;
+  user-select: none;
+  touch-action: pan-y; /* Allow vertical scrolling, while manually handling horizontal drag */
+  z-index: ${props => props.$isActiveDeleteMenu ? 40 : 'auto'};
+  /* Fixed padding prevents layout thrashing during scroll when Virtuoso recycles rows.
+     The variable padding-top based on grouping was causing 4px shifts as rows were recycled,
+     creating visible jitter during mobile scroll. Use consistent spacing instead. */
+  padding-top: 3px;
+  padding-bottom: 1px;
+
+  &, & * {
+    transition: none !important;
+    animation: none !important;
+  }
+
+  &.quote-jump-highlight {
+    animation: ${quoteJumpHighlight} 1.25s ease-out !important;
+  }
+`;
+const Username = styled.div<{ $sender: 'me' | 'other' }>`
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+  border-radius: 10px;
+  margin-bottom: 4px;
+  display: inline-block;
+  background-color: ${props => props.$sender === 'me' ? '#DBEAFE' : '#F1F5F9'};
+  color: ${props => props.$sender === 'me' ? '#1E40AF' : '#475569'};
+  text-shadow: none;
+  transition: none;
+
+  [data-theme='dark'] & {
+    background-color: ${props => props.$sender === 'me' ? 'rgba(59,130,246,0.2)' : 'var(--bg-hover)'};
+    color: ${props => props.$sender === 'me' ? '#93c5fd' : 'var(--text-secondary)'};
+  }
+`;
+const MobileReactionPicker = styled.div<{ $sender: 'me' | 'other' }>`
+  position: absolute;
+  top: -44px;
+  z-index: 30;
+  background: var(--bg-elevated);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 24px;
+  padding: 5px 10px;
+  display: flex;
+  gap: 2px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.08);
+  border: 1px solid var(--border-primary);
+  animation: ${reactionPickerSlideIn} 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+
+  [data-theme='dark'] & {
+    background: rgba(30, 41, 59, 0.92);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.2);
+  }
+
+  ${props => props.$sender === 'me'
+    ? `right: 10px;`
+    : `left: 10px;`
+  }
+
+  /* Stagger each emoji child */
+  & > button {
+    animation: ${staggerFadeIn} 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+  & > button:nth-child(1) { animation-delay: 0.03s; }
+  & > button:nth-child(2) { animation-delay: 0.06s; }
+  & > button:nth-child(3) { animation-delay: 0.09s; }
+  & > button:nth-child(4) { animation-delay: 0.12s; }
+  & > button:nth-child(5) { animation-delay: 0.15s; }
+  & > button:nth-child(6) { animation-delay: 0.18s; }
+  & > button:nth-child(7) { animation-delay: 0.21s; }
+  & > button:nth-child(8) { animation-delay: 0.24s; }
+`;
+const MessageBubble = styled.div<{ $sender: string; $messageType: string; $isUploading?: boolean; $uploadError?: boolean; }>`
+  position: relative;
+  max-width: ${props => props.$messageType === 'text' ? '62%' : 'min(84vw, 356px)'};
+    padding: ${props => props.$messageType === 'text' ? '0.24rem 0.48rem 0.12rem' : '0.28rem 0.34rem'};
+  border-radius: 0.82rem;
+  background-color: ${props => props.$sender === 'me' ? '#3B82F6' : 'var(--bg-message-other)'};
+  color: ${props => props.$sender === 'me' ? 'white' : 'var(--text-primary)'};
+  box-shadow: ${props => props.$sender === 'me' ? '0 0.5px 1px rgba(0,0,0,0.07)' : '0 0.5px 1px rgba(0,0,0,0.05)'};
+  cursor: pointer;
+  min-width: ${props => props.$messageType === 'text' ? '4.5rem' : '0'};
+  opacity: ${props => props.$isUploading ? 0.5 : 1};
+    /* Keep message geometry and paint stable while virtualized rows are recycled.
+      Animated transitions here can look like shaking/blinking during fast scroll. */
+    transition: none;
+  border: ${props => props.$uploadError ? '1px solid #ef4444' : (props.$sender === 'me' ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(15,23,42,0.08)')};
+  will-change: auto;
+  align-self: ${props => props.$sender === 'me' ? 'flex-end' : 'flex-start'};
+
+  @media (max-width: 768px) {
+    max-width: ${props => props.$messageType === 'text' ? '68%' : 'min(76vw, 272px)'};
+  }
+
+  @media (max-width: 420px) {
+    max-width: ${props => props.$messageType === 'text' ? '72%' : 'min(72vw, 248px)'};
+  }
+
+  [data-theme='dark'] & {
+    border-color: ${props => props.$uploadError ? '#ef4444' : (props.$sender === 'me' ? 'rgba(255,255,255,0.12)' : 'rgba(148,163,184,0.14)')};
+  }
+`;
+
+/* ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â Premium Edit Context Banner (shown above the main composer) ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â */
+const editSlideIn = keyframes`
+  from { opacity: 0; transform: translateY(6px) scaleY(0.92); }
+  to   { opacity: 1; transform: translateY(0) scaleY(1); }
+`;
+
+const EditPreviewContainer = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 1rem;
+  background: linear-gradient(
+    135deg,
+    rgba(99, 102, 241, 0.08) 0%,
+    rgba(59, 130, 246, 0.06) 100%
+  );
+  border-top: 1px solid rgba(99, 102, 241, 0.22);
+  border-bottom: 1px solid rgba(99, 102, 241, 0.12);
+  animation: ${editSlideIn} 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: linear-gradient(180deg, #6366f1, #3b82f6);
+    border-radius: 0 2px 2px 0;
+  }
+
+  [data-theme='dark'] & {
+    background: linear-gradient(
+      135deg,
+      rgba(99, 102, 241, 0.13) 0%,
+      rgba(59, 130, 246, 0.09) 100%
+    );
+    border-top-color: rgba(99, 102, 241, 0.3);
+    border-bottom-color: rgba(99, 102, 241, 0.18);
+  }
+`;
+
+const EditPreviewIcon = styled.div`
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.18), rgba(59, 130, 246, 0.14));
+  border: 1px solid rgba(99, 102, 241, 0.28);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #6366f1;
+
+  [data-theme='dark'] & {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(59, 130, 246, 0.2));
+    border-color: rgba(99, 102, 241, 0.4);
+    color: #818cf8;
+  }
+
+  svg {
+    width: 15px;
+    height: 15px;
+  }
+`;
+
+const EditPreviewText = styled.div`
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+
+  p {
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #6366f1;
+    margin: 0 0 2px;
+
+    [data-theme='dark'] & {
+      color: #818cf8;
+    }
+  }
+
+  span {
+    font-size: 0.88rem;
+    color: var(--text-secondary);
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0.85;
+  }
+`;
+
+const EditPreviewDismiss = styled.button`
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(99, 102, 241, 0.1);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: 1.1rem;
+  line-height: 1;
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  &:hover {
+    background: rgba(239, 68, 68, 0.12);
+    color: #ef4444;
+    transform: scale(1.12) rotate(90deg);
+  }
+
+  &:active {
+    transform: scale(0.9);
+  }
+
+  [data-theme='dark'] & {
+    background: rgba(99, 102, 241, 0.15);
+    &:hover {
+      background: rgba(239, 68, 68, 0.18);
+    }
+  }
+`;
+const FooterContainer = styled.div<{ $sender: 'me' | 'other' }>`
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  margin-top: 0;
+
+  ${props => props.$sender === 'me'
+    ? `
+      justify-content: flex-end;
+      padding-right: 2px;
+    `
+    : `
+      justify-content: flex-start;
+      padding-left: 2px;
+    `
+  }
+`;
+
+const Timestamp = styled.div<{ $sender: string }>`
+  font-size: 0.72rem;
+  margin-top: 0;
+  text-align: right;
+  white-space: nowrap;
+  color: ${props => props.$sender === 'me' ? '#bfdbfe' : 'var(--text-muted)'};
+  user-select: none;
+  transition: none;
+`;
+const Footer = styled.footer`
+  background-color: var(--bg-header);
+  border-top: 1px solid var(--border-primary);
+  flex-shrink: 0;
+  z-index: 10;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+  animation: ${subtleSlideUp} 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+`;
+const InputContainer = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  transition: all 0.3s ease;
+`;
+
+const PlusMenuButton = styled.button<{ $isOpen?: boolean }>`
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  svg {
+    width: 22px;
+    height: 22px;
+    stroke: currentColor;
+    stroke-width: 2;
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transform: ${props => props.$isOpen ? 'rotate(45deg)' : 'rotate(0deg)'};
+  }
+  &:hover:not(:disabled) {
+    background: var(--border-primary);
+    transform: scale(1.1);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  }
+  &:active:not(:disabled) {
+    transform: scale(0.92);
+  }
+`;
+
+const plusMenuSlideIn = keyframes`
+  from { opacity: 0; transform: translateY(8px) scale(0.92); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+`;
+
+const PlusMenu = styled.div<{ $isVisible: boolean }>`
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 6px;
+  background: var(--bg-elevated);
+  border-radius: 14px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05);
+  border: 1px solid var(--border-primary);
+  overflow: hidden;
+  display: ${props => props.$isVisible ? 'flex' : 'none'};
+  flex-direction: column;
+  min-width: 150px;
+  animation: ${plusMenuSlideIn} 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  z-index: 20;
+  transition: background-color 0.3s ease;
+
+  [data-theme='dark'] & {
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06);
+  }
+`;
+
+const PlusMenuItem = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 16px;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  text-align: left;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  &:hover { background: var(--bg-hover); padding-left: 20px; }
+  &:active { background: var(--border-primary); }
+  svg { width: 18px; height: 18px; flex-shrink: 0; stroke: var(--text-secondary); transition: transform 0.2s ease, stroke 0.2s ease; }
+  &:hover svg { transform: scale(1.1); stroke: var(--accent-blue); }
+`;
+
+const MessageInput = styled.textarea<{ $hasUrl?: boolean }>`
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--border-secondary);
+  border-radius: 0.75rem;
+  transition: all 0.2s;
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 24px;
+  letter-spacing: inherit;
+  font-weight: inherit;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  box-sizing: border-box;
+  resize: none;
+  max-height: 120px;
+  overflow-y: hidden;
+  scrollbar-gutter: stable;
+  touch-action: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+  background: ${p => p.$hasUrl ? 'transparent' : 'var(--bg-input)'};
+  color: ${p => p.$hasUrl ? 'transparent' : 'var(--text-primary)'};
+  caret-color: var(--text-primary);
+  position: relative;
+  z-index: 1;
+  &::selection {
+    color: ${p => p.$hasUrl ? 'transparent' : 'var(--text-primary)'} !important;
+    background: rgba(50, 150, 255, 0.4);
+  }
+  &:focus { 
+    outline: none; 
+    border-color: #3B82F6; 
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    animation: ${inputFocusGlow} 0.6s ease-out forwards;
+  }
+  &::placeholder { color: ${p => p.$hasUrl ? 'transparent' : 'var(--text-muted)'}; transition: color 0.3s ease; }
+  &::-webkit-scrollbar { width: 8px; }
+  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
+  &::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
+`;
+const InputTextWrapper = styled.div`
+  position: relative;
+  flex: 1;
+  min-width: 0;
+`;
+const InputHighlightOverlay = styled.div`
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  right: 1px;
+  bottom: 1px;
+  padding: 0.75rem;
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 24px;
+  letter-spacing: inherit;
+  font-weight: inherit;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  box-sizing: border-box;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  color: var(--text-primary);
+  border-radius: calc(0.75rem - 1px);
+  background: var(--bg-input);
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  max-height: 120px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  z-index: 0;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  &::-webkit-scrollbar { width: 8px; }
+  &::-webkit-scrollbar-track { background: transparent; }
+  &::-webkit-scrollbar-thumb { background: transparent; }
+`;
+const CharacterCounter = styled.span<{ $warning: boolean }>`
+  position: absolute;
+  bottom: 4px;
+  right: 52px;
+  font-size: 0.7rem;
+  color: ${props => props.$warning ? '#dc2626' : '#94a3b8'};
+  pointer-events: none;
+  user-select: none;
+  line-height: 1;
+`;
+const SendButton = styled.button`
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  background-color: #3B82F6;
+  color: white;
+  font-weight: 500;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  display: flex; align-items: center; justify-content: center;
+  &:hover:not(:disabled) { 
+    background-color: #2563EB; 
+    transform: scale(1.12);
+    box-shadow: 0 4px 20px rgba(59, 130, 246, 0.35), 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+  &:active:not(:disabled) {
+    animation: ${sendPulse} 0.25s ease-out;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
+  }
+  &:disabled { 
+    background-color: #9ca3af; 
+    cursor: not-allowed; 
+    transform: scale(1);
+    box-shadow: none;
+    opacity: 0.6;
+  }
+`;
+
+const FileAttachmentCard = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(0,0,0,0.07);
+  border-radius: 10px;
+  border: 1px solid rgba(0,0,0,0.1);
+  color: inherit;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  max-width: 280px;
+  animation: ${subtleSlideUp} 0.3s ease-out forwards;
+  &:hover { 
+    background: rgba(0,0,0,0.13); 
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  }
+  &:active { transform: scale(0.98); }
+  svg { flex-shrink: 0; transition: transform 0.2s ease; }
+  &:hover svg { transform: scale(1.05); }
+`;
+
+const FileAttachmentMeta = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+`;
+
+const FileAttachmentName = styled.span`
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.2;
+  word-break: break-all;
+  opacity: 0.9;
+`;
+
+const FileAttachmentDetails = styled.span`
+  font-size: 0.69rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  opacity: 0.72;
+  text-transform: uppercase;
+`;
+
+const MediaContent = styled.div`
+  user-select: none;
+  p { margin-bottom: 0.5rem; }
+  p + div, p + img, p + video { margin-top: 0.5rem; }
+`;
+
+const mediaFrameStyles = css`
+  position: relative;
+  display: block;
+  width: clamp(208px, 58vw, 320px);
+  max-width: 100%;
+  flex: 0 0 auto;
+  aspect-ratio: 1 / 1;
+  border-radius: 0.75rem;
+  overflow: hidden;
+
+  @media (max-width: 768px) {
+    width: clamp(192px, 70vw, 260px);
+  }
+
+  @media (max-width: 420px) {
+    width: clamp(176px, 72vw, 236px);
+  }
+`;
+
+/* Absolutely-positioned download button that appears over images and videos */
+const MediaDownloadOverlayBtn = styled.button`
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.52);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.18s, background 0.15s;
+  z-index: 4;
+  svg { width: 15px; height: 15px; }
+  &:hover { background: rgba(0, 0, 0, 0.72); }
+  &:disabled { cursor: default; opacity: 1; }
+  @media (max-width: 768px) { opacity: 1; width: 32px; height: 32px; }
+`;
+
+/* Uniform frame wrapper for media objects to prevent scroll glitches during lazy load */
+const MediaImageWrapper = styled.div`
+  ${mediaFrameStyles}
+  background-color: var(--bg-hover);
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    cursor: pointer;
+    border-radius: 0.75rem;
+  }
+  
+  &:hover ${MediaDownloadOverlayBtn} { opacity: 1; }
+`;
+
+/* Wrapper div for video player + top-left download overlay.
+   Using a real CSS hover so the button appears on desktop hover,
+   and is always visible on touch devices (mobile). */
+const MediaVideoWrapperDiv = styled.div`
+  position: relative;
+  display: inline-block;
+
+  &:hover ${MediaDownloadOverlayBtn} { opacity: 1; }
+`;
+
+const MediaLoadGate = styled.button<{ $isLoading: boolean }>`
+  position: absolute;
+  inset: 0;
+  border: none;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  color: #f8fafc;
+  background: transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  overflow: hidden;
+  isolation: isolate;
+  z-index: 2;
+  transition: transform 0.18s ease, filter 0.18s ease;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: ${p => p.$isLoading
+    ? 'radial-gradient(circle at 24% 20%, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 48%), linear-gradient(162deg, rgba(2, 6, 23, 0.38), rgba(15, 23, 42, 0.22))'
+    : 'radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 45%), linear-gradient(160deg, rgba(15, 23, 42, 0.82), rgba(30, 41, 59, 0.74))'};
+    transition: background 0.22s ease;
+  }
+
+  & > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  &:hover {
+    transform: scale(1.012);
+    filter: brightness(${p => p.$isLoading ? 1.04 : 1.08});
+  }
+
+  &:active {
+    transform: scale(0.985);
+  }
+`;
+
+const MediaLoadIcon = styled.span`
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.4);
+  animation: ${mediaLoadPulse} 1.75s ease-in-out infinite;
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+
+  @media (max-width: 768px) {
+    width: 40px;
+    height: 40px;
+  }
+`;
+
+const MediaLoadLabel = styled.span`
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  opacity: 0.95;
+  text-align: center;
+  padding: 0 0.35rem;
+`;
+
+const MediaLoadPreview = styled.img<{ $isLoading: boolean }>`
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  border-radius: 0.75rem;
+  pointer-events: none;
+  user-select: none;
+  opacity: ${p => p.$isLoading ? 0.92 : 0.66};
+  transform: scale(${p => p.$isLoading ? 1.02 : 1});
+  filter: ${p => p.$isLoading ? 'saturate(1.08) contrast(1.03)' : 'saturate(0.92) brightness(0.74)'};
+  transition: opacity 0.24s ease, transform 0.24s ease, filter 0.24s ease;
+  z-index: 1;
+`;
+
+const MediaSizeBadge = styled.span`
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  z-index: 4;
+  pointer-events: none;
+  padding: 0.22rem 0.52rem;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: rgba(248, 250, 252, 0.95);
+  background: rgba(15, 23, 42, 0.58);
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  box-shadow: 0 6px 18px rgba(2, 6, 23, 0.25);
+
+  @media (max-width: 768px) {
+    font-size: 0.62rem;
+    padding: 0.2rem 0.48rem;
+  }
+`;
+
+/* Small inline download button for videos and file cards */
+const InlineDownloadBtn = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  padding: 4px 10px;
+  background: rgba(0,0,0,0.06);
+  border: 1px solid rgba(0,0,0,0.09);
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: inherit;
+  opacity: 0.7;
+  transition: opacity 0.15s, background 0.15s;
+  &:hover { opacity: 1; background: rgba(0,0,0,0.12); }
+  svg { width: 13px; height: 13px; flex-shrink: 0; }
+`;
+
+/* ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â WhatsApp-style File Preview Modal ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â */
+const FilePreviewModal = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  background: #1b2430;
+  color: white;
+  animation: ${filePreviewEnter} 0.3s ease-out forwards;
+`;
+const FilePreviewModalHeader = styled.div`
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  gap: 12px;
+  background: rgba(0,0,0,0.25);
+  flex-shrink: 0;
+`;
+const FilePreviewModalClose = styled.button`
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  &:hover { background: rgba(255,255,255,0.1); transform: scale(1.1) rotate(90deg); }
+  &:active { transform: scale(0.9); }
+  svg { width: 22px; height: 22px; }
+`;
+const FilePreviewModalFilename = styled.div`
+  flex: 1;
+  min-width: 0;
+  font-size: 0.92rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0.85;
+`;
+const FilePreviewModalBody = styled.div`
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  padding: 20px;
+  min-height: 0;
+  animation: ${fadeInScale} 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
+`;
+const FilePreviewModalFooter = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: rgba(0,0,0,0.25);
+  flex-shrink: 0;
+`;
+const FilePreviewThumbStrip = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(0,0,0,0.18);
+  flex-shrink: 0;
+  overflow-x: auto;
+  &::-webkit-scrollbar { height: 4px; }
+  &::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.25); border-radius: 2px; }
+`;
+const FilePreviewThumb = styled.button<{ $active?: boolean }>`
+  width: 52px;
+  height: 52px;
+  min-width: 52px;
+  border-radius: 8px;
+  border: 2.5px solid ${p => p.$active ? '#3b82f6' : 'transparent'};
+  overflow: hidden;
+  cursor: pointer;
+  background: #2a3544;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  flex-shrink: 0;
+  &:hover { transform: scale(1.08); border-color: ${p => p.$active ? '#3b82f6' : 'rgba(255,255,255,0.2)'}; }
+  img, video { width: 100%; height: 100%; object-fit: cover; }
+  svg { width: 24px; height: 24px; stroke: rgba(255,255,255,0.55); }
+`;
+const FilePreviewAddBtn = styled.button`
+  width: 52px;
+  height: 52px;
+  min-width: 52px;
+  border-radius: 8px;
+  border: 2px dashed rgba(255,255,255,0.3);
+  background: transparent;
+  color: rgba(255,255,255,0.5);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  &:hover { border-color: rgba(255,255,255,0.55); color: rgba(255,255,255,0.8); transform: scale(1.08); }
+  &:active { transform: scale(0.95); }
+  svg { width: 24px; height: 24px; }
+`;
+const FilePreviewRemoveBtn = styled.button`
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ef4444;
+  border: 2px solid #1b2430;
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  line-height: 1;
+`;
+const FilePreviewCaptionInput = styled.input`
+  flex: 1;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 20px;
+  padding: 10px 16px;
+  color: white;
+  font-size: 0.92rem;
+  outline: none;
+  transition: all 0.3s ease;
+  &::placeholder { color: rgba(255,255,255,0.4); }
+  &:focus { border-color: rgba(59, 130, 246, 0.6); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); }
+`;
+const FilePreviewSendBtn = styled.button`
+  width: 46px;
+  height: 46px;
+  min-width: 46px;
+  border-radius: 50%;
+  border: none;
+  background: #3b82f6;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  &:hover { background: #2563eb; transform: scale(1.1); box-shadow: 0 4px 16px rgba(59, 130, 246, 0.35); }
+  &:active { transform: scale(0.92); }
+  &:disabled { opacity: 0.5; cursor: default; transform: none; }
+  svg { width: 22px; height: 22px; }
+`;
+const FilePreviewNoPreview = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 40px;
+  background: rgba(0,0,0,0.2);
+  border-radius: 16px;
+  svg { width: 72px; height: 72px; stroke: rgba(255,255,255,0.35); stroke-width: 1.2; }
+  p { font-size: 1rem; opacity: 0.6; }
+  span { font-size: 0.82rem; opacity: 0.4; text-transform: uppercase; }
+`;
+
+const ConfirmationButton = styled.button`
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  
+  &.delete {
+    background-color: #EF4444;
+    color: white;
+    &:hover { background-color: #DC2626; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3); }
+    &:active { transform: scale(0.96); }
+  }
+
+  &.cancel {
+    background-color: #e2e8f0;
+    color: #4a5568;
+    &:hover { background-color: #cbd5e0; transform: translateY(-1px); }
+    &:active { transform: scale(0.96); }
+  }
+`;
+
+
+
+
+
+const ReactionsContainer = styled.div<{ $sender: 'me' | 'other' }>`
+  position: absolute;
+  bottom: -16px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 20px;
+  padding: 3px 8px 3px 6px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.04);
+  cursor: pointer;
+  animation: ${reactionPillPop} 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+
+  &:hover {
+    transform: scale(1.08);
+    box-shadow: 0 4px 18px rgba(0,0,0,0.14), 0 0 0 1px rgba(59, 130, 246, 0.15);
+  }
+  &:active {
+    transform: scale(0.96);
+  }
+
+  [data-theme='dark'] & {
+    background: rgba(30, 41, 59, 0.85);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.06);
+    &:hover {
+      box-shadow: 0 4px 18px rgba(0,0,0,0.4), 0 0 0 1px rgba(96, 165, 250, 0.2);
+    }
+  }
+
+  ${props => props.$sender === 'me'
+    ? `left: -10px;`
+    : `right: -10px;`
+  }
+`;
+const Lightbox = styled.div`
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+  animation: ${fadeInScale} 0.22s ease-out forwards;
+`;
+const LightboxCloseButton = styled.button`
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 14px);
+  left: calc(env(safe-area-inset-left, 0px) + 14px);
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  border-radius: 999px;
+  background: linear-gradient(145deg, rgba(15, 23, 42, 0.92), rgba(30, 41, 59, 0.76));
+  color: #f8fafc;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 1002;
+  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.5), 0 0 0 1px rgba(148, 163, 184, 0.2);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  animation: ${lightboxControlReveal} 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+
+  &:hover {
+    transform: translateY(-1px) scale(1.04);
+    box-shadow: 0 14px 28px rgba(2, 6, 23, 0.58), 0 0 0 1px rgba(186, 230, 253, 0.34);
+    background: linear-gradient(145deg, rgba(30, 41, 59, 0.95), rgba(51, 65, 85, 0.82));
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+
+  svg {
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  @media (max-width: 768px) {
+    width: 40px;
+    height: 40px;
+    top: calc(env(safe-area-inset-top, 0px) + 10px);
+    left: calc(env(safe-area-inset-left, 0px) + 10px);
+  }
+`;
+const LightboxFrame = styled.div`
+  position: relative;
+  width: min(92vw, 1280px);
+  height: min(90vh, 920px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(15, 23, 42, 0.44);
+  box-shadow: 0 28px 90px rgba(2, 6, 23, 0.6);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+
+  @media (max-width: 768px) {
+    width: 100%;
+    height: 100%;
+    border-radius: 12px;
+  }
+`;
+const LightboxImage = styled.img<{ $isZoomed: boolean; $isInteracting: boolean }>`
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transform-origin: center center;
+  will-change: transform;
+  transition: ${props => props.$isInteracting ? 'none' : 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)'};
+  cursor: ${props => props.$isInteracting && props.$isZoomed ? 'grabbing' : props.$isZoomed ? 'grab' : 'zoom-in'};
+  pointer-events: none;
+`;
+const LightboxToolbar = styled.div`
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.74);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+`;
+const LightboxZoomButton = styled.button`
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(226, 232, 240, 0.14);
+  color: #f8fafc;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.16s ease, background-color 0.16s ease, opacity 0.16s ease;
+
+  &:hover {
+    background: rgba(226, 232, 240, 0.26);
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  svg {
+    width: 19px;
+    height: 19px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+`;
+const DeleteMenu = styled.div`
+  background: var(--bg-elevated); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.15); overflow: hidden; border: 1px solid var(--border-primary); pointer-events: all; transition: background-color 0.3s ease;
+  animation: ${fadeInScale} 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  min-width: 160px;
+  [data-theme='dark'] & { box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+`;
+const DeleteMenuItem = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 15px;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  text-align: left;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  &:hover { background-color: var(--bg-hover); padding-left: 18px; }
+  &:active { background-color: var(--border-primary); }
+  svg { transition: transform 0.2s ease; }
+  &:hover svg { transform: scale(1.1); }
+`;
+const FilePreviewContainer = styled.div`
+  padding: 10px 1rem; border-top: 1px solid var(--border-primary); display: flex; align-items: center; gap: 10px; background-color: var(--bg-tertiary); transition: background-color 0.3s ease, border-color 0.3s ease;
+  animation: ${replySlideIn} 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+`;
+const FilePreviewImage = styled.img`
+  width: 50px; height: 50px; border-radius: 8px; object-fit: cover;
+`;
+const FilePreviewInfo = styled.div`
+  flex-grow: 1; font-size: 0.9rem; color: var(--text-secondary);
+`;
+const CancelPreviewButton = styled.button`
+  background: var(--bg-hover); border-radius: 50%; border: none; width: 30px; height: 30px; min-width: 30px; min-height: 30px; flex-shrink: 0; cursor: pointer; font-weight: bold; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; color: var(--text-primary);
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  &:hover { background-color: var(--border-primary); transform: scale(1.1) rotate(90deg); }
+  &:active { transform: scale(0.9); }
+`;
+
+const GifPickerModal = styled.div`
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 50;
+  animation: ${fadeInScale} 0.3s ease-out forwards;
+`;
+const GifPickerContent = styled.div`
+  background: var(--bg-elevated); width: 90%; max-width: 500px; height: 70%; max-height: 600px; border-radius: 12px; display: flex; flex-direction: column; transition: background-color 0.3s ease;
+  animation: ${modalSlideUp} 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  box-shadow: 0 25px 60px rgba(0,0,0,0.3);
+  overflow: hidden;
+`;
+const GifSearchBar = styled.input`
+  width: 100%; border: none; border-bottom: 1px solid var(--border-primary); padding: 1rem; font-size: 1rem; background: transparent; color: var(--text-primary); transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  &:focus { outline: none; border-bottom-color: var(--accent-blue); box-shadow: 0 1px 0 0 var(--accent-blue); } &::placeholder { color: var(--text-muted); }
+`;
+const GifGrid = styled.div`
+  flex-grow: 1; overflow-y: auto; padding: 1rem; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px;
+`;
+const GifGridItem = styled.img`
+  width: 100%; height: 120px; object-fit: cover; border-radius: 8px; cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: ${gifItemReveal} 0.3s ease-out both;
+  &:hover { transform: scale(1.06); box-shadow: 0 4px 16px rgba(0,0,0,0.15); border-radius: 10px; }
+  &:active { transform: scale(0.96); }
+`;
+const UserSidebar = styled.aside<{ $isVisible: boolean }>`
+  width: 240px;
+  background: var(--bg-sidebar);
+  border-left: 1px solid var(--border-primary);
+  padding: 1.5rem 1rem;
+  overflow-y: hidden;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+  flex-shrink: 0;
+  user-select: none;
+  @media (min-width: 769px) {
+    animation: ${subtleSlideUp} 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  display: flex;
+  flex-direction: column;
+  h2 {
+    color: var(--text-heading);
+    margin-bottom: 0.75rem;
+    transition: color 0.3s ease;
+    font-size: 0.9rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+  @media (max-width: 768px) {
+    position: fixed;
+    top: 40px;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    transform: ${props => props.$isVisible ? 'translateX(0)' : 'translateX(100%)'};
+    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.3s ease, border-color 0.3s ease;
+    visibility: ${props => props.$isVisible ? 'visible' : 'hidden'};
+  }
+`;
+// Transparent backdrop behind the sidebar on mobile ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â clicking it closes the panel
+const SidebarBackdrop = styled.div<{ $isVisible: boolean }>`
+  display: none;
+  @media (max-width: 768px) {
+    display: ${props => props.$isVisible ? 'block' : 'none'};
+    position: fixed;
+    inset: 0;
+    background: transparent;
+    z-index: 39;
+  }
+`;
+const UserList = styled.ul`
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  margin-top: 0.5rem;
+  flex-grow: 1; /* Allow UserList to take up available space */
+  overflow-y: auto; /* Enable scrolling for the user list */
+`;
+const UserListItem = styled.li<{ index: number }>`
+  color: var(--text-primary);
+  font-weight: 500;
+    margin-bottom: 0.1rem;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  transition: all 0.25s ease;
+  animation: ${sidebarItemSlide} 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: ${props => props.index * 0.06}s;
+  opacity: 0;
+
+  &:hover {
+    background: var(--bg-hover);
+    transform: translateX(4px);
+  }
+`;
+const MobileUserListToggle = styled(SendButton) <{ $isOpen?: boolean }>`
+  display: none;
+  @media (max-width: 768px) {
+    display: flex;
+    /* Override inherited hover-rotation ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â hover is sticky on mobile after a tap.
+       Rotation is controlled by the $isOpen state prop instead. */
+    &:hover:not(:disabled) { transform: scale(1.12); }
+    &:active:not(:disabled) { transform: scale(0.92); }
+    svg {
+      transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transform: ${props => props.$isOpen ? 'rotate(20deg)' : 'rotate(0deg)'};
+    }
+  }
+`;
+
+const ThemeToggleBtn = styled.button`
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--border-primary);
+  background: var(--bg-hover);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  flex-shrink: 0;
+  &:hover { transform: scale(1.15); border-color: var(--accent-blue); box-shadow: 0 0 16px rgba(59,130,246,0.2), 0 0 0 3px rgba(59,130,246,0.08); }
+  &:active { transform: scale(0.9); }
+  svg { width: 18px; height: 18px; transition: transform 0.5s cubic-bezier(0.34,1.56,0.64,1); }
+  &:hover svg { transform: rotate(30deg); }
+`;
+
+const ClearChatButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 15px;
+  margin-top: 1rem;
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+  border: 1px solid var(--border-primary);
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  &:hover {
+    background-color: var(--border-primary);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  }
+
+  &:active {
+    transform: translateY(0) scale(0.97);
+  }
+
+  svg {
+    width: 20px;
+    height: 20px;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: transform 0.3s ease;
+  }
+  &:hover svg { transform: rotate(10deg) scale(1.1); }
+`;
+
+const LogoutButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 15px;
+  margin-top: 0.5rem; /* Reduced margin to bring buttons closer */
+  background-color: #EF4444;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  &:hover {
+    background-color: #DC2626;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(239, 68, 68, 0.3);
+  }
+
+  &:active {
+    transform: translateY(0) scale(0.97);
+  }
+
+  svg {
+    width: 20px;
+    height: 20px;
+    stroke: white;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    transition: transform 0.3s ease;
+  }
+  &:hover svg { transform: translateX(3px); }
+`;
+
+const bounce = keyframes`
+  0%, 80%, 100% { transform: scale(0); }
+  40% { transform: scale(1.0); }
+`;
+
+const BouncingDots = styled.div`
+  display: flex;
+  gap: 4px;
+  & > div {
+    width: 8px;
+    height: 8px;
+    background-color: #64748B;
+    border-radius: 100%;
+    display: inline-block;
+    animation: ${bounce} 1.4s infinite ease-in-out both;
+  }
+  & > div:nth-child(1) { animation-delay: -0.32s; }
+  & > div:nth-child(2) { animation-delay: -0.16s; }
+`;
+
+const TypingIndicatorContainer = styled.div`
+  height: 24px;
+  padding: 0 1rem;
+  font-style: italic;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: ${slideIn} 0.3s ease-out forwards;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  transition: color 0.3s ease;
+`;
+const ReplyPreviewContainer = styled.div`
+  padding: 10px 1rem; border-bottom: 1px solid var(--border-primary); background-color: var(--bg-tertiary); display: flex; align-items: center; gap: 10px; overflow: hidden; transition: background-color 0.3s ease, border-color 0.3s ease;
+  animation: ${replySlideIn} 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+`;
+const ReplyText = styled.div`
+  flex-grow: 1; font-size: 0.9rem; color: var(--text-secondary); min-width: 0; overflow: hidden;
+  p { font-weight: bold; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  span { opacity: 0.8; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+`;
+
+const QuotedMessageContainer = styled.div<{ $sender: 'me' | 'other' }>`
+  background: ${props => props.$sender === 'me' ? 'rgba(255, 255, 255, 0.25)' : 'var(--bg-hover)'};
+  padding: 8px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  border-left: 3px solid ${props => props.$sender === 'me' ? 'rgba(255, 255, 255, 0.7)' : 'var(--accent-indigo)'};
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  touch-action: manipulation;
+  transition: all 0.2s ease;
+  &:hover { opacity: 0.85; transform: scale(0.99); }
+  &:active { transform: scale(0.97); }
+  p { font-weight: bold; font-size: 0.8rem; color: ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.95)' : 'var(--text-primary)'}; margin: 0; }
+  span {
+    font-size: 0.9rem;
+    opacity: 0.9;
+    display: block;
+    word-wrap: break-word;
+    color: ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.85)' : 'var(--text-secondary)'};
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  ${props => props.$sender === 'other' && `
+    [data-theme='dark'] & {
+      background: #253348;
+    }
+  `}
+`;
+
+const QuotedMediaThumb = styled.div`
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: rgba(15, 23, 42, 0.26);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  position: relative;
+
+  img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+`;
+
+const LinkPreviewCard = styled.a<{ $sender: 'me' | 'other' }>`
+  display: flex;
+  flex-direction: row;
+  text-decoration: none;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 4px;
+  background: ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.18)' : 'var(--bg-hover)'};
+  border: 1px solid ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.18)' : 'var(--border-primary)'};
+  min-height: 80px;
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+  &:hover { opacity: 0.95; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+  ${props => props.$sender === 'other' && `
+    [data-theme='dark'] & { background: #253348; border-color: rgba(255,255,255,0.08); }
+  `}
+`;
+const LinkPreviewImage = styled.img`
+  width: 78px;
+  min-width: 78px;
+  height: 78px;
+  object-fit: cover;
+  display: block;
+`;
+const LinkPreviewBody = styled.div`
+  padding: 7px 9px;
+  min-width: 0;
+  flex: 1;
+  border-left: 1px solid rgba(255,255,255,0.12);
+
+  [data-theme='light'] & {
+    border-left-color: rgba(15, 23, 42, 0.09);
+  }
+`;
+const LinkPreviewSiteName = styled.p<{ $sender: 'me' | 'other' }>`
+  margin: 0 0 2px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.75)' : 'var(--accent-indigo)'};
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+const LinkPreviewTitle = styled.p<{ $sender: 'me' | 'other' }>`
+  margin: 0 0 3px;
+  font-size: 0.83rem;
+  font-weight: 600;
+  color: ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.95)' : 'var(--text-primary)'};
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+`;
+const LinkPreviewDesc = styled.p<{ $sender: 'me' | 'other' }>`
+  margin: 0;
+  font-size: 0.76rem;
+  color: ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.75)' : 'var(--text-secondary)'};
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+`;
+
+const ReactionPicker = styled.div<{ $sender: 'me' | 'other' }>`
+  position: absolute;
+  background: var(--bg-elevated);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 24px; 
+  padding: 8px 10px; 
+  display: flex; 
+  gap: 6px; 
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
+  z-index: 60;
+  border: 1px solid var(--border-primary);
+  transition: background-color 0.3s ease;
+  animation: ${reactionPickerSlideIn} 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+
+  [data-theme='dark'] & {
+    background: rgba(30, 41, 59, 0.95);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.2);
+  }
+
+  /* Stagger each emoji child */
+  & > button {
+    animation: ${staggerFadeIn} 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+  & > button:nth-child(1) { animation-delay: 0.02s; }
+  & > button:nth-child(2) { animation-delay: 0.05s; }
+  & > button:nth-child(3) { animation-delay: 0.08s; }
+  & > button:nth-child(4) { animation-delay: 0.11s; }
+  & > button:nth-child(5) { animation-delay: 0.14s; }
+  & > button:nth-child(6) { animation-delay: 0.17s; }
+  & > button:nth-child(7) { animation-delay: 0.20s; }
+`;
+const ReactionEmoji = styled.button<{ $isPlusIcon?: boolean }>`
+  background: ${props => props.$isPlusIcon ? 'var(--bg-hover)' : 'none'};
+  border: none; 
+  font-size: 24px; 
+  cursor: pointer; 
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.2s ease, box-shadow 0.2s ease;
+  border-radius: ${props => props.$isPlusIcon ? '50%' : '8px'};
+  width: ${props => props.$isPlusIcon ? '36px' : 'auto'};
+  height: ${props => props.$isPlusIcon ? '36px' : 'auto'};
+  padding: ${props => props.$isPlusIcon ? '0' : '2px 4px'};
+  display: ${props => props.$isPlusIcon ? 'flex' : 'inline-flex'};
+  align-items: center;
+  justify-content: center;
+  position: relative;
+
+  &:hover {
+    transform: scale(1.28);
+    background: ${props => props.$isPlusIcon ? 'var(--bg-hover)' : 'rgba(59, 130, 246, 0.08)'};
+  }
+  &:active {
+    animation: ${emojiPopTap} 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  [data-theme='dark'] & {
+    background: ${props => props.$isPlusIcon ? 'var(--bg-hover)' : 'none'};
+    &:hover {
+      background: ${props => props.$isPlusIcon ? 'var(--bg-hover)' : 'rgba(96, 165, 250, 0.12)'};
+    }
+  }
+`;
+
+const ReactionsPopup = ({
+  popupData,
+  currentUserId,
+  onClose,
+  onRemoveReaction
+}: {
+  popupData: { messageId: string; reactions: { [emoji: string]: { userId: string, username: string }[] } };
+  currentUserId: string;
+  onClose: () => void;
+  onRemoveReaction: (emoji: string) => void;
+}) => {
+  const [activeTab, setActiveTab] = useState('All');
+  const tabsRef = useRef<HTMLDivElement>(null!);
+
+  useEffect(() => {
+    const tabsEl = tabsRef.current;
+    if (!tabsEl) return;
+
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY === 0) return;
+      e.preventDefault();
+      tabsEl.scrollTo({
+        left: tabsEl.scrollLeft + e.deltaY,
+        behavior: 'smooth'
+      });
+    };
+
+    tabsEl.addEventListener('wheel', onWheel);
+    return () => tabsEl.removeEventListener('wheel', onWheel);
+  }, []);
+
+  const allReactions = Object.entries(popupData.reactions).flatMap(([emoji, users]) =>
+    users.map(user => ({ ...user, emoji }))
+  );
+
+  const reactionsForTab = activeTab === 'All'
+    ? allReactions
+    : allReactions.filter(r => r.emoji === activeTab);
+
+  const sortedReactions = [...reactionsForTab].sort((a, b) => {
+    if (a.userId === currentUserId) return -1;
+    if (b.userId === currentUserId) return 1;
+    return 0;
+  });
+
+  const tabs = ['All', ...Object.keys(popupData.reactions)];
+
+  return (
+    <ReactionsPopupModal onClick={onClose}>
+      <ReactionsPopupContent onClick={(e) => e.stopPropagation()}>
+        <ReactionsPopupHeader ref={tabsRef}>
+          {tabs.map(tab => {
+            const count = tab === 'All'
+              ? allReactions.length
+              : popupData.reactions[tab]?.length || 0;
+            if (count === 0) return null;
+            return (
+              <ReactionTab key={tab} active={tab === activeTab} onClick={() => setActiveTab(tab)}>
+                <span>{tab}</span>
+                <span>{count}</span>
+              </ReactionTab>
+            )
+          })}
+        </ReactionsPopupHeader>
+        <ReactionsUserList>
+          {sortedReactions.map(({ userId, username, emoji }, index) => {
+            // Defensive code: Handle potentially corrupt data where userId might be missing.
+            const displayName = userId === currentUserId ? 'You' : (username || userId || 'Unknown User');
+            const initial = displayName ? displayName.charAt(0).toUpperCase() : '?';
+
+            return (
+              <ReactionUserRow
+                key={index}
+                onClick={() => {
+                  if (userId === currentUserId) {
+                    onRemoveReaction(emoji);
+                  }
+                }}
+                style={{ cursor: userId === currentUserId ? 'pointer' : 'default' }}
+              >
+                <UserAvatar>{initial}</UserAvatar>
+                <div style={{ flexGrow: 1 }}>
+                  <p style={{ fontWeight: 'bold' }}>{displayName}</p>
+                  {userId === currentUserId && (
+                    <span style={{ fontSize: '0.8rem', color: '#a0aec0' }}>Click to remove</span>
+                  )}
+                </div>
+                <span style={{ fontSize: '24px' }}>{emoji}</span>
+              </ReactionUserRow>
+            )
+          })}
+        </ReactionsUserList>
+      </ReactionsPopupContent>
+    </ReactionsPopupModal>
+  );
+};
+
+const reactionsModalFadeIn = keyframes`
+  from { opacity: 0; }
+  to   { opacity: 1; }
+`;
+
+const reactionsContentSlideUp = keyframes`
+  0%   { opacity: 0; transform: translateY(30px) scale(0.95); }
+  60%  { opacity: 1; transform: translateY(-4px) scale(1.01); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+`;
+
+const ReactionsPopupModal = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.25);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: ${reactionsModalFadeIn} 0.2s ease-out forwards;
+
+  [data-theme='dark'] & {
+    background: rgba(0,0,0,0.45);
+  }
+`;
+
+const ReactionsPopupContent = styled.div`
+  position: absolute;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border-radius: 16px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.15), 0 4px 16px rgba(0,0,0,0.08);
+  display: flex;
+  flex-direction: column;
+  animation: ${reactionsContentSlideUp} 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  border: 1px solid var(--border-primary);
+  overflow: hidden;
+
+  [data-theme='dark'] & {
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4), 0 4px 16px rgba(0,0,0,0.25);
+  }
+`;
+
+const ReactionsPopupHeader = styled.div`
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border-primary);
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+  &::-webkit-scrollbar {
+    height: 6px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border-radius: 3px;
+  }
+`;
+
+const ReactionTab = styled.button<{ active: boolean }>`
+  background: none;
+  border: none;
+  color: ${props => props.active ? 'var(--accent-blue)' : 'var(--text-secondary)'};
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 6px;
+  border-bottom: 2.5px solid ${props => props.active ? 'var(--accent-blue)' : 'transparent'};
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  white-space: nowrap;
+
+  &:hover {
+    color: var(--accent-blue);
+    transform: translateY(-1px);
+  }
+`;
+
+const userRowFadeIn = keyframes`
+  from { opacity: 0; transform: translateX(-10px); }
+  to   { opacity: 1; transform: translateX(0); }
+`;
+
+const ReactionsUserList = styled.div`
+  padding: 10px 16px 16px 16px;
+  max-height: 300px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  & > div {
+    animation: ${userRowFadeIn} 0.3s ease-out both;
+  }
+  & > div:nth-child(1) { animation-delay: 0.05s; }
+  & > div:nth-child(2) { animation-delay: 0.1s; }
+  & > div:nth-child(3) { animation-delay: 0.15s; }
+  & > div:nth-child(4) { animation-delay: 0.2s; }
+  & > div:nth-child(5) { animation-delay: 0.25s; }
+  & > div:nth-child(6) { animation-delay: 0.3s; }
+`;
+
+const UserAvatar = styled.div`
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-indigo));
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
+`;
+
+const ReactionUserRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 1rem;
+  padding: 6px 8px;
+  border-radius: 10px;
+  transition: background-color 0.15s ease;
+
+  &:hover {
+    background: var(--bg-hover);
+  }
+`;
+
+const ReactionEmojiSpan = styled.span`
+  font-size: 15px;
+  margin-right: -2px;
+  display: inline-block;
+  animation: ${reactionBounceIn} 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  transition: transform 0.15s ease;
+
+  &:nth-child(1) { animation-delay: 0s; }
+  &:nth-child(2) { animation-delay: 0.06s; }
+  &:nth-child(3) { animation-delay: 0.12s; }
+`;
+
+const ReactionCountSpan = styled.span`
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-left: 6px;
+  display: inline-block;
+  animation: ${countBump} 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) 0.2s both;
+  font-variant-numeric: tabular-nums;
+`;
+const MessageActions = styled.div`
+  position: absolute; 
+  bottom: calc(100% - 6px);
+  top: auto;
+  right: 6px;
+  display: flex; 
+  gap: 4px; 
+  background: var(--bg-elevated); 
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04); 
+  border-radius: 20px; 
+  padding: 3px; 
+  opacity: 0; 
+  transform: translateY(6px) scale(0.9);
+  transform-origin: bottom right;
+  transition: opacity 0.18s ease, transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1); 
+  z-index: 32; 
+  pointer-events: none;
+  /* CSS :hover on a parent element fires whenever the pointer is over
+     ANY descendant in the DOM tree ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â including this div even though it
+     visually sits above the bubble.  So there is zero hover gap. */
+  ${MessageBubble}:hover & { opacity: 1; pointer-events: all; transform: translateY(0) scale(1); }
+  [data-theme='dark'] & {
+    box-shadow: 0 2px 10px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.06);
+  }
+`;
+const ActionButton = styled.button`
+  background: none; border: none; font-size: 16px; cursor: pointer; padding: 4px; color: var(--text-secondary);
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1); border-radius: 50%;
+  &:hover { color: var(--text-primary); transform: scale(1.15); background: var(--bg-hover); }
+  &:active { transform: scale(0.9); }
+`;
+
+const SelectCheckboxContainer = styled.div`
+  width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+`;
+
+const Checkbox = styled.div<{ checked: boolean }>`
+  width: 22px;
+  height: 22px;
+  border: 2px solid ${props => props.checked ? '#3B82F6' : '#cbd5e0'};
+  border-radius: 50%;
+  background-color: ${props => props.checked ? '#3B82F6' : 'transparent'};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  ${props => props.checked && `transform: scale(1); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);`}
+  &::after {
+    content: 'ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“';
+    color: white;
+    font-size: 14px;
+    font-weight: bold;
+    display: ${props => props.checked ? 'block' : 'none'};
+    ${props => props.checked && css`animation: ${staggerFadeIn} 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) both;`}
+  }
+`;
+
+const SelectModeFooter = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background-color: var(--bg-header);
+  border-top: 1px solid var(--border-primary);
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+  color: var(--text-primary);
+  animation: ${selectModeSlideUp} 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+`;
+
+const DeleteButton = styled(SendButton)`
+  background-color: #EF4444;
+  &:hover:not(:disabled) { background-color: #DC2626; box-shadow: 0 4px 16px rgba(239, 68, 68, 0.35); }
+`;
+
+const CopyButton = styled(SendButton)`
+  background-color: #64748B;
+  &:hover:not(:disabled) { background-color: #475569; box-shadow: 0 4px 16px rgba(100, 116, 139, 0.35); }
+`;
+
+const EditButton = styled(SendButton)`
+  background-color: #FBBF24;
+  &:hover:not(:disabled) { background-color: #F59E0B; box-shadow: 0 4px 16px rgba(251, 191, 36, 0.35); }
+`;
+
+const ReportButton = styled(SendButton)`
+  background-color: #F97316;
+  &:hover:not(:disabled) { background-color: #EA580C; box-shadow: 0 4px 16px rgba(249, 115, 22, 0.35); }
+`;
+
+const ConfirmationModal = styled.div`
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 100;
+  animation: ${reactionsModalFadeIn} 0.2s ease-out forwards;
+`;
+
+const ConfirmationContent = styled.div`
+  background: var(--bg-elevated); padding: 2rem; border-radius: 16px; text-align: center; transition: background-color 0.3s ease, color 0.3s ease;
+  animation: ${modalSlideUp} 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  box-shadow: 0 25px 60px rgba(0,0,0,0.2);
+  border: 1px solid var(--border-primary);
+  [data-theme='dark'] & { box-shadow: 0 25px 60px rgba(0,0,0,0.5); }
+  h3 { margin-bottom: 1rem; color: var(--text-heading); }
+  div { display: flex; gap: 1rem; justify-content: center; }
+`;
+
+const ReportModal = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  background: rgba(0, 0, 0, 0.46);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  animation: ${reactionsModalFadeIn} 0.2s ease-out forwards;
+`;
+
+const ReportDialog = styled.div`
+  width: min(92vw, 460px);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-primary);
+  border-radius: 16px;
+  box-shadow: 0 28px 64px rgba(0, 0, 0, 0.28);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  animation: ${modalSlideUp} 0.34s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+
+  [data-theme='dark'] & {
+    box-shadow: 0 28px 64px rgba(0, 0, 0, 0.5);
+  }
+
+  @media (max-width: 480px) {
+    width: 94vw;
+    border-radius: 14px;
+    padding: 0.9rem;
+  }
+`;
+
+const ReportTitle = styled.h3`
+  margin: 0;
+  font-size: 1rem;
+  color: var(--text-heading);
+`;
+
+const ReportSubtext = styled.p`
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--text-secondary);
+`;
+
+const ReportMessageMeta = styled.div`
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-primary);
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+
+  strong {
+    font-size: 0.8rem;
+    color: var(--text-primary);
+  }
+
+  span {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    word-break: break-word;
+  }
+`;
+
+const ReportReasonInput = styled.textarea`
+  width: 100%;
+  min-height: 96px;
+  max-height: 180px;
+  resize: vertical;
+  border: 1px solid var(--border-secondary);
+  border-radius: 10px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  padding: 0.7rem 0.8rem;
+  font: inherit;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+
+  &:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.14);
+  }
+
+  &::placeholder {
+    color: var(--text-muted);
+  }
+`;
+
+const ReportReasonMeta = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+`;
+
+const ReportError = styled.p`
+  margin: 0;
+  font-size: 0.8rem;
+  color: #ef4444;
+`;
+
+const ReportActions = styled.div`
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+`;
+
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Custom Video Player Styles ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
+const videoFadeIn = keyframes`
+  from { opacity: 0; }
+  to   { opacity: 1; }
+`;
+
+const controlsSlideUp = keyframes`
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+`;
+
+const VideoPlayerWrapper = styled.div`
+  ${mediaFrameStyles}
+  width: clamp(220px, 62vw, 340px);
+  max-width: 100%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  position: relative;
+
+  video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+    background: #000;
+    border-radius: 0.75rem;
+  }
+
+  @media (max-width: 768px) {
+    width: clamp(198px, 70vw, 252px);
+  }
+
+  @media (max-width: 420px) {
+    width: clamp(182px, 70vw, 232px);
+  }
+`;
+
+const CVPContainer = styled.div`
+  --cvp-controls-padding: 4px 8px 6px;
+  --cvp-row-gap: 2px;
+  --cvp-icon-size: 16px;
+  --cvp-icon-pad: 3px;
+  --cvp-time-size: 0.6rem;
+  --cvp-speed-font-size: 0.58rem;
+  --cvp-speed-width: 40px;
+  --cvp-speed-pad-y: 2px;
+  --cvp-speed-pad-x: 5px;
+  --cvp-timeline-height: 24px;
+  --cvp-timeline-padding: 8px 0;
+  --cvp-track-height: 3px;
+  --cvp-thumb-size: 11px;
+  --cvp-edge-pad-right: 4px;
+
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  border-radius: 0.75rem;
+  /* clip-path keeps the video clipped to rounded corners without cutting
+     absolutely-positioned controls children (overflow: hidden would clip them). */
+  clip-path: inset(0 round 0.75rem);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  -webkit-user-select: none;
+
+  /* Fullscreen: fill viewport, letterbox with object-fit: contain */
+  &:fullscreen, &:-webkit-full-screen {
+    border-radius: 0;
+    width: 100vw;
+    height: 100vh;
+    background: #000;
+    clip-path: inset(0);
+
+    --cvp-controls-padding: 9px 10px 11px;
+    --cvp-row-gap: 2px;
+    --cvp-icon-size: 18px;
+    --cvp-icon-pad: 5px;
+    --cvp-time-size: 0.74rem;
+    --cvp-speed-font-size: 0.66rem;
+    --cvp-speed-width: 42px;
+    --cvp-speed-pad-y: 3px;
+    --cvp-speed-pad-x: 6px;
+    --cvp-timeline-height: 28px;
+    --cvp-timeline-padding: 10px 0;
+    --cvp-track-height: 4px;
+    --cvp-thumb-size: 13px;
+    --cvp-edge-pad-right: 2px;
+  }
+
+  video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+    background: #000;
+    animation: ${videoFadeIn} 0.3s ease;
+    /* Prevent fullscreen video from overflowing on mobile portrait */
+    max-width: 100%;
+    max-height: 100%;
+  }
+
+  &:fullscreen video, &:-webkit-full-screen video {
+    width: 100vw;
+    height: 100vh;
+    max-width: 100vw;
+    max-height: 100vh;
+    object-fit: contain;
+  }
+`;
+
+const CVPControls = styled.div<{ $visible: boolean }>`
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.5) 55%, transparent 100%);
+  padding: var(--cvp-controls-padding, 4px 6px 6px);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  opacity: ${p => p.$visible ? 1 : 0};
+  transition: opacity 0.25s ease;
+  pointer-events: ${p => p.$visible ? 'all' : 'none'};
+  border-radius: 0 0 0.75rem 0.75rem;
+  animation: ${controlsSlideUp} 0.2s ease;
+  overflow: visible;
+`;
+
+const CVPTimelineWrapper = styled.div`
+  width: 100%;
+  height: var(--cvp-timeline-height, 24px);
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding: var(--cvp-timeline-padding, 8px 0);
+  position: relative;
+  /* Prevent the timeline drag from propagating to the message swipe gesture */
+  touch-action: none;
+`;
+
+const CVPTimelineTrack = styled.div`
+  width: 100%;
+  height: var(--cvp-track-height, 3px);
+  background: rgba(255,255,255,0.3);
+  border-radius: 2px;
+  position: relative;
+  overflow: visible;
+`;
+
+const CVPTimelineFill = styled.div<{ $pct: number }>`
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: ${p => p.$pct}%;
+  background: #3b82f6;
+  border-radius: 2px;
+  transition: width 0.1s linear;
+`;
+
+const CVPTimelineThumb = styled.div<{ $pct: number }>`
+  position: absolute;
+  top: 50%;
+  left: ${p => p.$pct}%;
+  transform: translate(-50%, -50%);
+  width: var(--cvp-thumb-size, 11px);
+  height: var(--cvp-thumb-size, 11px);
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 4px rgba(0,0,0,0.5);
+  transition: left 0.1s linear;
+`;
+
+const CVPBottomRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: var(--cvp-row-gap, 2px);
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  padding-right: var(--cvp-edge-pad-right, 2px);
+
+  /* Shrink icon buttons on small frames */
+  @media (max-width: 420px) {
+    gap: 1px;
+  }
+`;
+
+const CVPIconBtn = styled.button<{ $active?: boolean }>`
+  background: ${p => p.$active ? 'rgba(59,130,246,0.38)' : 'none'};
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  padding: var(--cvp-icon-pad, 3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background 0.15s ease, transform 0.15s ease;
+  flex-shrink: 0;
+  svg { width: var(--cvp-icon-size, 16px); height: var(--cvp-icon-size, 16px); overflow: visible; }
+  &:hover { background: rgba(255,255,255,0.15); transform: scale(1.12); }
+  &:active { transform: scale(0.9); }
+  &:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+`;
+
+const CVPTime = styled.span`
+  font-size: var(--cvp-time-size, 0.6rem);
+  color: rgba(255,255,255,0.9);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  font-weight: 500;
+  flex-shrink: 0;
+`;
+
+const CVPSpeedBtn = styled.button`
+  background: rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.25);
+  color: #fff;
+  font-size: var(--cvp-speed-font-size, 0.58rem);
+  font-weight: 700;
+  padding: var(--cvp-speed-pad-y, 2px) var(--cvp-speed-pad-x, 5px);
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+  white-space: nowrap;
+  min-width: var(--cvp-speed-width, 40px);
+  width: var(--cvp-speed-width, 40px);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  transition: background 0.15s ease;
+  &:hover { background: rgba(255,255,255,0.25); }
+`;
+
+/* Volume slider wrapper ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â only shown on non-touch (pointer: fine) devices */
+const CVPVolumeWrapper = styled.div`
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+
+  .cvp-volume-slider-panel {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 28px;
+    height: 80px;
+    background: rgba(15,23,42,0.88);
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.18);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease;
+    z-index: 10;
+  }
+
+  &:hover .cvp-volume-slider-panel,
+  &:focus-within .cvp-volume-slider-panel {
+    opacity: 1;
+    pointer-events: all;
+  }
+
+  /* Only show volume panel on fine pointer (mouse) devices */
+  @media (pointer: coarse) {
+    .cvp-volume-slider-panel { display: none !important; }
+  }
+
+  input[type='range'].cvp-vol-range {
+    -webkit-appearance: none;
+    appearance: none;
+    writing-mode: vertical-lr;
+    direction: rtl;
+    width: 4px;
+    height: 64px;
+    background: transparent;
+    outline: none;
+    cursor: pointer;
+  }
+
+  input[type='range'].cvp-vol-range::-webkit-slider-runnable-track {
+    background: rgba(255,255,255,0.3);
+    width: 4px;
+    border-radius: 2px;
+  }
+
+  input[type='range'].cvp-vol-range::-moz-range-track {
+    background: rgba(255,255,255,0.3);
+    width: 4px;
+    border-radius: 2px;
+  }
+
+  input[type='range'].cvp-vol-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    background: #fff;
+    border-radius: 50%;
+    margin-left: -4px;
+    box-shadow: 0 0 3px rgba(0,0,0,0.4);
+    transition: transform 0.1s ease;
+  }
+
+  input[type='range'].cvp-vol-range::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    background: #fff;
+    border-radius: 50%;
+    border: none;
+    box-shadow: 0 0 3px rgba(0,0,0,0.4);
+    cursor: pointer;
+  }
+
+  input[type='range'].cvp-vol-range::-webkit-slider-thumb:hover {
+    transform: scale(1.25);
+  }
+`;
+
+const CVPDoubleTapOverlay = styled.div<{ $side: 'left' | 'right' | null }>`
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: ${p => p.$side === 'left' ? '0' : 'auto'};
+  right: ${p => p.$side === 'right' ? '0' : 'auto'};
+  width: 35%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  opacity: ${p => p.$side ? 1 : 0};
+  transition: opacity 0.25s ease;
+`;
+
+const CVPTapIndicator = styled.div`
+  background: rgba(255,255,255,0.18);
+  border-radius: 50%;
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: #fff;
+  svg { width: 20px; height: 20px; }
+`;
+
+const CVPCenterPlayBtn = styled.div<{ $visible: boolean }>`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 48px;
+  height: 48px;
+  background: rgba(0,0,0,0.55);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: ${p => p.$visible ? 1 : 0};
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+  svg { width: 24px; height: 24px; color: #fff; }
+`;
+
+/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Download Progress Ring (WhatsApp/Telegram style) ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
+const DownloadProgressRing = styled.div<{ $progress: number; $visible: boolean }>`
+  position: relative;
+  width: 100%;
+  height: 100%;
+  flex-shrink: 0;
+  display: ${p => p.$visible ? 'flex' : 'none'};
+  align-items: center;
+  justify-content: center;
+
+  & > svg.ring-svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100% !important;
+    height: 100% !important;
+    transform: rotate(-90deg);
+  }
+
+  circle.track {
+    fill: none;
+    stroke: rgba(255,255,255,0.2);
+    stroke-width: 3;
+  }
+
+  circle.progress {
+    fill: none;
+    stroke: #3b82f6;
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-dasharray: 100;
+    stroke-dashoffset: ${p => 100 - (p.$progress * 100)};
+    transition: stroke-dashoffset 0.15s linear;
+  }
+
+  .cancel-icon {
+    position: relative;
+    z-index: 1;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* Reset any inherited SVG sizes for the center icon if needed, though parent styles might still hit it */
+  }
+`;
+
+const MessageText = styled.p`
+  user-select: text; /* Allow selection on PC */
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  cursor: text;
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.35;
+  .emoji-inline {
+    display: inline-block;
+    font-size: 1.8rem;
+    line-height: 1.15;
+    letter-spacing: 0.02em;
+    vertical-align: -0.1em;
+  }
+  @media (max-width: 768px) {
+    user-select: none; /* Disable selection on mobile */
+    font-size: 0.9rem;
+    .emoji-inline {
+      font-size: 1.5rem;
+      line-height: 1.2;
+    }
+  }
+`;
+
+const SystemMessage = styled.div`
+  background-color: var(--bg-hover);
+  color: var(--text-secondary);
+  padding: 0.5rem 1rem;
+  border-radius: 1.25rem;
+  font-size: 0.9rem;
+  width: fit-content;
+  max-width: 80%;
+  text-align: center;
+  box-shadow: var(--shadow-sm);
+  transition: background-color 0.3s ease, color 0.3s ease;
+  animation: ${systemMsgFade} 0.4s ease-out forwards;
+`;
+
+

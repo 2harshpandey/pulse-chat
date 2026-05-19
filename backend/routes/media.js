@@ -1,0 +1,537 @@
+// --- Media, Upload, GIF, Link Preview, Download, and Messages Routes ---
+
+const express = require('express');
+const http = require('http');
+const https = require('https');
+const dns = require('dns');
+const path = require('path');
+const axios = require('axios');
+const cloudinary = require('cloudinary').v2;
+const CloudinaryStorage = require('multer-storage-cloudinary').CloudinaryStorage;
+const multer = require('multer');
+const logger = require('../logger');
+const Message = require('../models/message');
+const MessageEvent = require('../models/messageEvent');
+const ChatState = require('../models/chatState');
+const {
+  onlineUsers,
+  getFrontendHiddenBefore,
+  setFrontendHiddenBefore,
+  GLOBAL_CHAT_STATE_KEY,
+  DEFAULT_HISTORY_PAGE_SIZE,
+  MAX_HISTORY_PAGE_SIZE,
+} = require('../state');
+const {
+  uploadLimiter,
+  apiLimiter,
+  adminLimiter,
+  adminSecretAuth,
+  toClientMessage,
+} = require('../middleware');
+const {
+  isPrivateOrInternalIp,
+  isAllowedDownloadHost,
+  runWithSafeRedirects,
+  sanitizeDownloadFilename,
+  getSignedCloudinaryDownloadUrl,
+} = require('../security');
+const { WebSocket } = require('ws');
+
+// --- Cloudinary & Multer Configuration ---
+// Configured here since only this module uses file uploads.
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'pulse-chat',
+    resource_type: 'auto',
+    use_filename: true,       // Preserve original filename in the Cloudinary public_id
+    unique_filename: true,    // Append a short random suffix to avoid collisions
+  },
+});
+const upload = multer({
+  storage,
+  limits: { fileSize: 100 * 1024 * 1024 },  // 100 MB max
+});
+
+// --- Helper: build query that respects frontendHiddenBefore ---
+const getVisibleMessagesQuery = (beforeTimestamp) => {
+  const createdAt = {};
+  const frontendHiddenBefore = getFrontendHiddenBefore();
+
+  if (frontendHiddenBefore instanceof Date && !Number.isNaN(frontendHiddenBefore.getTime())) {
+    createdAt.$gt = frontendHiddenBefore;
+  }
+
+  if (beforeTimestamp instanceof Date && !Number.isNaN(beforeTimestamp.getTime())) {
+    createdAt.$lt = beforeTimestamp;
+  }
+
+  if (Object.keys(createdAt).length === 0) return {};
+  return { createdAt };
+};
+
+// Tenor API
+const TENOR_API_KEY = process.env.TENOR_API_KEY;
+const TENOR_API_URL = 'https://tenor.googleapis.com/v2';
+
+module.exports = (wss, broadcasts) => {
+  const { broadcastToAdmins, broadcast } = broadcasts;
+  const router = express.Router();
+
+  // --- File Upload ---
+  router.post('/api/upload', uploadLimiter, (req, res) => {
+    upload.single('file')(req, res, (err) => {
+      if (err) {
+        logger.error(`Upload middleware error: ${err.message}`);
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(413).json({ error: 'File too large. Max size is 100 MB.' });
+        }
+        return res.status(500).json({ error: `Upload failed: ${err.message}` });
+      }
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
+
+      const { userId } = req.body;
+      const username = onlineUsers.get(userId)?.username || 'Unknown';
+
+      // Create a MessageEvent for the upload
+      const event = new MessageEvent({
+        type: 'upload',
+        file: {
+          originalname: req.file.originalname,
+          mimetype: req.file.mimetype,
+          size: req.file.size,
+        },
+        userId,
+        username,
+        timestamp: new Date().toISOString(),
+      });
+      event.save();
+
+      broadcastToAdmins('history', event);
+      broadcastToAdmins('activity', `File '${req.file.originalname}' uploaded by '${username}'.`);
+
+      logger.info(`File uploaded: ${req.file.originalname}`);
+
+      // Determine file type from mimetype since Cloudinary resource_type
+      // may return 'raw' for PDFs and other non-image/video files.
+      let fileType = 'file';
+      if (req.file.mimetype && req.file.mimetype.startsWith('image/')) fileType = 'image';
+      else if (req.file.mimetype && req.file.mimetype.startsWith('video/')) fileType = 'video';
+
+      res.status(200).json({
+        id: req.file.filename,
+        type: fileType,
+        url: req.file.path,
+        originalName: req.file.originalname,
+        size: req.file.size,
+        text: req.body.text,
+      });
+    });
+  });
+
+  // --- Delete Message ---
+  router.delete('/api/delete/:id', apiLimiter, async (req, res) => {
+    try {
+      const messageId = req.params.id;
+      if (!messageId) return res.status(400).json({ error: 'No message ID provided.' });
+      logger.info(`Delete request for message ID: ${messageId}`);
+
+      // Find message to delete from DB
+      const messageToDelete = await Message.findOne({ id: messageId });
+
+      if (messageToDelete && messageToDelete.url && messageToDelete.url.includes('cloudinary')) {
+        const publicId = messageToDelete.id;
+        if (publicId.includes('/')) {
+          await cloudinary.uploader.destroy(publicId, { resource_type: 'video', invalidate: true });
+          await cloudinary.uploader.destroy(publicId, { resource_type: 'image', invalidate: true });
+        }
+      }
+
+      await Message.deleteOne({ id: messageId });
+
+      const deleteMessage = { type: 'delete', id: messageId };
+      wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(deleteMessage));
+      });
+
+      res.status(200).json({ success: true, message: 'Message deleted.' });
+    } catch (error) {
+      logger.error('Delete error:', { message: error.message, stack: error.stack });
+      res.status(500).json({ error: 'Failed to delete file.' });
+    }
+  });
+
+  // --- Permanent Clear (admin secret) ---
+  router.delete('/api/messages/all', adminLimiter, adminSecretAuth, async (req, res) => {
+    try {
+      await Message.deleteMany({});
+      await MessageEvent.deleteMany({});
+
+      broadcast({ type: 'chat_cleared' });
+
+      logger.info('All messages and events have been permanently deleted by an admin.');
+      broadcastToAdmins('activity', 'All messages and events have been permanently deleted.');
+
+      res.status(200).json({ message: 'All messages and events have been permanently deleted.' });
+    } catch (error) {
+      logger.error('Error clearing all messages:', { message: error.message, stack: error.stack });
+      res.status(500).json({ error: 'Failed to clear all messages.' });
+    }
+  });
+
+  // --- Hide All From Frontend (admin secret) ---
+  router.post('/api/messages/hide-all-frontend', adminLimiter, adminSecretAuth, async (req, res) => {
+    try {
+      const hiddenBefore = new Date();
+
+      await ChatState.findOneAndUpdate(
+        { key: GLOBAL_CHAT_STATE_KEY },
+        { $set: { frontendHiddenBefore: hiddenBefore } },
+        { upsert: true, setDefaultsOnInsert: true }
+      );
+
+      setFrontendHiddenBefore(hiddenBefore);
+
+      broadcast({ type: 'chat_hidden_for_everyone', hiddenBefore: hiddenBefore.toISOString() });
+
+      logger.info('All existing chats have been hidden from frontend for everyone (DB preserved).');
+      broadcastToAdmins('activity', 'All existing chats have been hidden from frontend for everyone.');
+
+      res.status(200).json({
+        message: 'All existing chats are now hidden from frontend for everyone.',
+        hiddenBefore: hiddenBefore.toISOString(),
+      });
+    } catch (error) {
+      logger.error('Error hiding chats from frontend:', { message: error.message, stack: error.stack });
+      res.status(500).json({ error: 'Failed to hide chats from frontend.' });
+    }
+  });
+
+  // --- GIF Routes ---
+  router.get('/api/gifs/trending', async (req, res) => {
+    try {
+      const response = await axios.get(`${TENOR_API_URL}/featured`, { params: { key: TENOR_API_KEY, limit: 20 } });
+      const gifs = response.data.results.map((gif) => ({ id: gif.id, preview: gif.media_formats.tinygif.url, url: gif.media_formats.gif.url }));
+      res.json(gifs);
+    } catch (error) {
+      logger.error('Error fetching trending GIFs:', { message: error.message });
+      res.status(500).json({ error: 'Failed to fetch GIFs' });
+    }
+  });
+
+  router.get('/api/gifs/search', async (req, res) => {
+    try {
+      const query = req.query.q;
+      if (!query) return res.status(400).json({ error: 'Search query is required' });
+      const response = await axios.get(`${TENOR_API_URL}/search`, { params: { key: TENOR_API_KEY, q: query, limit: 20 } });
+      const gifs = response.data.results.map((gif) => ({ id: gif.id, preview: gif.media_formats.tinygif.url, url: gif.media_formats.gif.url }));
+      res.json(gifs);
+    } catch (error) {
+      logger.error('Error searching GIFs:', { message: error.message });
+      res.status(500).json({ error: 'Failed to fetch GIFs' });
+    }
+  });
+
+  // --- Link Preview ---
+  router.get('/api/link-preview', apiLimiter, async (req, res) => {
+    try {
+      const { url } = req.query;
+      if (!url || typeof url !== 'string') return res.status(400).json({ error: 'URL parameter required' });
+      if (!/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'Invalid URL' });
+
+      const MAX_REDIRECTS = 3;
+      let currentUrl = url;
+      let finalParsedUrl = null;
+      let finalHtml = '';
+
+      for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
+        let parsedUrl;
+        try { parsedUrl = new URL(currentUrl); } catch { return res.status(400).json({ error: 'Invalid URL' }); }
+
+        // Restrict to standard HTTP/HTTPS ports only — prevents using this as a port scanner.
+        const port = parsedUrl.port;
+        if (port && port !== '80' && port !== '443') return res.status(400).json({ error: 'Invalid URL' });
+
+        if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+          return res.status(400).json({ error: 'Invalid URL' });
+        }
+
+        const rawHostname = parsedUrl.hostname;
+
+        // Resolve the hostname and block private/internal IPs to prevent SSRF.
+        let resolvedIp;
+        try { ({ address: resolvedIp } = await dns.promises.lookup(rawHostname)); }
+        catch { return res.status(400).json({ error: 'Could not resolve hostname' }); }
+        if (isPrivateOrInternalIp(resolvedIp)) return res.status(400).json({ error: 'Invalid URL' });
+
+        const isHttps = parsedUrl.protocol === 'https:';
+        const reqModule = isHttps ? https : http;
+        const reqPath = (parsedUrl.pathname || '/') + (parsedUrl.search || '');
+        const reqPort = parsedUrl.port ? Number(parsedUrl.port) : (isHttps ? 443 : 80);
+
+        const response = await new Promise((resolve, reject) => {
+          const opts = {
+            hostname: resolvedIp,          // server-controlled validated IP — not user input
+            port: reqPort,
+            path: reqPath,
+            method: 'GET',
+            headers: {
+              'Host': rawHostname,          // needed for virtual hosting
+              'User-Agent': 'Mozilla/5.0 (compatible; PulseChatLinkPreview/1.0; +https://pulsechat.tech)',
+              'Accept': 'text/html,application/xhtml+xml',
+              'Connection': 'close',
+            },
+            // TLS: send the real hostname for SNI and certificate validation
+            ...(isHttps ? { servername: rawHostname, rejectUnauthorized: true } : {}),
+          };
+
+          const request = reqModule.request(opts, (incoming) => {
+            const statusCode = incoming.statusCode || 0;
+            const headers = incoming.headers || {};
+            const chunks = [];
+            let totalSize = 0;
+
+            incoming.on('data', (chunk) => {
+              totalSize += chunk.length;
+              if (totalSize > 512 * 1024) {
+                request.destroy();
+                return reject(new Error('Response too large'));
+              }
+              chunks.push(chunk);
+            });
+
+            incoming.on('end', () => {
+              resolve({
+                statusCode,
+                headers,
+                body: Buffer.concat(chunks).toString('utf8'),
+              });
+            });
+            incoming.on('error', reject);
+          });
+
+          request.setTimeout(5000, () => { request.destroy(); reject(new Error('Request timed out')); });
+          request.on('error', reject);
+          request.end();
+        });
+
+        const statusCode = Number(response.statusCode || 0);
+
+        // Follow a small number of redirects like chat apps do, while re-validating each hop.
+        if (statusCode >= 300 && statusCode < 400) {
+          const locationHeader = response.headers?.location;
+          if (!locationHeader) throw new Error('Redirect without location');
+          if (Array.isArray(locationHeader)) throw new Error('Invalid redirect location');
+          if (redirectCount >= MAX_REDIRECTS) throw new Error('Too many redirects');
+
+          const nextUrl = new URL(locationHeader, parsedUrl);
+          if (nextUrl.protocol !== 'http:' && nextUrl.protocol !== 'https:') {
+            throw new Error('Invalid redirect protocol');
+          }
+          currentUrl = nextUrl.href;
+          continue;
+        }
+
+        if (statusCode < 200 || statusCode >= 300) throw new Error('Bad response');
+
+        const contentType = String(response.headers?.['content-type'] || '').toLowerCase();
+        if (contentType && !contentType.includes('text/html') && !contentType.includes('application/xhtml+xml')) {
+          throw new Error('Unsupported content type');
+        }
+
+        finalParsedUrl = parsedUrl;
+        finalHtml = String(response.body || '');
+        break;
+      }
+
+      if (!finalParsedUrl || !finalHtml) throw new Error('Failed to fetch preview HTML');
+
+      const html = finalHtml;
+      const hostname = finalParsedUrl.hostname.replace(/^www\./, '');
+      const decode = (v) => String(v || '')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&')
+        .trim();
+
+      const getMetaBy = (attrName, attrValue) => {
+        const m = html.match(new RegExp(`<meta[^>]+${attrName}=["']${attrValue}["'][^>]+content=["']([^"']{0,500})["']`, 'i'))
+          || html.match(new RegExp(`<meta[^>]+content=["']([^"']{0,500})["'][^>]+${attrName}=["']${attrValue}["']`, 'i'));
+        return m ? decode(m[1]) : null;
+      };
+
+      const getTitle = () => {
+        const m = html.match(/<title[^>]*>([^<]{0,200})<\/title>/i);
+        return m ? decode(m[1]) : null;
+      };
+
+      const title = getMetaBy('property', 'og:title') || getMetaBy('name', 'twitter:title') || getTitle();
+      const description = getMetaBy('property', 'og:description')
+        || getMetaBy('name', 'twitter:description')
+        || getMetaBy('name', 'description');
+      const siteName = getMetaBy('property', 'og:site_name');
+      const rawImage = getMetaBy('property', 'og:image') || getMetaBy('name', 'twitter:image');
+      const image = rawImage ? (() => {
+        try { return new URL(rawImage, finalParsedUrl).href; } catch { return null; }
+      })() : null;
+
+      res.json({ title, description, image, hostname, siteName });
+    } catch (error) {
+      logger.error('Link preview fetch error:', { message: error.message });
+      res.status(500).json({ error: 'Failed to fetch preview' });
+    }
+  });
+
+  // --- Download Proxy ---
+  router.all('/api/download', apiLimiter, async (req, res) => {
+    try {
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        return res.status(405).json({ error: 'Method not allowed.' });
+      }
+
+      const rawUrl = typeof req.query.url === 'string' ? req.query.url.trim() : '';
+      const requestedFilename = typeof req.query.filename === 'string' ? req.query.filename : '';
+      if (!rawUrl) return res.status(400).json({ error: 'URL parameter required.' });
+
+      let parsedUrl;
+      try {
+        parsedUrl = new URL(rawUrl);
+      } catch {
+        return res.status(400).json({ error: 'Invalid URL.' });
+      }
+
+      if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
+        return res.status(400).json({ error: 'Invalid URL protocol.' });
+      }
+      if (!isAllowedDownloadHost(parsedUrl.hostname)) {
+        return res.status(400).json({ error: 'Untrusted download host.' });
+      }
+
+      let pathName = parsedUrl.pathname.split('/').pop() || '';
+      try {
+        pathName = decodeURIComponent(pathName);
+      } catch {
+        // Keep raw fallback if decoding fails.
+      }
+
+      const fallbackName = sanitizeDownloadFilename(pathName || 'download', 'download');
+      const safeFilename = sanitizeDownloadFilename(requestedFilename, fallbackName);
+      const contentDisposition = `attachment; filename="${safeFilename.replace(/\"/g, '')}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`;
+
+      const fetchHead = (targetUrl) => axios.head(targetUrl, {
+        timeout: 20000,
+        maxRedirects: 0,
+        validateStatus: (status) => status >= 200 && status < 400,
+      });
+
+      const fetchBody = (targetUrl) => axios.get(targetUrl, {
+        responseType: 'arraybuffer',
+        timeout: 30000,
+        maxRedirects: 0,
+        validateStatus: (status) => status >= 200 && status < 400,
+      });
+
+      const runWithCloudinaryFallback = async (executor) => {
+        try {
+          return await runWithSafeRedirects(executor, parsedUrl.href);
+        } catch (err) {
+          const signedUrl = getSignedCloudinaryDownloadUrl(parsedUrl.href, safeFilename);
+          if (!signedUrl) throw err;
+          return runWithSafeRedirects(executor, signedUrl);
+        }
+      };
+
+      if (req.method === 'HEAD') {
+        const meta = await runWithCloudinaryFallback(fetchHead);
+        const contentType = String(meta.headers['content-type'] || 'application/octet-stream');
+        const contentLength = Number.parseInt(String(meta.headers['content-length'] || ''), 10);
+
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Content-Disposition', contentDisposition);
+        res.setHeader('Cache-Control', 'private, max-age=120');
+        if (Number.isFinite(contentLength) && contentLength > 0) {
+          res.setHeader('Content-Length', String(contentLength));
+        }
+        return res.status(200).end();
+      }
+
+      const payloadResponse = await runWithCloudinaryFallback(fetchBody);
+      const payload = Buffer.from(payloadResponse.data || []);
+      const contentType = String(payloadResponse.headers['content-type'] || 'application/octet-stream');
+      const upstreamLength = Number.parseInt(String(payloadResponse.headers['content-length'] || ''), 10);
+      const finalLength = Number.isFinite(upstreamLength) && upstreamLength > 0 ? upstreamLength : payload.length;
+
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', contentDisposition);
+      res.setHeader('Cache-Control', 'private, max-age=120');
+      res.setHeader('Content-Length', String(finalLength));
+      return res.status(200).send(payload);
+    } catch (error) {
+      logger.error('Download proxy error:', {
+        message: error.message,
+        status: error.response?.status,
+        code: error.code,
+      });
+      return res.status(502).json({ error: 'Failed to download file.' });
+    }
+  });
+
+  // --- Paginated Messages ---
+  router.get('/api/messages', apiLimiter, async (req, res) => {
+    try {
+      const requestedLimit = Number(req.query.limit);
+      const pageSize = Number.isFinite(requestedLimit)
+        ? Math.min(Math.max(Math.floor(requestedLimit), 1), MAX_HISTORY_PAGE_SIZE)
+        : DEFAULT_HISTORY_PAGE_SIZE;
+
+      const { before } = req.query; // 'before' is the createdAt timestamp of the oldest client-side message
+
+      let beforeDate = null;
+      if (typeof before === 'string' && before.trim()) {
+        const parsed = new Date(before);
+        if (!Number.isNaN(parsed.getTime())) {
+          beforeDate = parsed;
+        }
+      }
+
+      const query = getVisibleMessagesQuery(beforeDate);
+
+      const rows = await Message.find(query)
+        .sort({ createdAt: -1 })
+        .limit(pageSize + 1)
+        .lean();
+
+      const hasMore = rows.length > pageSize;
+      const pageRows = hasMore ? rows.slice(0, pageSize) : rows;
+      const messages = pageRows.reverse().map(toClientMessage);
+      const oldestCreatedAt = messages.length > 0 ? messages[0].createdAt : null;
+
+      // Send oldest-first so client can prepend while preserving chronology.
+      res.json({ messages, hasMore, oldestCreatedAt });
+    } catch (error) {
+      logger.error('Failed to fetch paginated messages:', { message: error.message, stack: error.stack });
+      res.status(500).json({ error: 'Failed to fetch messages' });
+    }
+  });
+
+  return router;
+};
+
+// Export getVisibleMessagesQuery so websocket.js can use it for user_join history send.
+module.exports.getVisibleMessagesQuery = (getFrontendHiddenBeforeFn) => (beforeTimestamp) => {
+  const createdAt = {};
+  const frontendHiddenBefore = getFrontendHiddenBeforeFn();
+
+  if (frontendHiddenBefore instanceof Date && !Number.isNaN(frontendHiddenBefore.getTime())) {
+    createdAt.$gt = frontendHiddenBefore;
+  }
+
+  if (beforeTimestamp instanceof Date && !Number.isNaN(beforeTimestamp.getTime())) {
+    createdAt.$lt = beforeTimestamp;
+  }
+
+  if (Object.keys(createdAt).length === 0) return {};
+  return { createdAt };
+};
