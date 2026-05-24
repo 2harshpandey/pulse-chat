@@ -59,3 +59,47 @@ export const MAX_REPORT_REASON_LENGTH = 500;
 
 /** Playback speed options for the video player. */
 export const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+
+/** Canonical reaction set. Keep this list UTF-8 clean and shared by every quick-reaction picker. */
+export const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'] as const;
+
+export type QuickReaction = typeof QUICK_REACTIONS[number];
+
+const QUICK_REACTION_SET = new Set<string>(QUICK_REACTIONS);
+
+export type ReactionUser = { userId: string; username: string };
+export type ReactionMap = Record<string, ReactionUser[]>;
+
+export const normalizeReactionEmoji = (emoji: unknown): QuickReaction | null => {
+  if (typeof emoji !== 'string') return null;
+  const normalized = emoji.trim().normalize('NFC');
+  return QUICK_REACTION_SET.has(normalized) ? normalized as QuickReaction : null;
+};
+
+export const filterValidReactions = (rawReactions: unknown): ReactionMap => {
+  const normalizedReactions: ReactionMap = {};
+  if (!rawReactions || typeof rawReactions !== 'object') return normalizedReactions;
+
+  const entries: [string, any][] = rawReactions instanceof Map
+    ? Array.from(rawReactions.entries())
+    : Object.entries(rawReactions as Record<string, unknown>);
+
+  for (const [rawEmoji, users] of entries) {
+    const emoji = normalizeReactionEmoji(rawEmoji);
+    if (!emoji || !Array.isArray(users)) continue;
+
+    const validUsers = users
+      .map((user: any): ReactionUser | null => {
+        if (typeof user === 'string') return { userId: user, username: user };
+        if (!user || typeof user !== 'object' || typeof user.userId !== 'string') return null;
+        return { userId: user.userId, username: typeof user.username === 'string' ? user.username : user.userId };
+      })
+      .filter((user): user is ReactionUser => Boolean(user));
+
+    if (validUsers.length > 0) {
+      normalizedReactions[emoji] = [...(normalizedReactions[emoji] || []), ...validUsers];
+    }
+  }
+
+  return normalizedReactions;
+};

@@ -152,6 +152,7 @@ export const downloadFile = async (
   filename: string,
   onProgress?: DownloadProgressCallback,
   abortSignal?: AbortSignal,
+  preferProxy: boolean = false,
 ): Promise<void> => {
   const normalizeFilename = (name: string, fallback: string): string => {
     const raw = (name || '').trim();
@@ -190,6 +191,28 @@ export const downloadFile = async (
   const fallbackName = pathName || 'download';
   const safeFilename = normalizeFilename(filename, normalizeFilename(fallbackName, 'download'));
 
+  const downloadViaProxy = async () => {
+    const proxyUrl = buildDownloadProxyUrl(parsed.href, safeFilename);
+    const blob = await fetchBlobWithProgress(proxyUrl, onProgress, abortSignal);
+    const objectUrl = URL.createObjectURL(blob);
+    triggerAnchorDownload(objectUrl, safeFilename);
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
+  };
+
+  if (preferProxy) {
+    try {
+      await downloadViaProxy();
+      return;
+    } catch (proxyError: any) {
+      if (proxyError?.name === 'AbortError' || abortSignal?.aborted) {
+        onProgress?.(0);
+        return;
+      }
+      onProgress?.(0);
+      throw proxyError;
+    }
+  }
+
   try {
     const blob = await fetchBlobWithProgress(parsed.href, onProgress, abortSignal);
     const objectUrl = URL.createObjectURL(blob);
@@ -201,11 +224,7 @@ export const downloadFile = async (
       return;
     }
     try {
-      const proxyUrl = buildDownloadProxyUrl(parsed.href, safeFilename);
-      const blob = await fetchBlobWithProgress(proxyUrl, onProgress, abortSignal);
-      const objectUrl = URL.createObjectURL(blob);
-      triggerAnchorDownload(objectUrl, safeFilename);
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
+      await downloadViaProxy();
       return;
     } catch (proxyError: any) {
       if (proxyError?.name === 'AbortError' || abortSignal?.aborted) {

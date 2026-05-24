@@ -20,6 +20,7 @@ import {
   FULLSCREEN_RESTORE_FALLBACK_DELAY_MS, PHOTO_LIGHTBOX_MIN_SCALE, PHOTO_LIGHTBOX_MAX_SCALE,
   PHOTO_LIGHTBOX_STEP, PHOTO_LIGHTBOX_WHEEL_SENSITIVITY, LONG_PRESS_CANCEL_MOVE_PX,
   MIN_REPORT_REASON_LENGTH, MAX_REPORT_REASON_LENGTH, SPEEDS,
+  QUICK_REACTIONS, normalizeReactionEmoji, filterValidReactions,
 } from './chat/constants';
 import {
   getUserId, normalizeMessageId, getMessageElementId, normalizeOverlayText,
@@ -1674,21 +1675,7 @@ function Chat() {
     };
 
     if (baseMsg.reactions) {
-      const normalizedReactions: Record<string, { userId: string; username: string }[]> = {};
-      // Handle both plain objects and Map instances (Mongoose .lean() may return Maps)
-      const entries: [string, any][] = baseMsg.reactions instanceof Map
-        ? Array.from(baseMsg.reactions.entries())
-        : Object.entries(baseMsg.reactions);
-      for (const [emoji, users] of entries) {
-        if (Array.isArray(users)) {
-          normalizedReactions[emoji] = users.map((user: any) =>
-            typeof user === 'string'
-              ? { userId: user, username: user }
-              : { userId: user.userId, username: user.username || user.userId }
-          );
-        }
-      }
-      return { ...baseMsg, reactions: normalizedReactions } as Message;
+      return { ...baseMsg, reactions: filterValidReactions(baseMsg.reactions) } as Message;
     }
     return baseMsg as Message;
   }, []);
@@ -2063,7 +2050,8 @@ function Chat() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleReact = useCallback((messageId: string, emoji: string) => {
-    if (!ws.current || ws.current.readyState !== WebSocket.OPEN || !userContext?.profile || !messageId) return;
+    const canonicalEmoji = normalizeReactionEmoji(emoji);
+    if (!canonicalEmoji || !ws.current || ws.current.readyState !== WebSocket.OPEN || !userContext?.profile || !messageId) return;
     const userId = userIdRef.current;
     const username = userContext.profile.username;
 
@@ -2073,9 +2061,7 @@ function Chat() {
     // shortly after, which will reconcile any difference.
     setMessages(prev => prev.map(m => {
       if (m.id !== messageId) return m;
-      const reactions: Record<string, { userId: string; username: string }[]> = m.reactions
-        ? JSON.parse(JSON.stringify(m.reactions))
-        : {};
+      const reactions: Record<string, { userId: string; username: string }[]> = filterValidReactions(m.reactions);
       // Remove any existing reaction by this user
       let previousEmoji: string | null = null;
       for (const [e, users] of Object.entries(reactions)) {
@@ -2090,16 +2076,16 @@ function Chat() {
         }
       }
       // If not toggling off the same emoji, add the new one
-      if (previousEmoji !== emoji) {
-        if (!Array.isArray(reactions[emoji])) reactions[emoji] = [];
-        reactions[emoji].push({ userId, username });
+      if (previousEmoji !== canonicalEmoji) {
+        if (!Array.isArray(reactions[canonicalEmoji])) reactions[canonicalEmoji] = [];
+        reactions[canonicalEmoji].push({ userId, username });
       }
       return { ...m, reactions };
     }));
 
     // Send to server
     try {
-      ws.current.send(JSON.stringify({ type: 'react', messageId, userId, emoji }));
+      ws.current.send(JSON.stringify({ type: 'react', messageId, userId, emoji: canonicalEmoji }));
     } catch (e) {
       console.error('Failed to send reaction:', e);
     }
@@ -2861,7 +2847,7 @@ function Chat() {
             if (!(messageId in prev)) return prev;
             return { ...prev, [messageId]: Math.max(0.02, Math.min(1, progress)) };
           });
-        }, abortController.signal);
+        }, abortController.signal, true);
       } catch (err: any) {
         if (err.name === 'AbortError') return;
       } finally {
@@ -3652,7 +3638,7 @@ function Chat() {
                     <polyline points="14 2 14 8 20 8" />
                   </svg>
                   <p>No preview available</p>
-                  <span>{sizeLabel} ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â {ext}</span>
+                  <span>{sizeLabel} - {ext}</span>
                 </FilePreviewNoPreview>
               )}
             </FilePreviewModalBody>
@@ -3805,7 +3791,7 @@ function Chat() {
             return { top: `${top}px`, left: `${left}px` };
           })()}
         >
-          {['ÃƒÂ°Ã…Â¸Ã¢â‚¬ËœÃ‚Â', 'ÃƒÂ¢Ã‚ÂÃ‚Â¤ÃƒÂ¯Ã‚Â¸Ã‚Â', 'ÃƒÂ°Ã…Â¸Ã‹Å“Ã¢â‚¬Å¡', 'ÃƒÂ°Ã…Â¸Ã‹Å“Ã‚Â®', 'ÃƒÂ°Ã…Â¸Ã‹Å“Ã‚Â¢', 'ÃƒÂ°Ã…Â¸Ã¢â€žÂ¢Ã‚Â'].map(emoji => (
+          {QUICK_REACTIONS.map(emoji => (
             <ReactionEmoji key={emoji} onClick={(e) => { e.stopPropagation(); handleReact(reactionPickerData.messageId, emoji); }}>{emoji}</ReactionEmoji>
           ))}
           <ReactionEmoji $isPlusIcon={true} onClick={(e) => {

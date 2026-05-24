@@ -165,7 +165,7 @@ export const renderMessageContent = (
   const clampedDownloadProgress = Math.max(0, Math.min(1, downloadProgress || 0));
   const mediaSizeLabel = formatMediaSize(msg.size);
   const fileContainerLabel = getFileContainerLabel(msg.originalName, msg.url);
-  const fileMetaLabel = [formatMediaSize(msg.size), fileContainerLabel].filter(Boolean).join(' ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ ');
+  const fileMetaLabel = [formatMediaSize(msg.size), fileContainerLabel].filter(Boolean).join(' • ');
   const canDownload = sender === 'other';
   const gatePreviewUrl = shouldGateMedia
     ? sanitizeMediaUrl(getMediaGatePreviewUrl(isVideo ? 'video' : 'image', resolvedMediaUrl || msg.url))
@@ -208,7 +208,7 @@ export const renderMessageContent = (
       onRequestDownload(msg.id, msg.url, filename);
       return;
     }
-    void downloadFile(msg.url, filename);
+    void downloadFile(msg.url, filename, undefined, undefined, msg.type === 'file' || (!isImage && !isVideo));
   };
 
   const handleLoadMediaClick = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -364,4 +364,4 @@ export const renderMessageContent = (
 
   return null;
 };
-
+

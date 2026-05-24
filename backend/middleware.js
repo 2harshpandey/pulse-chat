@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const logger = require('./logger');
+const { filterValidReactions } = require('./reactions');
 const BlockedUser = require('./models/blockedUser');
 const LoginLockdown = require('./models/loginLockdown');
 
@@ -155,19 +156,12 @@ const isLoginLocked = async () => {
 
 // --- Message Serialisation ---
 
-// Convert Mongoose Map reactions to plain objects before JSON serialization.
+// Convert Mongoose Map reactions to plain objects before JSON serialization and
+// drop any legacy/corrupt reaction keys so mojibake can never leak to clients.
 const toClientMessage = (msg) => {
   if (!msg) return msg;
   const plain = typeof msg.toObject === 'function' ? msg.toObject() : msg;
-  if (!(plain.reactions instanceof Map)) return plain;
-
-  const reactionsPlain = {};
-  for (const [emoji, users] of plain.reactions.entries()) {
-    reactionsPlain[emoji] = Array.isArray(users)
-      ? users.map((u) => ({ userId: u.userId, username: u.username }))
-      : users;
-  }
-  return { ...plain, reactions: reactionsPlain };
+  return { ...plain, reactions: filterValidReactions(plain.reactions) };
 };
 
 module.exports = {

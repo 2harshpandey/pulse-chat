@@ -10,6 +10,7 @@ const MessageEvent = require('./models/messageEvent');
 const AuditLog = require('./models/auditLog');
 const UserReport = require('./models/userReport');
 const { extractIp, generateDeviceHash, toClientMessage } = require('./middleware');
+const { normalizeReactionEmoji, filterValidReactions, toReactionMap } = require('./reactions');
 const {
   onlineUsers,
   typingUsers,
@@ -331,7 +332,12 @@ const initWebSocket = (wss) => {
           break;
         }
         case 'react': {
-          const { messageId, userId, emoji } = parsedMessage;
+          const { messageId, userId } = parsedMessage;
+          const emoji = normalizeReactionEmoji(parsedMessage.emoji);
+          if (!emoji || typeof messageId !== 'string' || typeof userId !== 'string') {
+            logger.warn('Rejected invalid reaction payload', { messageId, userId, emoji: parsedMessage.emoji });
+            break;
+          }
           const username = onlineUsers.get(userId)?.username || 'Unknown';
 
           // IMPORTANT: Do NOT use .lean() here.
@@ -347,10 +353,8 @@ const initWebSocket = (wss) => {
           const messageDoc = await Message.findOne({ id: messageId });
 
           if (messageDoc) {
-            // Initialise the Map if the field is missing.
-            if (!messageDoc.reactions) {
-              messageDoc.reactions = new Map();
-            }
+            // Initialise the Map if the field is missing and purge any legacy/corrupt keys.
+            messageDoc.reactions = toReactionMap(messageDoc.reactions);
 
             let previousEmoji = null;
 
@@ -386,10 +390,7 @@ const initWebSocket = (wss) => {
             // JSON.stringify on a Map instance gives '{}' — we must convert explicitly.
             // We also map each subdocument to a plain { userId, username } object
             // to avoid leaking Mongoose internals to the frontend.
-            const reactionsPlain = {};
-            for (const [k, v] of messageDoc.reactions.entries()) {
-              reactionsPlain[k] = v.map(u => ({ userId: u.userId, username: u.username }));
-            }
+            const reactionsPlain = filterValidReactions(messageDoc.reactions);
 
             wss.clients.forEach(client => {
               if (client.readyState === WebSocket.OPEN) {
@@ -663,6 +664,7 @@ const initWebSocket = (wss) => {
 
           const messageDoc = new Message({
             ...parsedMessage,
+            reactions: toReactionMap(parsedMessage.reactions),
             id: parsedMessage.id || Date.now().toString(),
             sender: ws.userId
           });

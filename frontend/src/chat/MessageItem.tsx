@@ -2,7 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMe
 import { createPortal } from 'react-dom';
 import { useDrag } from '@use-gesture/react';
 import type { Message, MessageItemProps } from './types';
-import { LONG_PRESS_CANCEL_MOVE_PX, quoteLog } from './constants';
+import { LONG_PRESS_CANCEL_MOVE_PX, QUICK_REACTIONS, filterValidReactions, quoteLog } from './constants';
 import {
   getMessageElementId, getQuotedPreviewThumbUrl, wrapEmojis,
   sanitizeMediaUrl, getBlobUrl, revokeBlobUrl, getMediaCacheLookupKey,
@@ -299,15 +299,16 @@ export const MessageItem = React.memo(({
     drag: { threshold: 10, axis: 'x' }
   });
 
+  const validReactions = useMemo(() => filterValidReactions(msg.reactions), [msg.reactions]);
+
   const currentUserReaction = useMemo(() => {
-    if (!msg.reactions) return null;
-    for (const emoji of Object.keys(msg.reactions)) {
-      if (msg.reactions[emoji].some((r: { userId: string }) => r.userId === currentUserId)) {
+    for (const [emoji, users] of Object.entries(validReactions)) {
+      if (users.some((r: { userId: string }) => r.userId === currentUserId)) {
         return emoji;
       }
     }
     return null;
-  }, [msg.reactions, currentUserId]);
+  }, [validReactions, currentUserId]);
 
   // Reset gesture refs when Virtuoso recycles this component for a different message
   const prevMsgIdRef = useRef(msg.id);
@@ -600,7 +601,7 @@ export const MessageItem = React.memo(({
                     $sender={sender}
                     className="mobile-reaction-picker"
                   >
-                    {['ÃƒÂ°Ã…Â¸Ã¢â‚¬ËœÃ‚Â', 'ÃƒÂ¢Ã‚ÂÃ‚Â¤ÃƒÂ¯Ã‚Â¸Ã‚Â', 'ÃƒÂ°Ã…Â¸Ã‹Å“Ã¢â‚¬Å¡', 'ÃƒÂ°Ã…Â¸Ã‹Å“Ã‚Â®', 'ÃƒÂ°Ã…Â¸Ã‹Å“Ã‚Â¢', 'ÃƒÂ°Ã…Â¸Ã¢â€žÂ¢Ã‚Â'].map(emoji => (
+                    {QUICK_REACTIONS.map(emoji => (
                       <ReactionEmoji key={emoji} onClick={(e) => {
                         e.stopPropagation();
                         handleReact(msg.id, emoji);
@@ -681,11 +682,11 @@ export const MessageItem = React.memo(({
                 </FooterContainer>
               </>
             )}
-            {msg.reactions && Object.keys(msg.reactions).length > 0 && (() => {
-              const totalReactions = Object.values(msg.reactions).flat().length;
-              const uniqueEmojis = Object.keys(msg.reactions);
+            {Object.keys(validReactions).length > 0 && (() => {
+              const totalReactions = Object.values(validReactions).flat().length;
+              const uniqueEmojis = Object.keys(validReactions);
               return (
-                <ReactionsContainer $sender={sender} onClick={(e) => setReactionsPopup({ messageId: msg.id, reactions: msg.reactions!, rect: e.currentTarget.getBoundingClientRect() })}>
+                <ReactionsContainer $sender={sender} onClick={(e) => setReactionsPopup({ messageId: msg.id, reactions: validReactions, rect: e.currentTarget.getBoundingClientRect() })}>
                   {uniqueEmojis.slice(0, 3).map(emoji => <ReactionEmojiSpan key={emoji}>{emoji}</ReactionEmojiSpan>)}
                   <ReactionCountSpan>{totalReactions}</ReactionCountSpan>
                 </ReactionsContainer>
@@ -746,4 +747,4 @@ export const MessageItem = React.memo(({
       )}
     </React.Fragment>
   );
-});
+});

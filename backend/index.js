@@ -47,7 +47,7 @@ app.set('trust proxy', 1);
 // methods and headers are permitted so mobile-browser CORS preflight checks
 // never fail due to an unrecognised header name.
 app.use(cors({
-  methods: ['GET', 'POST', 'DELETE'],
+  methods: ['GET', 'HEAD', 'POST', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-password', 'x-admin-secret'],
 }));
 app.use(express.json());

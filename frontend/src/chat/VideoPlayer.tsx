@@ -429,4 +429,4 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter }: { src: st
       </CVPContainer>
     </VideoPlayerWrapper>
   );
-};
+};
