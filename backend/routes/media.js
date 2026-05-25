@@ -5,9 +5,10 @@ const http = require('http');
 const https = require('https');
 const dns = require('dns');
 const path = require('path');
+const { Readable } = require('stream');
+const crypto = require('crypto');
 const axios = require('axios');
 const cloudinary = require('cloudinary').v2;
-const CloudinaryStorage = require('multer-storage-cloudinary').CloudinaryStorage;
 const multer = require('multer');
 const logger = require('../logger');
 const Message = require('../models/message');
@@ -33,7 +34,7 @@ const {
   isAllowedDownloadHost,
   runWithSafeRedirects,
   sanitizeDownloadFilename,
-  getSignedCloudinaryDownloadUrl,
+  getCloudinaryAttachmentUrl,
 } = require('../security');
 const { WebSocket } = require('ws');
 
@@ -56,19 +57,54 @@ const repairMojibakeText = (value) => String(value || '')
 const sanitizeUploadFilename = (name) => sanitizeDownloadFilename(repairMojibakeText(name), 'file');
 
 // --- Cloudinary & Multer Configuration ---
-// Configured here since only this module uses file uploads.
-const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: 'pulse-chat',
-    resource_type: 'auto',
-    use_filename: true,       // Preserve original filename in the Cloudinary public_id
-    unique_filename: true,    // Append a short random suffix to avoid collisions
-  },
-});
+// Keep Multer in-memory and send files to Cloudinary ourselves using the chunked
+// upload stream. The Cloudinary storage adapter uses the normal upload endpoint,
+// which can return a 10 MB provider limit for raw files such as .rar/.zip.
+const MAX_UPLOAD_BYTES = 100 * 1024 * 1024; // 100 MB max
 const upload = multer({
-  storage,
-  limits: { fileSize: 100 * 1024 * 1024 },  // 100 MB max
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_UPLOAD_BYTES },
+});
+
+const getUploadResourceType = (mimetype = '') => {
+  if (mimetype.startsWith('image/')) return 'image';
+  if (mimetype.startsWith('video/')) return 'video';
+  return 'raw';
+};
+
+const getMessageFileType = (mimetype = '') => {
+  if (mimetype.startsWith('image/')) return 'image';
+  if (mimetype.startsWith('video/')) return 'video';
+  return 'file';
+};
+
+const uploadBufferToCloudinary = (file, originalName) => new Promise((resolve, reject) => {
+  const parsedName = path.parse(originalName || 'file');
+  const safeBase = sanitizeDownloadFilename(parsedName.name || 'file', 'file')
+    .replace(/\.[^.]+$/, '')
+    .replace(/\s+/g, '_')
+    .slice(0, 80);
+  const ext = parsedName.ext ? parsedName.ext.replace(/^\./, '') : '';
+  const resourceType = getUploadResourceType(file.mimetype || '');
+  const publicId = `pulse-chat/${safeBase}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+
+  const uploadOptions = {
+    resource_type: resourceType,
+    public_id: resourceType === 'raw' && ext ? `${publicId}.${ext}` : publicId,
+    chunk_size: 6 * 1024 * 1024,
+    use_filename: false,
+    unique_filename: false,
+    overwrite: false,
+    filename_override: originalName,
+  };
+
+  const uploadStream = cloudinary.uploader.upload_large_stream(uploadOptions, (error, result) => {
+    if (error) return reject(error);
+    if (!result?.secure_url) return reject(new Error('Cloudinary upload did not return a secure URL.'));
+    return resolve(result);
+  });
+
+  Readable.from(file.buffer).pipe(uploadStream).on('error', reject);
 });
 
 // --- Helper: build query that respects frontendHiddenBefore ---
@@ -98,7 +134,7 @@ module.exports = (wss, broadcasts) => {
 
   // --- File Upload ---
   router.post('/api/upload', uploadLimiter, (req, res) => {
-    upload.single('file')(req, res, (err) => {
+    upload.single('file')(req, res, async (err) => {
       if (err) {
         logger.error(`Upload middleware error: ${err.message}`);
         if (err.code === 'LIMIT_FILE_SIZE') {
@@ -110,42 +146,51 @@ module.exports = (wss, broadcasts) => {
 
       const { userId } = req.body;
       const username = onlineUsers.get(userId)?.username || 'Unknown';
-
       const originalName = sanitizeUploadFilename(req.file.originalname);
 
-      // Create a MessageEvent for the upload
-      const event = new MessageEvent({
-        type: 'upload',
-        file: {
-          originalname: originalName,
-          mimetype: req.file.mimetype,
+      try {
+        const uploaded = await uploadBufferToCloudinary(req.file, originalName);
+
+        // Create a MessageEvent for the upload
+        const event = new MessageEvent({
+          type: 'upload',
+          file: {
+            originalname: originalName,
+            mimetype: req.file.mimetype,
+            size: req.file.size,
+          },
+          userId,
+          username,
+          timestamp: new Date().toISOString(),
+        });
+        event.save();
+
+        broadcastToAdmins('history', event);
+        broadcastToAdmins('activity', `File '${originalName}' uploaded by '${username}'.`);
+
+        logger.info(`File uploaded: ${originalName}`);
+
+        res.status(200).json({
+          id: uploaded.public_id,
+          type: getMessageFileType(req.file.mimetype || ''),
+          url: uploaded.secure_url,
+          originalName,
           size: req.file.size,
-        },
-        userId,
-        username,
-        timestamp: new Date().toISOString(),
-      });
-      event.save();
-
-      broadcastToAdmins('history', event);
-      broadcastToAdmins('activity', `File '${originalName}' uploaded by '${username}'.`);
-
-      logger.info(`File uploaded: ${originalName}`);
-
-      // Determine file type from mimetype since Cloudinary resource_type
-      // may return 'raw' for PDFs and other non-image/video files.
-      let fileType = 'file';
-      if (req.file.mimetype && req.file.mimetype.startsWith('image/')) fileType = 'image';
-      else if (req.file.mimetype && req.file.mimetype.startsWith('video/')) fileType = 'video';
-
-      res.status(200).json({
-        id: req.file.filename,
-        type: fileType,
-        url: req.file.path,
-        originalName,
-        size: req.file.size,
-        text: req.body.text,
-      });
+          text: req.body.text,
+        });
+      } catch (uploadError) {
+        logger.error('Cloudinary upload error:', {
+          message: uploadError.message,
+          http_code: uploadError.http_code,
+          name: uploadError.name,
+        });
+        const providerLimit = /maximum is\s+10485760/i.test(uploadError.message || '');
+        return res.status(providerLimit ? 413 : 502).json({
+          error: providerLimit
+            ? 'File too large for the current upload provider path. Please try again after the latest server deploy.'
+            : `Upload failed: ${uploadError.message || 'Cloudinary upload failed.'}`,
+        });
+      }
     });
   });
 
@@ -457,9 +502,9 @@ module.exports = (wss, broadcasts) => {
         try {
           return await runWithSafeRedirects(executor, parsedUrl.href);
         } catch (err) {
-          const signedUrl = getSignedCloudinaryDownloadUrl(parsedUrl.href, safeFilename);
-          if (!signedUrl) throw err;
-          return runWithSafeRedirects(executor, signedUrl);
+          const attachmentUrl = getCloudinaryAttachmentUrl(parsedUrl.href, safeFilename);
+          if (!attachmentUrl) throw err;
+          return runWithSafeRedirects(executor, attachmentUrl);
         }
       };
 

@@ -169,6 +169,26 @@ const parseCloudinaryAssetFromUrl = (assetUrl) => {
   }
 };
 
+const getCloudinaryAttachmentUrl = (assetUrl, filename) => {
+  const parsedAsset = parseCloudinaryAssetFromUrl(assetUrl);
+  if (!parsedAsset) return '';
+
+  try {
+    const attachmentName = sanitizeDownloadFilename(filename, 'download');
+    const transformation = [`fl_attachment:${attachmentName}`];
+    return cloudinary.url(parsedAsset.publicId, {
+      resource_type: parsedAsset.resourceType,
+      type: parsedAsset.deliveryType || 'upload',
+      secure: true,
+      sign_url: false,
+      transformation,
+      format: parsedAsset.format || undefined,
+    });
+  } catch {
+    return '';
+  }
+};
+
 const getSignedCloudinaryDownloadUrl = (assetUrl, filename) => {
   const parsedAsset = parseCloudinaryAssetFromUrl(assetUrl);
   if (!parsedAsset) return '';
@@ -209,5 +229,6 @@ module.exports = {
   runWithSafeRedirects,
   sanitizeDownloadFilename,
   parseCloudinaryAssetFromUrl,
+  getCloudinaryAttachmentUrl,
   getSignedCloudinaryDownloadUrl,
 };
