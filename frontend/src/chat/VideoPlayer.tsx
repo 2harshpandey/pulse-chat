@@ -31,11 +31,11 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter }: { src: st
   const isScrubbingRef = useRef(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
-  const hideControlsTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const doubleTapTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const hideControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const doubleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTapTimeRef = useRef(0);
   const lastTapXRef = useRef(0);
-  const centerPlayTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const centerPlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
 
@@ -414,7 +414,7 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter }: { src: st
 
             {/* Playback speed */}
             <CVPSpeedBtn onClick={cycleSpeed} title="Playback speed" aria-label="Playback speed">
-              {SPEEDS[speedIdx]}ÃƒÆ’Ã¢â‚¬â€
+              {SPEEDS[speedIdx]}x
             </CVPSpeedBtn>
 
             {/* Fullscreen */}

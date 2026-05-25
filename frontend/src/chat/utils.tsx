@@ -85,7 +85,7 @@ export const resolveReplyTargetId = (replyingTo: any, sourceMessageId?: string):
 export const ALLOWED_DOWNLOAD_HOSTS = ['res.cloudinary.com', 'media.tenor.com', 'tenor.com'];
 
 export const resolveApiBaseUrl = (): string => {
-  const base = (process.env.REACT_APP_API_URL || '').trim().replace(/\/$/, '');
+  const base = (import.meta.env.REACT_APP_API_URL || '').trim().replace(/\/$/, '');
   if (!base) return '';
   const useHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
   return base.replace(/^http:\/\//, useHttps ? 'https://' : 'http://');
@@ -258,7 +258,10 @@ export const downloadFile = async (
         return;
       }
       onProgress?.(0);
-      throw proxyError;
+      // Last-resort browser navigation fallback. This keeps file clicks useful even
+      // if the proxy fetch is blocked by CORS/provider behavior in production.
+      triggerAnchorDownload(buildDownloadProxyUrl(parsed.href, safeFilename), safeFilename);
+      return;
     }
   }
 

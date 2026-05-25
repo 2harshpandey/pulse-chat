@@ -33,9 +33,7 @@ export const fetchLinkPreviewData = (url: string): Promise<LinkPreviewData | nul
 
   const promise = (async () => {
     try {
-      const apiBase = (process.env.REACT_APP_API_URL || '')
-        .replace(/^http:\/\//, (typeof window !== 'undefined' && window.location.protocol === 'https:') ? 'https://' : 'http://')
-        .replace(/\/$/, '');
+      const apiBase = resolveApiBaseUrl();
       const previewEndpoint = `${apiBase}/api/link-preview?url=${encodeURIComponent(url)}`;
       const res = await fetch(previewEndpoint);
       if (!res.ok) throw new Error('bad response');

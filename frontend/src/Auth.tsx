@@ -600,7 +600,7 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken }) => {
     setIsLoading(true);
     setError('');
     try {
-      const apiBase = (process.env.REACT_APP_API_URL || '').replace(/\/$/, '');
+      const apiBase = (import.meta.env.REACT_APP_API_URL || '').replace(/\/$/, '');
       const fingerprint = collectFingerprint();
 
       if (isTempLink) {

@@ -335,7 +335,11 @@ export const renderMessageContent = (
           role={canDownload ? 'button' : undefined}
           tabIndex={canDownload ? 0 : -1}
           title={canDownload ? (isDownloadInProgress ? 'Downloading' : 'Download file') : undefined}
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
           onClick={(e) => {
+            e.preventDefault();
             e.stopPropagation();
             if (canDownload && !isDownloadInProgress) triggerDownload(displayFilename || 'file');
           }}

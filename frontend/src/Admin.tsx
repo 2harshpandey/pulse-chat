@@ -119,7 +119,7 @@ const Admin = () => {
     const storedPassword = passwordRef.current;
     if (!storedPassword) return;
 
-    const wsUrl = `${process.env.REACT_APP_API_URL?.replace('http', 'ws') || 'ws://localhost:8080'}?admin=true`;
+    const wsUrl = `${import.meta.env.REACT_APP_API_URL?.replace('http', 'ws') || 'ws://localhost:8080'}?admin=true`;
     ws.current = new WebSocket(wsUrl);
     ws.current.onopen = () => {
       ws.current?.send(JSON.stringify({ type: 'admin_auth', password: storedPassword }));
@@ -205,7 +205,7 @@ const Admin = () => {
     'x-admin-password': passwordRef.current,
     'Content-Type': 'application/json',
   }), []);
-  const apiUrl = process.env.REACT_APP_API_URL || '';
+  const apiUrl = import.meta.env.REACT_APP_API_URL || '';
 
   // --- Auth ---
   const handleLogin = async () => {
@@ -321,7 +321,7 @@ const Admin = () => {
       try {
         const res = await fetch(`${apiUrl}/api/messages/all`, {
           method: 'DELETE',
-          headers: { 'x-admin-secret': process.env.REACT_APP_ADMIN_SECRET || '' },
+          headers: { 'x-admin-secret': import.meta.env.REACT_APP_ADMIN_SECRET || '' },
         });
         if (res.ok) { alert("All chat history deleted."); setHistoryLogs([]); }
         else { const d = await res.json(); alert(`Error: ${d.error || 'Failed.'}`); }
@@ -336,7 +336,7 @@ const Admin = () => {
       try {
         const res = await fetch(`${apiUrl}/api/messages/hide-all-frontend`, {
           method: 'POST',
-          headers: { 'x-admin-secret': process.env.REACT_APP_ADMIN_SECRET || '' },
+          headers: { 'x-admin-secret': import.meta.env.REACT_APP_ADMIN_SECRET || '' },
         });
         if (res.ok) {
           alert("All existing chats are now hidden from frontend for everyone.");

@@ -532,7 +532,7 @@ export const MessageBubble = styled.div<{ $sender: string; $messageType: string;
     /* Keep message geometry and paint stable while virtualized rows are recycled.
       Animated transitions here can look like shaking/blinking during fast scroll. */
     transition: none;
-  border: ${props => props.$uploadError ? '1px solid #ef4444' : (props.$sender === 'me' ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(15,23,42,0.08)')};
+  border: ${props => props.$sender === 'me' ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(15,23,42,0.08)'};
   will-change: auto;
   align-self: ${props => props.$sender === 'me' ? 'flex-end' : 'flex-start'};
 
@@ -545,7 +545,7 @@ export const MessageBubble = styled.div<{ $sender: string; $messageType: string;
   }
 
   [data-theme='dark'] & {
-    border-color: ${props => props.$uploadError ? '#ef4444' : (props.$sender === 'me' ? 'rgba(255,255,255,0.12)' : 'rgba(148,163,184,0.14)')};
+    border-color: ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.12)' : 'rgba(148,163,184,0.14)'};
   }
 `;
 

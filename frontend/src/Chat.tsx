@@ -29,7 +29,7 @@ import {
   fetchBlobWithProgress, downloadFile, sanitizeMediaUrl, isTenorUrl,
   withCloudinaryTransform, getQuotedPreviewThumbUrl, getMediaGatePreviewUrl,
   formatMediaSize, getMediaCacheLookupKey, getFileContainerLabel, chooseReadableFilename,
-  inferredContentLengthByUrlCache, getCurrentHistoryPath,
+  sanitizeFilename, inferredContentLengthByUrlCache, getCurrentHistoryPath,
   readRouterHistoryState, readRouterUserState, buildOverlayGuardState,
   pushOverlayGuardHistoryEntry, clearOverlayGuardHistoryEntry,
   getBlobUrl, revokeBlobUrl, getDeletedForMeIds, addDeletedForMeIds,
@@ -216,7 +216,7 @@ function Chat() {
   const messageInputRef = useRef<HTMLTextAreaElement>(null!);
   const inputOverlayRef = useRef<HTMLDivElement>(null);
   const userIdRef = useRef<string>(getUserId());
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Cooldown flag: true while we're within the throttle window after sending start_typing.
   // Prevents sending start_typing more than once per ~3 s even on rapid keystrokes.
   const typingCooldownRef = useRef(false);
@@ -238,7 +238,7 @@ function Chat() {
   const quoteJumpLockTimeoutRef = useRef<number | null>(null);
   const pendingBottomScrollTimeoutsRef = useRef<number[]>([]);
   // WebSocket auto-reconnect management refs
-  const reconnectTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectDelayRef = useRef<number>(2000); // starts at 2 s, doubles on each retry
   const mediaLoadInFlightRef = useRef<Set<string>>(new Set());
   const mediaBlobUrlMapRef = useRef<Map<string, string>>(new Map());
@@ -272,12 +272,9 @@ function Chat() {
   } | null>(null);
   const lightboxTransformRef = useRef(lightboxTransform);
 
-  // Base API URL ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â upgrade http:// ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ https:// when the page itself is on HTTPS.
-  // Mobile networks (and many corporate proxies) enforce mixed-content policy strictly,
-  // blocking plain-HTTP fetch calls from an HTTPS page. Home WiFi is typically more
-  // lenient, which is why uploads/auth worked on WiFi but silently failed on mobile data.
-  const apiBase = (process.env.REACT_APP_API_URL || '')
-    .replace(/^http:\/\//, window.location.protocol === 'https:' ? 'https://' : 'http://');
+  // Base API URL: upgrade http:// to https:// when the page itself is on HTTPS.
+  // Mobile networks and many corporate proxies enforce mixed-content policy strictly.
+  const apiBase = resolveApiBaseUrl();
 
   const ensureAudioContext = useCallback(async () => {
     const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
@@ -828,7 +825,7 @@ function Chat() {
       setIsLoadingGifs(true);
       try {
         const q = gifSearchTerm.trim() ? encodeURIComponent(gifSearchTerm.trim()) : 'trending';
-        const key = process.env.REACT_APP_TENOR_KEY || 'LIVDSRZULELA';
+        const key = import.meta.env.REACT_APP_TENOR_KEY || 'LIVDSRZULELA';
         const url = `https://g.tenor.com/v1/search?q=${q}&key=${key}&limit=${GIF_FETCH_LIMIT}`;
         const res = await fetch(url);
         if (!res.ok) throw new Error('Failed to fetch GIFs');
@@ -1027,7 +1024,7 @@ function Chat() {
       //  ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ Page on http://  ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ use ws:// (local dev only)
       //  ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ No env var       ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ fall back to the page's own host/protocol
       const wsUrl = (() => {
-        const base = process.env.REACT_APP_API_URL;
+        const base = import.meta.env.REACT_APP_API_URL;
         if (!base) {
           const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
           return `${proto}://${window.location.host}`;
@@ -1963,8 +1960,11 @@ function Chat() {
       formData.append('userId', userIdRef.current);
 
       fetch(`${apiBase}/api/upload`, { method: 'POST', body: formData })
-        .then(response => {
-          if (!response.ok) throw new Error('Upload failed');
+        .then(async response => {
+          if (!response.ok) {
+            const payload = await response.json().catch(() => null);
+            throw new Error(payload?.error || `Upload failed (${response.status})`);
+          }
           return response.json();
         })
         .then(uploadedFileData => {
@@ -1980,7 +1980,15 @@ function Chat() {
         })
         .catch(error => {
           console.error('File upload failed!', error);
-          setMessages(prev => prev.map(m => m.id === tempId ? { ...message, isUploading: false, uploadError: true, text: 'Upload failed' } : m));
+          const errorText = error instanceof Error && error.message ? error.message : 'Upload failed';
+          setMessages(prev => prev.map(m => m.id === tempId ? {
+            ...message,
+            url: '',
+            isUploading: false,
+            uploadError: true,
+            originalName: sanitizeFilename(message.originalName || stagedFile.name, 'file'),
+            text: errorText,
+          } : m));
         });
 
       const hadReply = !!replyingTo;
@@ -3568,7 +3576,13 @@ function Chat() {
       formData.append('userId', userIdRef.current);
 
       fetch(`${apiBase}/api/upload`, { method: 'POST', body: formData })
-        .then(response => { if (!response.ok) throw new Error('Upload failed'); return response.json(); })
+        .then(async response => {
+          if (!response.ok) {
+            const payload = await response.json().catch(() => null);
+            throw new Error(payload?.error || `Upload failed (${response.status})`);
+          }
+          return response.json();
+        })
         .then(uploadedFileData => {
           const finalMessage = {
             ...message,
@@ -3582,7 +3596,15 @@ function Chat() {
         })
         .catch(error => {
           console.error('File upload failed!', error);
-          setMessages(prev => prev.map(m => m.id === tempId ? { ...message, isUploading: false, uploadError: true, text: 'Upload failed' } : m));
+          const errorText = error instanceof Error && error.message ? error.message : 'Upload failed';
+          setMessages(prev => prev.map(m => m.id === tempId ? {
+            ...message,
+            url: '',
+            isUploading: false,
+            uploadError: true,
+            originalName: sanitizeFilename(message.originalName || file.name, 'file'),
+            text: errorText,
+          } : m));
         });
     }
 

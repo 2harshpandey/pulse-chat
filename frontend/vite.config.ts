@@ -53,6 +53,7 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
+    envPrefix: ['VITE_', 'REACT_APP_'],
     define: {
       'process.env': compatEnv,
     },

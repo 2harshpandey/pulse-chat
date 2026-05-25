@@ -144,7 +144,7 @@ export const MessageItem = React.memo(({
   // When true the gesture-tap handler skips selection so the lightbox/player
   // can open without also selecting the message.
   const mediaWasTapped = useRef(false);
-  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const swipeTransitionResetTimerRef = useRef<number | null>(null);
   const reactButtonRef = useRef<HTMLButtonElement>(null!);
   const wasLongPressed = useRef(false);
