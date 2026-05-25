@@ -144,6 +144,65 @@ export const fetchBlobWithProgress = async (
   return blob;
 };
 
+export const repairMojibakeText = (value?: string | null): string => {
+  const raw = String(value || '');
+  if (!raw) return '';
+
+  const repaired = raw
+    .replace(/Ã¢â‚¬â„¢|Ã¢â‚¬â„¢|â€™|â/g, "'")
+    .replace(/Ã¢â‚¬Ëœ|â€˜|â/g, "'")
+    .replace(/Ã¢â‚¬Å“|â€œ|â/g, '"')
+    .replace(/Ã¢â‚¬Â|Ã¢â‚¬ï¿½|â€|â/g, '"')
+    .replace(/Ã¢â‚¬â€œ|â€“|â/g, '-')
+    .replace(/Ã¢â‚¬â€|â€”|â/g, '-')
+    .replace(/Ã¢â‚¬Â¦|â€¦|â¦/g, '...')
+    .replace(/Ã‚Â·|Â·/g, '·')
+    .replace(/ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â|ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“/g, '-')
+    .replace(/ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦/g, '...')
+    .replace(/ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬/g, 'EUR')
+    .replace(/Ã‚/g, '')
+    .replace(/Â(?=\s|$|[\w().,;:'"-])/g, '');
+
+  return repaired.normalize('NFC');
+};
+
+export const sanitizeFilename = (name: string, fallback: string = 'download'): string => {
+  const raw = repairMojibakeText(name).trim();
+  const cleaned = raw
+    .replace(/[\\/:*?"<>|\u0000-\u001F]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120);
+  return cleaned || fallback;
+};
+
+export const getDisplayFilename = (name?: string | null, fileUrl?: string | null, fallback: string = 'Download file'): string => {
+  const repairedName = sanitizeFilename(String(name || ''), '');
+  if (repairedName) return repairedName;
+
+  if (fileUrl) {
+    try {
+      const parsed = new URL(fileUrl);
+      const pathName = decodeURIComponent(parsed.pathname.split('/').pop() || '');
+      const repairedPathName = sanitizeFilename(pathName, '');
+      if (repairedPathName) return repairedPathName;
+    } catch {
+      // Ignore malformed URLs and use the fallback below.
+    }
+  }
+
+  return fallback;
+};
+
+export const chooseReadableFilename = (preferred?: string | null, fallback?: string | null, defaultName: string = 'file'): string => {
+  const repairedPreferred = sanitizeFilename(String(preferred || ''), '');
+  const repairedFallback = sanitizeFilename(String(fallback || ''), '');
+
+  if (!repairedPreferred) return repairedFallback || defaultName;
+  if (!preferred || repairedPreferred !== preferred) return repairedFallback || repairedPreferred;
+  return repairedPreferred;
+};
+
 /**
  * Triggers a browser download for a file hosted on a trusted CDN.
  */
@@ -154,16 +213,6 @@ export const downloadFile = async (
   abortSignal?: AbortSignal,
   preferProxy: boolean = false,
 ): Promise<void> => {
-  const normalizeFilename = (name: string, fallback: string): string => {
-    const raw = (name || '').trim();
-    const cleaned = raw
-      .replace(/[\\/:*?"<>|\u0000-\u001F]/g, '_')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 120);
-    return cleaned || fallback;
-  };
-
   const triggerAnchorDownload = (href: string, downloadName: string) => {
     const anchor = document.createElement('a');
     anchor.href = href;
@@ -188,8 +237,8 @@ export const downloadFile = async (
   if (!isTrustedHost) return;
 
   const pathName = decodeURIComponent(parsed.pathname.split('/').pop() || '');
-  const fallbackName = pathName || 'download';
-  const safeFilename = normalizeFilename(filename, normalizeFilename(fallbackName, 'download'));
+  const fallbackName = sanitizeFilename(pathName, 'download');
+  const safeFilename = sanitizeFilename(filename, fallbackName);
 
   const downloadViaProxy = async () => {
     const proxyUrl = buildDownloadProxyUrl(parsed.href, safeFilename);
@@ -326,12 +375,12 @@ export const getMediaCacheLookupKey = (messageId: string, sourceUrl: string): st
   `${messageId}::${sourceUrl}`;
 
 export const getFileContainerLabel = (name?: string, fileUrl?: string): string => {
-  let candidate = (name || '').trim();
+  let candidate = repairMojibakeText(name || '').trim();
 
   if (!candidate && fileUrl) {
     try {
       const parsed = new URL(fileUrl);
-      candidate = decodeURIComponent(parsed.pathname.split('/').pop() || '');
+      candidate = repairMojibakeText(decodeURIComponent(parsed.pathname.split('/').pop() || ''));
     } catch {
       candidate = '';
     }

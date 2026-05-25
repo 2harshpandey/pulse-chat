@@ -28,7 +28,7 @@ import {
   ALLOWED_DOWNLOAD_HOSTS, resolveApiBaseUrl, buildDownloadProxyUrl,
   fetchBlobWithProgress, downloadFile, sanitizeMediaUrl, isTenorUrl,
   withCloudinaryTransform, getQuotedPreviewThumbUrl, getMediaGatePreviewUrl,
-  formatMediaSize, getMediaCacheLookupKey, getFileContainerLabel,
+  formatMediaSize, getMediaCacheLookupKey, getFileContainerLabel, chooseReadableFilename,
   inferredContentLengthByUrlCache, getCurrentHistoryPath,
   readRouterHistoryState, readRouterUserState, buildOverlayGuardState,
   pushOverlayGuardHistoryEntry, clearOverlayGuardHistoryEntry,
@@ -1968,7 +1968,13 @@ function Chat() {
           return response.json();
         })
         .then(uploadedFileData => {
-          const finalMessage = { ...message, ...uploadedFileData, isUploading: false, id: uploadedFileData.id };
+          const finalMessage = {
+            ...message,
+            ...uploadedFileData,
+            originalName: chooseReadableFilename(uploadedFileData.originalName, message.originalName),
+            isUploading: false,
+            id: uploadedFileData.id,
+          };
           setMessages(prev => prev.map(m => m.id === tempId ? finalMessage : m));
           ws.current?.send(JSON.stringify(finalMessage));
         })
@@ -3564,7 +3570,13 @@ function Chat() {
       fetch(`${apiBase}/api/upload`, { method: 'POST', body: formData })
         .then(response => { if (!response.ok) throw new Error('Upload failed'); return response.json(); })
         .then(uploadedFileData => {
-          const finalMessage = { ...message, ...uploadedFileData, isUploading: false, id: uploadedFileData.id };
+          const finalMessage = {
+            ...message,
+            ...uploadedFileData,
+            originalName: chooseReadableFilename(uploadedFileData.originalName, message.originalName),
+            isUploading: false,
+            id: uploadedFileData.id,
+          };
           setMessages(prev => prev.map(m => m.id === tempId ? finalMessage : m));
           ws.current?.send(JSON.stringify(finalMessage));
         })
@@ -3607,7 +3619,7 @@ function Chat() {
             </svg>
           </DragDropIconWrapper>
           <DragDropTitle>Drop your file here</DragDropTitle>
-          <DragDropSubtitle>Images, videos, PDFs and more ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â release to upload</DragDropSubtitle>
+          <DragDropSubtitle>Images, videos, PDFs and more - release to upload</DragDropSubtitle>
         </DragDropCard>
       </DragDropOverlay>
       {/* WhatsApp-style File Preview Modal */}

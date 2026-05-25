@@ -3,7 +3,7 @@ import type { Message } from './types';
 import {
   sanitizeMediaUrl, isTenorUrl, withCloudinaryTransform, getMediaGatePreviewUrl,
   formatMediaSize, getFileContainerLabel, buildDownloadProxyUrl,
-  fetchBlobWithProgress, downloadFile, wrapEmojis,
+  fetchBlobWithProgress, downloadFile, wrapEmojis, getDisplayFilename,
 } from './utils';
 import {
   MediaContent, MediaImageWrapper, MediaVideoWrapperDiv, MediaLoadGate, MediaLoadPreview,
@@ -164,9 +164,10 @@ export const renderMessageContent = (
   const clampedLoadProgress = Math.max(0, Math.min(1, mediaLoadProgress || 0));
   const clampedDownloadProgress = Math.max(0, Math.min(1, downloadProgress || 0));
   const mediaSizeLabel = formatMediaSize(msg.size);
-  const fileContainerLabel = getFileContainerLabel(msg.originalName, msg.url);
+  const displayFilename = getDisplayFilename(msg.originalName, msg.url, 'Download file');
+  const fileContainerLabel = getFileContainerLabel(displayFilename, msg.url);
   const fileMetaLabel = [formatMediaSize(msg.size), fileContainerLabel].filter(Boolean).join(' • ');
-  const canDownload = sender === 'other';
+  const canDownload = Boolean(msg.url) && !msg.isUploading;
   const gatePreviewUrl = shouldGateMedia
     ? sanitizeMediaUrl(getMediaGatePreviewUrl(isVideo ? 'video' : 'image', resolvedMediaUrl || msg.url))
     : '';
@@ -254,7 +255,7 @@ export const renderMessageContent = (
               {mediaSizeLabel && <MediaSizeBadge>{mediaSizeLabel}</MediaSizeBadge>}
             </>
           ) : msg.url ? (
-            <img src={sanitizeMediaUrl(resolvedMediaUrl)} alt={msg.originalName} onClick={() => { const u = sanitizeMediaUrl(resolvedMediaUrl); if (u) openLightbox(u); }} onPointerDown={() => onMediaPointerDown?.()} onDoubleClick={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} />
+            <img src={sanitizeMediaUrl(resolvedMediaUrl)} alt={displayFilename} onClick={() => { const u = sanitizeMediaUrl(resolvedMediaUrl); if (u) openLightbox(u); }} onPointerDown={() => onMediaPointerDown?.()} onDoubleClick={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} />
           ) : null}
           {msg.url && !shouldGateMedia && canDownload && (
             <MediaDownloadOverlayBtn
@@ -262,8 +263,7 @@ export const renderMessageContent = (
               aria-label={isDownloadInProgress ? 'Cancel download' : 'Download image'}
               onClick={(e) => {
                 e.stopPropagation();
-                // Always call triggerDownload ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â it toggles cancel if in-flight
-                triggerDownload(msg.originalName || 'image');
+                triggerDownload(displayFilename || 'image');
               }}
             >
               {isDownloadInProgress ? <RingedDownloadIcon progress={clampedDownloadProgress} /> : <DownloadSvg />}
@@ -316,8 +316,7 @@ export const renderMessageContent = (
               aria-label={isDownloadInProgress ? 'Cancel download' : 'Download video'}
               onClick={(e) => {
                 e.stopPropagation();
-                // Always call triggerDownload ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â it toggles cancel if in-flight
-                triggerDownload(msg.originalName || 'video');
+                triggerDownload(displayFilename || 'video');
               }}
             >
               {isDownloadInProgress ? <RingedDownloadIcon progress={clampedDownloadProgress} /> : <DownloadSvg />}
@@ -332,13 +331,27 @@ export const renderMessageContent = (
   if (msg.type === 'file' || (msg.url && !isImage && !isVideo)) {
     return (
       <MediaContent>
-        <FileAttachmentCard onClick={() => { if (canDownload && !isDownloadInProgress) triggerDownload(msg.originalName || 'file'); }}>
+        <FileAttachmentCard
+          role={canDownload ? 'button' : undefined}
+          tabIndex={canDownload ? 0 : -1}
+          title={canDownload ? (isDownloadInProgress ? 'Downloading' : 'Download file') : undefined}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (canDownload && !isDownloadInProgress) triggerDownload(displayFilename || 'file');
+          }}
+          onKeyDown={(e) => {
+            if (!canDownload || isDownloadInProgress || (e.key !== 'Enter' && e.key !== ' ')) return;
+            e.preventDefault();
+            e.stopPropagation();
+            triggerDownload(displayFilename || 'file');
+          }}
+        >
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
             <polyline points="14 2 14 8 20 8" />
           </svg>
           <FileAttachmentMeta>
-            <FileAttachmentName>{msg.originalName || 'Download file'}</FileAttachmentName>
+            <FileAttachmentName>{displayFilename}</FileAttachmentName>
             <FileAttachmentDetails>{fileMetaLabel}</FileAttachmentDetails>
           </FileAttachmentMeta>
           {canDownload && isDownloadInProgress ? (

@@ -37,6 +37,24 @@ const {
 } = require('../security');
 const { WebSocket } = require('ws');
 
+const repairMojibakeText = (value) => String(value || '')
+  .replace(/Ã¢â‚¬â„¢|Ã¢â‚¬â„¢|â€™|â/g, "'")
+  .replace(/Ã¢â‚¬Ëœ|â€˜|â/g, "'")
+  .replace(/Ã¢â‚¬Å“|â€œ|â/g, '"')
+  .replace(/Ã¢â‚¬Â|Ã¢â‚¬ï¿½|â€|â/g, '"')
+  .replace(/Ã¢â‚¬â€œ|â€“|â/g, '-')
+  .replace(/Ã¢â‚¬â€|â€”|â/g, '-')
+  .replace(/Ã¢â‚¬Â¦|â€¦|â¦/g, '...')
+  .replace(/Ã‚Â·|Â·/g, '·')
+  .replace(/ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â|ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“/g, '-')
+  .replace(/ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦/g, '...')
+  .replace(/ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬/g, 'EUR')
+  .replace(/Ã‚/g, '')
+  .replace(/Â(?=\s|$|[\w().,;:'"-])/g, '')
+  .normalize('NFC');
+
+const sanitizeUploadFilename = (name) => sanitizeDownloadFilename(repairMojibakeText(name), 'file');
+
 // --- Cloudinary & Multer Configuration ---
 // Configured here since only this module uses file uploads.
 const storage = new CloudinaryStorage({
@@ -93,11 +111,13 @@ module.exports = (wss, broadcasts) => {
       const { userId } = req.body;
       const username = onlineUsers.get(userId)?.username || 'Unknown';
 
+      const originalName = sanitizeUploadFilename(req.file.originalname);
+
       // Create a MessageEvent for the upload
       const event = new MessageEvent({
         type: 'upload',
         file: {
-          originalname: req.file.originalname,
+          originalname: originalName,
           mimetype: req.file.mimetype,
           size: req.file.size,
         },
@@ -108,9 +128,9 @@ module.exports = (wss, broadcasts) => {
       event.save();
 
       broadcastToAdmins('history', event);
-      broadcastToAdmins('activity', `File '${req.file.originalname}' uploaded by '${username}'.`);
+      broadcastToAdmins('activity', `File '${originalName}' uploaded by '${username}'.`);
 
-      logger.info(`File uploaded: ${req.file.originalname}`);
+      logger.info(`File uploaded: ${originalName}`);
 
       // Determine file type from mimetype since Cloudinary resource_type
       // may return 'raw' for PDFs and other non-image/video files.
@@ -122,7 +142,7 @@ module.exports = (wss, broadcasts) => {
         id: req.file.filename,
         type: fileType,
         url: req.file.path,
-        originalName: req.file.originalname,
+        originalName,
         size: req.file.size,
         text: req.body.text,
       });
