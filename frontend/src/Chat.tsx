@@ -3922,10 +3922,10 @@ function Chat() {
               <MessagesContainer ref={chatContainerRef} onClick={handleChatAreaClick} $isScrollButtonVisible={isScrollToBottomVisible} $isMobileView={isMobileView}>
                 {historyLoaded && messages.length > 0 ? (
                   <Virtuoso
+                    key={userIdRef.current || 'unauthed'}
                     ref={virtuosoRef}
                     firstItemIndex={firstItemIndex}
                     data={messages}
-                    initialTopMostItemIndex={messages.length > 0 ? (initialTopMostItemIndexRef.current ?? undefined) : undefined}
                     startReached={loadOlderMessages}
                     atTopThreshold={800}
                     isScrolling={handleVirtuosoIsScrolling}
@@ -3937,7 +3937,14 @@ function Chat() {
                     overscan={adjustedVirtuosoOverscan}
                     scrollSeekConfiguration={virtuosoScrollSeekConfiguration}
                     computeItemKey={(index: number, msg: Message) => msg.id || index}
-                    style={{ flex: 1, overflow: 'auto' }}
+                    style={{ 
+                      position: 'absolute', 
+                      inset: 0, 
+                      height: '100%', 
+                      width: '100%', 
+                      overflowY: 'auto', 
+                      WebkitOverflowScrolling: 'touch' 
+                    }}
                     components={virtuosoComponents}
                     itemContent={(index: number, msg: Message) => {
                       if (msg.type === 'system_notification') {

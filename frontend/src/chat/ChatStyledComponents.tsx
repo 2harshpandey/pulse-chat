@@ -400,6 +400,7 @@ export const ChatWindow = styled.main`
   touch-action: pan-y; /* Allow vertical panning */
 `;
 export const MessagesContainer = styled.div<{ $isScrollButtonVisible?: boolean; $isMobileView?: boolean; }>`
+  position: relative;
   flex-grow: 1;
   display: flex;
   flex-direction: column;
