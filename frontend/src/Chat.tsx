@@ -1719,11 +1719,11 @@ function Chat() {
     // can see the old index with the new (larger) data array for one frame,
     // causing the visible anchor row to jump upward ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the primary flicker
     // root cause on first-pass upward scroll.
-    setMessages((prev) => {
-      const prevIds = new Set(prev.map((m) => m.id));
-      const uniqueOlder = filteredBatch.filter((m) => !prevIds.has(m.id));
-      if (uniqueOlder.length === 0) return prev;
+    const prev = messagesRef.current;
+    const prevIds = new Set(prev.map((m) => m.id));
+    const uniqueOlder = filteredBatch.filter((m) => !prevIds.has(m.id));
 
+    if (uniqueOlder.length > 0) {
       const combinedDeletedIds = new Set(
         [...prev, ...uniqueOlder].filter((m) => m.isDeleted).map((m) => m.id)
       );
@@ -1732,17 +1732,14 @@ function Chat() {
 
       const actualPrependedCount = patchedOlder.length;
       if (actualPrependedCount > 0) {
-        // Update the ref synchronously so the next render's itemContent closure
-        // already sees the correct firstItemIndex when Virtuoso re-renders.
         const nextIdx = firstItemIndexRef.current - actualPrependedCount;
         firstItemIndexRef.current = nextIdx;
-        // Schedule the state update; React will batch this with the message update.
+        
         setFirstItemIndex(nextIdx);
+        setMessages([...patchedOlder, ...patchedPrev]);
         scrollLog('prepend', actualPrependedCount, 'msgs ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ new firstItemIndex', nextIdx);
       }
-
-      return [...patchedOlder, ...patchedPrev];
-    });
+    }
 
     setHasMoreOlderMessages(hasMore);
     hasMoreOlderMessagesRef.current = hasMore;
@@ -1753,17 +1750,10 @@ function Chat() {
   const loadOlderMessages = useCallback(async () => {
     if (!historyLoaded || isLoadingOlderRef.current || !hasMoreOlderMessagesRef.current || !oldestLoadedAtRef.current) return;
 
-    // Avoid prepending while the user is actively dragging/scrolling near top.
-    // Prepending mid-drag is a primary source of visible up/down jitter.
-    if (isVirtuosoScrollingRef.current) {
-      if (pendingTopLoadTimerRef.current !== null) {
-        window.clearTimeout(pendingTopLoadTimerRef.current);
-        pendingTopLoadTimerRef.current = null;
-      }
-      pendingTopLoadAfterScrollRef.current = true;
-      return;
-    }
-    pendingTopLoadAfterScrollRef.current = false;
+    // We intentionally removed the isVirtuosoScrollingRef check here.
+    // Virtuoso's JS anchoring physics must be allowed to seamlessly inject and 
+    // offset the scroll list DURING momentum scroll. Delaying it forces the user
+    // to hit the "roof" of the DOM, causing a violent layout snap.
 
     // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ FIX: Throttle startReached ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
     // Virtuoso fires startReached on every scroll frame near the top ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â up to
