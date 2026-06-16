@@ -436,6 +436,7 @@ export const MessagesAndScrollWrapper = styled.div`
 `;
 
 export const MessageRow = styled.div<{ $sender: string; $isSelected?: boolean; $isActiveDeleteMenu?: boolean; $isGrouped?: boolean; }>`
+  contain: layout style;
   display: flex;
   flex-direction: row;
   align-items: flex-start;
@@ -1048,10 +1049,19 @@ export const MediaImageWrapper = styled.div`
    Using a real CSS hover so the button appears on desktop hover,
    and is always visible on touch devices (mobile). */
 export const MediaVideoWrapperDiv = styled.div`
-  position: relative;
-  display: inline-block;
+  ${mediaFrameStyles}
+  background: #000;
 
   &:hover ${MediaDownloadOverlayBtn} { opacity: 1; }
+
+  video {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+    background: #000;
+    border-radius: 0.75rem;
+  }
 `;
 
 export const MediaLoadGate = styled.button<{ $isLoading: boolean }>`

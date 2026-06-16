@@ -3888,7 +3888,7 @@ function Chat() {
                     followOutput={virtuosoFollowOutput}
                     atBottomStateChange={handleAtBottomStateChange}
                     atBottomThreshold={20}
-                    defaultItemHeight={72}
+                    defaultItemHeight={80}
                     increaseViewportBy={virtuosoIncreaseViewportBy}
                     overscan={adjustedVirtuosoOverscan}
                     scrollSeekConfiguration={virtuosoScrollSeekConfiguration}
