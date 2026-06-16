@@ -197,7 +197,7 @@ export const MobileEmojiPanel = styled.div`
   border-top: 1px solid var(--border-primary);
   display: flex;
   flex-direction: column;
-  max-height: 45vh;
+  max-height: 45dvh;
   animation: ${slideIn} 0.2s ease-out forwards;
   .epr-main {
     width: 100% !important;
@@ -413,6 +413,7 @@ export const MessagesContainer = styled.div<{ $isScrollButtonVisible?: boolean; 
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch;
     overflow-anchor: none;
+    overscroll-behavior-y: none;
   }
   & [data-test-id="virtuoso-item-list"] {
     overflow-anchor: none;
@@ -448,6 +449,8 @@ export const MessageRow = styled.div<{ $sender: string; $isSelected?: boolean; $
   transition: none;
   user-select: none;
   touch-action: pan-y; /* Allow vertical scrolling, while manually handling horizontal drag */
+  transform: translateZ(0);
+  will-change: transform;
   z-index: ${props => props.$isActiveDeleteMenu ? 40 : 'auto'};
   /* Fixed padding prevents layout thrashing during scroll when Virtuoso recycles rows.
      The variable padding-top based on grouping was causing 4px shifts as rows were recycled,
@@ -1507,7 +1510,7 @@ export const LightboxCloseButton = styled.button`
 export const LightboxFrame = styled.div`
   position: relative;
   width: min(92vw, 1280px);
-  height: min(90vh, 920px);
+  height: min(90dvh, 920px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2627,7 +2630,7 @@ export const CVPContainer = styled.div`
   &:fullscreen, &:-webkit-full-screen {
     border-radius: 0;
     width: 100vw;
-    height: 100vh;
+    height: 100dvh;
     background: #000;
     clip-path: inset(0);
 
@@ -2661,9 +2664,9 @@ export const CVPContainer = styled.div`
 
   &:fullscreen video, &:-webkit-full-screen video {
     width: 100vw;
-    height: 100vh;
+    height: 100dvh;
     max-width: 100vw;
-    max-height: 100vh;
+    max-height: 100dvh;
     object-fit: contain;
   }
 `;

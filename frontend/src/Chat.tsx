@@ -4200,7 +4200,7 @@ function Chat() {
                         theme={isDark ? Theme.DARK : Theme.LIGHT}
                         emojiStyle={EmojiStyle.NATIVE}
                         width="100%"
-                        height="42vh"
+                        height="42dvh"
                         lazyLoadEmojis={false}
                       />
                     </div>
