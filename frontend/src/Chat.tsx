@@ -148,6 +148,8 @@ function Chat() {
   const [isScrollToBottomVisible, setIsScrollToBottomVisible] = useState(false);
   const [newMessagesWhileScrolledUp, setNewMessagesWhileScrolledUp] = useState(0);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [historySessionId, setHistorySessionId] = useState(0);
+  const groupStartMessageIdsRef = useRef<Set<string>>(new Set());
   const [hasMoreOlderMessages, setHasMoreOlderMessages] = useState(true);
   const [oldestLoadedAt, setOldestLoadedAt] = useState<string | null>(null);
   const prependScrollLockRef = useRef<number>(0);
@@ -1132,6 +1134,16 @@ function Chat() {
           const rawHistory = Array.isArray(messageData.data) ? messageData.data : [];
           const processed = filterVisibleMessages(rawHistory.map(normalizeMessage));
 
+          // Pre-calculate group starts to freeze DOM heights and prevent Mutation Jitter
+          groupStartMessageIdsRef.current.clear();
+          for (let i = 0; i < processed.length; i++) {
+            const current = processed[i];
+            const prev = i > 0 ? processed[i - 1] : null;
+            if (!prev || prev.type === 'system_notification' || prev.userId !== current.userId) {
+              groupStartMessageIdsRef.current.add(current.id);
+            }
+          }
+
           setMessages(processed);
           setNewMessagesWhileScrolledUp(0);
           messageTailSnapshotRef.current = {
@@ -1153,6 +1165,7 @@ function Chat() {
           // Mark history as loaded so the Virtuoso component renders
           // for the first time already at the bottom ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â no visible scroll.
           setHistoryLoaded(true);
+          setHistorySessionId(prev => prev + 1); // Force Virtuoso destruction on Reconnect
         } else if (messageData.type === 'online_users') {
           setOnlineUsers(messageData.data);
         } else if (messageData.type === 'report_submitted') {
@@ -1224,6 +1237,12 @@ function Chat() {
             if (normalized.id && prev.some(m => m.id === normalized.id)) return prev;
             // Skip messages the user has deleted for themselves.
             if (normalized.id && getDeletedForMeIds(userIdRef.current).has(normalized.id)) return prev;
+
+            const prevMsg = prev.length > 0 ? prev[prev.length - 1] : null;
+            if (!prevMsg || prevMsg.type === 'system_notification' || prevMsg.userId !== normalized.userId) {
+              groupStartMessageIdsRef.current.add(normalized.id);
+            }
+
             return [...prev, normalized];
           });
         }
@@ -1730,6 +1749,14 @@ function Chat() {
     const normalizedBatch = rawBatch.map(normalizeMessage);
     const filteredBatch = filterVisibleMessages(normalizedBatch);
     const nextCursor = getMessageCursor(normalizedBatch[0]) || beforeCursor;
+
+    for (let i = 0; i < filteredBatch.length; i++) {
+      const current = filteredBatch[i];
+      const prev = i > 0 ? filteredBatch[i - 1] : null;
+      if (!prev || prev.type === 'system_notification' || prev.userId !== current.userId) {
+        groupStartMessageIdsRef.current.add(current.id);
+      }
+    }
 
     setOldestLoadedAt(nextCursor);
     oldestLoadedAtRef.current = nextCursor;
@@ -3922,7 +3949,7 @@ function Chat() {
               <MessagesContainer ref={chatContainerRef} onClick={handleChatAreaClick} $isScrollButtonVisible={isScrollToBottomVisible} $isMobileView={isMobileView}>
                 {historyLoaded && messages.length > 0 ? (
                   <Virtuoso
-                    key={userIdRef.current || 'unauthed'}
+                    key={`${userIdRef.current || 'unauthed'}-${historySessionId}`}
                     ref={virtuosoRef}
                     firstItemIndex={firstItemIndex}
                     data={messages}
@@ -3958,9 +3985,7 @@ function Chat() {
                       const prevMsg = dataIndex > 0 && dataIndex <= messages.length
                         ? messages[dataIndex - 1]
                         : null;
-                      const showUsername = !prevMsg
-                        || prevMsg.type === 'system_notification'
-                        || prevMsg.userId !== msg.userId;
+                      const showUsername = groupStartMessageIdsRef.current.has(msg.id);
                       return (
                         <MessageItem
                           msg={msg}
