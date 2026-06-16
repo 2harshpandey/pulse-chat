@@ -150,6 +150,7 @@ function Chat() {
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [hasMoreOlderMessages, setHasMoreOlderMessages] = useState(true);
   const [oldestLoadedAt, setOldestLoadedAt] = useState<string | null>(null);
+  const prependScrollLockRef = useRef<number>(0);
   const initialTopMostItemIndexRef = useRef<number | null>(null);
   if (historyLoaded && initialTopMostItemIndexRef.current === null) {
     initialTopMostItemIndexRef.current = INITIAL_FIRST_ITEM_INDEX + (messages.length > 0 ? messages.length - 1 : 0);
@@ -1758,6 +1759,7 @@ function Chat() {
         
         setFirstItemIndex(nextIdx);
         setMessages([...patchedOlder, ...patchedPrev]);
+        prependScrollLockRef.current = performance.now() + 800;
         scrollLog('prepend', actualPrependedCount, 'msgs ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ new firstItemIndex', nextIdx);
       }
     }
@@ -3379,6 +3381,7 @@ function Chat() {
   const virtuosoFollowOutput = useCallback((_isAtBottom: boolean): 'smooth' | false | 'auto' => {
     if (isLoadingOlderRef.current) return false;
     if (shouldSuppressProgrammaticScroll()) return false;
+    if (performance.now() < prependScrollLockRef.current) return false;
     
     // Only enable auto-follow if user is genuinely at bottom (our own tracking)
     return isAtBottomRef.current ? 'auto' : false;
@@ -3895,7 +3898,7 @@ function Chat() {
                     ref={virtuosoRef}
                     firstItemIndex={firstItemIndex}
                     data={messages}
-                    initialTopMostItemIndex={initialTopMostItemIndexRef.current ?? 0}
+                    initialTopMostItemIndex={messages.length > 0 ? (initialTopMostItemIndexRef.current ?? undefined) : undefined}
                     startReached={loadOlderMessages}
                     atTopThreshold={800}
                     isScrolling={handleVirtuosoIsScrolling}
