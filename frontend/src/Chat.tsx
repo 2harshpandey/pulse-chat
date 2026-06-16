@@ -1610,35 +1610,20 @@ function Chat() {
     keyboardWasOpenBeforeEmojiRef.current = false;
   }, [emojiPickerPosition]);
 
-  // Virtuoso handles initial scroll and follow-output automatically.
-  // We only need to track whether the initial load has happened to
-  // avoid premature scroll-to-bottom calls from other effects.
   useEffect(() => {
     if (messages.length > 0 && !hasInitialScrolled.current) {
       hasInitialScrolled.current = true;
     }
   }, [messages]);
 
-  // Keep the viewport pinned to the latest message ONCE after initial history
-  // load ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â for the first 1.5 s only, to handle late-loading images/previews.
-  // IMPORTANT: Do NOT include messages.length in the dependency array.
-  // Adding it caused this effect to re-run on every prepend, which re-fired
-  // the staggered scrollToIndex timers and snapped the view back to the bottom
-  // while the user was scrolling upward ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the primary remaining flicker cause.
   useEffect(() => {
     if (!historyLoaded) return;
     if (initialHistoryBottomStabilized.current) return;
     initialHistoryBottomStabilized.current = true;
 
-    // Capture the target index at the moment history loads.
-    // DO NOT read messages.length inside the timer callbacks ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â that would
-    // be a stale closure and could target the wrong row after prepends.
     const capturedTargetIndex = messagesRef.current.length - 1;
     if (capturedTargetIndex < 0) return;
 
-    // Only ONE deferred pin at 300ms ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â enough to handle image load shifts.
-    // The 900ms and 1800ms timers were causing the visible snap-to-bottom
-    // that users reported when scrolling up through history.
     const timer = setTimeout(() => {
       if (!virtuosoRef.current) return;
       if (shouldSuppressProgrammaticScroll()) return;
@@ -1648,7 +1633,6 @@ function Chat() {
     }, 300);
 
     return () => clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [historyLoaded, shouldSuppressProgrammaticScroll]);
 
 
@@ -1657,8 +1641,6 @@ function Chat() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
-
-  // --- FUNCTIONS ---
 
   const normalizeMessage = useCallback((msg: any): Message => {
     const normalizedId = normalizeMessageId(msg?.id ?? msg?._id);
@@ -1725,14 +1707,6 @@ function Chat() {
     const filteredBatch = filterVisibleMessages(normalizedBatch);
     const nextCursor = getMessageCursor(normalizedBatch[0]) || beforeCursor;
 
-    const scrollerBeforePrepend = getChatScrollerElement();
-    const prependAnchorSnapshot = scrollerBeforePrepend
-      ? {
-          scrollTop: scrollerBeforePrepend.scrollTop,
-          scrollHeight: scrollerBeforePrepend.scrollHeight,
-        }
-      : null;
-
     setOldestLoadedAt(nextCursor);
     oldestLoadedAtRef.current = nextCursor;
 
@@ -1773,24 +1747,8 @@ function Chat() {
     setHasMoreOlderMessages(hasMore);
     hasMoreOlderMessagesRef.current = hasMore;
 
-    if (prependAnchorSnapshot && prependedCount > 0) {
-      const restoreAnchor = () => {
-        const scroller = getChatScrollerElement();
-        if (!scroller) return;
-        const delta = scroller.scrollHeight - prependAnchorSnapshot.scrollHeight;
-        if (delta !== 0) {
-          scroller.scrollTop = prependAnchorSnapshot.scrollTop + delta;
-        }
-      };
-
-      requestAnimationFrame(() => {
-        requestAnimationFrame(restoreAnchor);
-      });
-      window.setTimeout(restoreAnchor, 32);
-    }
-
     return { prependedCount, hasMore, nextCursor };
-  }, [apiBase, filterVisibleMessages, getChatScrollerElement, getMessageCursor, markDeletedReplyTargets, normalizeMessage]);
+  }, [apiBase, filterVisibleMessages, getMessageCursor, markDeletedReplyTargets, normalizeMessage]);
 
   const loadOlderMessages = useCallback(async () => {
     if (!historyLoaded || isLoadingOlderRef.current || !hasMoreOlderMessagesRef.current || !oldestLoadedAtRef.current) return;
@@ -1840,11 +1798,28 @@ function Chat() {
       if (pendingTopLoadTimerRef.current !== null) {
         window.clearTimeout(pendingTopLoadTimerRef.current);
       }
-      pendingTopLoadTimerRef.current = window.setTimeout(() => {
+      // Use requestIdleCallback so the deferred prepend fires during browser
+      // idle time rather than at an arbitrary fixed delay.  This avoids
+      // triggering the fetch while the compositor is still settling touch
+      // momentum scroll, which reduces the chance of visible jitter.
+      // Fallback to a 200 ms timeout on browsers without requestIdleCallback.
+      const scheduleLoad = () => {
         pendingTopLoadTimerRef.current = null;
         pendingTopLoadAfterScrollRef.current = false;
         void loadOlderMessages();
-      }, 140);
+      };
+      if (typeof requestIdleCallback === 'function') {
+        const idleHandle = requestIdleCallback(scheduleLoad, { timeout: 200 });
+        // Store a cancel handle compatible with clearTimeout — wrap in setTimeout
+        // that we can cancel; the idle callback will fire first in normal cases.
+        pendingTopLoadTimerRef.current = window.setTimeout(() => {
+          // Safety fallback — if idle callback hasn't fired in 250 ms, run now.
+          cancelIdleCallback(idleHandle);
+          scheduleLoad();
+        }, 250);
+      } else {
+        pendingTopLoadTimerRef.current = window.setTimeout(scheduleLoad, 200);
+      }
     }
   }, [loadOlderMessages]);
 
@@ -2721,8 +2696,12 @@ function Chat() {
     
     // Only update visibility during user-initiated scroll, not programmatic scroll.
     // This prevents state-update cascades that cause render flicker during quote-jumps.
+    // Also skip the state update while a prepend is in-flight — re-rendering the
+    // Chat component mid-prepend can cause Virtuoso to recalculate item positions,
+    // amplifying the scroll-anchor correction into visible flicker on touch devices.
     const isInProgrammaticScroll = performance.now() < suppressProgrammaticScrollUntilRef.current;
-    if (!isInProgrammaticScroll && lastAtBottomStateRef.current !== atBottom) {
+    const isPrependInFlight = isLoadingOlderRef.current;
+    if (!isInProgrammaticScroll && !isPrependInFlight && lastAtBottomStateRef.current !== atBottom) {
       lastAtBottomStateRef.current = atBottom;
       setIsScrollToBottomVisible(!atBottom);
     }
