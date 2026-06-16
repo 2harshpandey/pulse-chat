@@ -87,6 +87,8 @@ import { LinkPreview, linkPreviewCache, rememberLinkPreview } from './chat/LinkP
 import { MessageItem } from './chat/MessageItem';
 import { TypingIndicator, FilmIcon, FileIcon } from './chat/TypingIndicator';
 
+const VirtuosoFooter = () => <div style={{ height: '12px' }} />;
+
 function Chat() {
   const userContext = useContext(UserContext);
   const { token: tempToken } = useParams<{ token?: string }>();
@@ -150,7 +152,7 @@ function Chat() {
   const [oldestLoadedAt, setOldestLoadedAt] = useState<string | null>(null);
   const initialTopMostItemIndexRef = useRef<number | null>(null);
   if (historyLoaded && initialTopMostItemIndexRef.current === null) {
-    initialTopMostItemIndexRef.current = messages.length > 0 ? messages.length - 1 : 0;
+    initialTopMostItemIndexRef.current = INITIAL_FIRST_ITEM_INDEX + (messages.length > 0 ? messages.length - 1 : 0);
   }
   // --- FIX: Unified firstItemIndex — single source of truth ---
   // The ref and state are kept perfectly in sync via setFirstItemIndex().
@@ -3393,6 +3395,7 @@ function Chat() {
   // visible placeholder content during scroll. Reduces jitter from placeholder swaps.
   const adjustedVirtuosoOverscan = isMobileView ? Math.round(VIRTUOSO_OVERSCAN_MOBILE * 1.5) : virtuosoOverscan;
   const virtuosoIncreaseViewportBy = isMobileView ? VIRTUOSO_VIEWPORT_BY_MOBILE : VIRTUOSO_VIEWPORT_BY_DESKTOP;
+  const virtuosoComponents = useMemo(() => ({ Footer: VirtuosoFooter }), []);
 
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -3889,10 +3892,7 @@ function Chat() {
                     scrollSeekConfiguration={virtuosoScrollSeekConfiguration}
                     computeItemKey={(index: number, msg: Message) => msg.id || index}
                     style={{ flex: 1, overflow: 'auto' }}
-                    components={{
-                      Header: () => null,
-                      Footer: () => <div style={{ height: '12px' }} />,
-                    }}
+                    components={virtuosoComponents}
                     itemContent={(index: number, msg: Message) => {
                       if (msg.type === 'system_notification') {
                         return (
