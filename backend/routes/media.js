@@ -98,7 +98,7 @@ const uploadBufferToCloudinary = (file, originalName) => new Promise((resolve, r
     filename_override: originalName,
   };
 
-  const uploadStream = cloudinary.uploader.upload_large_stream(uploadOptions, (error, result) => {
+  const uploadStream = cloudinary.uploader.upload_chunked_stream(uploadOptions, (error, result) => {
     if (error) return reject(error);
     if (!result?.secure_url) return reject(new Error('Cloudinary upload did not return a secure URL.'));
     return resolve(result);
