@@ -492,6 +492,16 @@ function Chat() {
     setLoadedMediaMessageIds([]);
     setLoadedMediaSrcById({});
     setMediaLoadProgressById({});
+
+    setMessages([]);
+    setHistoryLoaded(false);
+    initialTopMostItemIndexRef.current = null;
+    setFirstItemIndexState(INITIAL_FIRST_ITEM_INDEX);
+    firstItemIndexRef.current = INITIAL_FIRST_ITEM_INDEX;
+    setOldestLoadedAt(null);
+    oldestLoadedAtRef.current = null;
+    setHasMoreOlderMessages(true);
+    hasMoreOlderMessagesRef.current = true;
   }, [userContext?.profile]);
 
   useEffect(() => {
