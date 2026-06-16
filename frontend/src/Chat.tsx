@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useContext, useCallback, useMemo } from 'react';
-import { createPortal } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 import styled, { createGlobalStyle, keyframes, css } from 'styled-components';
 import EmojiPicker, { EmojiClickData, EmojiStyle, Theme } from 'emoji-picker-react';
 import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
@@ -151,6 +151,8 @@ function Chat() {
   const [hasMoreOlderMessages, setHasMoreOlderMessages] = useState(true);
   const [oldestLoadedAt, setOldestLoadedAt] = useState<string | null>(null);
   const prependScrollLockRef = useRef<number>(0);
+  const pendingPrependMessagesRef = useRef<Message[] | null>(null);
+  const pendingFirstItemIndexRef = useRef<number | null>(null);
   const initialTopMostItemIndexRef = useRef<number | null>(null);
   if (historyLoaded && initialTopMostItemIndexRef.current === null) {
     initialTopMostItemIndexRef.current = INITIAL_FIRST_ITEM_INDEX + (messages.length > 0 ? messages.length - 1 : 0);
@@ -1755,10 +1757,20 @@ function Chat() {
       const actualPrependedCount = patchedOlder.length;
       if (actualPrependedCount > 0) {
         const nextIdx = firstItemIndexRef.current - actualPrependedCount;
-        firstItemIndexRef.current = nextIdx;
-        
-        setFirstItemIndex(nextIdx);
-        setMessages([...patchedOlder, ...patchedPrev]);
+        const nextMessages = [...patchedOlder, ...patchedPrev];
+
+        if (isVirtuosoScrollingRef.current) {
+          // Mobile momentum is active. Buffer the data to prevent physics collision.
+          pendingPrependMessagesRef.current = nextMessages;
+          pendingFirstItemIndexRef.current = nextIdx;
+        } else {
+          // Safe to inject immediately
+          firstItemIndexRef.current = nextIdx;
+          flushSync(() => {
+            setFirstItemIndexState(nextIdx);
+            setMessages(nextMessages);
+          });
+        }
         prependScrollLockRef.current = performance.now() + 800;
         scrollLog('prepend', actualPrependedCount, 'msgs ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ new firstItemIndex', nextIdx);
       }
@@ -1805,6 +1817,21 @@ function Chat() {
         pendingTopLoadTimerRef.current = null;
       }
       return;
+    }
+
+    // Flush buffered prepend data the exact millisecond momentum stops.
+    if (pendingPrependMessagesRef.current !== null && pendingFirstItemIndexRef.current !== null) {
+      const nextMsgs = pendingPrependMessagesRef.current;
+      const nextIdx = pendingFirstItemIndexRef.current;
+
+      pendingPrependMessagesRef.current = null;
+      pendingFirstItemIndexRef.current = null;
+      firstItemIndexRef.current = nextIdx;
+
+      flushSync(() => {
+        setFirstItemIndexState(nextIdx);
+        setMessages(nextMsgs);
+      });
     }
 
     if (pendingTopLoadAfterScrollRef.current) {
