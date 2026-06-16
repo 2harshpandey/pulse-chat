@@ -148,7 +148,11 @@ function Chat() {
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [hasMoreOlderMessages, setHasMoreOlderMessages] = useState(true);
   const [oldestLoadedAt, setOldestLoadedAt] = useState<string | null>(null);
-  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ FIX: Unified firstItemIndex ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â single source of truth ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+  const initialTopMostItemIndexRef = useRef<number | null>(null);
+  if (historyLoaded && initialTopMostItemIndexRef.current === null) {
+    initialTopMostItemIndexRef.current = messages.length > 0 ? messages.length - 1 : 0;
+  }
+  // --- FIX: Unified firstItemIndex — single source of truth ---
   // The ref and state are kept perfectly in sync via setFirstItemIndex().
   // The ref is used in scroll callbacks (stale closure-safe), the state
   // is passed to <Virtuoso firstItemIndex={firstItemIndex}> for rendering.
@@ -3872,7 +3876,7 @@ function Chat() {
                     ref={virtuosoRef}
                     firstItemIndex={firstItemIndex}
                     data={messages}
-                    initialTopMostItemIndex={messages.length > 0 ? messages.length - 1 : 0}
+                    initialTopMostItemIndex={initialTopMostItemIndexRef.current ?? 0}
                     startReached={loadOlderMessages}
                     atTopThreshold={800}
                     isScrolling={handleVirtuosoIsScrolling}

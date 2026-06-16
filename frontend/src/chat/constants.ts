@@ -24,7 +24,7 @@ export const HISTORY_PAGE_SIZE = 50;
  */
 export const START_REACHED_COOLDOWN_MS = 1500;
 
-export const INITIAL_FIRST_ITEM_INDEX = 100000;
+export const INITIAL_FIRST_ITEM_INDEX = 1000000;
 
 // No-op loggers — swap for real loggers during debugging
 export const scrollLog = (..._args: unknown[]) => {};
