@@ -493,6 +493,11 @@ function Chat() {
     setLoadedMediaSrcById({});
     setMediaLoadProgressById({});
 
+    if (ws.current) {
+      ws.current.close();
+      ws.current = null;
+    }
+
     setMessages([]);
     setHistoryLoaded(false);
     initialTopMostItemIndexRef.current = null;
@@ -1058,7 +1063,7 @@ function Chat() {
         reconnectDelayRef.current = 2000;
         presenceActivityRef.current = null;
         ws.current?.send(
-          JSON.stringify({ type: 'user_join', ...userContext.profile, userId: userIdRef.current })
+          JSON.stringify({ type: 'user_join', ...(userContext?.profile || {}), userId: userIdRef.current })
         );
       };
 
@@ -1921,7 +1926,7 @@ function Chat() {
       const message: Message = {
         id: tempId,
         userId: userIdRef.current,
-        username: userContext.profile.username,
+        username: userContext?.profile?.username || '',
         type: stagedFile.type.startsWith('image/') ? 'image' : stagedFile.type.startsWith('video/') ? 'video' : 'file',
         url: URL.createObjectURL(stagedFile),
         originalName: stagedFile.name,
@@ -1979,7 +1984,7 @@ function Chat() {
       if (hadReply) forceScrollToBottomAsync();
 
     } else if (stagedGif) {
-      const gifMessage: Message = { id: stagedGif.id, userId: userIdRef.current, username: userContext.profile.username, type: 'image', url: stagedGif.url, text: inputMessage, timestamp: new Date().toISOString(), replyingTo: replyContext };
+      const gifMessage: Message = { id: stagedGif.id, userId: userIdRef.current, username: userContext?.profile?.username || '', type: 'image', url: stagedGif.url, text: inputMessage, timestamp: new Date().toISOString(), replyingTo: replyContext };
       setMessages(prev => [...prev, gifMessage]);
       requestAnimationFrame(() => scrollToBottom());
       ws.current.send(JSON.stringify(gifMessage));
@@ -1989,7 +1994,7 @@ function Chat() {
       // A delayed staggered scroll ensures we reach the true bottom after layout stabilizes.
       if (hadReply) forceScrollToBottomAsync();
     } else {
-      const textMessage: Message = { id: Date.now().toString(), userId: userIdRef.current, username: userContext.profile.username, type: 'text', text: inputMessage, timestamp: new Date().toISOString(), replyingTo: replyContext };
+      const textMessage: Message = { id: Date.now().toString(), userId: userIdRef.current, username: userContext?.profile?.username || '', type: 'text', text: inputMessage, timestamp: new Date().toISOString(), replyingTo: replyContext };
       setMessages(prev => [...prev, textMessage]);
       requestAnimationFrame(() => scrollToBottom());
       ws.current.send(JSON.stringify(textMessage));
@@ -2048,7 +2053,7 @@ function Chat() {
     const canonicalEmoji = normalizeReactionEmoji(emoji);
     if (!canonicalEmoji || !ws.current || ws.current.readyState !== WebSocket.OPEN || !userContext?.profile || !messageId) return;
     const userId = userIdRef.current;
-    const username = userContext.profile.username;
+    const username = userContext?.profile?.username || '';
 
     // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Optimistic local update ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
     // Apply the reaction change immediately in local state so the UI
@@ -3372,6 +3377,7 @@ function Chat() {
   // 2. Only return 'auto' if BOTH suppressProgrammaticScroll window is expired AND user is at bottom
   // 3. Use our isAtBottomRef (set by real user scroll), not Virtuoso's param
   const virtuosoFollowOutput = useCallback((_isAtBottom: boolean): 'smooth' | false | 'auto' => {
+    if (isLoadingOlderRef.current) return false;
     if (shouldSuppressProgrammaticScroll()) return false;
     
     // Only enable auto-follow if user is genuinely at bottom (our own tracking)
@@ -3543,7 +3549,7 @@ function Chat() {
       const message: Message = {
         id: tempId,
         userId: userIdRef.current,
-        username: userContext.profile.username,
+        username: userContext?.profile?.username || '',
         type: fileType,
         url: URL.createObjectURL(file),
         originalName: file.name,
@@ -3884,7 +3890,7 @@ function Chat() {
           <ChatWindow>
             <MessagesAndScrollWrapper>
               <MessagesContainer ref={chatContainerRef} onClick={handleChatAreaClick} $isScrollButtonVisible={isScrollToBottomVisible} $isMobileView={isMobileView}>
-                {historyLoaded ? (
+                {historyLoaded && messages.length > 0 ? (
                   <Virtuoso
                     ref={virtuosoRef}
                     firstItemIndex={firstItemIndex}
