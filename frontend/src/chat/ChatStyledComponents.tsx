@@ -411,9 +411,10 @@ export const MessagesContainer = styled.div<{ $isScrollButtonVisible?: boolean; 
   /* Virtuoso items need gap via item wrapper since Virtuoso manages its own scroll */
   & [data-virtuoso-scroller] {
     overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch;
+    -webkit-overflow-scrolling: auto;
     overflow-anchor: none;
     overscroll-behavior-y: none;
+    scroll-behavior: auto !important;
   }
   & [data-test-id="virtuoso-item-list"] {
     overflow-anchor: none;

@@ -3884,6 +3884,7 @@ function Chat() {
                     data={messages}
                     initialTopMostItemIndex={messages.length > 0 ? messages.length - 1 : 0}
                     startReached={loadOlderMessages}
+                    atTopThreshold={800}
                     isScrolling={handleVirtuosoIsScrolling}
                     followOutput={virtuosoFollowOutput}
                     atBottomStateChange={handleAtBottomStateChange}
