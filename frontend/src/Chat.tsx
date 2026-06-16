@@ -1786,18 +1786,12 @@ function Chat() {
         const nextIdx = firstItemIndexRef.current - actualPrependedCount;
         const nextMessages = [...patchedOlder, ...patchedPrev];
 
-        if (isVirtuosoScrollingRef.current) {
-          // Mobile momentum is active. Buffer the data to prevent physics collision.
-          pendingPrependMessagesRef.current = nextMessages;
-          pendingFirstItemIndexRef.current = nextIdx;
-        } else {
-          // Safe to inject immediately
-          firstItemIndexRef.current = nextIdx;
-          flushSync(() => {
-            setFirstItemIndexState(nextIdx);
-            setMessages(nextMessages);
-          });
-        }
+        // Always update atomically via React's automatic batching.
+        // flushSync was forcing synchronous layout reflow which interrupted
+        // the mobile compositor's momentum scroll physics, causing jitter.
+        firstItemIndexRef.current = nextIdx;
+        setFirstItemIndexState(nextIdx);
+        setMessages(nextMessages);
         prependScrollLockRef.current = performance.now() + 800;
         scrollLog('prepend', actualPrependedCount, 'msgs ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ new firstItemIndex', nextIdx);
       }
@@ -1846,20 +1840,7 @@ function Chat() {
       return;
     }
 
-    // Flush buffered prepend data the exact millisecond momentum stops.
-    if (pendingPrependMessagesRef.current !== null && pendingFirstItemIndexRef.current !== null) {
-      const nextMsgs = pendingPrependMessagesRef.current;
-      const nextIdx = pendingFirstItemIndexRef.current;
-
-      pendingPrependMessagesRef.current = null;
-      pendingFirstItemIndexRef.current = null;
-      firstItemIndexRef.current = nextIdx;
-
-      flushSync(() => {
-        setFirstItemIndexState(nextIdx);
-        setMessages(nextMsgs);
-      });
-    }
+    // (Buffering logic removed as part of the jitter fix)
 
     if (pendingTopLoadAfterScrollRef.current) {
       if (pendingTopLoadTimerRef.current !== null) {
@@ -3437,8 +3418,14 @@ function Chat() {
     if (shouldSuppressProgrammaticScroll()) return false;
     if (performance.now() < prependScrollLockRef.current) return false;
     
-    // Only enable auto-follow if user is genuinely at bottom (our own tracking)
-    return isAtBottomRef.current ? 'auto' : false;
+    // Only enable auto-follow if user is genuinely at bottom AND not near
+    // the scroll-to-bottom button threshold. During prepends, even "at bottom"
+    // can be transiently true due to scroll anchor compensation.
+    if (!isAtBottomRef.current) return false;
+    // Don't auto-follow if the scroll-to-bottom button is visible — that means
+    // the user has scrolled up intentionally.
+    if (lastAtBottomStateRef.current === false) return false;
+    return 'auto';
   }, [shouldSuppressProgrammaticScroll]);
 
   // Disable scroll-seek placeholders on all devices.
@@ -3447,7 +3434,7 @@ function Chat() {
   const virtuosoScrollSeekConfiguration = undefined;
 
   // --- RENDER ---
-  if (!userContext?.profile) { return <Auth onAuthSuccess={userContext!.login} tempToken={tempToken || null} />; }
+  if (!userContext?.profile) { return <Auth onAuthSuccess={userContext?.login ?? (() => {})} tempToken={tempToken || null} />; }
 
   const selectedMessage = messages.find(msg => msg.id === selectedMessages[0]);
   const canEditSelectedMessage = selectedMessages.length === 1 && selectedMessage && selectedMessage.userId === userIdRef.current && selectedMessage.text && (new Date().getTime() - new Date(selectedMessage.timestamp).getTime()) < 15 * 60 * 1000;
@@ -4312,7 +4299,7 @@ function Chat() {
                 clearOverlayGuardHistoryEntry();
                 overlayGuardPushed.current = false;
               }
-              userContext!.logout();
+              userContext?.logout();
             }}>
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
               Logout
