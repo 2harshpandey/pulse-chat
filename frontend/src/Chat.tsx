@@ -3434,6 +3434,8 @@ function Chat() {
   // during fast upward scroll (desktop trackpad/mouse included).
   const virtuosoScrollSeekConfiguration = undefined;
 
+  const virtuosoComponents = useMemo(() => ({ Footer: VirtuosoFooter }), []);
+
   // --- RENDER ---
   if (!userContext?.profile) { return <Auth onAuthSuccess={userContext?.login ?? (() => {})} tempToken={tempToken || null} />; }
 
@@ -3456,7 +3458,6 @@ function Chat() {
   // visible placeholder content during scroll. Reduces jitter from placeholder swaps.
   const adjustedVirtuosoOverscan = isMobileView ? Math.round(VIRTUOSO_OVERSCAN_MOBILE * 1.5) : virtuosoOverscan;
   const virtuosoIncreaseViewportBy = isMobileView ? VIRTUOSO_VIEWPORT_BY_MOBILE : VIRTUOSO_VIEWPORT_BY_DESKTOP;
-  const virtuosoComponents = useMemo(() => ({ Footer: VirtuosoFooter }), []);
 
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
