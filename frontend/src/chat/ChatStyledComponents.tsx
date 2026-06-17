@@ -3002,7 +3002,7 @@ export const MessageText = styled.p`
   }
   .emoji-inline {
     display: inline-block;
-    font-size: 1.1em;
+    font-size: 1.32em;
     vertical-align: -0.1em;
   }
   @media (max-width: 768px) {
@@ -3013,7 +3013,7 @@ export const MessageText = styled.p`
       line-height: 1.2;
     }
     .emoji-inline {
-      font-size: 1.1em;
+      font-size: 1.32em;
     }
   }
 `;
