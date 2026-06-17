@@ -146,40 +146,6 @@ function Chat() {
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [historySessionId, setHistorySessionId] = useState(0);
 
-  // --- DIAGNOSTICS OVERLAY ---
-  const [diagnosticLogs, setDiagnosticLogs] = useState<string[]>([]);
-  const addDiagnosticLog = useCallback((msg: string) => {
-    setDiagnosticLogs(prev => {
-      const now = performance.now();
-      const newLogs = [...prev, `[${(now % 10000).toFixed(1)}] ${msg}`];
-      return newLogs.slice(-8); // Keep last 8 lines
-    });
-  }, []);
-  const diagnosticObserverRef = useRef<ResizeObserver | null>(null);
-  const scrollerRefCallback = useCallback((ref: HTMLElement | Window | null) => {
-    if (diagnosticObserverRef.current) {
-      diagnosticObserverRef.current.disconnect();
-    }
-    if (ref && ref instanceof HTMLElement) {
-      diagnosticObserverRef.current = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          addDiagnosticLog(`DOM Resize H: ${entry.target.scrollHeight}px`);
-        }
-      });
-      diagnosticObserverRef.current.observe(ref);
-
-      let lastScrollTop = ref.scrollTop;
-      const onScroll = () => {
-        const currentTop = ref.scrollTop;
-        const diff = currentTop - lastScrollTop;
-        if (Math.abs(diff) > 10) {
-          addDiagnosticLog(`Scroll Jump: ${diff > 0 ? '+' : ''}${diff.toFixed(0)}px (Top: ${currentTop.toFixed(0)})`);
-        }
-        lastScrollTop = currentTop;
-      };
-      ref.addEventListener('scroll', onScroll, { passive: true });
-    }
-  }, [addDiagnosticLog]);
 
   const groupStartMessageIdsRef = useRef<Set<string>>(new Set());
   const [hasMoreOlderMessages, setHasMoreOlderMessages] = useState(true);
@@ -1762,7 +1728,6 @@ function Chat() {
   }, [markDeletedReplyTargets]);
 
   const fetchAndPrependOlderMessages = useCallback(async (beforeCursor: string) => {
-    addDiagnosticLog(`Fetch started for older msgs...`);
     const before = encodeURIComponent(beforeCursor);
     const res = await fetch(`${apiBase}/api/messages?before=${before}&limit=${HISTORY_PAGE_SIZE}`);
     if (!res.ok) throw new Error('Failed to fetch older messages');
@@ -1824,7 +1789,6 @@ function Chat() {
         // Always update atomically via React's automatic batching.
         // flushSync was forcing synchronous layout reflow which interrupted
         // the mobile compositor's momentum scroll physics, causing jitter.
-        addDiagnosticLog(`Prepended ${actualPrependedCount} items (React Commit)`);
         firstItemIndexRef.current = nextIdx;
         setFirstItemIndexState(nextIdx);
         setMessages(nextMessages);
@@ -3824,12 +3788,6 @@ function Chat() {
         <LayoutContainer>
           <ChatWindow>
             <MessagesAndScrollWrapper>
-              {diagnosticLogs.length > 0 && (
-                <div style={{ position: 'absolute', top: 60, left: '50%', transform: 'translateX(-50%)', backgroundColor: 'rgba(0,0,0,0.85)', color: '#10b981', padding: '12px', borderRadius: '8px', zIndex: 9999, fontSize: '11px', fontFamily: 'monospace', whiteSpace: 'pre', pointerEvents: 'none', width: '90%', maxWidth: '400px' }}>
-                  <div style={{ fontWeight: 'bold', color: '#ef4444', marginBottom: '4px' }}>[Jitter Diagnostics Active]</div>
-                  {diagnosticLogs.map((l, i) => <div key={i}>{l}</div>)}
-                </div>
-              )}
               <MessagesContainer onClick={handleChatAreaClick} $isScrollButtonVisible={isScrollToBottomVisible} $isMobileView={isMobileView}>
               <div ref={chatContainerRef} style={{ flex: 1, overflowY: 'auto', overflowAnchor: 'auto', display: 'flex', flexDirection: 'column' }}
                    onScroll={(e) => {
