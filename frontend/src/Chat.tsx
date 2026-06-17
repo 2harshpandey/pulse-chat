@@ -32,6 +32,7 @@ import {
   pushOverlayGuardHistoryEntry, clearOverlayGuardHistoryEntry,
   getBlobUrl, revokeBlobUrl, getDeletedForMeIds, addDeletedForMeIds,
 } from './chat/utils';
+import { NOTIFICATION_BEEP } from './chat/audioConstants';
 
 import {
   GlobalStyle,
@@ -237,7 +238,7 @@ function Chat() {
   const stableViewportHeightRef = useRef<number>(window.innerHeight);
   const stableViewportWidthRef = useRef<number>(window.innerWidth);
   const appliedViewportHeightRef = useRef<number>(0);
-  const audioContextRef = useRef<AudioContext | null>(null);
+  const notificationAudioRef = useRef<HTMLAudioElement | null>(null);
   const lastNotificationSoundAtRef = useRef<number>(0);
   const fullscreenScrollSnapshotRef = useRef<{ messageId: string; scrollTop: number; bottomOffset: number } | null>(null);
   const isVideoFullscreenSessionRef = useRef(false);
@@ -284,20 +285,10 @@ function Chat() {
   // Mobile networks and many corporate proxies enforce mixed-content policy strictly.
   const apiBase = resolveApiBaseUrl();
 
-  const ensureAudioContext = useCallback(async () => {
-    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioCtx) return null;
-    if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-      audioContextRef.current = new AudioCtx();
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      notificationAudioRef.current = new Audio(NOTIFICATION_BEEP);
     }
-    if (audioContextRef.current.state === 'suspended') {
-      try {
-        await audioContextRef.current.resume();
-      } catch {
-        return null;
-      }
-    }
-    return audioContextRef.current;
   }, []);
 
   const shouldPlayNotificationSound = () => {
@@ -314,34 +305,15 @@ function Chat() {
     if (now - lastNotificationSoundAtRef.current < 420) return;
     lastNotificationSoundAtRef.current = now;
 
-    const ctx = await ensureAudioContext();
-    if (!ctx) return;
-
-    const baseTime = ctx.currentTime;
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0, baseTime);
-    gain.gain.linearRampToValueAtTime(0.16, baseTime + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, baseTime + 0.45);
-    gain.connect(ctx.destination);
-
-    const osc1 = ctx.createOscillator();
-    const osc2 = ctx.createOscillator();
-    osc1.type = 'sine';
-    osc2.type = 'triangle';
-    if (variant === 'join') {
-      osc1.frequency.setValueAtTime(660, baseTime);
-      osc2.frequency.setValueAtTime(880, baseTime + 0.02);
-    } else {
-      osc1.frequency.setValueAtTime(520, baseTime);
-      osc2.frequency.setValueAtTime(740, baseTime + 0.02);
+    if (notificationAudioRef.current) {
+      try {
+        notificationAudioRef.current.currentTime = 0;
+        await notificationAudioRef.current.play();
+      } catch (err) {
+        // Ignored; browsers may block autoplay if no interaction occurred yet
+      }
     }
-    osc1.connect(gain);
-    osc2.connect(gain);
-    osc1.start(baseTime);
-    osc2.start(baseTime + 0.01);
-    osc1.stop(baseTime + 0.32);
-    osc2.stop(baseTime + 0.38);
-  }, [ensureAudioContext, isSoundEnabled]);
+  }, [isSoundEnabled]);
 
   const notifyNativeFilePickerOpen = useCallback(() => {
     isNativeFilePickerOpenRef.current = true;
