@@ -2993,19 +2993,27 @@ export const MessageText = styled.p`
   margin: 0;
   font-size: 0.92rem;
   line-height: 1.35;
-  .emoji-inline {
+  .emoji-standalone {
     display: inline-block;
     font-size: 1.8rem;
     line-height: 1.15;
     letter-spacing: 0.02em;
     vertical-align: -0.1em;
   }
+  .emoji-inline {
+    display: inline-block;
+    font-size: 1.1em;
+    vertical-align: -0.1em;
+  }
   @media (max-width: 768px) {
     user-select: none; /* Disable selection on mobile */
     font-size: 0.9rem;
-    .emoji-inline {
+    .emoji-standalone {
       font-size: 1.5rem;
       line-height: 1.2;
+    }
+    .emoji-inline {
+      font-size: 1.1em;
     }
   }
 `;

@@ -3,7 +3,7 @@ import type { Message } from './types';
 import {
   sanitizeMediaUrl, isTenorUrl, withCloudinaryTransform, getMediaGatePreviewUrl,
   formatMediaSize, getFileContainerLabel, buildDownloadProxyUrl,
-  fetchBlobWithProgress, downloadFile, wrapEmojis, getDisplayFilename,
+  fetchBlobWithProgress, downloadFile, wrapEmojis, getDisplayFilename, EMOJI_SEQUENCE_RE,
 } from './utils';
 import {
   MediaContent, MediaImageWrapper, MediaVideoWrapperDiv, MediaLoadGate, MediaLoadPreview,
@@ -101,11 +101,13 @@ export const safeHref = (url: string): string => {
 };
 
 export const renderTextWithLinks = (text: string, sender: 'me' | 'other'): React.ReactNode => {
+  const isStandalone = text.replace(EMOJI_SEQUENCE_RE, '').trim().length === 0;
+
   const parts = text.split(CANDIDATE_URL_RE);
-  if (parts.length === 1) return wrapEmojis(text);
+  if (parts.length === 1) return wrapEmojis(text, isStandalone);
   const result: React.ReactNode[] = [];
   parts.forEach((part, i) => {
-    if (i % 2 === 0) { if (part) result.push(...wrapEmojis(part)); return; }
+    if (i % 2 === 0) { if (part) result.push(...wrapEmojis(part, isStandalone)); return; }
     const norm = normalizeUrl(part);
     if (!norm) { result.push(part); return; }
     const trailing = part.slice(norm.display.length);

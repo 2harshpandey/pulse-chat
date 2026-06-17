@@ -34,7 +34,7 @@ export const normalizeOverlayText = (value: string): string => value.replace(/\u
 
 export const EMOJI_SEQUENCE_RE = /(?:[\u2600-\u27BF]|[\uD83C-\uDBFF][\uDC00-\uDFFF])(?:\uFE0F|\u200D(?:[\u2600-\u27BF]|[\uD83C-\uDBFF][\uDC00-\uDFFF]))*/g;
 
-export const wrapEmojis = (value: string): React.ReactNode[] => {
+export const wrapEmojis = (value: string, isStandalone: boolean = false): React.ReactNode[] => {
   const result: React.ReactNode[] = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -44,7 +44,7 @@ export const wrapEmojis = (value: string): React.ReactNode[] => {
       result.push(value.slice(lastIndex, match.index));
     }
     result.push(
-      <span key={`emoji-${match.index}`} className="emoji-inline">{match[0]}</span>
+      <span key={`emoji-${match.index}`} className={isStandalone ? "emoji-standalone" : "emoji-inline"}>{match[0]}</span>
     );
     lastIndex = match.index + match[0].length;
   }
