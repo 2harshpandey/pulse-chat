@@ -3880,7 +3880,12 @@ function Chat() {
             <MobileUserListToggle
               $isOpen={isUserListVisible}
               onPointerDown={handleHeaderButtonPointerDown}
-              onClick={() => setIsUserListVisible(!isUserListVisible)}
+              onClick={() => {
+                if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+                  document.activeElement.blur();
+                }
+                setIsUserListVisible(!isUserListVisible);
+              }}
               aria-label={isUserListVisible ? 'Hide online users' : 'Show online users'}
               title={isUserListVisible ? 'Hide online users' : 'Show online users'}
             >
