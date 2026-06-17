@@ -141,7 +141,8 @@ function Chat() {
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const [canDeleteForEveryone, setCanDeleteForEveryone] = useState(false);
   const [fullEmojiPickerPosition, setFullEmojiPickerPosition] = useState<DOMRect | null>(null);
-  const [isMobileView, setIsMobileView] = useState(window.innerWidth <= 768);
+  const checkIsMobile = () => typeof window !== 'undefined' ? (window.innerWidth <= 768 || window.matchMedia('(pointer: coarse)').matches) : false;
+  const [isMobileView, setIsMobileView] = useState(checkIsMobile);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingMessageOriginalText, setEditingMessageOriginalText] = useState<string>('');
   const [priorDraftBeforeEdit, setPriorDraftBeforeEdit] = useState<string>('');
@@ -1742,7 +1743,7 @@ function Chat() {
 
 
   useEffect(() => {
-    const handleResize = () => setIsMobileView(window.innerWidth <= 768);
+    const handleResize = () => setIsMobileView(checkIsMobile());
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);

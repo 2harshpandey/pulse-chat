@@ -1670,7 +1670,7 @@ export const UserSidebar = styled.aside<{ $isVisible: boolean }>`
   transition: background-color 0.3s ease, border-color 0.3s ease;
   flex-shrink: 0;
   user-select: none;
-  @media (min-width: 769px) {
+  @media (min-width: 769px) and (pointer: fine) {
     animation: ${subtleSlideUp} 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
   display: flex;
@@ -1683,7 +1683,7 @@ export const UserSidebar = styled.aside<{ $isVisible: boolean }>`
     letter-spacing: 0.03em;
     text-transform: uppercase;
   }
-  @media (max-width: 768px) {
+  @media (max-width: 768px), (pointer: coarse) {
     position: fixed;
     top: 40px;
     right: 0;
@@ -1697,7 +1697,7 @@ export const UserSidebar = styled.aside<{ $isVisible: boolean }>`
 // Transparent backdrop behind the sidebar on mobile - clicking it closes the panel
 export const SidebarBackdrop = styled.div<{ $isVisible: boolean }>`
   display: none;
-  @media (max-width: 768px) {
+  @media (max-width: 768px), (pointer: coarse) {
     display: ${props => props.$isVisible ? 'block' : 'none'};
     position: fixed;
     inset: 0;
@@ -1737,7 +1737,7 @@ export const UserListItem = styled.li<{ index: number }>`
 `;
 export const MobileUserListToggle = styled(SendButton) <{ $isOpen?: boolean }>`
   display: none;
-  @media (max-width: 768px) {
+  @media (max-width: 768px), (pointer: coarse) {
     display: flex;
     /* Override inherited hover-rotation - hover is sticky on mobile after a tap.
        Rotation is controlled by the $isOpen state prop instead. */
