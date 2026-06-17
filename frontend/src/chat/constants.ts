@@ -34,7 +34,7 @@ export const quoteWarn = (..._args: unknown[]) => {};
 export const MAX_LINK_PREVIEW_CACHE_ENTRIES = 250;
 
 export const VIRTUOSO_OVERSCAN_DESKTOP = 128;
-export const VIRTUOSO_OVERSCAN_MOBILE = 96;
+export const VIRTUOSO_OVERSCAN_MOBILE = 4000; // Massive overscan on mobile to ensure all fetched messages mount AT REST.
 export const VIRTUOSO_VIEWPORT_BY_DESKTOP = { top: 240, bottom: 160 };
 export const VIRTUOSO_VIEWPORT_BY_MOBILE = { top: 180, bottom: 120 };
 
