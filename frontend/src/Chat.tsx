@@ -3299,6 +3299,8 @@ function Chat() {
   // 2. Only return 'auto' if BOTH suppressProgrammaticScroll window is expired AND user is at bottom
   // 3. Use our isAtBottomRef (set by real user scroll), not Virtuoso's param
 
+  // --- RENDER ---
+  if (!userContext?.profile) { return <Auth onAuthSuccess={userContext?.login ?? (() => {})} tempToken={tempToken || null} />; }
 
   const selectedMessage = messages.find(msg => msg.id === selectedMessages[0]);
   const canEditSelectedMessage = selectedMessages.length === 1 && selectedMessage && selectedMessage.userId === userIdRef.current && selectedMessage.text && (new Date().getTime() - new Date(selectedMessage.timestamp).getTime()) < 15 * 60 * 1000;
