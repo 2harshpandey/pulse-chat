@@ -3824,7 +3824,7 @@ function Chat() {
           <ChatWindow>
             <MessagesAndScrollWrapper>
               <MessagesContainer onClick={handleChatAreaClick} $isScrollButtonVisible={isScrollToBottomVisible} $isMobileView={isMobileView}>
-              <div ref={chatContainerRef} style={{ flex: 1, overflowY: 'auto', overflowAnchor: 'auto', display: 'flex', flexDirection: 'column' }}
+              <div ref={chatContainerRef} style={{ flex: 1, overflowY: 'auto', overflowAnchor: 'auto', display: 'flex', flexDirection: 'column', transform: 'translateZ(0)', WebkitOverflowScrolling: 'touch', willChange: 'transform' }}
                    onScroll={(e) => {
                      const target = e.target as HTMLDivElement;
                      if (target.scrollTop < 500 && !isLoadingOlderRef.current && hasMoreOlderMessages) {
