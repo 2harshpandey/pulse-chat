@@ -4,7 +4,7 @@ import { Routes, Route, useLocation } from 'react-router-dom';
 import Chat from './Chat';
 import Admin from './Admin';
 import AboutDeveloper from './AboutDeveloper';
-import { GlobalStyle } from './Chat';
+import { GlobalStyle } from './chat/ChatStyledComponents';
 import { NotFoundPage, ForbiddenPage, ServerErrorPage, TimeoutPage, RateLimitPage, MaintenancePage } from './ErrorPages';
 
 // ─── Premium crash-fallback components ────────────────────────────────────

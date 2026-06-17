@@ -79,7 +79,6 @@ import {
   DownloadProgressRing, MessageText, SystemMessage,
   ScrollToBottomButton, NewMessagesBadge,
 } from './chat/ChatStyledComponents';
-export { GlobalStyle };
 import { VideoPlayer } from './chat/VideoPlayer';
 import { MediaDisplay } from './chat/MediaDisplay';
 import { renderMessageContent, detectFirstUrl, CANDIDATE_URL_RE, renderTextWithLinks } from './chat/renderMessage';
@@ -3706,7 +3705,6 @@ function Chat() {
 
   return (
     <>
-      <GlobalStyle />
       <DragDropOverlay $isVisible={isDragging}>
         <DragDropCard>
           <DragDropIconWrapper>
