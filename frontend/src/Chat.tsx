@@ -122,6 +122,7 @@ function Chat() {
   const [isDesktopInteraction, setIsDesktopInteraction] = useState(isDesktopInteractionDevice);
   const [onlineUsers, setOnlineUsers] = useState<UserProfile[]>([]);
   const [isConnected, setIsConnected] = useState(false);
+  const [isBrowserOnline, setIsBrowserOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [isUserListVisible, setIsUserListVisible] = useState(false);
   const [isSoundEnabled, setIsSoundEnabled] = useState(() => {
     const stored = localStorage.getItem('pulseSoundEnabled');
@@ -291,15 +292,21 @@ function Chat() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       notificationAudioRef.current = new Audio(NOTIFICATION_BEEP);
+      const handleOnline = () => setIsBrowserOnline(true);
+      const handleOffline = () => setIsBrowserOnline(false);
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
+      return () => {
+        window.removeEventListener('online', handleOnline);
+        window.removeEventListener('offline', handleOffline);
+      };
     }
   }, []);
 
   const shouldPlayNotificationSound = () => {
     if (typeof document === 'undefined') return false;
     if (!isSoundEnabledRef.current) return false;
-    const isHidden = document.visibilityState !== 'visible';
-    if (isHidden) return true;
-    return false;
+    return true;
   };
 
   const playNotificationSound = useCallback(async (variant: 'join' | 'message') => {
@@ -3817,7 +3824,19 @@ function Chat() {
               <img src="/pulse_logo.webp" alt="Pulse Chat" />
               <span>Pulse</span> Chat
             </a>
-            {!isConnected && <span style={{ marginLeft: '8px', fontSize: '0.75rem', color: '#ef4444', background: '#fee2e2', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', verticalAlign: 'middle' }}>Offline</span>}
+            {(!isConnected || !isBrowserOnline) && (
+              <div 
+                title="Offline"
+                style={{ 
+                  width: '8px', 
+                  height: '8px', 
+                  borderRadius: '50%', 
+                  backgroundColor: '#ef4444', 
+                  boxShadow: '0 0 8px 1px rgba(239,68,68,0.7)',
+                  marginLeft: '10px'
+                }} 
+              />
+            )}
           </HeaderTitle>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <SoundToggleButton
