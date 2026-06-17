@@ -1685,11 +1685,13 @@ function Chat() {
     keyboardWasOpenBeforeEmojiRef.current = false;
   }, [emojiPickerPosition]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (messages.length > 0 && !hasInitialScrolled.current) {
       hasInitialScrolled.current = true;
+      const scroller = chatContainerRef.current;
+      if (scroller) scroller.scrollTop = scroller.scrollHeight;
     }
-  }, [messages]);
+  }, [messages.length]);
 
   useEffect(() => {
     if (!historyLoaded) return;
@@ -1702,7 +1704,7 @@ function Chat() {
     const timer = setTimeout(() => {
 
       if (shouldSuppressProgrammaticScroll()) return;
-      if (suppressInitialBottomPinRef.current || !isAtBottomRef.current) return;
+      if (suppressInitialBottomPinRef.current) return;
       const safeIndex = firstItemIndexRef.current + (messagesRef.current.length - 1);
       const scroller = chatContainerRef.current; if (scroller) scroller.scrollTop = scroller.scrollHeight;
     }, 300);
@@ -3828,8 +3830,8 @@ function Chat() {
                   {diagnosticLogs.map((l, i) => <div key={i}>{l}</div>)}
                 </div>
               )}
-              <MessagesContainer ref={chatContainerRef} onClick={handleChatAreaClick} $isScrollButtonVisible={isScrollToBottomVisible} $isMobileView={isMobileView}>
-              <div style={{ flex: 1, overflowY: 'auto', overflowAnchor: 'auto', display: 'flex', flexDirection: 'column' }}
+              <MessagesContainer onClick={handleChatAreaClick} $isScrollButtonVisible={isScrollToBottomVisible} $isMobileView={isMobileView}>
+              <div ref={chatContainerRef} style={{ flex: 1, overflowY: 'auto', overflowAnchor: 'auto', display: 'flex', flexDirection: 'column' }}
                    onScroll={(e) => {
                      const target = e.target as HTMLDivElement;
                      if (target.scrollTop < 500 && !isLoadingOlderRef.current && hasMoreOlderMessages) {
