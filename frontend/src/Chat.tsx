@@ -2,7 +2,7 @@ import React, { useState, useEffect, useLayoutEffect, useRef, useContext, useCal
 import { createPortal, flushSync } from 'react-dom';
 import styled, { createGlobalStyle, keyframes, css } from 'styled-components';
 import EmojiPicker, { EmojiClickData, EmojiStyle, Theme } from 'emoji-picker-react';
-import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
+
 import { useDrag } from '@use-gesture/react';
 import { UserContext, UserProfile } from './UserContext';
 import { useTheme } from './ThemeContext';
@@ -14,7 +14,7 @@ import {
   MAX_MESSAGE_LENGTH, GIF_FETCH_LIMIT, getInputDraftKey, isDesktopInteractionDevice,
   INITIAL_HISTORY_BATCH_SIZE, HISTORY_PAGE_SIZE, START_REACHED_COOLDOWN_MS, INITIAL_FIRST_ITEM_INDEX,
   scrollLog, quoteLog, quoteWarn, MAX_LINK_PREVIEW_CACHE_ENTRIES,
-  VIRTUOSO_OVERSCAN_DESKTOP, VIRTUOSO_OVERSCAN_MOBILE, VIRTUOSO_VIEWPORT_BY_DESKTOP, VIRTUOSO_VIEWPORT_BY_MOBILE,
+  
   MAX_NEW_MESSAGE_INDICATOR_COUNT, MAX_LOADED_MEDIA_TRACKING, MAX_QUOTE_JUMP_STACK_DEPTH,
   MAX_QUOTE_AUTO_LOAD_PAGES, QUOTE_JUMP_TARGET_TOP_RATIO, FULLSCREEN_RESTORE_VISIBILITY_MARGIN,
   FULLSCREEN_RESTORE_FALLBACK_DELAY_MS, PHOTO_LIGHTBOX_MIN_SCALE, PHOTO_LIGHTBOX_MAX_SCALE,
@@ -87,7 +87,7 @@ import { LinkPreview, linkPreviewCache, rememberLinkPreview } from './chat/LinkP
 import { MessageItem } from './chat/MessageItem';
 import { TypingIndicator, FilmIcon, FileIcon } from './chat/TypingIndicator';
 
-const VirtuosoFooter = () => <div style={{ height: '12px' }} />;
+
 
 function Chat() {
   const userContext = useContext(UserContext);
@@ -160,30 +160,21 @@ function Chat() {
     });
   }, []);
   const diagnosticObserverRef = useRef<ResizeObserver | null>(null);
-  const scrollerRefCallback = useCallback((ref: HTMLElement | Window | null) => {
-    if (diagnosticObserverRef.current) {
-      diagnosticObserverRef.current.disconnect();
-    }
-    if (ref && ref instanceof HTMLElement) {
-      diagnosticObserverRef.current = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-          addDiagnosticLog(`DOM Resize H: ${entry.target.scrollHeight}px`);
-        }
-      });
-      diagnosticObserverRef.current.observe(ref);
+  const handleNativeScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    const currentTop = target.scrollTop;
+    
+    // Bottom detection
+    const isAtBottom = target.scrollHeight - currentTop - target.clientHeight < 50;
+    isAtBottomRef.current = isAtBottom;
 
-      let lastScrollTop = ref.scrollTop;
-      const onScroll = () => {
-        const currentTop = ref.scrollTop;
-        const diff = currentTop - lastScrollTop;
-        if (Math.abs(diff) > 10) {
-          addDiagnosticLog(`Scroll Jump: ${diff > 0 ? '+' : ''}${diff.toFixed(0)}px (Top: ${currentTop.toFixed(0)})`);
-        }
-        lastScrollTop = currentTop;
-      };
-      ref.addEventListener('scroll', onScroll, { passive: true });
+    // Top detection (load older)
+    if (currentTop < 800) {
+      if (!isLoadingOlderRef.current && hasMoreOlderMessagesRef.current && historyLoaded) {
+        loadOlderMessages();
+      }
     }
-  }, [addDiagnosticLog]);
+  }, [loadOlderMessages, historyLoaded]);
 
   const groupStartMessageIdsRef = useRef<Set<string>>(new Set());
   const [hasMoreOlderMessages, setHasMoreOlderMessages] = useState(true);
@@ -195,18 +186,18 @@ function Chat() {
   if (historyLoaded && initialTopMostItemIndexRef.current === null) {
     initialTopMostItemIndexRef.current = INITIAL_FIRST_ITEM_INDEX + (messages.length > 0 ? messages.length - 1 : 0);
   }
-  // --- FIX: Unified firstItemIndex — single source of truth ---
+  // --- FIX: Unified firstItemIndex  single source of truth ---
   // The ref and state are kept perfectly in sync via setFirstItemIndex().
   // The ref is used in scroll callbacks (stale closure-safe), the state
-  // is passed to <Virtuoso firstItemIndex={firstItemIndex}> for rendering.
+
   const [firstItemIndex, setFirstItemIndexState] = useState(INITIAL_FIRST_ITEM_INDEX);
   const firstItemIndexRef = useRef(INITIAL_FIRST_ITEM_INDEX);
   const setFirstItemIndex = useCallback((valOrUpdater: number | ((prev: number) => number)) => {
-    // Keep ref in sync synchronously ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â callbacks always read the latest value.
+    // Keep ref in sync synchronously  callbacks always read the latest value.
     setFirstItemIndexState((prev) => {
       const next = typeof valOrUpdater === 'function' ? valOrUpdater(prev) : valOrUpdater;
       firstItemIndexRef.current = next;
-      scrollLog('firstItemIndex ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢', next);
+      scrollLog('firstItemIndex ', next);
       return next;
     });
   }, []);
@@ -214,7 +205,7 @@ function Chat() {
   const oldestLoadedAtRef = useRef<string | null>(oldestLoadedAt);
   // Use a ref (not state) for the message ID associated with the full emoji picker.
   // EmojiPicker from emoji-picker-react may cache its onEmojiClick prop and call
-  // a stale closure ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â reading from a ref guarantees we always get the current value.
+  // a stale closure  reading from a ref guarantees we always get the current value.
   // fullEmojiPickerPosition (state) already controls whether the panel is shown;
   // we only need the ref to carry the message ID into the callback.
   const messageIdForFullEmojiPickerRef = useRef<string | null>(null);
@@ -233,7 +224,7 @@ function Chat() {
   const messagesRef = useRef<Message[]>([]);
   const isLoadingOlderRef = useRef(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
-  const virtuosoRef = useRef<VirtuosoHandle>(null);
+
   // Tracks whether we've done the very first scroll-to-bottom after history loads.
   // Must be a ref (not state) so it doesn't trigger re-renders.
   const hasInitialScrolled = useRef(false);
@@ -293,11 +284,11 @@ function Chat() {
   const downloadInFlightRef = useRef<Set<string>>(new Set());
   const downloadAbortControllersRef = useRef(new Map<string, AbortController>());
   const mediaLoadAbortControllersRef = useRef(new Map<string, AbortController>());
-  const isVirtuosoScrollingRef = useRef(false);
+
   const pendingTopLoadAfterScrollRef = useRef(false);
   const pendingTopLoadTimerRef = useRef<number | null>(null);
   // Cooldown timestamp: prevents startReached from firing more often than
-  // START_REACHED_COOLDOWN_MS. Virtuoso calls startReached on every scroll
+
   // frame near the top; without throttling, repeated prepends near the
   // threshold can still look jittery during slow upward drag.
   const lastStartReachedAtRef = useRef<number>(0);
@@ -924,7 +915,7 @@ function Chat() {
     setIsLoadingGifs(false);
   }, [showGifPicker]);
 
-  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Mobile Visual Viewport Tracker (Keyboard + URL bar Fix) ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+  //  Mobile Visual Viewport Tracker (Keyboard + URL bar Fix) 
   // Modern mobile browsers (especially Android Chrome) dynamically change the visual viewport
   // when the software keyboard shifts between Letters <-> Emojis or when the URL bar expands
   // or collapses. We clamp the app height to the visible viewport to prevent the footer or
@@ -1020,7 +1011,7 @@ function Chat() {
         isPlusMenuOpen,
       } = stateRef.current;
 
-      // Strict hierarchy: confirm modal ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ full-emoji ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ select mode ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ GIF ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ emoji ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ plus menu ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ lightbox ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ sidebar ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ quote.
+      // Strict hierarchy: confirm modal  full-emoji  select mode  GIF  emoji  plus menu  lightbox  sidebar  quote.
       if (isDeleteConfirmationVisible) {
         setIsDeleteConfirmationVisible(false);
       } else if (isReportModalVisible) {
@@ -1063,14 +1054,14 @@ function Chat() {
     // Defined inside the effect so the handlers always close over the
     // latest userContext.profile and the setState functions.
     const connect = () => {
-      // Already open or in the middle of connecting ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â nothing to do.
+      // Already open or in the middle of connecting  nothing to do.
       if (
         ws.current &&
         (ws.current.readyState === WebSocket.OPEN ||
           ws.current.readyState === WebSocket.CONNECTING)
       ) return;
 
-      // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ WebSocket URL: always use wss:// on HTTPS pages ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+      //  WebSocket URL: always use wss:// on HTTPS pages 
       // Root cause of "works on WiFi, fails on mobile data":
       //
       //  1. Mobile carrier proxies intercept unencrypted ws:// connections and
@@ -1082,9 +1073,9 @@ function Chat() {
       //     while mobile browsers always hard-block.
       //
       // Fix: derive the scheme from the PAGE protocol, not from the env-var prefix.
-      //  ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ Page on https:// ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ always use wss://, regardless of env-var scheme
-      //  ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ Page on http://  ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ use ws:// (local dev only)
-      //  ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ No env var       ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ fall back to the page's own host/protocol
+      //   Page on https://  always use wss://, regardless of env-var scheme
+      //   Page on http://   use ws:// (local dev only)
+      //   No env var        fall back to the page's own host/protocol
       const wsUrl = (() => {
         const base = import.meta.env.REACT_APP_API_URL;
         if (!base) {
@@ -1108,11 +1099,11 @@ function Chat() {
         );
       };
 
-      // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Auto-reconnect with exponential backoff ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+      //  Auto-reconnect with exponential backoff 
       // Mobile connections drop far more often than desktop WiFi (network
       // switching, carrier proxy timeouts, screen-off power saving).  Without
       // this, a single dropped socket means no more messages until the user
-      // manually refreshes ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the most common symptom reported on mobile data.
+      // manually refreshes  the most common symptom reported on mobile data.
       ws.current.onclose = () => {
         if (isNativeFilePickerOpenRef.current) {
           isNativeFilePickerOpenRef.current = false;
@@ -1123,10 +1114,10 @@ function Chat() {
         }
         typingCooldownRef.current = false;
         presenceActivityRef.current = null;
-        console.log('WebSocket disconnected ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â scheduling reconnect');
+        console.log('WebSocket disconnected  scheduling reconnect');
         if (shouldReconnect) {
           reconnectTimerRef.current = setTimeout(() => {
-            // Double the wait on each consecutive failure: 2 s ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ 4 s ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ 8 s ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ 30 s max.
+            // Double the wait on each consecutive failure: 2 s  4 s  8 s    30 s max.
             reconnectDelayRef.current = Math.min(reconnectDelayRef.current * 2, 30000);
             connect();
           }, reconnectDelayRef.current);
@@ -1153,7 +1144,7 @@ function Chat() {
           return;
         }
         if (messageData.type === 'force_logout') {
-          // Admin forced this user out ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â store message and log out
+          // Admin forced this user out  store message and log out
           sessionStorage.setItem('authError', messageData.message || 'You have been logged out by an administrator.');
           if (overlayGuardPushed.current) {
             clearOverlayGuardHistoryEntry();
@@ -1199,10 +1190,10 @@ function Chat() {
             : processed.length >= INITIAL_HISTORY_BATCH_SIZE;
           setHasMoreOlderMessages(nextHasMore);
           hasMoreOlderMessagesRef.current = nextHasMore;
-          // Mark history as loaded so the Virtuoso component renders
-          // for the first time already at the bottom ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â no visible scroll.
+
+          // for the first time already at the bottom  no visible scroll.
           setHistoryLoaded(true);
-          setHistorySessionId(prev => prev + 1); // Force Virtuoso destruction on Reconnect
+
         } else if (messageData.type === 'online_users') {
           setOnlineUsers(messageData.data);
         } else if (messageData.type === 'report_submitted') {
@@ -1215,7 +1206,7 @@ function Chat() {
           setIsSubmittingReport(false);
           setReportError(typeof messageData.message === 'string' ? messageData.message : 'Failed to submit report. Please try again.');
         } else if (messageData.type === 'chat_cleared') {
-          // Admin cleared all messages ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â wipe the local list immediately.
+          // Admin cleared all messages  wipe the local list immediately.
           setMessages([]);
           setNewMessagesWhileScrolledUp(0);
           messageTailSnapshotRef.current = { length: 0, lastId: null };
@@ -1251,7 +1242,7 @@ function Chat() {
           if (normalizedUpdate.isDeleted) {
             setReplyingTo(prev => {
               if (prev && prev.id === normalizedUpdate.id) {
-                return null; // Clear the quote ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â can't reply to a deleted message
+                return null; // Clear the quote  can't reply to a deleted message
               }
               return prev;
             });
@@ -1334,28 +1325,28 @@ function Chat() {
         if (emojiPickerRef.current && !emojiPickerRef.current.contains(target) && !emojiButtonRef.current?.contains(target)) {
           closeEmojiPicker(false);
         }
-        // Full emoji picker (reactions) is closed exclusively by its own backdrop ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â not here.
+        // Full emoji picker (reactions) is closed exclusively by its own backdrop  not here.
       }, 0);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [closeEmojiPicker]);
 
-  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ WhatsApp-style auto-focus (desktop only) ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+  //  WhatsApp-style auto-focus (desktop only) 
   // When the user types any printable character while nothing (or a non-input)
   // element is focused, redirect keystrokes into the message input automatically.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       // Only printable single characters; skip modifiers, function keys, etc.
       if (e.key.length !== 1 || e.metaKey || e.ctrlKey || e.altKey) return;
-      // Already in the input ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“ nothing to do.
+      // Already in the input  nothing to do.
       if (document.activeElement === messageInputRef.current) return;
       // Don't steal focus from other text fields (e.g. the edit textarea).
       const tag = (document.activeElement as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       // Don't redirect when overlays or select mode are active.
       if (isSelectModeActive || !!lightboxUrl || isDeleteConfirmationVisible || isUserListVisible) return;
-      // Don't redirect on mobile ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“ mobile keyboard requires explicit tap.
+      // Don't redirect on mobile  mobile keyboard requires explicit tap.
       if (isMobileView) return;
       messageInputRef.current?.focus();
       // Do NOT call e.preventDefault() so the character is typed into the input.
@@ -1373,7 +1364,7 @@ function Chat() {
     setPreMediaDraft('');
   }, [preMediaDraft]);
 
-  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Unquote on Escape / Close file preview ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+  //  Unquote on Escape / Close file preview 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -1443,7 +1434,7 @@ function Chat() {
     suppressProgrammaticScrollUntilRef.current = 0;
   }, []);
 
-  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Video fullscreen exit ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ restore scroll position ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+  //  Video fullscreen exit  restore scroll position 
   useEffect(() => {
     const handleFullscreenChange = () => {
       if (document.fullscreenElement || (document as any).webkitFullscreenElement) return;
@@ -1486,7 +1477,7 @@ function Chat() {
     };
   }, [clearPendingBottomScrollTimers, getChatScrollerElement, scheduleProgrammaticScrollSuppression]);
 
-  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Drag-and-drop file upload ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+  //  Drag-and-drop file upload 
   useEffect(() => {
     const hasFiles = (e: DragEvent) => e.dataTransfer?.types.includes('Files') ?? false;
 
@@ -1655,7 +1646,7 @@ function Chat() {
     return () => document.removeEventListener('keydown', handleDesktopGifTyping, true);
   }, [gifSearchTerm, isDesktopInteraction, showGifPicker]);
 
-  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Keyboard auto-restore when closing GIF picker ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+  //  Keyboard auto-restore when closing GIF picker 
   useEffect(() => {
     if (showGifPicker) {
       if (typingTimeoutRef.current) {
@@ -1705,11 +1696,11 @@ function Chat() {
     if (capturedTargetIndex < 0) return;
 
     const timer = setTimeout(() => {
-      if (!virtuosoRef.current) return;
+      if (!chatContainerRef.current) return;
       if (shouldSuppressProgrammaticScroll()) return;
       if (suppressInitialBottomPinRef.current || !isAtBottomRef.current) return;
       const safeIndex = firstItemIndexRef.current + (messagesRef.current.length - 1);
-      virtuosoRef.current.scrollToIndex({ index: safeIndex, align: 'end', behavior: 'auto' });
+      scrollToBottom("auto");
     }, 300);
 
     return () => clearTimeout(timer);
@@ -1764,366 +1755,50 @@ function Chat() {
     return markDeletedReplyTargets(filtered, deletedIds);
   }, [markDeletedReplyTargets]);
 
-  const fetchAndPrependOlderMessages = useCallback(async (beforeCursor: string) => {
-    addDiagnosticLog(`Fetch started for older msgs...`);
-    const before = encodeURIComponent(beforeCursor);
-    const res = await fetch(`${apiBase}/api/messages?before=${before}&limit=${HISTORY_PAGE_SIZE}`);
-    if (!res.ok) throw new Error('Failed to fetch older messages');
-
-    const payload = await res.json();
-    const rawBatch: any[] = Array.isArray(payload)
-      ? payload
-      : (Array.isArray(payload.messages) ? payload.messages : []);
-    const hasMore = Array.isArray(payload)
-      ? rawBatch.length >= HISTORY_PAGE_SIZE
-      : Boolean(payload.hasMore);
-
-    if (rawBatch.length === 0) {
-      setHasMoreOlderMessages(false);
-      hasMoreOlderMessagesRef.current = false;
-      return { prependedCount: 0, hasMore: false, nextCursor: oldestLoadedAtRef.current };
-    }
-
-    const normalizedBatch = rawBatch.map(normalizeMessage);
-    const filteredBatch = filterVisibleMessages(normalizedBatch);
-    const nextCursor = getMessageCursor(normalizedBatch[0]) || beforeCursor;
-
-    for (let i = 0; i < filteredBatch.length; i++) {
-      const current = filteredBatch[i];
-      const prev = i > 0 ? filteredBatch[i - 1] : null;
-      if (!prev || prev.type === 'system_notification' || prev.userId !== current.userId) {
-        groupStartMessageIdsRef.current.add(current.id);
-      }
-    }
-
-    setOldestLoadedAt(nextCursor);
-    oldestLoadedAtRef.current = nextCursor;
-
-    const existingIdsSnapshot = new Set(messagesRef.current.map((m) => m.id));
-    const prependedCount = filteredBatch.reduce((count, m) => count + (existingIdsSnapshot.has(m.id) ? 0 : 1), 0);
-
-    // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ FIX: Atomic prepend ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â update firstItemIndex inside the same
-    // setMessages updater so Virtuoso receives the new index and new data
-    // in ONE React batch. Splitting into two setState calls means Virtuoso
-    // can see the old index with the new (larger) data array for one frame,
-    // causing the visible anchor row to jump upward ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the primary flicker
-    // root cause on first-pass upward scroll.
-    const prev = messagesRef.current;
-    const prevIds = new Set(prev.map((m) => m.id));
-    const uniqueOlder = filteredBatch.filter((m) => !prevIds.has(m.id));
-
-    if (uniqueOlder.length > 0) {
-      const combinedDeletedIds = new Set(
-        [...prev, ...uniqueOlder].filter((m) => m.isDeleted).map((m) => m.id)
-      );
-      const patchedOlder = markDeletedReplyTargets(uniqueOlder, combinedDeletedIds);
-      const patchedPrev = markDeletedReplyTargets(prev, combinedDeletedIds);
-
-      const actualPrependedCount = patchedOlder.length;
-      if (actualPrependedCount > 0) {
-        const nextIdx = firstItemIndexRef.current - actualPrependedCount;
-        const nextMessages = [...patchedOlder, ...patchedPrev];
-
-        // Always update atomically via React's automatic batching.
-        // flushSync was forcing synchronous layout reflow which interrupted
-        // the mobile compositor's momentum scroll physics, causing jitter.
-        addDiagnosticLog(`Prepended ${actualPrependedCount} items (React Commit)`);
-        firstItemIndexRef.current = nextIdx;
-        setFirstItemIndexState(nextIdx);
-        setMessages(nextMessages);
-        prependScrollLockRef.current = performance.now() + 800;
-        scrollLog('prepend', actualPrependedCount, 'msgs ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ new firstItemIndex', nextIdx);
-      }
-    }
-
-    setHasMoreOlderMessages(hasMore);
-    hasMoreOlderMessagesRef.current = hasMore;
-
-    return { prependedCount, hasMore, nextCursor };
-  }, [apiBase, filterVisibleMessages, getMessageCursor, markDeletedReplyTargets, normalizeMessage]);
-
   const loadOlderMessages = useCallback(async () => {
     if (!historyLoaded || isLoadingOlderRef.current || !hasMoreOlderMessagesRef.current || !oldestLoadedAtRef.current) return;
-
-    // We intentionally removed the isVirtuosoScrollingRef check here.
-    // Virtuoso's JS anchoring physics must be allowed to seamlessly inject and 
-    // offset the scroll list DURING momentum scroll. Delaying it forces the user
-    // to hit the "roof" of the DOM, causing a violent layout snap.
-
-    // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ FIX: Throttle startReached ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
-    // Virtuoso fires startReached on every scroll frame near the top ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â up to
-    // 60 calls per second. The lock prevents parallel fetches and the cooldown
-    // ensures we only prepend once per 1.5 s window.
+    
     const now = performance.now();
     if (now - lastStartReachedAtRef.current < START_REACHED_COOLDOWN_MS) return;
     lastStartReachedAtRef.current = now;
 
-    isLoadingOlderRef.current = true;
     try {
-      await fetchAndPrependOlderMessages(oldestLoadedAtRef.current);
+      isLoadingOlderRef.current = true;
+      const beforeCursor = oldestLoadedAtRef.current;
+      const res = await fetch(`${apiBase}/api/messages?before=${encodeURIComponent(beforeCursor)}&limit=${HISTORY_PAGE_SIZE}`);
+      if (!res.ok) throw new Error('Failed to fetch older messages');
+
+      const payload = await res.json();
+      const fetchedMessages: Message[] = payload.messages;
+      const hasMore = payload.hasMore;
+
+      if (fetchedMessages.length > 0) {
+        setMessages(prev => {
+          messagesRef.current = [...fetchedMessages, ...prev];
+          return messagesRef.current;
+        });
+        setOldestLoadedAt(fetchedMessages[0].createdAt);
+        oldestLoadedAtRef.current = fetchedMessages[0].createdAt;
+        
+        fetchedMessages.forEach(msg => {
+          if (msg.type === 'system_notification' && msg.metadata?.groupStart) {
+            groupStartMessageIdsRef.current.add(msg.id);
+          } else if (msg.senderId !== 'system' && msg.metadata?.groupStart) {
+            groupStartMessageIdsRef.current.add(msg.id);
+          }
+        });
+      }
+
+      setHasMoreOlderMessages(hasMore);
+      hasMoreOlderMessagesRef.current = hasMore;
     } catch (err) {
-      console.error('Failed to load older messages:', err);
+      console.error('Error fetching older messages:', err);
     } finally {
       isLoadingOlderRef.current = false;
     }
-  }, [fetchAndPrependOlderMessages, historyLoaded]);
+  }, [historyLoaded]);
 
-  const handleVirtuosoIsScrolling = useCallback((isScrolling: boolean) => {
-    isVirtuosoScrollingRef.current = isScrolling;
-
-    if (isScrolling) {
-      if (pendingTopLoadTimerRef.current !== null) {
-        window.clearTimeout(pendingTopLoadTimerRef.current);
-        pendingTopLoadTimerRef.current = null;
-      }
-      return;
-    }
-
-    // (Buffering logic removed as part of the jitter fix)
-
-    if (pendingTopLoadAfterScrollRef.current) {
-      if (pendingTopLoadTimerRef.current !== null) {
-        window.clearTimeout(pendingTopLoadTimerRef.current);
-      }
-      // Use requestIdleCallback so the deferred prepend fires during browser
-      // idle time rather than at an arbitrary fixed delay.  This avoids
-      // triggering the fetch while the compositor is still settling touch
-      // momentum scroll, which reduces the chance of visible jitter.
-      // Fallback to a 200 ms timeout on browsers without requestIdleCallback.
-      const scheduleLoad = () => {
-        pendingTopLoadTimerRef.current = null;
-        pendingTopLoadAfterScrollRef.current = false;
-        void loadOlderMessages();
-      };
-      if (typeof requestIdleCallback === 'function') {
-        const idleHandle = requestIdleCallback(scheduleLoad, { timeout: 200 });
-        // Store a cancel handle compatible with clearTimeout — wrap in setTimeout
-        // that we can cancel; the idle callback will fire first in normal cases.
-        pendingTopLoadTimerRef.current = window.setTimeout(() => {
-          // Safety fallback — if idle callback hasn't fired in 250 ms, run now.
-          cancelIdleCallback(idleHandle);
-          scheduleLoad();
-        }, 250);
-      } else {
-        pendingTopLoadTimerRef.current = window.setTimeout(scheduleLoad, 200);
-      }
-    }
-  }, [loadOlderMessages]);
-
-  const handleVideoFullscreenEnter = useCallback((messageId: string) => {
-    const scroller = getChatScrollerElement();
-    if (!scroller) return;
-
-    const scrollTop = scroller.scrollTop;
-    isVideoFullscreenSessionRef.current = true;
-    fullscreenScrollSnapshotRef.current = {
-      messageId,
-      scrollTop,
-      bottomOffset: scroller.scrollHeight - scrollTop,
-    };
-
-    clearPendingBottomScrollTimers();
-    scheduleProgrammaticScrollSuppression(1200);
-  }, [clearPendingBottomScrollTimers, getChatScrollerElement, scheduleProgrammaticScrollSuppression]);
-
-  const resetInput = () => {
-    setInputMessage('');
-    setPreMediaDraft('');
-    setReplyingTo(null);
-    setStagedFile(null);
-    // Revoke blob URLs for any files being cleared so the browser can free memory.
-    stagedFiles.forEach(revokeBlobUrl);
-    setStagedFiles([]);
-    setStagedGif(null);
-    setShowFilePreview(false);
-    setPreviewCaption('');
-    setPreviewActiveIndex(0);
-    resetInputLayerHeight();
-    // Clear frontend typing state so subsequent keystrokes trigger start_typing again
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = null;
-    }
-    typingCooldownRef.current = false;
-    setPresenceActivity(null);
-  };
-
-  const handleSendMessage = async () => {
-    // If editing a message, save the edit instead of sending a new message
-    if (editingMessageId) {
-      const trimmed = inputMessage.trim();
-      if (trimmed && ws.current && ws.current.readyState === WebSocket.OPEN) {
-        ws.current.send(JSON.stringify({
-          type: 'edit',
-          messageId: editingMessageId,
-          newText: trimmed,
-        }));
-      }
-      setEditingMessageId(null);
-      setEditingMessageOriginalText('');
-      setInputMessage(priorDraftBeforeEdit);
-      setPriorDraftBeforeEdit('');
-      resetInputLayerHeight();
-      requestAnimationFrame(() => { messageInputRef.current?.focus(); });
-      return;
-    }
-    // If multi-file preview is open, send from there instead
-    if (showFilePreview && stagedFiles.length > 0) {
-      handleSendFromPreview();
-      return;
-    }
-    if (!stagedFile && !stagedGif && !inputMessage.trim()) return;
-    if (inputMessage.length > MAX_MESSAGE_LENGTH) return; // Exceed WhatsApp-style character limit
-    if (!ws.current || ws.current.readyState !== WebSocket.OPEN || !userContext?.profile) return;
-
-    const tempId = Date.now().toString();
-    let replyContext: ReplyContext | undefined = undefined;
-    if (replyingTo) {
-      const { type } = replyingTo;
-      if (type === 'system_notification') {
-        setReplyingTo(null);
-        return;
-      }
-
-      let replyText = replyingTo.text || 'Message';
-      if (!replyingTo.text) {
-        if (isTenorUrl(replyingTo.url)) {
-          replyText = 'GIF';
-        } else if (replyingTo.type === 'image') {
-          replyText = 'Image';
-        } else if (replyingTo.type === 'video') {
-          replyText = 'Video';
-        }
-      }
-      replyContext = { id: replyingTo.id, username: replyingTo.username, text: replyText, type, url: replyingTo.url };
-    }
-
-    if (stagedFile) {
-      const message: Message = {
-        id: tempId,
-        userId: userIdRef.current,
-        username: userContext?.profile?.username || '',
-        type: stagedFile.type.startsWith('image/') ? 'image' : stagedFile.type.startsWith('video/') ? 'video' : 'file',
-        url: URL.createObjectURL(stagedFile),
-        originalName: stagedFile.name,
-        size: stagedFile.size,
-        text: inputMessage,
-        timestamp: new Date().toISOString(),
-        replyingTo: replyContext,
-        isUploading: true,
-      };
-      setMessages(prev => [...prev, message]);
-      // Ensure the view scrolls to show the newly added message
-      requestAnimationFrame(() => scrollToBottom());
-
-      const formData = new FormData();
-      formData.append('file', stagedFile);
-      formData.append('text', inputMessage);
-      formData.append('userId', userIdRef.current);
-
-      fetch(`${apiBase}/api/upload`, { method: 'POST', body: formData })
-        .then(async response => {
-          if (!response.ok) {
-            const payload = await response.json().catch(() => null);
-            throw new Error(payload?.error || `Upload failed (${response.status})`);
-          }
-          return response.json();
-        })
-        .then(uploadedFileData => {
-          const finalMessage = {
-            ...message,
-            ...uploadedFileData,
-            originalName: chooseReadableFilename(uploadedFileData.originalName, message.originalName),
-            isUploading: false,
-            id: uploadedFileData.id,
-          };
-          setMessages(prev => prev.map(m => m.id === tempId ? finalMessage : m));
-          ws.current?.send(JSON.stringify(finalMessage));
-        })
-        .catch(error => {
-          console.error('File upload failed!', error);
-          const errorText = error instanceof Error && error.message ? error.message : 'Upload failed';
-          setMessages(prev => prev.map(m => m.id === tempId ? {
-            ...message,
-            url: '',
-            isUploading: false,
-            uploadError: true,
-            originalName: sanitizeFilename(message.originalName || stagedFile.name, 'file'),
-            text: errorText,
-          } : m));
-        });
-
-      const hadReply = !!replyingTo;
-      resetInput();
-      // After resetInput clears the reply preview, the footer height changes.
-      // A delayed staggered scroll ensures we reach the true bottom after layout stabilizes.
-      if (hadReply) forceScrollToBottomAsync();
-
-    } else if (stagedGif) {
-      const gifMessage: Message = { id: stagedGif.id, userId: userIdRef.current, username: userContext?.profile?.username || '', type: 'image', url: stagedGif.url, text: inputMessage, timestamp: new Date().toISOString(), replyingTo: replyContext };
-      setMessages(prev => [...prev, gifMessage]);
-      requestAnimationFrame(() => scrollToBottom());
-      ws.current.send(JSON.stringify(gifMessage));
-      const hadReply = !!replyingTo;
-      resetInput();
-      // After resetInput clears the reply preview, the footer height changes.
-      // A delayed staggered scroll ensures we reach the true bottom after layout stabilizes.
-      if (hadReply) forceScrollToBottomAsync();
-    } else {
-      const textMessage: Message = { id: Date.now().toString(), userId: userIdRef.current, username: userContext?.profile?.username || '', type: 'text', text: inputMessage, timestamp: new Date().toISOString(), replyingTo: replyContext };
-      setMessages(prev => [...prev, textMessage]);
-      requestAnimationFrame(() => scrollToBottom());
-      ws.current.send(JSON.stringify(textMessage));
-      const hadReply = !!replyingTo;
-      resetInput();
-      // After resetInput clears the reply preview, the footer height changes.
-      // A delayed staggered scroll ensures we reach the true bottom after layout stabilizes.
-      if (hadReply) forceScrollToBottomAsync();
-    }
-  };
-
-  const handleTyping = useCallback(() => {
-    if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
-    // Skip if the WebSocket send-buffer is backed up (slow / congested network).
-    // 4 KB is a safe threshold ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“ typing indicators are tiny but we don't want
-    // to pile onto an already-struggling connection.
-    if (ws.current.bufferedAmount > 4096) return;
-
-    // Throttle: only send start_typing once per cooldown window (3 s).
-    if (!typingCooldownRef.current || presenceActivityRef.current !== 'typing') {
-      typingCooldownRef.current = true;
-      setPresenceActivity('typing');
-    }
-
-    // Reset the stop-typing timer on every keystroke (debounce).
-    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    typingTimeoutRef.current = setTimeout(() => {
-      setPresenceActivity(null);
-      typingTimeoutRef.current = null;
-      typingCooldownRef.current = false;
-    }, 3000);
-  }, [setPresenceActivity]);
-
-  const handleClearChat = () => {
-    if (window.confirm('Are you sure you want to clear the chat? All messages will be hidden for you on this device.')) {
-      localStorage.setItem(`pulseClearTimestamp_${userIdRef.current}`, Date.now().toString());
-      setMessages([]);
-      setHasMoreOlderMessages(false);
-      setOldestLoadedAt(null);
-      setFirstItemIndex(INITIAL_FIRST_ITEM_INDEX);
-    }
-  };
-
-  const handleSetReply = useCallback((message: Message) => {
-    if (message.type === 'system_notification') return;
-    if (message.isDeleted) return; // Can't quote a deleted message
-    setReplyingTo(message);
-    // Focus the input so the keyboard opens automatically on touch devices.
-    // Use rAF so the reply-preview has time to render and shift the layout first.
-    requestAnimationFrame(() => {
-      messageInputRef.current?.focus();
-    });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+ // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleReact = useCallback((messageId: string, emoji: string) => {
     const canonicalEmoji = normalizeReactionEmoji(emoji);
@@ -2131,7 +1806,7 @@ function Chat() {
     const userId = userIdRef.current;
     const username = userContext?.profile?.username || '';
 
-    // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Optimistic local update ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+    //  Optimistic local update 
     // Apply the reaction change immediately in local state so the UI
     // feels instant. The server will broadcast the authoritative state
     // shortly after, which will reconcile any difference.
@@ -2193,7 +1868,7 @@ function Chat() {
     function handleOutside(e: MouseEvent | TouchEvent) {
       const target = e.target as Element;
       // If the tap/click is on the button that opened the picker, let the
-      // button's own onClick toggle it ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â otherwise we'd close-then-reopen.
+      // button's own onClick toggle it  otherwise we'd close-then-reopen.
       if (target.closest('.react-action-button')) return;
       if (reactionPickerRef.current && !reactionPickerRef.current.contains(target)) {
         setReactionPickerData(null);
@@ -2208,7 +1883,7 @@ function Chat() {
   }, [reactionPickerData]);
 
   // When a reply preview appears, scroll the chat so the quoted message
-  // is fully visible just above the preview ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â same as WhatsApp behaviour.
+  // is fully visible just above the preview  same as WhatsApp behaviour.
   useEffect(() => {
     if (!replyingTo) return;
     // Double rAF: first frame commits the DOM, second ensures layout is complete
@@ -2234,7 +1909,7 @@ function Chat() {
     // Toggle off if the same menu is already open.
     setActiveDeleteMenu(prev => prev === messageId ? null : messageId);
     setTimeout(() => {
-      // If the menu just closed, deleteMenuRef.current will be null ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â no-op.
+      // If the menu just closed, deleteMenuRef.current will be null  no-op.
       if (!deleteMenuRef.current || !chatContainerRef.current) return;
       const container = chatContainerRef.current.querySelector('[data-virtuoso-scroller]') as HTMLElement || chatContainerRef.current;
       const containerRect = container.getBoundingClientRect();
@@ -2590,9 +2265,7 @@ function Chat() {
   useEffect(() => {
     if (prevSelectModeRef.current && !isSelectModeActive) {
       requestAnimationFrame(() => {
-        if (isAtBottomRef.current && virtuosoRef.current) {
-          virtuosoRef.current.scrollToIndex({ index: firstItemIndexRef.current + messages.length - 1, align: 'end', behavior: 'auto' });
-        }
+        if (isAtBottomRef.current) { scrollToBottom("auto"); }
       });
     }
     prevSelectModeRef.current = isSelectModeActive;
@@ -2603,7 +2276,7 @@ function Chat() {
     setMessages(prev => prev.filter(m => !selectedMessages.includes(m.id)));
     // Replace the guard history entry in-place rather than calling back().
     // history.back() fires a popstate event that React Router v6 intercepts
-    // and treats as a route navigation ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â on desktop (mouse-click path through
+    // and treats as a route navigation  on desktop (mouse-click path through
     // the three-dots portal) this causes React Router to land on a 404.
     // replaceState() silently overwrites the guard entry with no popstate,
     // so React Router never sees a navigation and the chat stays mounted.
@@ -2622,8 +2295,8 @@ function Chat() {
         ws.current.send(JSON.stringify({ type: 'delete_for_everyone', messageId: id }));
       }
     });
-    // Same fix as handleBulkDeleteForMe ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â use replaceState instead of back()
-    // to avoid the popstateÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢React RouterÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢404 issue on desktop mouse-click path.
+    // Same fix as handleBulkDeleteForMe  use replaceState instead of back()
+    // to avoid the popstateReact Router404 issue on desktop mouse-click path.
     if (overlayGuardPushed.current) {
       clearOverlayGuardHistoryEntry();
       overlayGuardPushed.current = false;
@@ -2783,8 +2456,8 @@ function Chat() {
     
     // Only update visibility during user-initiated scroll, not programmatic scroll.
     // This prevents state-update cascades that cause render flicker during quote-jumps.
-    // Also skip the state update while a prepend is in-flight — re-rendering the
-    // Chat component mid-prepend can cause Virtuoso to recalculate item positions,
+    // Also skip the state update while a prepend is in-flight  re-rendering the
+
     // amplifying the scroll-anchor correction into visible flicker on touch devices.
     const isInProgrammaticScroll = performance.now() < suppressProgrammaticScrollUntilRef.current;
     const isPrependInFlight = isLoadingOlderRef.current;
@@ -2949,7 +2622,7 @@ function Chat() {
   const handleChatAreaClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target !== chatContainerRef.current) return;
     if (isSelectModeActive || !!lightboxUrl || isDeleteConfirmationVisible) return;
-    // On mobile, don't auto-focus the input when tapping empty space ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â
+    // On mobile, don't auto-focus the input when tapping empty space 
     // the user may be intentionally dismissing the keyboard, and fighting
     // the blur causes a visible stutter in the keyboard animation.
     if (isMobileView) return;
@@ -3005,8 +2678,8 @@ function Chat() {
       return false;
     }
 
-    // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ FIX: Quote-jump going to bottom ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
-    // Virtuoso's followOutput can override scrollToIndex because smooth animations
+    //  FIX: Quote-jump going to bottom 
+
     // pass through the bottom row, triggering bottom-pin logic. Solution:
     // 1. Use 'auto' (instant) scroll for quote-jumps instead of 'smooth'
     // 2. Suppress all bottom-pinning for 5+ seconds
@@ -3054,7 +2727,7 @@ function Chat() {
     });
     quoteLog('scrollToIndex issued', { targetId, absoluteIndex, relativeIndex, offset, behavior });
 
-    // Some Virtuoso configurations interpret scrollToIndex as relative to data,
+
     // while others use the absolute index space with firstItemIndex.
     // If the absolute jump did not mount the target row quickly, retry with
     // relative indexing to avoid clamping to bottom.
@@ -3436,7 +3109,7 @@ function Chat() {
     setFullEmojiPickerPosition(rect);
     messageIdForFullEmojiPickerRef.current = messageId;
     setReactionPickerData(null);
-    // Don't clear select mode here ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the select mode was already cleared
+    // Don't clear select mode here  the select mode was already cleared
     // by handleCancelSelectMode in the MobileReactionPicker onClick,
     // or this was opened from the desktop reaction picker (no select mode).
     // Clearing here caused a race condition where the message ID was lost.
@@ -3445,13 +3118,13 @@ function Chat() {
   // --- PRE-RENDER HOOKS (must be before any early return to satisfy Rules of Hooks) ---
   const selectedMessageIds = useMemo(() => new Set(selectedMessages), [selectedMessages]);
   const loadedMediaMessageSet = useMemo(() => new Set(loadedMediaMessageIds), [loadedMediaMessageIds]);
-  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ FIX: followOutput aggressively blocks during programmatic scroll ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
-  // The key insight: followOutput is called on EVERY scroll frame, and Virtuoso's
+  //  FIX: followOutput aggressively blocks during programmatic scroll 
+
   // internal isAtBottom param can be true even when the user hasn't genuinely
   // scrolled to bottom (e.g., during animation). We must:
   // 1. Always return false during suppression window (prevents overrides)
   // 2. Only return 'auto' if BOTH suppressProgrammaticScroll window is expired AND user is at bottom
-  // 3. Use our isAtBottomRef (set by real user scroll), not Virtuoso's param
+
   const virtuosoFollowOutput = useCallback((_isAtBottom: boolean): 'smooth' | false | 'auto' => {
     if (isLoadingOlderRef.current) return false;
     if (shouldSuppressProgrammaticScroll()) return false;
@@ -3461,7 +3134,7 @@ function Chat() {
     // the scroll-to-bottom button threshold. During prepends, even "at bottom"
     // can be transiently true due to scroll anchor compensation.
     if (!isAtBottomRef.current) return false;
-    // Don't auto-follow if the scroll-to-bottom button is visible — that means
+    // Don't auto-follow if the scroll-to-bottom button is visible  that means
     // the user has scrolled up intentionally.
     if (lastAtBottomStateRef.current === false) return false;
     return 'auto';
@@ -3470,9 +3143,9 @@ function Chat() {
   // Disable scroll-seek placeholders on all devices.
   // In a chat transcript, placeholder swapping can appear as blink/shake
   // during fast upward scroll (desktop trackpad/mouse included).
-  const virtuosoScrollSeekConfiguration = undefined;
 
-  const virtuosoComponents = useMemo(() => ({ Footer: VirtuosoFooter }), []);
+
+
 
   // --- RENDER ---
   if (!userContext?.profile) { return <Auth onAuthSuccess={userContext?.login ?? (() => {})} tempToken={tempToken || null} />; }
@@ -3491,11 +3164,11 @@ function Chat() {
   const scrollToLatestTitle = hasNewMessagesIndicator
     ? `${newMessagesIndicatorLabel} new message${newMessagesWhileScrolledUp === 1 ? '' : 's'}`
     : 'Scroll to latest messages';
-  const virtuosoOverscan = isMobileView ? VIRTUOSO_OVERSCAN_MOBILE : VIRTUOSO_OVERSCAN_DESKTOP;
+
   // On mobile, use higher overscan to pre-render more messages and prevent
   // visible placeholder content during scroll. Reduces jitter from placeholder swaps.
-  const adjustedVirtuosoOverscan = isMobileView ? Math.round(VIRTUOSO_OVERSCAN_MOBILE * 1.5) : virtuosoOverscan;
-  const virtuosoIncreaseViewportBy = isMobileView ? VIRTUOSO_VIEWPORT_BY_MOBILE : VIRTUOSO_VIEWPORT_BY_DESKTOP;
+
+
 
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -3507,7 +3180,7 @@ function Chat() {
     if (e.key === 'Enter' && !e.shiftKey) {
       // On touchscreen devices (mobile/tablet) the on-screen keyboard's
       // Enter key is expected to insert a newline. Avoid intercepting it
-      // there ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â allow the native behavior (so Shift+Enter still works too).
+      // there  allow the native behavior (so Shift+Enter still works too).
       if (isMobileView) {
         return;
       }
@@ -4243,7 +3916,7 @@ function Chat() {
                     </div>
                     <InputTextWrapper>
                       {(() => {
-                        // Detect URL in current input ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â if found, render highlight overlay
+                        // Detect URL in current input  if found, render highlight overlay
                         CANDIDATE_URL_RE.lastIndex = 0;
                         const hasUrl = CANDIDATE_URL_RE.test(normalizedOverlayMessage);
                         CANDIDATE_URL_RE.lastIndex = 0;
@@ -4298,7 +3971,7 @@ function Chat() {
                   </InputContainer>
                   {/* Mobile emoji picker for typing.
                   Rendered here (inside the Footer's normal DOM flow) so the footer
-                  grows to include the picker and the messages area shrinks to fit ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â
+                  grows to include the picker and the messages area shrinks to fit 
                   exactly like WhatsApp.  A fixed overlay would cover the input bar. */}
                   {isMobileView && emojiPickerPosition && (
                     <div ref={emojiPickerRef} style={{ width: '100%', background: 'var(--bg-elevated)', borderTop: '1px solid var(--border-primary)' }}>
@@ -4481,7 +4154,7 @@ function Chat() {
       )}
       {showGifPicker && (
         <GifPickerModal onClick={() => {
-          // Ignore clicks that arrive within 500 ms of opening ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â these are the phantom
+          // Ignore clicks that arrive within 500 ms of opening  these are the phantom
           // synthetic click events that mobile browsers generate after a pointerdown,
           // which would otherwise close the picker immediately after it opens.
           if (Date.now() - gifPickerOpenedAtRef.current < 500) return;
