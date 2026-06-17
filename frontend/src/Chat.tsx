@@ -357,7 +357,10 @@ function Chat() {
     if (!userContext?.profile) return;
 
     const unlockAudio = () => {
-      void ensureAudioContext();
+      if (notificationAudioRef.current) {
+        // Calling load() on a user interaction unlocks the audio element for background play
+        notificationAudioRef.current.load();
+      }
     };
 
     window.addEventListener('pointerdown', unlockAudio, { once: true });
@@ -367,7 +370,7 @@ function Chat() {
       window.removeEventListener('pointerdown', unlockAudio);
       window.removeEventListener('keydown', unlockAudio);
     };
-  }, [ensureAudioContext, userContext?.profile]);
+  }, [userContext?.profile]);
 
   useEffect(() => {
     try {
