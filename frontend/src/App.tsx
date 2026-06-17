@@ -69,16 +69,17 @@ const FallbackButton = styled.a`
 // Keyed by pathname in AppRoutes so it resets automatically on navigation.
 class RouteErrorBoundary extends React.Component<
   { children: React.ReactNode },
-  { crashed: boolean }
+  { crashed: boolean; error: Error | null; info: React.ErrorInfo | null }
 > {
-  state = { crashed: false };
+  state = { crashed: false, error: null as Error | null, info: null as React.ErrorInfo | null };
 
-  static getDerivedStateFromError(): { crashed: boolean } {
-    return { crashed: true };
+  static getDerivedStateFromError(error: Error): { crashed: boolean; error: Error } {
+    return { crashed: true, error };
   }
 
-  componentDidCatch(err: Error, info: React.ErrorInfo): void {
-    console.error('[RouteErrorBoundary]', err, info);
+  componentDidCatch(error: Error, info: React.ErrorInfo): void {
+    console.error('[RouteErrorBoundary]', error, info);
+    this.setState({ info });
   }
 
   render() {
@@ -93,6 +94,14 @@ class RouteErrorBoundary extends React.Component<
           <FallbackDesc>
             The application encountered an unexpected error. Refreshing the page
             usually fixes this.
+            {this.state.error && (
+              <div style={{ marginTop: '1rem', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', textAlign: 'left', fontSize: '0.8rem', overflowX: 'auto', color: '#f87171' }}>
+                <strong style={{ display: 'block', marginBottom: '0.5rem' }}>{this.state.error.toString()}</strong>
+                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+                  {this.state.info?.componentStack || this.state.error.stack}
+                </pre>
+              </div>
+            )}
           </FallbackDesc>
           <FallbackButton href="/">← Go to Chat</FallbackButton>
         </FallbackPage>

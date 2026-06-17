@@ -1131,6 +1131,7 @@ function Chat() {
           hasInitialScrolled.current = false;
           initialHistoryBottomStabilized.current = false;
           suppressInitialBottomPinRef.current = false;
+          initialTopMostItemIndexRef.current = null;
           const rawHistory = Array.isArray(messageData.data) ? messageData.data : [];
           const processed = filterVisibleMessages(rawHistory.map(normalizeMessage));
 
@@ -3938,6 +3939,7 @@ function Chat() {
                   <Virtuoso
                     key={`${userIdRef.current || 'unauthed'}-${historySessionId}`}
                     ref={virtuosoRef}
+                    initialTopMostItemIndex={messages.length > 0 && initialTopMostItemIndexRef.current !== null ? initialTopMostItemIndexRef.current : undefined}
                     firstItemIndex={firstItemIndex}
                     data={messages}
                     startReached={loadOlderMessages}
