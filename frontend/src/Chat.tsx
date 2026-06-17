@@ -121,6 +121,7 @@ function Chat() {
   const [isLoadingGifs, setIsLoadingGifs] = useState(false);
   const [isDesktopInteraction, setIsDesktopInteraction] = useState(isDesktopInteractionDevice);
   const [onlineUsers, setOnlineUsers] = useState<UserProfile[]>([]);
+  const [isConnected, setIsConnected] = useState(false);
   const [isUserListVisible, setIsUserListVisible] = useState(false);
   const [isSoundEnabled, setIsSoundEnabled] = useState(() => {
     const stored = localStorage.getItem('pulseSoundEnabled');
@@ -197,6 +198,8 @@ function Chat() {
   const messagesRef = useRef<Message[]>([]);
   const isLoadingOlderRef = useRef(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const isNativeFilePickerOpenRef = useRef(false);
+  const lastHiddenTimeRef = useRef<number>(0);
   // Tracks whether we've done the very first scroll-to-bottom after history loads.
   // Must be a ref (not state) so it doesn't trigger re-renders.
   const hasInitialScrolled = useRef(false);
@@ -231,7 +234,6 @@ function Chat() {
   // Prevents sending start_typing more than once per ~3 s even on rapid keystrokes.
   const typingCooldownRef = useRef(false);
   const presenceActivityRef = useRef<'typing' | 'gif_selecting' | null>(null);
-  const isNativeFilePickerOpenRef = useRef(false);
   const resizeRafRef = useRef<number>(0);
   const lastInputHeightRef = useRef<number>(0);
   const lastInputValueLengthRef = useRef<number>(0);
@@ -1045,6 +1047,7 @@ function Chat() {
       ws.current = new WebSocket(wsUrl);
 
       ws.current.onopen = () => {
+        setIsConnected(true);
         // Reset the backoff delay so the next disconnect starts from 2 s again.
         reconnectDelayRef.current = 2000;
         presenceActivityRef.current = null;
@@ -1059,6 +1062,7 @@ function Chat() {
       // this, a single dropped socket means no more messages until the user
       // manually refreshes — the most common symptom reported on mobile data.
       ws.current.onclose = () => {
+        setIsConnected(false);
         if (isNativeFilePickerOpenRef.current) {
           isNativeFilePickerOpenRef.current = false;
         }
@@ -1079,6 +1083,7 @@ function Chat() {
       };
 
       ws.current.onerror = () => {
+        setIsConnected(false);
         // Force close so the readyState is CLOSED and the next connect() call
         // will actually create a new socket.
         ws.current?.close();
@@ -1238,20 +1243,31 @@ function Chat() {
 
     // 1. User returns to the tab / un-minimizes the browser on mobile.
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        // When waking up from background on mobile, the OS often leaves the TCP
-        // socket in a "zombie" half-open state. The connection appears OPEN, but
-        // downstream data is stalled, leading to a ~60s delay until timeout.
+      if (document.visibilityState === 'hidden') {
+        lastHiddenTimeRef.current = Date.now();
+      } else if (document.visibilityState === 'visible') {
+        const timeHidden = Date.now() - lastHiddenTimeRef.current;
+        
+        // If the browser was only in the background for a fraction of a second 
+        // (e.g., swiping between recent apps, accidental swipe, or checking a notification),
+        // the OS TCP stack has not frozen the socket yet. We should NOT proactively 
+        // destroy the perfectly healthy socket.
+        if (timeHidden > 0 && timeHidden < 5000) {
+          return; 
+        }
+
+        // When waking up from background on mobile after a substantial delay, the OS 
+        // often leaves the TCP socket in a "zombie" half-open state. The connection appears OPEN, 
+        // but downstream data is stalled, leading to a ~60s delay until timeout.
         // To guarantee instant realtime delivery, we proactively close the old socket
         // and establish a fresh one. We specifically avoid window.location.reload() 
-        // because the mobile network radio often takes a few seconds to wake up, 
-        // and a hard refresh would wipe the screen and leave the user staring at 
-        // a blank page until the radio finally connects.
+        // because the mobile network radio often takes a few seconds to wake up.
 
         if (ws.current) {
           ws.current.onclose = null; // Prevent competing reconnect timers
           ws.current.close();
           ws.current = null;
+          setIsConnected(false);
           
           // Manual cleanup that would normally happen in onclose
           if (isNativeFilePickerOpenRef.current) isNativeFilePickerOpenRef.current = false;
@@ -3775,7 +3791,13 @@ function Chat() {
       )}
       <AppContainer>
         <Header>
-          <HeaderTitle><a href="/"><img src="/pulse_logo.webp" alt="Pulse Chat" /><span>Pulse</span> Chat</a></HeaderTitle>
+          <HeaderTitle>
+            <a href="/">
+              <img src="/pulse_logo.webp" alt="Pulse Chat" />
+              <span>Pulse</span> Chat
+            </a>
+            {!isConnected && <span style={{ marginLeft: '8px', fontSize: '0.75rem', color: '#ef4444', background: '#fee2e2', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', verticalAlign: 'middle' }}>Offline</span>}
+          </HeaderTitle>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <SoundToggleButton
               type="button"
@@ -4018,6 +4040,7 @@ function Chat() {
                         $isOpen={isPlusMenuOpen}
                         onPointerDown={(e) => e.preventDefault()}
                         onClick={() => setIsPlusMenuOpen(prev => !prev)}
+                        disabled={!isConnected}
                         aria-label="Open actions menu"
                         title="Emoji, GIF, or File"
                       >
@@ -4092,7 +4115,8 @@ function Chat() {
                               rows={1}
                               id="chat-message-input"
                               name="chatMessage"
-                              placeholder={editingMessageId ? 'Edit message...' : stagedFile || stagedGif ? 'Add a caption...' : 'Type your message...'}
+                              disabled={!isConnected}
+                              placeholder={!isConnected ? 'Connecting...' : editingMessageId ? 'Edit message...' : stagedFile || stagedGif ? 'Add a caption...' : 'Type your message...'}
                               value={inputMessage}
                               onChange={handleInputChange}
                               onKeyDown={handleInputKeyDown}
@@ -4112,7 +4136,7 @@ function Chat() {
                     <SendButton
                       onMouseDown={(e) => e.preventDefault()}
                       onClick={handleSendMessage}
-                      disabled={(!inputMessage.trim() && !stagedFile && !stagedGif && stagedFiles.length === 0)}
+                      disabled={(!isConnected || (!inputMessage.trim() && !stagedFile && !stagedGif && stagedFiles.length === 0))}
                       title={editingMessageId ? 'Save edit' : 'Send message'}
                       aria-label={editingMessageId ? 'Save edit' : 'Send message'}
                       style={editingMessageId ? { background: 'linear-gradient(135deg, #6366f1, #4f46e5)' } : undefined}
