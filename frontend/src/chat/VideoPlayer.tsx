@@ -244,7 +244,7 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter }: { src: st
       doubleTapTimerRef.current = setTimeout(() => setDoubleTapSide(null), 700);
       lastTapTimeRef.current = 0;
     } else {
-      // Single tap ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â always toggle play/pause AND show controls
+      // Single tap - always toggle play/pause AND show controls
       lastTapTimeRef.current = now;
       lastTapXRef.current = tapX;
       doubleTapTimerRef.current = setTimeout(() => {
@@ -333,7 +333,7 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter }: { src: st
               }
             </CVPIconBtn>
 
-            {/* Skip back 10s ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â pure path-based icon, no <text> to avoid SVG clipping */}
+            {/* Skip back 10s - pure path-based icon, no <text> to avoid SVG clipping */}
             <CVPIconBtn onClick={() => skip(-10)} title="Back 10s" aria-label="Back 10 seconds">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12.5 5A8.5 8.5 0 1 0 20 11.5" />
@@ -342,7 +342,7 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter }: { src: st
               </svg>
             </CVPIconBtn>
 
-            {/* Skip forward 10s ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â pure path-based icon */}
+            {/* Skip forward 10s - pure path-based icon */}
             <CVPIconBtn onClick={() => skip(10)} title="Forward 10s" aria-label="Forward 10 seconds">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M11.5 5A8.5 8.5 0 1 1 4 11.5" />
@@ -351,7 +351,7 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter }: { src: st
               </svg>
             </CVPIconBtn>
 
-            {/* Volume/Mute ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â desktop: hover shows vertical slider + mouse-wheel; mobile: tap toggles mute */}
+            {/* Volume/Mute - desktop: hover shows vertical slider + mouse-wheel; mobile: tap toggles mute */}
             <CVPVolumeWrapper onWheel={handleVolumeWheel}>
               <CVPIconBtn onClick={toggleMute} title={isMuted ? 'Unmute' : 'Mute'} aria-label={isMuted ? 'Unmute' : 'Mute'}>
                 {isMuted || volume === 0

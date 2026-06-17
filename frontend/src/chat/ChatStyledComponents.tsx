@@ -40,7 +40,7 @@ export const lightboxControlReveal = keyframes`
   }
 `;
 
-/* ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â Premium Reaction Animations ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â */
+/* - Premium Reaction Animations - */
 export const reactionBounceIn = keyframes`
   0%   { transform: scale(0); opacity: 0; }
   50%  { transform: scale(1.3); opacity: 1; }
@@ -100,7 +100,7 @@ export const quoteJumpHighlight = keyframes`
   }
 `;
 
-/* ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â Site-Wide Premium Animations ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â */
+/* - Site-Wide Premium Animations - */
 export const subtleSlideUp = keyframes`
   from { opacity: 0; transform: translateY(12px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -427,7 +427,7 @@ export const MessagesContainer = styled.div<{ $isScrollButtonVisible?: boolean; 
 `;
 
 /* Wraps MessagesContainer + ScrollToBottomButton so the button is anchored
-   to the bottom of the messages area ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â automatically above whatever the footer contains */
+   to the bottom of the messages area - automatically above whatever the footer contains */
 export const MessagesAndScrollWrapper = styled.div`
   flex: 1;
   position: relative;
@@ -555,7 +555,7 @@ export const MessageBubble = styled.div<{ $sender: string; $messageType: string;
   }
 `;
 
-/* ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â Premium Edit Context Banner (shown above the main composer) ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â */
+/* - Premium Edit Context Banner (shown above the main composer) - */
 export const editSlideIn = keyframes`
   from { opacity: 0; transform: translateY(6px) scaleY(0.92); }
   to   { opacity: 1; transform: translateY(0) scaleY(1); }
@@ -1213,7 +1213,7 @@ export const InlineDownloadBtn = styled.button`
   svg { width: 13px; height: 13px; flex-shrink: 0; }
 `;
 
-/* ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â WhatsApp-style File Preview Modal ÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚ÂÃƒÂ¢Ã¢â‚¬Â¢Ã‚Â */
+/* - WhatsApp-style File Preview Modal - */
 export const FilePreviewModal = styled.div`
   position: fixed;
   inset: 0;
@@ -1694,7 +1694,7 @@ export const UserSidebar = styled.aside<{ $isVisible: boolean }>`
     visibility: ${props => props.$isVisible ? 'visible' : 'hidden'};
   }
 `;
-// Transparent backdrop behind the sidebar on mobile ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â clicking it closes the panel
+// Transparent backdrop behind the sidebar on mobile - clicking it closes the panel
 export const SidebarBackdrop = styled.div<{ $isVisible: boolean }>`
   display: none;
   @media (max-width: 768px) {
@@ -1739,7 +1739,7 @@ export const MobileUserListToggle = styled(SendButton) <{ $isOpen?: boolean }>`
   display: none;
   @media (max-width: 768px) {
     display: flex;
-    /* Override inherited hover-rotation ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â hover is sticky on mobile after a tap.
+    /* Override inherited hover-rotation - hover is sticky on mobile after a tap.
        Rotation is controlled by the $isOpen state prop instead. */
     &:hover:not(:disabled) { transform: scale(1.12); }
     &:active:not(:disabled) { transform: scale(0.92); }
@@ -2351,7 +2351,7 @@ export const MessageActions = styled.div`
   z-index: 32; 
   pointer-events: none;
   /* CSS :hover on a parent element fires whenever the pointer is over
-     ANY descendant in the DOM tree ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â including this div even though it
+     ANY descendant in the DOM tree - including this div even though it
      visually sits above the bubble.  So there is zero hover gap. */
   ${MessageBubble}:hover & { opacity: 1; pointer-events: all; transform: translateY(0) scale(1); }
   [data-theme='dark'] & {
@@ -2386,7 +2386,7 @@ export const Checkbox = styled.div<{ checked: boolean }>`
   transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
   ${props => props.checked && `transform: scale(1); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);`}
   &::after {
-    content: 'ÃƒÂ¢Ã…â€œÃ¢â‚¬Å“';
+    content: '\\2713';
     color: white;
     font-size: 14px;
     font-weight: bold;
@@ -2559,7 +2559,7 @@ export const ReportActions = styled.div`
   gap: 0.6rem;
 `;
 
-/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Custom Video Player Styles ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
+/* - Custom Video Player Styles - */
 export const videoFadeIn = keyframes`
   from { opacity: 0; }
   to   { opacity: 1; }
@@ -2801,7 +2801,7 @@ export const CVPSpeedBtn = styled.button`
   &:hover { background: rgba(255,255,255,0.25); }
 `;
 
-/* Volume slider wrapper ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â only shown on non-touch (pointer: fine) devices */
+/* Volume slider wrapper - only shown on non-touch (pointer: fine) devices */
 export const CVPVolumeWrapper = styled.div`
   position: relative;
   display: flex;
@@ -2939,7 +2939,7 @@ export const CVPCenterPlayBtn = styled.div<{ $visible: boolean }>`
   svg { width: 24px; height: 24px; color: #fff; }
 `;
 
-/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Download Progress Ring (WhatsApp/Telegram style) ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */
+/* - Download Progress Ring (WhatsApp/Telegram style) - */
 export const DownloadProgressRing = styled.div<{ $progress: number; $visible: boolean }>`
   position: relative;
   width: 100%;

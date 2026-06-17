@@ -164,11 +164,11 @@ function Chat() {
   const [firstItemIndex, setFirstItemIndexState] = useState(INITIAL_FIRST_ITEM_INDEX);
   const firstItemIndexRef = useRef(INITIAL_FIRST_ITEM_INDEX);
   const setFirstItemIndex = useCallback((valOrUpdater: number | ((prev: number) => number)) => {
-    // Keep ref in sync synchronously ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â callbacks always read the latest value.
+    // Keep ref in sync synchronously — callbacks always read the latest value.
     setFirstItemIndexState((prev) => {
       const next = typeof valOrUpdater === 'function' ? valOrUpdater(prev) : valOrUpdater;
       firstItemIndexRef.current = next;
-      scrollLog('firstItemIndex ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢', next);
+      scrollLog('firstItemIndex →', next);
       return next;
     });
   }, []);
@@ -176,7 +176,7 @@ function Chat() {
   const oldestLoadedAtRef = useRef<string | null>(oldestLoadedAt);
   // Use a ref (not state) for the message ID associated with the full emoji picker.
   // EmojiPicker from emoji-picker-react may cache its onEmojiClick prop and call
-  // a stale closure ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â reading from a ref guarantees we always get the current value.
+  // a stale closure — reading from a ref guarantees we always get the current value.
   // fullEmojiPickerPosition (state) already controls whether the panel is shown;
   // we only need the ref to carry the message ID into the callback.
   const messageIdForFullEmojiPickerRef = useRef<string | null>(null);
@@ -885,7 +885,7 @@ function Chat() {
     setIsLoadingGifs(false);
   }, [showGifPicker]);
 
-  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Mobile Visual Viewport Tracker (Keyboard + URL bar Fix) ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+  // - Mobile Visual Viewport Tracker (Keyboard + URL bar Fix) -
   // Modern mobile browsers (especially Android Chrome) dynamically change the visual viewport
   // when the software keyboard shifts between Letters <-> Emojis or when the URL bar expands
   // or collapses. We clamp the app height to the visible viewport to prevent the footer or
@@ -981,7 +981,7 @@ function Chat() {
         isPlusMenuOpen,
       } = stateRef.current;
 
-      // Strict hierarchy: confirm modal ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ full-emoji ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ select mode ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ GIF ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ emoji ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ plus menu ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ lightbox ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ sidebar ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ quote.
+      // Strict hierarchy: confirm modal → full-emoji → select mode → GIF → emoji → plus menu → lightbox → sidebar → quote.
       if (isDeleteConfirmationVisible) {
         setIsDeleteConfirmationVisible(false);
       } else if (isReportModalVisible) {
@@ -1024,14 +1024,14 @@ function Chat() {
     // Defined inside the effect so the handlers always close over the
     // latest userContext.profile and the setState functions.
     const connect = () => {
-      // Already open or in the middle of connecting ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â nothing to do.
+      // Already open or in the middle of connecting — nothing to do.
       if (
         ws.current &&
         (ws.current.readyState === WebSocket.OPEN ||
           ws.current.readyState === WebSocket.CONNECTING)
       ) return;
 
-      // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ WebSocket URL: always use wss:// on HTTPS pages ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+      // - WebSocket URL: always use wss:// on HTTPS pages -
       // Root cause of "works on WiFi, fails on mobile data":
       //
       //  1. Mobile carrier proxies intercept unencrypted ws:// connections and
@@ -1043,9 +1043,9 @@ function Chat() {
       //     while mobile browsers always hard-block.
       //
       // Fix: derive the scheme from the PAGE protocol, not from the env-var prefix.
-      //  ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ Page on https:// ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ always use wss://, regardless of env-var scheme
-      //  ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ Page on http://  ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ use ws:// (local dev only)
-      //  ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ No env var       ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ fall back to the page's own host/protocol
+      //  • Page on https:// → always use wss://, regardless of env-var scheme
+      //  • Page on http://  → use ws:// (local dev only)
+      //  • No env var       → fall back to the page's own host/protocol
       const wsUrl = (() => {
         const base = import.meta.env.REACT_APP_API_URL;
         if (!base) {
@@ -1069,11 +1069,11 @@ function Chat() {
         );
       };
 
-      // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Auto-reconnect with exponential backoff ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+      // - Auto-reconnect with exponential backoff -
       // Mobile connections drop far more often than desktop WiFi (network
       // switching, carrier proxy timeouts, screen-off power saving).  Without
       // this, a single dropped socket means no more messages until the user
-      // manually refreshes ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the most common symptom reported on mobile data.
+      // manually refreshes — the most common symptom reported on mobile data.
       ws.current.onclose = () => {
         if (isNativeFilePickerOpenRef.current) {
           isNativeFilePickerOpenRef.current = false;
@@ -1084,10 +1084,10 @@ function Chat() {
         }
         typingCooldownRef.current = false;
         presenceActivityRef.current = null;
-        console.log('WebSocket disconnected ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â scheduling reconnect');
+        console.log('WebSocket disconnected — scheduling reconnect');
         if (shouldReconnect) {
           reconnectTimerRef.current = setTimeout(() => {
-            // Double the wait on each consecutive failure: 2 s ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ 4 s ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ 8 s ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ 30 s max.
+            // Double the wait on each consecutive failure: 2 s → 4 s → 8 s → … → 30 s max.
             reconnectDelayRef.current = Math.min(reconnectDelayRef.current * 2, 30000);
             connect();
           }, reconnectDelayRef.current);
@@ -1114,7 +1114,7 @@ function Chat() {
           return;
         }
         if (messageData.type === 'force_logout') {
-          // Admin forced this user out ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â store message and log out
+          // Admin forced this user out — store message and log out
           sessionStorage.setItem('authError', messageData.message || 'You have been logged out by an administrator.');
           if (overlayGuardPushed.current) {
             clearOverlayGuardHistoryEntry();
@@ -1161,7 +1161,7 @@ function Chat() {
           setHasMoreOlderMessages(nextHasMore);
           hasMoreOlderMessagesRef.current = nextHasMore;
           // Mark history as loaded so the Virtuoso component renders
-          // for the first time already at the bottom ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â no visible scroll.
+          // for the first time already at the bottom — no visible scroll.
           setHistoryLoaded(true);
           setHistorySessionId(prev => prev + 1); // Force Virtuoso destruction on Reconnect
         } else if (messageData.type === 'online_users') {
@@ -1176,7 +1176,7 @@ function Chat() {
           setIsSubmittingReport(false);
           setReportError(typeof messageData.message === 'string' ? messageData.message : 'Failed to submit report. Please try again.');
         } else if (messageData.type === 'chat_cleared') {
-          // Admin cleared all messages ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â wipe the local list immediately.
+          // Admin cleared all messages — wipe the local list immediately.
           setMessages([]);
           setNewMessagesWhileScrolledUp(0);
           messageTailSnapshotRef.current = { length: 0, lastId: null };
@@ -1212,7 +1212,7 @@ function Chat() {
           if (normalizedUpdate.isDeleted) {
             setReplyingTo(prev => {
               if (prev && prev.id === normalizedUpdate.id) {
-                return null; // Clear the quote ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â can't reply to a deleted message
+                return null; // Clear the quote — can't reply to a deleted message
               }
               return prev;
             });
@@ -1295,28 +1295,28 @@ function Chat() {
         if (emojiPickerRef.current && !emojiPickerRef.current.contains(target) && !emojiButtonRef.current?.contains(target)) {
           closeEmojiPicker(false);
         }
-        // Full emoji picker (reactions) is closed exclusively by its own backdrop ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â not here.
+        // Full emoji picker (reactions) is closed exclusively by its own backdrop — not here.
       }, 0);
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [closeEmojiPicker]);
 
-  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ WhatsApp-style auto-focus (desktop only) ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+  // - WhatsApp-style auto-focus (desktop only) -
   // When the user types any printable character while nothing (or a non-input)
   // element is focused, redirect keystrokes into the message input automatically.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       // Only printable single characters; skip modifiers, function keys, etc.
       if (e.key.length !== 1 || e.metaKey || e.ctrlKey || e.altKey) return;
-      // Already in the input ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“ nothing to do.
+      // Already in the input – nothing to do.
       if (document.activeElement === messageInputRef.current) return;
       // Don't steal focus from other text fields (e.g. the edit textarea).
       const tag = (document.activeElement as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       // Don't redirect when overlays or select mode are active.
       if (isSelectModeActive || !!lightboxUrl || isDeleteConfirmationVisible || isUserListVisible) return;
-      // Don't redirect on mobile ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“ mobile keyboard requires explicit tap.
+      // Don't redirect on mobile – mobile keyboard requires explicit tap.
       if (isMobileView) return;
       messageInputRef.current?.focus();
       // Do NOT call e.preventDefault() so the character is typed into the input.
@@ -1334,7 +1334,7 @@ function Chat() {
     setPreMediaDraft('');
   }, [preMediaDraft]);
 
-  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Unquote on Escape / Close file preview ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+  // - Unquote on Escape / Close file preview -
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -1404,7 +1404,7 @@ function Chat() {
     suppressProgrammaticScrollUntilRef.current = 0;
   }, []);
 
-  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Video fullscreen exit ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ restore scroll position ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+  // - Video fullscreen exit → restore scroll position -
   useEffect(() => {
     const handleFullscreenChange = () => {
       if (document.fullscreenElement || (document as any).webkitFullscreenElement) return;
@@ -1447,7 +1447,7 @@ function Chat() {
     };
   }, [clearPendingBottomScrollTimers, getChatScrollerElement, scheduleProgrammaticScrollSuppression]);
 
-  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Drag-and-drop file upload ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+  // - Drag-and-drop file upload -
   useEffect(() => {
     const hasFiles = (e: DragEvent) => e.dataTransfer?.types.includes('Files') ?? false;
 
@@ -1616,7 +1616,7 @@ function Chat() {
     return () => document.removeEventListener('keydown', handleDesktopGifTyping, true);
   }, [gifSearchTerm, isDesktopInteraction, showGifPicker]);
 
-  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Keyboard auto-restore when closing GIF picker ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+  // - Keyboard auto-restore when closing GIF picker -
   useEffect(() => {
     if (showGifPicker) {
       if (typingTimeoutRef.current) {
@@ -1764,11 +1764,11 @@ function Chat() {
     const existingIdsSnapshot = new Set(messagesRef.current.map((m) => m.id));
     const prependedCount = filteredBatch.reduce((count, m) => count + (existingIdsSnapshot.has(m.id) ? 0 : 1), 0);
 
-    // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ FIX: Atomic prepend ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â update firstItemIndex inside the same
+    // - FIX: Atomic prepend — update firstItemIndex inside the same
     // setMessages updater so Virtuoso receives the new index and new data
     // in ONE React batch. Splitting into two setState calls means Virtuoso
     // can see the old index with the new (larger) data array for one frame,
-    // causing the visible anchor row to jump upward ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the primary flicker
+    // causing the visible anchor row to jump upward — the primary flicker
     // root cause on first-pass upward scroll.
     const prev = messagesRef.current;
     const prevIds = new Set(prev.map((m) => m.id));
@@ -1793,7 +1793,7 @@ function Chat() {
         setFirstItemIndexState(nextIdx);
         setMessages(nextMessages);
         prependScrollLockRef.current = performance.now() + 800;
-        scrollLog('prepend', actualPrependedCount, 'msgs ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ new firstItemIndex', nextIdx);
+        scrollLog('prepend', actualPrependedCount, 'msgs → new firstItemIndex', nextIdx);
       }
     }
 
@@ -1811,8 +1811,8 @@ function Chat() {
     // offset the scroll list DURING momentum scroll. Delaying it forces the user
     // to hit the "roof" of the DOM, causing a violent layout snap.
 
-    // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ FIX: Throttle startReached ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
-    // Virtuoso fires startReached on every scroll frame near the top ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â up to
+    // - FIX: Throttle startReached -
+    // Virtuoso fires startReached on every scroll frame near the top — up to
     // 60 calls per second. The lock prevents parallel fetches and the cooldown
     // ensures we only prepend once per 1.5 s window.
     const now = performance.now();
@@ -2046,7 +2046,7 @@ function Chat() {
   const handleTyping = useCallback(() => {
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
     // Skip if the WebSocket send-buffer is backed up (slow / congested network).
-    // 4 KB is a safe threshold ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“ typing indicators are tiny but we don't want
+    // 4 KB is a safe threshold – typing indicators are tiny but we don't want
     // to pile onto an already-struggling connection.
     if (ws.current.bufferedAmount > 4096) return;
 
@@ -2092,7 +2092,7 @@ function Chat() {
     const userId = userIdRef.current;
     const username = userContext?.profile?.username || '';
 
-    // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Optimistic local update ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+    // - Optimistic local update -
     // Apply the reaction change immediately in local state so the UI
     // feels instant. The server will broadcast the authoritative state
     // shortly after, which will reconcile any difference.
@@ -2154,7 +2154,7 @@ function Chat() {
     function handleOutside(e: MouseEvent | TouchEvent) {
       const target = e.target as Element;
       // If the tap/click is on the button that opened the picker, let the
-      // button's own onClick toggle it ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â otherwise we'd close-then-reopen.
+      // button's own onClick toggle it — otherwise we'd close-then-reopen.
       if (target.closest('.react-action-button')) return;
       if (reactionPickerRef.current && !reactionPickerRef.current.contains(target)) {
         setReactionPickerData(null);
@@ -2169,7 +2169,7 @@ function Chat() {
   }, [reactionPickerData]);
 
   // When a reply preview appears, scroll the chat so the quoted message
-  // is fully visible just above the preview ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â same as WhatsApp behaviour.
+  // is fully visible just above the preview — same as WhatsApp behaviour.
   useEffect(() => {
     if (!replyingTo) return;
     // Double rAF: first frame commits the DOM, second ensures layout is complete
@@ -2195,7 +2195,7 @@ function Chat() {
     // Toggle off if the same menu is already open.
     setActiveDeleteMenu(prev => prev === messageId ? null : messageId);
     setTimeout(() => {
-      // If the menu just closed, deleteMenuRef.current will be null ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â no-op.
+      // If the menu just closed, deleteMenuRef.current will be null — no-op.
       if (!deleteMenuRef.current || !chatContainerRef.current) return;
       const container = chatContainerRef.current.querySelector('[data-virtuoso-scroller]') as HTMLElement || chatContainerRef.current;
       const containerRect = container.getBoundingClientRect();
@@ -2565,7 +2565,7 @@ function Chat() {
     setMessages(prev => prev.filter(m => !selectedMessages.includes(m.id)));
     // Replace the guard history entry in-place rather than calling back().
     // history.back() fires a popstate event that React Router v6 intercepts
-    // and treats as a route navigation ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â on desktop (mouse-click path through
+    // and treats as a route navigation — on desktop (mouse-click path through
     // the three-dots portal) this causes React Router to land on a 404.
     // replaceState() silently overwrites the guard entry with no popstate,
     // so React Router never sees a navigation and the chat stays mounted.
@@ -2584,8 +2584,8 @@ function Chat() {
         ws.current.send(JSON.stringify({ type: 'delete_for_everyone', messageId: id }));
       }
     });
-    // Same fix as handleBulkDeleteForMe ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â use replaceState instead of back()
-    // to avoid the popstateÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢React RouterÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢404 issue on desktop mouse-click path.
+    // Same fix as handleBulkDeleteForMe — use replaceState instead of back()
+    // to avoid the popstate→React Router→404 issue on desktop mouse-click path.
     if (overlayGuardPushed.current) {
       clearOverlayGuardHistoryEntry();
       overlayGuardPushed.current = false;
@@ -2911,7 +2911,7 @@ function Chat() {
   const handleChatAreaClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target !== chatContainerRef.current) return;
     if (isSelectModeActive || !!lightboxUrl || isDeleteConfirmationVisible) return;
-    // On mobile, don't auto-focus the input when tapping empty space ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â
+    // On mobile, don't auto-focus the input when tapping empty space —
     // the user may be intentionally dismissing the keyboard, and fighting
     // the blur causes a visible stutter in the keyboard animation.
     if (isMobileView) return;
@@ -3282,7 +3282,7 @@ function Chat() {
     setFullEmojiPickerPosition(rect);
     messageIdForFullEmojiPickerRef.current = messageId;
     setReactionPickerData(null);
-    // Don't clear select mode here ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the select mode was already cleared
+    // Don't clear select mode here — the select mode was already cleared
     // by handleCancelSelectMode in the MobileReactionPicker onClick,
     // or this was opened from the desktop reaction picker (no select mode).
     // Clearing here caused a race condition where the message ID was lost.
@@ -3291,7 +3291,7 @@ function Chat() {
   // --- PRE-RENDER HOOKS (must be before any early return to satisfy Rules of Hooks) ---
   const selectedMessageIds = useMemo(() => new Set(selectedMessages), [selectedMessages]);
   const loadedMediaMessageSet = useMemo(() => new Set(loadedMediaMessageIds), [loadedMediaMessageIds]);
-  // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ FIX: followOutput aggressively blocks during programmatic scroll ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
+  // - FIX: followOutput aggressively blocks during programmatic scroll -
   // The key insight: followOutput is called on EVERY scroll frame, and Virtuoso's
   // internal isAtBottom param can be true even when the user hasn't genuinely
   // scrolled to bottom (e.g., during animation). We must:
@@ -3325,7 +3325,7 @@ function Chat() {
     if (e.key === 'Enter' && !e.shiftKey) {
       // On touchscreen devices (mobile/tablet) the on-screen keyboard's
       // Enter key is expected to insert a newline. Avoid intercepting it
-      // there ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â allow the native behavior (so Shift+Enter still works too).
+      // there — allow the native behavior (so Shift+Enter still works too).
       if (isMobileView) {
         return;
       }
@@ -4036,7 +4036,7 @@ function Chat() {
                     </div>
                     <InputTextWrapper>
                       {(() => {
-                        // Detect URL in current input ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â if found, render highlight overlay
+                        // Detect URL in current input — if found, render highlight overlay
                         CANDIDATE_URL_RE.lastIndex = 0;
                         const hasUrl = CANDIDATE_URL_RE.test(normalizedOverlayMessage);
                         CANDIDATE_URL_RE.lastIndex = 0;
@@ -4091,7 +4091,7 @@ function Chat() {
                   </InputContainer>
                   {/* Mobile emoji picker for typing.
                   Rendered here (inside the Footer's normal DOM flow) so the footer
-                  grows to include the picker and the messages area shrinks to fit ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â
+                  grows to include the picker and the messages area shrinks to fit —
                   exactly like WhatsApp.  A fixed overlay would cover the input bar. */}
                   {isMobileView && emojiPickerPosition && (
                     <div ref={emojiPickerRef} style={{ width: '100%', background: 'var(--bg-elevated)', borderTop: '1px solid var(--border-primary)' }}>
@@ -4274,7 +4274,7 @@ function Chat() {
       )}
       {showGifPicker && (
         <GifPickerModal onClick={() => {
-          // Ignore clicks that arrive within 500 ms of opening ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â these are the phantom
+          // Ignore clicks that arrive within 500 ms of opening — these are the phantom
           // synthetic click events that mobile browsers generate after a pointerdown,
           // which would otherwise close the picker immediately after it opens.
           if (Date.now() - gifPickerOpenedAtRef.current < 500) return;

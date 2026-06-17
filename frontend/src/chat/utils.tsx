@@ -149,18 +149,18 @@ export const repairMojibakeText = (value?: string | null): string => {
   if (!raw) return '';
 
   const repaired = raw
-    .replace(/Ã¢â‚¬â„¢|Ã¢â‚¬â„¢|â€™|â/g, "'")
-    .replace(/Ã¢â‚¬Ëœ|â€˜|â/g, "'")
-    .replace(/Ã¢â‚¬Å“|â€œ|â/g, '"')
-    .replace(/Ã¢â‚¬Â|Ã¢â‚¬ï¿½|â€|â/g, '"')
-    .replace(/Ã¢â‚¬â€œ|â€“|â/g, '-')
-    .replace(/Ã¢â‚¬â€|â€”|â/g, '-')
-    .replace(/Ã¢â‚¬Â¦|â€¦|â¦/g, '...')
-    .replace(/Ã‚Â·|Â·/g, '·')
-    .replace(/ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â|ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“/g, '-')
-    .replace(/ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦/g, '...')
-    .replace(/ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬/g, 'EUR')
-    .replace(/Ã‚/g, '')
+    .replace(/'|'|'|â/g, "'")
+    .replace(/'|'|â/g, "'")
+    .replace(/"|"|â/g, '"')
+    .replace(/-|"|â€|â/g, '"')
+    .replace(/-"|â€“|â/g, '-')
+    .replace(/-|â€”|â/g, '-')
+    .replace(/-|â€¦|â¦/g, '...')
+    .replace(/-|Â·/g, '·')
+    .replace(/—|–/g, '-')
+    .replace(/…/g, '...')
+    .replace(/-/g, 'EUR')
+    .replace(/-/g, '')
     .replace(/Â(?=\s|$|[\w().,;:'"-])/g, '');
 
   return repaired.normalize('NFC');

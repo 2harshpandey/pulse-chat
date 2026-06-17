@@ -15,7 +15,7 @@ import { VideoPlayer } from './VideoPlayer';
 import { MediaDisplay } from './MediaDisplay';
 
 // --- URL Detection helpers ---
-// Curated list of known valid TLDs ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â filters gibberish like .gfdgf or .gtd
+// Curated list of known valid TLDs - filters gibberish like .gfdgf or .gtd
 export const VALID_TLDS = new Set([
   // Generic
   'com', 'org', 'net', 'edu', 'gov', 'mil', 'int', 'info', 'biz', 'name', 'pro',
@@ -44,7 +44,7 @@ export const VALID_TLDS = new Set([
   'yt', 'za', 'zm', 'zw',
 ]);
 
-// color used for all hyperlinks ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â other-users messages use CSS variable (blue in
+// color used for all hyperlinks - other-users messages use CSS variable (blue in
 // light mode, yellow in dark mode). Own messages keep the yellow constant.
 export const LINK_COLOR_OWN = 'rgb(255, 238, 0)';
 
@@ -57,12 +57,12 @@ export const normalizeUrl = (raw: string): { href: string; display: string } | n
   // Strip trailing punctuation
   const display = raw.replace(/[.,;:!?)'">\]]+$/, '');
   if (!display) return null;
-  // Already has a protocol ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â always a link
+  // Already has a protocol - always a link
   if (/^https?:\/\//i.test(display)) return { href: display, display };
   if (/^ftp:\/\//i.test(display)) return { href: display, display };
-  // Starts with www. ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â always a link
+  // Starts with www. - always a link
   if (/^www\./i.test(display)) return { href: `https://${display}`, display };
-  // Bare domain ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â validate TLD against known list
+  // Bare domain - validate TLD against known list
   const hostname = display.split(/[/?#]/)[0];
   const labels = hostname.split('.');
   if (labels.length < 2) return null;
@@ -81,8 +81,8 @@ export const normalizeUrl = (raw: string): { href: string; display: string } | n
  *     This blocks javascript:, data:, vbscript: etc.
  *  2. Return encodeURI(parsed.href) rather than the original string.
  *     encodeURI is a recognised URL sanitiser in CodeQL's JavaScript query
- *     library (js/xss-through-dom) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â it encodes HTML meta-characters
- *     (<, >, ", ' ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦) that should never appear raw in an href, and returning
+ *     library (js/xss-through-dom) - it encodes HTML meta-characters
+ *     (<, >, ", ' -) that should never appear raw in an href, and returning
  *     the encoded form (not the original tainted string) breaks the taint
  *     chain that CodeQL traces from e.target.value through to the DOM sink.
  */
@@ -309,7 +309,7 @@ export const renderMessageContent = (
           ) : (
             <VideoPlayer src={resolvedMediaUrl} onPointerDown={onMediaPointerDown} onFullscreenEnter={onVideoFullscreenEnter} />
           )}
-          {/* Download button ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â top-left overlay, same style as image download btn */}
+          {/* Download button - top-left overlay, same style as image download btn */}
           {!shouldGateMedia && canDownload && (
             <MediaDownloadOverlayBtn
               title={isDownloadInProgress ? 'Tap to cancel' : 'Download video'}

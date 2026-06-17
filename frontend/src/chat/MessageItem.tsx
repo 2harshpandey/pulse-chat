@@ -228,7 +228,7 @@ export const MessageItem = React.memo(({
       // Otherwise, if it's a genuine tap in select mode, toggle the selection.
       if (isSelectModeActive) {
         // If the tap landed on the checkbox, let the checkbox's own handler
-        // deal with it ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“ don't also toggle from the useDrag tap.
+        // deal with it - don't also toggle from the useDrag tap.
         if (target.closest('[data-checkbox]')) {
           return;
         }
@@ -338,7 +338,7 @@ export const MessageItem = React.memo(({
   }, []);
 
   // Reset wasLongPressed only when select mode is DEACTIVATED.
-  // We must NOT reset it when select mode is activated ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the long-press
+  // We must NOT reset it when select mode is activated - the long-press
   // timer sets it just before the re-render that activates select mode,
   // and the tap handler needs it to avoid immediately deselecting the
   // message when the touch ends.
@@ -374,7 +374,7 @@ export const MessageItem = React.memo(({
     }
 
     // Don't start a long-press timer when the touch/click lands on the
-    // MobileReactionPicker ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â otherwise the 500 ms timer fires, toggles
+    // MobileReactionPicker - otherwise the 500 ms timer fires, toggles
     // selection (deselecting the message), and unmounts the picker before
     // the user's onClick can fire on the emoji button.
     const target = e.target as HTMLElement;
@@ -620,7 +620,7 @@ export const MessageItem = React.memo(({
                         e.stopPropagation();
                         // Capture rect & msgId synchronously (e.currentTarget becomes null
                         // after the event returns). Do NOT call handleCancelSelectMode here
-                        // ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â keeping select mode active means the MobileReactionPicker stays
+                        // - keeping select mode active means the MobileReactionPicker stays
                         // mounted, so target.closest('.mobile-reaction-picker') reliably
                         // catches the useDrag tap that fires when the finger lifts.
                         // Select mode is cancelled in the emoji panel's onEmojiClick instead.
@@ -660,7 +660,7 @@ export const MessageItem = React.memo(({
                     >&#8942;</ActionButton>
                   </MessageActions>
                 )}
-                {/* DeleteMenu rendered as fixed portal ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â see block after </MessageRow> */}
+                {/* DeleteMenu rendered as fixed portal - see block after </MessageRow> */}
                 {msg.type === 'text' && !msg.url && msg.text && (() => { const _u = detectFirstUrl(msg.text); return _u ? <LinkPreview url={_u} sender={sender} /> : null; })()}
                 {renderMessageContent(
                   messageWithResolvedSize,
