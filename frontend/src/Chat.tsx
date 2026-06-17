@@ -1239,17 +1239,15 @@ function Chat() {
     // 1. User returns to the tab / un-minimizes the browser on mobile.
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        // If the user returns to the app on a mobile device, we aggressively refresh 
-        // the entire page to guarantee a pristine state and instant realtime sync.
-        // We MUST skip the refresh if the native file picker is open, otherwise 
-        // selecting a photo to upload would instantly refresh the page and discard it!
-        if (isMobileView && !isNativeFilePickerOpenRef.current) {
-          window.location.reload();
-          return;
-        }
+        // When waking up from background on mobile, the OS often leaves the TCP
+        // socket in a "zombie" half-open state. The connection appears OPEN, but
+        // downstream data is stalled, leading to a ~60s delay until timeout.
+        // To guarantee instant realtime delivery, we proactively close the old socket
+        // and establish a fresh one. We specifically avoid window.location.reload() 
+        // because the mobile network radio often takes a few seconds to wake up, 
+        // and a hard refresh would wipe the screen and leave the user staring at 
+        // a blank page until the radio finally connects.
 
-        // For desktop devices (or if the file picker was open), we just proactively
-        // close the old socket and establish a fresh one without a full page reload.
         if (ws.current) {
           ws.current.onclose = null; // Prevent competing reconnect timers
           ws.current.close();
@@ -1265,12 +1263,14 @@ function Chat() {
           presenceActivityRef.current = null;
         }
 
-        // Force an immediate reconnect instead of waiting for a backoff delay
+        // Force an immediate reconnect. If the OS network radio is asleep, this 
+        // will fail and trigger the exponential backoff, but the user will at 
+        // least see their old messages instead of a broken empty screen.
         if (reconnectTimerRef.current) {
           clearTimeout(reconnectTimerRef.current);
           reconnectTimerRef.current = null;
         }
-        reconnectDelayRef.current = 2000;
+        reconnectDelayRef.current = 1000; // Start with a fast 1-second retry if radio is asleep
         connect();
       }
     };
