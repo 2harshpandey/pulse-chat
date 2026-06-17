@@ -574,7 +574,8 @@ function Chat() {
     }
 
     messageTailSnapshotRef.current = { length: currentLength, lastId: currentLastId };
-  }, [historyLoaded, messages, scrollToBottom]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyLoaded, messages]);
 
   useEffect(() => {
     if (!userContext?.profile || messages.length === 0) return;
