@@ -2,7 +2,6 @@ import React, { useState, useEffect, useLayoutEffect, useRef, useContext, useCal
 import { createPortal, flushSync } from 'react-dom';
 import styled, { createGlobalStyle, keyframes, css } from 'styled-components';
 import EmojiPicker, { EmojiClickData, EmojiStyle, Theme } from 'emoji-picker-react';
-import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { useDrag } from '@use-gesture/react';
 import { UserContext, UserProfile } from './UserContext';
 import { useTheme } from './ThemeContext';
@@ -14,7 +13,6 @@ import {
   MAX_MESSAGE_LENGTH, GIF_FETCH_LIMIT, getInputDraftKey, isDesktopInteractionDevice,
   INITIAL_HISTORY_BATCH_SIZE, HISTORY_PAGE_SIZE, START_REACHED_COOLDOWN_MS, INITIAL_FIRST_ITEM_INDEX,
   scrollLog, quoteLog, quoteWarn, MAX_LINK_PREVIEW_CACHE_ENTRIES,
-  VIRTUOSO_OVERSCAN_DESKTOP, VIRTUOSO_OVERSCAN_MOBILE, VIRTUOSO_VIEWPORT_BY_DESKTOP, VIRTUOSO_VIEWPORT_BY_MOBILE,
   MAX_NEW_MESSAGE_INDICATOR_COUNT, MAX_LOADED_MEDIA_TRACKING, MAX_QUOTE_JUMP_STACK_DEPTH,
   MAX_QUOTE_AUTO_LOAD_PAGES, QUOTE_JUMP_TARGET_TOP_RATIO, FULLSCREEN_RESTORE_VISIBILITY_MARGIN,
   FULLSCREEN_RESTORE_FALLBACK_DELAY_MS, PHOTO_LIGHTBOX_MIN_SCALE, PHOTO_LIGHTBOX_MAX_SCALE,
@@ -86,7 +84,6 @@ import { LinkPreview, linkPreviewCache, rememberLinkPreview } from './chat/LinkP
 import { MessageItem } from './chat/MessageItem';
 import { TypingIndicator, FilmIcon, FileIcon } from './chat/TypingIndicator';
 
-const VirtuosoFooter = () => <div style={{ height: '12px' }} />;
 
 function Chat() {
   const userContext = useContext(UserContext);
@@ -232,7 +229,6 @@ function Chat() {
   const messagesRef = useRef<Message[]>([]);
   const isLoadingOlderRef = useRef(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
-  const virtuosoRef = useRef<VirtuosoHandle>(null);
   // Tracks whether we've done the very first scroll-to-bottom after history loads.
   // Must be a ref (not state) so it doesn't trigger re-renders.
   const hasInitialScrolled = useRef(false);
@@ -1586,6 +1582,7 @@ function Chat() {
       const target = e.target as Element | null;
       if (target instanceof HTMLElement && target.closest('input, textarea, [contenteditable="true"]')) return;
 
+
       const input = previewCaptionInputRef.current;
       if (!input) return;
       e.preventDefault();
@@ -1599,7 +1596,6 @@ function Chat() {
         input.setSelectionRange(nextCaret, nextCaret);
       });
     };
-
     document.addEventListener('keydown', handleDesktopPreviewTyping, true);
     return () => document.removeEventListener('keydown', handleDesktopPreviewTyping, true);
   }, [isDesktopInteraction, previewCaption, showFilePreview, stagedFiles.length]);
@@ -1704,11 +1700,11 @@ function Chat() {
     if (capturedTargetIndex < 0) return;
 
     const timer = setTimeout(() => {
-      if (!virtuosoRef.current) return;
+
       if (shouldSuppressProgrammaticScroll()) return;
       if (suppressInitialBottomPinRef.current || !isAtBottomRef.current) return;
       const safeIndex = firstItemIndexRef.current + (messagesRef.current.length - 1);
-      virtuosoRef.current.scrollToIndex({ index: safeIndex, align: 'end', behavior: 'auto' });
+      const scroller = chatContainerRef.current; if (scroller) scroller.scrollTop = scroller.scrollHeight;
     }, 300);
 
     return () => clearTimeout(timer);
@@ -2589,8 +2585,9 @@ function Chat() {
   useEffect(() => {
     if (prevSelectModeRef.current && !isSelectModeActive) {
       requestAnimationFrame(() => {
-        if (isAtBottomRef.current && virtuosoRef.current) {
-          virtuosoRef.current.scrollToIndex({ index: firstItemIndexRef.current + messages.length - 1, align: 'end', behavior: 'auto' });
+        if (isAtBottomRef.current) {
+          const scroller = chatContainerRef.current;
+          if (scroller) scroller.scrollTop = scroller.scrollHeight;
         }
       });
     }
@@ -2984,143 +2981,33 @@ function Chat() {
   }, []);
 
   const scrollToLoadedMessage = useCallback((messageId: string, behavior: 'auto' | 'smooth' = 'auto', force = false) => {
-    if (!virtuosoRef.current) {
-      quoteWarn('scrollToLoadedMessage aborted: virtuosoRef missing', { messageId, behavior, force });
-      return false;
-    }
     const targetId = normalizeMessageId(messageId);
-    if (!targetId) {
-      quoteWarn('scrollToLoadedMessage aborted: targetId empty', { messageId });
-      return false;
-    }
+    if (!targetId) return false;
     const msgIndex = messagesRef.current.findIndex((m) => normalizeMessageId(m.id) === targetId);
-    if (msgIndex === -1) {
-      quoteWarn('scrollToLoadedMessage target not in loaded messages', {
-        targetId,
-        loadedMessageCount: messagesRef.current.length,
-        firstLoadedId: messagesRef.current[0]?.id,
-        lastLoadedId: messagesRef.current[messagesRef.current.length - 1]?.id,
-      });
-      return false;
-    }
+    if (msgIndex === -1) return false;
 
-    // ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ FIX: Quote-jump going to bottom ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬
-    // Virtuoso's followOutput can override scrollToIndex because smooth animations
-    // pass through the bottom row, triggering bottom-pin logic. Solution:
-    // 1. Use 'auto' (instant) scroll for quote-jumps instead of 'smooth'
-    // 2. Suppress all bottom-pinning for 5+ seconds
-    // 3. Track if the user manually scrolled during this window
     clearPendingBottomScrollTimers();
     engageQuoteJumpLock(2600);
     scheduleProgrammaticScrollSuppression(2600);
     lastAtBottomStateRef.current = false;
     isAtBottomRef.current = false;
     setIsScrollToBottomVisible(true);
-    scrollLog('quote-jump to', targetId, 'msgIndex', msgIndex, 'firstItemIndex(ref)', firstItemIndexRef.current);
-    quoteLog('scrollToLoadedMessage start', {
-      targetId,
-      msgIndex,
-      behavior,
-      force,
-      firstItemIndexRef: firstItemIndexRef.current,
-      suppressUntilMs: suppressProgrammaticScrollUntilRef.current,
-      nowMs: performance.now(),
-      quoteJumpLocked: quoteJumpLockRef.current,
-    });
 
-    const scroller = getChatScrollerElement();
-    const offset = scroller
-      ? Math.round(-scroller.clientHeight * QUOTE_JUMP_TARGET_TOP_RATIO)
-      : 0;
-
-    const absoluteIndex = firstItemIndexRef.current + msgIndex;
-    const relativeIndex = msgIndex;
-
-    if (!force && shouldSuppressProgrammaticScroll()) {
-      quoteWarn('scrollToLoadedMessage blocked by suppression window', {
-        targetId,
-        nowMs: performance.now(),
-        suppressUntilMs: suppressProgrammaticScrollUntilRef.current,
-      });
-      return false;
-    }
-
-    virtuosoRef.current?.scrollToIndex({
-      index: absoluteIndex,
-      align: 'start',
-      behavior,
-      offset: Number.isFinite(offset) ? offset : 0,
-    });
-    quoteLog('scrollToIndex issued', { targetId, absoluteIndex, relativeIndex, offset, behavior });
-
-    // Some Virtuoso configurations interpret scrollToIndex as relative to data,
-    // while others use the absolute index space with firstItemIndex.
-    // If the absolute jump did not mount the target row quickly, retry with
-    // relative indexing to avoid clamping to bottom.
-    window.setTimeout(() => {
-      if (findMessageElement(targetId)) return;
-      quoteLog('scrollToIndex retry with relative index', { targetId, relativeIndex });
-      virtuosoRef.current?.scrollToIndex({
-        index: relativeIndex,
-        align: 'center',
-        behavior: 'auto',
-      });
-    }, 70);
+    if (!force && shouldSuppressProgrammaticScroll()) return false;
 
     const ensureVisibleAndHighlight = (attempt: number) => {
       const element = findMessageElement(targetId);
-      const currentScroller = getChatScrollerElement();
-
-      if (!element || !currentScroller) {
-        quoteLog('ensureVisibleAndHighlight waiting for DOM element/scroller', {
-          targetId,
-          attempt,
-          hasElement: !!element,
-          hasScroller: !!currentScroller,
-        });
+      if (!element) {
         if (attempt < 8) window.setTimeout(() => ensureVisibleAndHighlight(attempt + 1), 40);
         return;
       }
-
-      const elementRect = element.getBoundingClientRect();
-      const scrollerRect = currentScroller.getBoundingClientRect();
-      const margin = 10;
-      const isInsideViewport =
-        elementRect.top >= scrollerRect.top + margin &&
-        elementRect.bottom <= scrollerRect.bottom - margin;
-
-      if (!isInsideViewport && attempt === 0) {
-        quoteLog('retrying with fallback absolute+relative indices', { targetId, absoluteIndex, relativeIndex });
-        virtuosoRef.current?.scrollToIndex({
-          index: absoluteIndex,
-          align: 'start',
-          behavior: 'auto',
-          offset: Number.isFinite(offset) ? offset : 0,
-        });
-        window.setTimeout(() => {
-          if (findMessageElement(targetId)) return;
-          virtuosoRef.current?.scrollToIndex({
-            index: relativeIndex,
-            align: 'center',
-            behavior: 'auto',
-          });
-        }, 50);
-        window.setTimeout(() => ensureVisibleAndHighlight(attempt + 1), 40);
-        return;
-      }
-
-      if (!isInsideViewport) {
-        quoteLog('target outside viewport; using scrollIntoView fallback', { targetId, attempt });
-        element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
-      }
-
+      element.scrollIntoView({ block: 'center', inline: 'nearest', behavior });
       highlightMessage(targetId);
-      quoteLog('target highlighted', { targetId, attempt });
     };
 
     requestAnimationFrame(() => ensureVisibleAndHighlight(0));
     return true;
-  }, [clearPendingBottomScrollTimers, engageQuoteJumpLock, firstItemIndex, getChatScrollerElement, highlightMessage, scheduleProgrammaticScrollSuppression, shouldSuppressProgrammaticScroll]);
+  }, [clearPendingBottomScrollTimers, engageQuoteJumpLock, highlightMessage, scheduleProgrammaticScrollSuppression, shouldSuppressProgrammaticScroll]);
 
   const resolveReplyNavigationTargetId = useCallback((
     requestedMessageId: string,
@@ -3298,12 +3185,6 @@ function Chat() {
 
   const scrollToBottom = useCallback((behavior: 'auto' | 'smooth' = 'auto', force = false) => {
     if (!force && shouldSuppressProgrammaticScroll()) return;
-    const latestIndex = firstItemIndexRef.current + messagesRef.current.length - 1;
-    if (virtuosoRef.current && latestIndex >= firstItemIndexRef.current) {
-      virtuosoRef.current.scrollToIndex({ index: latestIndex, align: 'end', behavior });
-      (virtuosoRef.current as any)?.scrollTo?.({ top: Number.MAX_SAFE_INTEGER, behavior: 'auto' });
-    }
-
     const applyScrollerBottom = () => {
       if (!force && shouldSuppressProgrammaticScroll()) return;
       const scroller = getChatScrollerElement();
@@ -3321,7 +3202,7 @@ function Chat() {
       });
     };
 
-    applyScrollerBottom();
+    const scroller = chatContainerRef.current; if (scroller) scroller.scrollTop = scroller.scrollHeight;
     requestAnimationFrame(applyScrollerBottom);
   }, [getChatScrollerElement, shouldSuppressProgrammaticScroll]);
 
@@ -3451,30 +3332,7 @@ function Chat() {
   // 1. Always return false during suppression window (prevents overrides)
   // 2. Only return 'auto' if BOTH suppressProgrammaticScroll window is expired AND user is at bottom
   // 3. Use our isAtBottomRef (set by real user scroll), not Virtuoso's param
-  const virtuosoFollowOutput = useCallback((_isAtBottom: boolean): 'smooth' | false | 'auto' => {
-    if (isLoadingOlderRef.current) return false;
-    if (shouldSuppressProgrammaticScroll()) return false;
-    if (performance.now() < prependScrollLockRef.current) return false;
-    
-    // Only enable auto-follow if user is genuinely at bottom AND not near
-    // the scroll-to-bottom button threshold. During prepends, even "at bottom"
-    // can be transiently true due to scroll anchor compensation.
-    if (!isAtBottomRef.current) return false;
-    // Don't auto-follow if the scroll-to-bottom button is visible — that means
-    // the user has scrolled up intentionally.
-    if (lastAtBottomStateRef.current === false) return false;
-    return 'auto';
-  }, [shouldSuppressProgrammaticScroll]);
 
-  // Disable scroll-seek placeholders on all devices.
-  // In a chat transcript, placeholder swapping can appear as blink/shake
-  // during fast upward scroll (desktop trackpad/mouse included).
-  const virtuosoScrollSeekConfiguration = undefined;
-
-  const virtuosoComponents = useMemo(() => ({ Footer: VirtuosoFooter }), []);
-
-  // --- RENDER ---
-  if (!userContext?.profile) { return <Auth onAuthSuccess={userContext?.login ?? (() => {})} tempToken={tempToken || null} />; }
 
   const selectedMessage = messages.find(msg => msg.id === selectedMessages[0]);
   const canEditSelectedMessage = selectedMessages.length === 1 && selectedMessage && selectedMessage.userId === userIdRef.current && selectedMessage.text && (new Date().getTime() - new Date(selectedMessage.timestamp).getTime()) < 15 * 60 * 1000;
@@ -3490,13 +3348,6 @@ function Chat() {
   const scrollToLatestTitle = hasNewMessagesIndicator
     ? `${newMessagesIndicatorLabel} new message${newMessagesWhileScrolledUp === 1 ? '' : 's'}`
     : 'Scroll to latest messages';
-  const virtuosoOverscan = isMobileView ? VIRTUOSO_OVERSCAN_MOBILE : VIRTUOSO_OVERSCAN_DESKTOP;
-  // On mobile, use higher overscan to pre-render more messages and prevent
-  // visible placeholder content during scroll. Reduces jitter from placeholder swaps.
-  const adjustedVirtuosoOverscan = isMobileView ? Math.round(VIRTUOSO_OVERSCAN_MOBILE * 1.5) : virtuosoOverscan;
-  const virtuosoIncreaseViewportBy = isMobileView ? VIRTUOSO_VIEWPORT_BY_MOBILE : VIRTUOSO_VIEWPORT_BY_DESKTOP;
-
-
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Escape' && editingMessageId) {
       e.preventDefault();
@@ -3978,91 +3829,73 @@ function Chat() {
                 </div>
               )}
               <MessagesContainer ref={chatContainerRef} onClick={handleChatAreaClick} $isScrollButtonVisible={isScrollToBottomVisible} $isMobileView={isMobileView}>
-                {historyLoaded && messages.length > 0 ? (
-                  <Virtuoso
-                    key={`${userIdRef.current || 'unauthed'}-${historySessionId}`}
-                    ref={virtuosoRef}
-                    scrollerRef={scrollerRefCallback}
-                    initialTopMostItemIndex={messages.length > 0 && initialTopMostItemIndexRef.current !== null ? initialTopMostItemIndexRef.current : undefined}
-                    firstItemIndex={firstItemIndex}
-                    data={messages}
-                    startReached={loadOlderMessages}
-                    atTopThreshold={800}
-                    isScrolling={handleVirtuosoIsScrolling}
-                    followOutput={virtuosoFollowOutput}
-                    atBottomStateChange={handleAtBottomStateChange}
-                    atBottomThreshold={20}
-                    defaultItemHeight={80}
-                    increaseViewportBy={virtuosoIncreaseViewportBy}
-                    overscan={adjustedVirtuosoOverscan}
-                    scrollSeekConfiguration={virtuosoScrollSeekConfiguration}
-                    computeItemKey={(index: number, msg: Message) => msg.id || index}
-                    style={{ 
-                      position: 'absolute', 
-                      inset: 0, 
-                      height: '100%', 
-                      width: '100%', 
-                      overflowY: 'auto', 
-                      WebkitOverflowScrolling: 'touch' 
-                    }}
-                    components={virtuosoComponents}
-                    itemContent={(index: number, msg: Message) => {
-                      if (msg.type === 'system_notification') {
-                        return (
-                          <div style={{ display: 'flex', justifyContent: 'center', padding: '0.4rem 0' }}>
-                            <SystemMessage>{msg.text}</SystemMessage>
-                          </div>
-                        );
-                      }
-                      const dataIndex = index - firstItemIndex;
-                      const prevMsg = dataIndex > 0 && dataIndex <= messages.length
-                        ? messages[dataIndex - 1]
-                        : null;
-                      const showUsername = groupStartMessageIdsRef.current.has(msg.id);
-                      return (
-                        <MessageItem
-                          msg={msg}
-                          showUsername={showUsername}
-                          currentUserId={userIdRef.current}
-                          handleSetReply={handleSetReply}
-                          handleReact={handleReact}
-                          openDeleteMenu={handleOpenDeleteMenu}
-                          openLightbox={openLightbox}
-                          isMediaLoaded={loadedMediaMessageSet.has(msg.id)}
-                          onRequestMediaLoad={handleRequestMediaLoad}
-                          isMediaLoadInProgress={Object.prototype.hasOwnProperty.call(mediaLoadProgressById, msg.id)}
-                          mediaLoadProgress={mediaLoadProgressById[msg.id] ?? 0}
-                          loadedMediaSrc={loadedMediaSrcById[msg.id]}
-                          onRequestDownload={handleRequestDownload}
-                          isDownloadInProgress={Object.prototype.hasOwnProperty.call(downloadProgressById, msg.id)}
-                          downloadProgress={downloadProgressById[msg.id] ?? 0}
-                          activeDeleteMenu={activeDeleteMenu}
-                          deleteMenuRef={deleteMenuRef}
-                          deleteForMe={deleteForMe}
-                          deleteForEveryone={deleteForEveryone}
-                          scrollToMessage={scrollToMessage}
-                          isSelectModeActive={isSelectModeActive}
-                          isSelected={selectedMessageIds.has(msg.id)}
-                          handleToggleSelectMessage={handleToggleSelectMessage}
-                          setActiveDeleteMenu={setActiveDeleteMenu}
-                          handleCopy={handleCopy}
-                          handleOpenReport={handleOpenReport}
-                          handleStartEdit={handleStartEdit}
-                          handleCancelSelectMode={handleCancelSelectMode}
-                          isMobileView={isMobileView}
-                          selectedMessages={selectedMessages}
-                          onOpenReactionPicker={handleOpenReactionPicker}
-                          setReactionsPopup={setReactionsPopup}
-                          handleOpenFullEmojiPicker={handleOpenFullEmojiPicker}
-                          reactionPickerData={reactionPickerData}
-                          editingMessageId={editingMessageId}
-                          handleCancelEdit={handleCancelEdit}
-                          onVideoFullscreenEnter={handleVideoFullscreenEnter}
-                        />
-                      );
-                    }}
-                  />
-                ) : null}
+              <div style={{ flex: 1, overflowY: 'auto', overflowAnchor: 'auto', display: 'flex', flexDirection: 'column' }}
+                   onScroll={(e) => {
+                     const target = e.target as HTMLDivElement;
+                     if (target.scrollTop < 500 && !isLoadingOlderRef.current && hasMoreOlderMessages) {
+                       loadOlderMessages();
+                     }
+                     const distanceFromBottom = target.scrollHeight - (target.scrollTop + target.clientHeight);
+                     const atBottom = distanceFromBottom <= 20;
+                     handleAtBottomStateChange(atBottom);
+                   }}
+              >
+                {historyLoaded && messages.length > 0 ? messages.map((msg, index) => {
+                  if (msg.type === 'system_notification') {
+                    return (
+                      <div key={msg.id || index} style={{ display: 'flex', justifyContent: 'center', padding: '0.4rem 0' }}>
+                        <SystemMessage>{msg.text}</SystemMessage>
+                      </div>
+                    );
+                  }
+                  const dataIndex = index;
+                  const prevMsg = dataIndex > 0 ? messages[dataIndex - 1] : null;
+                  const showUsername = groupStartMessageIdsRef.current.has(msg.id);
+                  return (
+                    <MessageItem
+                      key={msg.id}
+                      msg={msg}
+                      showUsername={showUsername}
+                      currentUserId={userIdRef.current}
+                      handleSetReply={handleSetReply}
+                      handleReact={handleReact}
+                      openDeleteMenu={handleOpenDeleteMenu}
+                      openLightbox={openLightbox}
+                      isMediaLoaded={loadedMediaMessageSet.has(msg.id)}
+                      onRequestMediaLoad={handleRequestMediaLoad}
+                      isMediaLoadInProgress={Object.prototype.hasOwnProperty.call(mediaLoadProgressById, msg.id)}
+                      mediaLoadProgress={mediaLoadProgressById[msg.id] ?? 0}
+                      loadedMediaSrc={loadedMediaSrcById[msg.id]}
+                      onRequestDownload={handleRequestDownload}
+                      isDownloadInProgress={Object.prototype.hasOwnProperty.call(downloadProgressById, msg.id)}
+                      downloadProgress={downloadProgressById[msg.id] ?? 0}
+                      activeDeleteMenu={activeDeleteMenu}
+                      deleteMenuRef={deleteMenuRef}
+                      deleteForMe={deleteForMe}
+                      deleteForEveryone={deleteForEveryone}
+                      scrollToMessage={scrollToMessage}
+                      isSelectModeActive={isSelectModeActive}
+                      isSelected={selectedMessageIds.has(msg.id)}
+                      handleToggleSelectMessage={handleToggleSelectMessage}
+                      setActiveDeleteMenu={setActiveDeleteMenu}
+                      handleCopy={handleCopy}
+                      handleOpenReport={handleOpenReport}
+                      handleStartEdit={handleStartEdit}
+                      handleCancelSelectMode={handleCancelSelectMode}
+                      isMobileView={isMobileView}
+                      selectedMessages={selectedMessages}
+                      onOpenReactionPicker={handleOpenReactionPicker}
+                      setReactionsPopup={setReactionsPopup}
+                      handleOpenFullEmojiPicker={handleOpenFullEmojiPicker}
+                      reactionPickerData={reactionPickerData}
+                      editingMessageId={editingMessageId}
+                      handleCancelEdit={handleCancelEdit}
+                      onVideoFullscreenEnter={handleVideoFullscreenEnter}
+                    />
+                  );
+                }) : null}
+                <div style={{ height: '12px', flexShrink: 0 }} />
+              </div>
               </MessagesContainer>
               <ScrollToBottomButton
                 $isVisible={isScrollToBottomVisible}
