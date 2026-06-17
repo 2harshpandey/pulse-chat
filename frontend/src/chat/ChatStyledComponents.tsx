@@ -992,6 +992,7 @@ export const mediaFrameStyles = css`
   position: relative;
   display: block;
   width: clamp(208px, 58vw, 320px);
+  min-height: clamp(208px, 58vw, 320px);
   max-width: 100%;
   flex: 0 0 auto;
   aspect-ratio: 1 / 1;
@@ -1000,10 +1001,12 @@ export const mediaFrameStyles = css`
 
   @media (max-width: 768px) {
     width: clamp(192px, 70vw, 260px);
+    min-height: clamp(192px, 70vw, 260px);
   }
 
   @media (max-width: 420px) {
     width: clamp(176px, 72vw, 236px);
+    min-height: clamp(176px, 72vw, 236px);
   }
 `;
 
@@ -2570,6 +2573,7 @@ export const controlsSlideUp = keyframes`
 export const VideoPlayerWrapper = styled.div`
   ${mediaFrameStyles}
   width: clamp(220px, 62vw, 340px);
+  min-height: clamp(220px, 62vw, 340px);
   max-width: 100%;
   cursor: pointer;
   display: flex;
