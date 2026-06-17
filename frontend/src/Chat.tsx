@@ -126,6 +126,7 @@ function Chat() {
     const stored = localStorage.getItem('pulseSoundEnabled');
     return stored === null ? true : stored === 'true';
   });
+  const isSoundEnabledRef = useRef(isSoundEnabled);
   const [isSoundToggleAnimating, setIsSoundToggleAnimating] = useState(false);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [isSelectModeActive, setIsSelectModeActive] = useState(false);
@@ -293,7 +294,7 @@ function Chat() {
 
   const shouldPlayNotificationSound = () => {
     if (typeof document === 'undefined') return false;
-    if (!isSoundEnabled) return false;
+    if (!isSoundEnabledRef.current) return false;
     const isHidden = document.visibilityState !== 'visible';
     if (isHidden) return true;
     return false;
@@ -373,6 +374,7 @@ function Chat() {
   }, [userContext?.profile]);
 
   useEffect(() => {
+    isSoundEnabledRef.current = isSoundEnabled;
     try {
       localStorage.setItem('pulseSoundEnabled', String(isSoundEnabled));
     } catch {
