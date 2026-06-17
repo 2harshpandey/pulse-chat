@@ -1238,7 +1238,18 @@ function Chat() {
 
     // 1. User returns to the tab / un-minimizes the browser on mobile.
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') connect();
+      if (document.visibilityState === 'visible') {
+        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+          // If the app was suspended in the background, the server may have timed out
+          // our presence and marked us offline. If the socket is still open, manually
+          // re-announce our presence so we immediately appear online again.
+          ws.current.send(
+            JSON.stringify({ type: 'user_join', ...(userContext?.profile || {}), userId: userIdRef.current })
+          );
+        } else {
+          connect();
+        }
+      }
     };
 
     // 2. Device regains network connectivity (e.g. came out of airplane mode).
