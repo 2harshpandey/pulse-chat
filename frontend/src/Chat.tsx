@@ -3506,6 +3506,20 @@ function Chat() {
 
 
 
+  const handleHeaderButtonPointerDown = useCallback((e: React.PointerEvent) => {
+    if (isMobileView) {
+      const vvHeight = window.visualViewport?.height || window.innerHeight;
+      const isKeyboardLikelyOpen = (stableViewportHeightRef.current - vvHeight) > 96;
+      if (isKeyboardLikelyOpen) {
+        e.preventDefault();
+      } else {
+        messageInputRef.current?.blur();
+      }
+    } else {
+      e.preventDefault();
+    }
+  }, [isMobileView]);
+
   return (
     <>
       <DragDropOverlay $isVisible={isDragging}>
@@ -3732,7 +3746,7 @@ function Chat() {
             <SoundToggleButton
               type="button"
               $enabled={isSoundEnabled}
-              onPointerDown={(e) => e.preventDefault()}
+              onPointerDown={handleHeaderButtonPointerDown}
               onClick={() => {
                 setIsSoundEnabled(prev => !prev);
                 setIsSoundToggleAnimating(true);
@@ -3756,7 +3770,7 @@ function Chat() {
               </SoundToggleIcon>
             </SoundToggleButton>
             <ThemeToggleBtn 
-              onPointerDown={(e) => e.preventDefault()}
+              onPointerDown={handleHeaderButtonPointerDown}
               onClick={toggleTheme} 
               title={isDark ? 'Switch to light mode' : 'Switch to dark mode'} 
               aria-label="Toggle theme"
@@ -3769,7 +3783,7 @@ function Chat() {
             </ThemeToggleBtn>
             <MobileUserListToggle
               $isOpen={isUserListVisible}
-              onPointerDown={(e) => e.preventDefault()}
+              onPointerDown={handleHeaderButtonPointerDown}
               onClick={() => setIsUserListVisible(!isUserListVisible)}
               aria-label={isUserListVisible ? 'Hide online users' : 'Show online users'}
               title={isUserListVisible ? 'Hide online users' : 'Show online users'}
