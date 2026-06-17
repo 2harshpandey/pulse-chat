@@ -1359,6 +1359,27 @@ function Chat() {
     return () => document.removeEventListener('keydown', handler);
   }, [isSelectModeActive, lightboxUrl, isDeleteConfirmationVisible, isUserListVisible, isMobileView]);
 
+  // Close User List if switching to mobile view, and ensure it's closed on mount
+  useEffect(() => {
+    if (isMobileView) {
+      setIsUserListVisible(false);
+    }
+  }, [isMobileView]);
+
+  // Handle hardware back button to close overlays
+  useEffect(() => {
+    if (isSelectModeActive || !!lightboxUrl || isDeleteConfirmationVisible || isUserListVisible) return;
+    
+    const handleBackButton = (e: MouseEvent) => {
+      if (e.button === 3 || e.button === 4) { // Mouse back/forward buttons
+        // Handled by popstate
+      }
+    };
+    
+    window.addEventListener('mouseup', handleBackButton);
+    return () => window.removeEventListener('mouseup', handleBackButton);
+  }, [isSelectModeActive, lightboxUrl, isDeleteConfirmationVisible, isUserListVisible, isMobileView]);
+
   const closeFilePreviewAndRestoreDraft = useCallback(() => {
     setShowFilePreview(false);
     setStagedFiles([]);
