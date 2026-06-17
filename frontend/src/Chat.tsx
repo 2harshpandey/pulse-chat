@@ -3301,6 +3301,20 @@ function Chat() {
   }, []);
 
   // --- PRE-RENDER HOOKS (must be before any early return to satisfy Rules of Hooks) ---
+  const handleHeaderButtonPointerDown = useCallback((e: React.PointerEvent) => {
+    if (isMobileView) {
+      const vvHeight = window.visualViewport?.height || window.innerHeight;
+      const isKeyboardLikelyOpen = (stableViewportHeightRef.current - vvHeight) > 96;
+      if (isKeyboardLikelyOpen) {
+        e.preventDefault();
+      } else {
+        messageInputRef.current?.blur();
+      }
+    } else {
+      e.preventDefault();
+    }
+  }, [isMobileView]);
+
   const selectedMessageIds = useMemo(() => new Set(selectedMessages), [selectedMessages]);
   const loadedMediaMessageSet = useMemo(() => new Set(loadedMediaMessageIds), [loadedMediaMessageIds]);
   // - FIX: followOutput aggressively blocks during programmatic scroll -
@@ -3533,20 +3547,6 @@ function Chat() {
   const handleGifSelect = (gif: Gif) => { setStagedGif(gif); setStagedFile(null); setStagedFiles([]); setShowFilePreview(false); closeGifPicker(); };
 
 
-
-  const handleHeaderButtonPointerDown = useCallback((e: React.PointerEvent) => {
-    if (isMobileView) {
-      const vvHeight = window.visualViewport?.height || window.innerHeight;
-      const isKeyboardLikelyOpen = (stableViewportHeightRef.current - vvHeight) > 96;
-      if (isKeyboardLikelyOpen) {
-        e.preventDefault();
-      } else {
-        messageInputRef.current?.blur();
-      }
-    } else {
-      e.preventDefault();
-    }
-  }, [isMobileView]);
 
   return (
     <>
