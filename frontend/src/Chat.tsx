@@ -538,7 +538,12 @@ function Chat() {
       return;
     }
 
-    if (!isAtBottomRef.current && currentLength > prevSnapshot.length && prevSnapshot.length > 0) {
+    if (currentLength > prevSnapshot.length && prevSnapshot.length > 0) {
+      if (isAtBottomRef.current) {
+        // Auto-scroll to bottom if the user is already there
+        requestAnimationFrame(() => scrollToBottom('smooth', true));
+      } else {
+
       let appendedStart = -1;
 
       if (messages[prevSnapshot.length - 1]?.id === prevSnapshot.lastId) {
@@ -565,10 +570,11 @@ function Chat() {
           );
         }
       }
+      }
     }
 
     messageTailSnapshotRef.current = { length: currentLength, lastId: currentLastId };
-  }, [historyLoaded, messages]);
+  }, [historyLoaded, messages, scrollToBottom]);
 
   useEffect(() => {
     if (!userContext?.profile || messages.length === 0) return;
