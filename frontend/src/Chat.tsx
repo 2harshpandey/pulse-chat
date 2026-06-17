@@ -1239,11 +1239,17 @@ function Chat() {
     // 1. User returns to the tab / un-minimizes the browser on mobile.
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        // When waking up from background on mobile, the OS often leaves the TCP
-        // socket in a "zombie" half-open state. The connection appears OPEN, but
-        // downstream data is stalled, leading to a ~60s delay until timeout.
-        // To guarantee instant realtime delivery, we proactively close the old socket
-        // and establish a fresh one.
+        // If the user returns to the app on a mobile device, we aggressively refresh 
+        // the entire page to guarantee a pristine state and instant realtime sync.
+        // We MUST skip the refresh if the native file picker is open, otherwise 
+        // selecting a photo to upload would instantly refresh the page and discard it!
+        if (isMobileView && !isNativeFilePickerOpenRef.current) {
+          window.location.reload();
+          return;
+        }
+
+        // For desktop devices (or if the file picker was open), we just proactively
+        // close the old socket and establish a fresh one without a full page reload.
         if (ws.current) {
           ws.current.onclose = null; // Prevent competing reconnect timers
           ws.current.close();
