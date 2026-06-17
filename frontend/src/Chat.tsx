@@ -1239,16 +1239,33 @@ function Chat() {
     // 1. User returns to the tab / un-minimizes the browser on mobile.
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-          // If the app was suspended in the background, the server may have timed out
-          // our presence and marked us offline. If the socket is still open, manually
-          // re-announce our presence so we immediately appear online again.
-          ws.current.send(
-            JSON.stringify({ type: 'user_join', ...(userContext?.profile || {}), userId: userIdRef.current })
-          );
-        } else {
-          connect();
+        // When waking up from background on mobile, the OS often leaves the TCP
+        // socket in a "zombie" half-open state. The connection appears OPEN, but
+        // downstream data is stalled, leading to a ~60s delay until timeout.
+        // To guarantee instant realtime delivery, we proactively close the old socket
+        // and establish a fresh one.
+        if (ws.current) {
+          ws.current.onclose = null; // Prevent competing reconnect timers
+          ws.current.close();
+          ws.current = null;
+          
+          // Manual cleanup that would normally happen in onclose
+          if (isNativeFilePickerOpenRef.current) isNativeFilePickerOpenRef.current = false;
+          if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+            typingTimeoutRef.current = null;
+          }
+          typingCooldownRef.current = false;
+          presenceActivityRef.current = null;
         }
+
+        // Force an immediate reconnect instead of waiting for a backoff delay
+        if (reconnectTimerRef.current) {
+          clearTimeout(reconnectTimerRef.current);
+          reconnectTimerRef.current = null;
+        }
+        reconnectDelayRef.current = 2000;
+        connect();
       }
     };
 
