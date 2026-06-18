@@ -427,10 +427,10 @@ const initWebSocket = (wss) => {
               username,
               timestamp: new Date().toISOString(),
             });
-            event.save();
+            event.save().catch(e => logger.error('Failed to save edit event:', e));
             broadcastToAdmins('history', event);
             broadcastToAdmins('activity', `Message (ID: ${messageId}) edited by '${username}'. New text: "${newText}"`);
-          });
+          }).catch(e => logger.error('Failed to find user for edit event:', e));
 
           const updateMsg = { type: 'update', data: updatedMsgForBroadcast };
           wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(JSON.stringify(updateMsg)); });
@@ -639,10 +639,10 @@ const initWebSocket = (wss) => {
                 username,
                 timestamp: new Date().toISOString(),
               });
-              event.save();
+              event.save().catch(e => logger.error('Failed to save delete event:', e));
               broadcastToAdmins('history', event);
               broadcastToAdmins('activity', `Message (ID: ${messageId}) deleted by '${username}'.`);
-            });
+            }).catch(e => logger.error('Failed to find user for delete event:', e));
 
             const updateMsg = { type: 'update', data: updatedMessage };
             wss.clients.forEach(c => {
@@ -668,7 +668,17 @@ const initWebSocket = (wss) => {
             id: parsedMessage.id || Date.now().toString(),
             sender: ws.userId
           });
-          messageDoc.save();
+          
+          try {
+            await messageDoc.save();
+          } catch (err) {
+            if (err.code === 11000) {
+              logger.warn(`Duplicate message id ignored: ${messageDoc.id}`);
+              break;
+            }
+            logger.error('Failed to save message:', err);
+            break;
+          }
 
           User.findOne({ userId: ws.userId }).then(user => {
             const username = user ? user.username : 'Unknown';
@@ -679,10 +689,10 @@ const initWebSocket = (wss) => {
               username,
               timestamp: new Date().toISOString(),
             });
-            event.save();
+            event.save().catch(e => logger.error('Failed to save message create event:', e));
             broadcastToAdmins('history', event);
             broadcastToAdmins('activity', `New message from '${username}': "${messageDoc.text || '[Media]'}"`);
-          });
+          }).catch(e => logger.error('Failed to find user for message event:', e));
 
           wss.clients.forEach(client => {
             if (client !== ws && client.readyState === WebSocket.OPEN) {
