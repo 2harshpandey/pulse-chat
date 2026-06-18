@@ -2571,18 +2571,15 @@ export const controlsSlideUp = keyframes`
 `;
 
 export const VideoPlayerWrapper = styled.div`
-  ${mediaFrameStyles}
-  width: clamp(220px, 62vw, 340px);
-  min-height: clamp(220px, 62vw, 340px);
-  max-width: 100%;
+  position: absolute;
+  inset: 0;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   background: #000;
-  border-radius: 0.75rem;
+  border-radius: inherit;
   overflow: hidden;
-  position: relative;
 
   video {
     width: 100%;
@@ -2590,15 +2587,7 @@ export const VideoPlayerWrapper = styled.div`
     object-fit: contain;
     display: block;
     background: #000;
-    border-radius: 0.75rem;
-  }
-
-  @media (max-width: 768px) {
-    width: clamp(198px, 70vw, 252px);
-  }
-
-  @media (max-width: 420px) {
-    width: clamp(182px, 70vw, 232px);
+    border-radius: inherit;
   }
 `;
 
