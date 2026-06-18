@@ -2084,7 +2084,7 @@ function Chat() {
       if (hadReply) forceScrollToBottomAsync();
 
     } else if (stagedGif) {
-      const gifMessage: Message = { id: stagedGif.id, userId: userIdRef.current, username: userContext?.profile?.username || '', type: 'image', url: stagedGif.url, text: inputMessage, timestamp: new Date().toISOString(), replyingTo: replyContext };
+      const gifMessage: Message = { id: Date.now().toString(), userId: userIdRef.current, username: userContext?.profile?.username || '', type: 'image', url: stagedGif.url, text: inputMessage, timestamp: new Date().toISOString(), replyingTo: replyContext };
       setMessages(prev => [...prev, gifMessage]);
       requestAnimationFrame(() => scrollToBottom());
       ws.current.send(JSON.stringify(gifMessage));
