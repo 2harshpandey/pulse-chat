@@ -2618,9 +2618,8 @@ export const CVPContainer = styled.div`
   --cvp-thumb-size: 11px;
   --cvp-edge-pad-right: 4px;
 
-  position: relative;
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 0;
   background: #000;
   border-radius: 0.75rem;
   /* clip-path keeps the video clipped to rounded corners without cutting
