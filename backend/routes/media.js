@@ -342,7 +342,7 @@ module.exports = (wss, broadcasts) => {
             method: 'GET',
             headers: {
               'Host': rawHostname,          // needed for virtual hosting
-              'User-Agent': 'Mozilla/5.0 (compatible; PulseChatLinkPreview/1.0; +https://pulsechat.tech)',
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
               'Accept': 'text/html,application/xhtml+xml',
               'Connection': 'close',
             },
@@ -422,8 +422,8 @@ module.exports = (wss, broadcasts) => {
         .trim();
 
       const getMetaBy = (attrName, attrValue) => {
-        const m = html.match(new RegExp(`<meta[^>]+${attrName}=["']${attrValue}["'][^>]+content=["']([^"']{0,500})["']`, 'i'))
-          || html.match(new RegExp(`<meta[^>]+content=["']([^"']{0,500})["'][^>]+${attrName}=["']${attrValue}["']`, 'i'));
+        const m = html.match(new RegExp(`<meta[^>]+${attrName}=["']${attrValue}["'][^>]+content=["']([^"']{0,2000})["']`, 'i'))
+          || html.match(new RegExp(`<meta[^>]+content=["']([^"']{0,2000})["'][^>]+${attrName}=["']${attrValue}["']`, 'i'));
         return m ? decode(m[1]) : null;
       };
 

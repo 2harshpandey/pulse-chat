@@ -1790,6 +1790,12 @@ function Chat() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  useEffect(() => {
+    if (!userContext?.profile) {
+      setIsUserListVisible(false);
+    }
+  }, [userContext?.profile]);
+
   const normalizeMessage = useCallback((msg: any): Message => {
     const normalizedId = normalizeMessageId(msg?.id ?? msg?._id);
     const normalizedReplyId = normalizeMessageId(msg?.replyingTo?.id ?? msg?.replyingTo?.messageId ?? msg?.replyingTo?._id);
