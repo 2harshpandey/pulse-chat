@@ -205,6 +205,7 @@ function Chat() {
   // Tracks whether we've done the very first scroll-to-bottom after history loads.
   // Must be a ref (not state) so it doesn't trigger re-renders.
   const hasInitialScrolled = useRef(false);
+  const previousScrollMetricsRef = useRef<{ height: number; top: number } | null>(null);
   const initialHistoryBottomStabilized = useRef(false);
   const suppressInitialBottomPinRef = useRef(false);
   // Tracks whether the user is currently at the bottom of the chat.
@@ -556,32 +557,32 @@ function Chat() {
         requestAnimationFrame(() => scrollToBottom('smooth', true));
       } else {
 
-      let appendedStart = -1;
+        let appendedStart = -1;
 
-      if (messages[prevSnapshot.length - 1]?.id === prevSnapshot.lastId) {
-        appendedStart = prevSnapshot.length;
-      } else if (prevSnapshot.lastId) {
-        const previousLastIndex = messages.findIndex((m) => m.id === prevSnapshot.lastId);
-        if (previousLastIndex >= 0 && previousLastIndex < currentLength - 1) {
-          appendedStart = previousLastIndex + 1;
+        if (messages[prevSnapshot.length - 1]?.id === prevSnapshot.lastId) {
+          appendedStart = prevSnapshot.length;
+        } else if (prevSnapshot.lastId) {
+          const previousLastIndex = messages.findIndex((m) => m.id === prevSnapshot.lastId);
+          if (previousLastIndex >= 0 && previousLastIndex < currentLength - 1) {
+            appendedStart = previousLastIndex + 1;
+          }
         }
-      }
 
-      if (appendedStart >= 0) {
-        const incomingCount = messages
-          .slice(appendedStart)
-          .reduce((count, msg) => {
-            if (msg.type === 'system_notification') return count;
-            if (msg.userId === userIdRef.current) return count;
-            return count + 1;
-          }, 0);
+        if (appendedStart >= 0) {
+          const incomingCount = messages
+            .slice(appendedStart)
+            .reduce((count, msg) => {
+              if (msg.type === 'system_notification') return count;
+              if (msg.userId === userIdRef.current) return count;
+              return count + 1;
+            }, 0);
 
-        if (incomingCount > 0) {
-          setNewMessagesWhileScrolledUp((prev) =>
-            Math.min(prev + incomingCount, MAX_NEW_MESSAGE_INDICATOR_COUNT)
-          );
+          if (incomingCount > 0) {
+            setNewMessagesWhileScrolledUp((prev) =>
+              Math.min(prev + incomingCount, MAX_NEW_MESSAGE_INDICATOR_COUNT)
+            );
+          }
         }
-      }
       }
     }
 
@@ -928,23 +929,49 @@ function Chat() {
 
       // Keep a stable height while scrolling (browser bars animating), but
       // still adapt immediately to keyboard-open viewport shrink.
+      const vvOffsetTop = window.visualViewport ? window.visualViewport.offsetTop : 0;
+      
       const targetHeight = keyboardLikelyOpen
         ? vvHeight
         : Math.min(stableViewportHeightRef.current, visibleHeight);
       applyAppHeight(targetHeight);
+
+      // FIX FOR SAFARI / MOBILE BROWSERS:
+      // When the keyboard opens, Safari may apply a visual viewport offset to keep
+      // the focused input visible, effectively shifting the fixed layout viewport UP.
+      // We counteract this by shifting the AppContainer DOWN by exactly that offset.
+      document.documentElement.style.setProperty('--app-offset-top', `${vvOffsetTop}px`);
+
+      if (window.scrollY > 0) {
+        window.scrollTo(0, 0);
+      }
     };
+
+    const handleViewportScroll = () => {
+      // Continuously prevent the layout from scrolling up, and keep offset synced
+      const vvOffsetTop = window.visualViewport ? window.visualViewport.offsetTop : 0;
+      document.documentElement.style.setProperty('--app-offset-top', `${vvOffsetTop}px`);
+      
+      if (window.scrollY > 0) {
+        window.scrollTo(0, 0);
+      }
+    };
+
+
 
     updateStableViewportBaseline();
     handleViewportResize();
     window.visualViewport?.addEventListener('resize', handleViewportResize);
-    window.visualViewport?.addEventListener('scroll', handleViewportResize);
+    window.visualViewport?.addEventListener('scroll', handleViewportScroll);
+    window.addEventListener('scroll', handleViewportScroll, { passive: false });
     window.addEventListener('resize', handleViewportResize);
     window.addEventListener('orientationchange', handleViewportResize);
     window.addEventListener('focus', handleViewportResize);
 
     return () => {
       window.visualViewport?.removeEventListener('resize', handleViewportResize);
-      window.visualViewport?.removeEventListener('scroll', handleViewportResize);
+      window.visualViewport?.removeEventListener('scroll', handleViewportScroll);
+      window.removeEventListener('scroll', handleViewportScroll);
       window.removeEventListener('resize', handleViewportResize);
       window.removeEventListener('orientationchange', handleViewportResize);
       window.removeEventListener('focus', handleViewportResize);
@@ -1255,13 +1282,13 @@ function Chat() {
         lastHiddenTimeRef.current = Date.now();
       } else if (document.visibilityState === 'visible') {
         const timeHidden = Date.now() - lastHiddenTimeRef.current;
-        
+
         // If the browser was only in the background for a fraction of a second 
         // (e.g., swiping between recent apps, accidental swipe, or checking a notification),
         // the OS TCP stack has not frozen the socket yet. We should NOT proactively 
         // destroy the perfectly healthy socket.
         if (timeHidden > 0 && timeHidden < 5000) {
-          return; 
+          return;
         }
 
         // When waking up from background on mobile after a substantial delay, the OS 
@@ -1276,7 +1303,7 @@ function Chat() {
           ws.current.close();
           ws.current = null;
           setIsConnected(false);
-          
+
           // Manual cleanup that would normally happen in onclose
           if (isNativeFilePickerOpenRef.current) isNativeFilePickerOpenRef.current = false;
           if (typingTimeoutRef.current) {
@@ -1377,13 +1404,13 @@ function Chat() {
   // Handle hardware back button to close overlays
   useEffect(() => {
     if (isSelectModeActive || !!lightboxUrl || isDeleteConfirmationVisible || isUserListVisible) return;
-    
+
     const handleBackButton = (e: MouseEvent) => {
       if (e.button === 3 || e.button === 4) { // Mouse back/forward buttons
         // Handled by popstate
       }
     };
-    
+
     window.addEventListener('mouseup', handleBackButton);
     return () => window.removeEventListener('mouseup', handleBackButton);
   }, [isSelectModeActive, lightboxUrl, isDeleteConfirmationVisible, isUserListVisible, isMobileView]);
@@ -1722,6 +1749,21 @@ function Chat() {
     }
   }, [messages.length]);
 
+  useLayoutEffect(() => {
+    if (previousScrollMetricsRef.current && chatContainerRef.current) {
+      const scroller = chatContainerRef.current;
+      const metrics = previousScrollMetricsRef.current;
+      previousScrollMetricsRef.current = null;
+      
+      const newScrollHeight = scroller.scrollHeight;
+      const heightDiff = newScrollHeight - metrics.height;
+      
+      if (heightDiff > 0) {
+        scroller.scrollTop = metrics.top + heightDiff;
+      }
+    }
+  }, [messages]);
+
   useEffect(() => {
     if (!historyLoaded) return;
     if (initialHistoryBottomStabilized.current) return;
@@ -1767,7 +1809,7 @@ function Chat() {
 
   const getMessageCursor = useCallback((msg?: Message): string | null => {
     if (!msg) return null;
-      return msg.createdAt || msg.timestamp || null;
+    return msg.createdAt || msg.timestamp || null;
   }, []);
 
   const markDeletedReplyTargets = useCallback((list: Message[], deletedIds: Set<string>): Message[] => {
@@ -1848,6 +1890,11 @@ function Chat() {
       if (actualPrependedCount > 0) {
         const nextIdx = firstItemIndexRef.current - actualPrependedCount;
         const nextMessages = [...patchedOlder, ...patchedPrev];
+
+        const scroller = chatContainerRef.current;
+        if (scroller) {
+          previousScrollMetricsRef.current = { height: scroller.scrollHeight, top: scroller.scrollTop };
+        }
 
         // Always update atomically via React's automatic batching.
         // flushSync was forcing synchronous layout reflow which interrupted
@@ -2726,7 +2773,7 @@ function Chat() {
         syncInputLayerLayout(ta, message.text || '', true);
       }
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inputMessage]);
 
   const handleOpenReport = useCallback((message: Message) => {
@@ -2786,7 +2833,7 @@ function Chat() {
     setPriorDraftBeforeEdit('');
     resetInputLayerHeight();
     requestAnimationFrame(() => { messageInputRef.current?.focus(); });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [priorDraftBeforeEdit]);
 
   // Ref to track the last emitted atBottom state to avoid redundant updates
@@ -2805,7 +2852,7 @@ function Chat() {
     }
 
     isAtBottomRef.current = atBottom;
-    
+
     // Only update visibility during user-initiated scroll, not programmatic scroll.
     // This prevents state-update cascades that cause render flicker during quote-jumps.
     // Also skip the state update while a prepend is in-flight — re-rendering the
@@ -2817,7 +2864,7 @@ function Chat() {
       lastAtBottomStateRef.current = atBottom;
       setIsScrollToBottomVisible(!atBottom);
     }
-    
+
     if (!atBottom) {
       // After first history render, user scroll-up should immediately cancel
       // any pending auto-pin-to-bottom stabilization timers.
@@ -3310,11 +3357,9 @@ function Chat() {
       return;
     }
 
-    // On touch devices, blur the active element first so the keyboard
-    // doesn't open when we scroll to bottom.
-    if (isMobileView && document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
+    // We no longer blur the active element here, because we use onPointerDown={e => e.preventDefault()}
+    // on the button to prevent it from ever stealing focus in the first place, keeping the keyboard open.
+
     setNewMessagesWhileScrolledUp(0);
     clearQuoteJumpSuppression();
     quoteLog('scroll-to-bottom falling back to bottom anchor');
@@ -3377,7 +3422,7 @@ function Chat() {
   // 3. Use our isAtBottomRef (set by real user scroll), not Virtuoso's param
 
   // --- RENDER ---
-  if (!userContext?.profile) { return <Auth onAuthSuccess={userContext?.login ?? (() => {})} tempToken={tempToken || null} />; }
+  if (!userContext?.profile) { return <Auth onAuthSuccess={userContext?.login ?? (() => { })} tempToken={tempToken || null} />; }
 
   const selectedMessage = messages.find(msg => msg.id === selectedMessages[0]);
   const canEditSelectedMessage = selectedMessages.length === 1 && selectedMessage && selectedMessage.userId === userIdRef.current && selectedMessage.text && (new Date().getTime() - new Date(selectedMessage.timestamp).getTime()) < 15 * 60 * 1000;
@@ -3634,7 +3679,9 @@ function Chat() {
               {isImg ? (
                 <img src={sanitizeMediaUrl(getBlobUrl(activeFile))} alt="File preview" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px' }} />
               ) : isVid ? (
-                <video src={sanitizeMediaUrl(getBlobUrl(activeFile))} controls style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: '8px' }} />
+                <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <VideoPlayer src={sanitizeMediaUrl(getBlobUrl(activeFile))} />
+                </div>
               ) : (
                 <FilePreviewNoPreview>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
@@ -3798,7 +3845,7 @@ function Chat() {
           {QUICK_REACTIONS.map(emoji => (
             <ReactionEmoji key={emoji} onClick={(e) => { e.stopPropagation(); handleReact(reactionPickerData.messageId, emoji); }}>{emoji}</ReactionEmoji>
           ))}
-          <ReactionEmoji $isPlusIcon={true} onClick={(e) => {
+          <ReactionEmoji $isPlusIcon={true} data-is-plus-icon="true" onClick={(e) => {
             e.stopPropagation();
             handleOpenFullEmojiPicker(e.currentTarget.getBoundingClientRect(), reactionPickerData.messageId);
           }}>+</ReactionEmoji>
@@ -3826,16 +3873,16 @@ function Chat() {
               <span>Pulse</span> Chat
             </a>
             {(!isConnected || !isBrowserOnline) && (
-              <div 
+              <div
                 title="Offline"
-                style={{ 
-                  width: '8px', 
-                  height: '8px', 
-                  borderRadius: '50%', 
-                  backgroundColor: '#ef4444', 
+                style={{
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  backgroundColor: '#ef4444',
                   boxShadow: '0 0 8px 1px rgba(239,68,68,0.7)',
                   marginLeft: '10px'
-                }} 
+                }}
               />
             )}
           </HeaderTitle>
@@ -3866,10 +3913,10 @@ function Chat() {
                 <path className="speaker-muted" d="M28 12l-7 7" stroke="url(#soundGradient)" />
               </SoundToggleIcon>
             </SoundToggleButton>
-            <ThemeToggleBtn 
+            <ThemeToggleBtn
               onPointerDown={handleHeaderButtonPointerDown}
-              onClick={toggleTheme} 
-              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'} 
+              onClick={toggleTheme}
+              title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
               aria-label="Toggle theme"
             >
               {isDark ? (
@@ -3898,77 +3945,78 @@ function Chat() {
           <ChatWindow>
             <MessagesAndScrollWrapper>
               <MessagesContainer onClick={handleChatAreaClick} $isScrollButtonVisible={isScrollToBottomVisible} $isMobileView={isMobileView}>
-              <div ref={chatContainerRef} style={{ flex: 1, overflowY: 'auto', overflowAnchor: 'auto', display: 'flex', flexDirection: 'column', transform: 'translateZ(0)', WebkitOverflowScrolling: 'touch', willChange: 'transform' }}
-                   onScroll={(e) => {
-                     const target = e.target as HTMLDivElement;
-                     if (target.scrollTop < 500 && !isLoadingOlderRef.current && hasMoreOlderMessages) {
-                       loadOlderMessages();
-                     }
-                     const distanceFromBottom = target.scrollHeight - (target.scrollTop + target.clientHeight);
-                     const atBottom = distanceFromBottom <= 20;
-                     handleAtBottomStateChange(atBottom);
-                   }}
-              >
-                {historyLoaded && messages.length > 0 ? messages.map((msg, index) => {
-                  if (msg.type === 'system_notification') {
+                <div ref={chatContainerRef} style={{ flex: 1, overflowY: 'auto', overflowAnchor: 'auto', display: 'flex', flexDirection: 'column', transform: 'translateZ(0)', WebkitOverflowScrolling: 'touch', willChange: 'transform' }}
+                  onScroll={(e) => {
+                    const target = e.target as HTMLDivElement;
+                    if (target.scrollTop < 2500 && !isLoadingOlderRef.current && hasMoreOlderMessages) {
+                      loadOlderMessages();
+                    }
+                    const distanceFromBottom = target.scrollHeight - (target.scrollTop + target.clientHeight);
+                    const atBottom = distanceFromBottom <= 20;
+                    handleAtBottomStateChange(atBottom);
+                  }}
+                >
+                  {historyLoaded && messages.length > 0 ? messages.map((msg, index) => {
+                    if (msg.type === 'system_notification') {
+                      return (
+                        <div key={msg.id || index} style={{ display: 'flex', justifyContent: 'center', padding: '0.4rem 0' }}>
+                          <SystemMessage>{msg.text}</SystemMessage>
+                        </div>
+                      );
+                    }
+                    const dataIndex = index;
+                    const prevMsg = dataIndex > 0 ? messages[dataIndex - 1] : null;
+                    const showUsername = groupStartMessageIdsRef.current.has(msg.id);
                     return (
-                      <div key={msg.id || index} style={{ display: 'flex', justifyContent: 'center', padding: '0.4rem 0' }}>
-                        <SystemMessage>{msg.text}</SystemMessage>
-                      </div>
+                      <MessageItem
+                        key={msg.id}
+                        msg={msg}
+                        showUsername={showUsername}
+                        currentUserId={userIdRef.current}
+                        handleSetReply={handleSetReply}
+                        handleReact={handleReact}
+                        openDeleteMenu={handleOpenDeleteMenu}
+                        openLightbox={openLightbox}
+                        isMediaLoaded={loadedMediaMessageSet.has(msg.id)}
+                        onRequestMediaLoad={handleRequestMediaLoad}
+                        isMediaLoadInProgress={Object.prototype.hasOwnProperty.call(mediaLoadProgressById, msg.id)}
+                        mediaLoadProgress={mediaLoadProgressById[msg.id] ?? 0}
+                        loadedMediaSrc={loadedMediaSrcById[msg.id]}
+                        onRequestDownload={handleRequestDownload}
+                        isDownloadInProgress={Object.prototype.hasOwnProperty.call(downloadProgressById, msg.id)}
+                        downloadProgress={downloadProgressById[msg.id] ?? 0}
+                        activeDeleteMenu={activeDeleteMenu}
+                        deleteMenuRef={deleteMenuRef}
+                        deleteForMe={deleteForMe}
+                        deleteForEveryone={deleteForEveryone}
+                        scrollToMessage={scrollToMessage}
+                        isSelectModeActive={isSelectModeActive}
+                        isSelected={selectedMessageIds.has(msg.id)}
+                        handleToggleSelectMessage={handleToggleSelectMessage}
+                        setActiveDeleteMenu={setActiveDeleteMenu}
+                        handleCopy={handleCopy}
+                        handleOpenReport={handleOpenReport}
+                        handleStartEdit={handleStartEdit}
+                        handleCancelSelectMode={handleCancelSelectMode}
+                        isMobileView={isMobileView}
+                        selectedMessages={selectedMessages}
+                        onOpenReactionPicker={handleOpenReactionPicker}
+                        setReactionsPopup={setReactionsPopup}
+                        handleOpenFullEmojiPicker={handleOpenFullEmojiPicker}
+                        reactionPickerData={reactionPickerData}
+                        editingMessageId={editingMessageId}
+                        handleCancelEdit={handleCancelEdit}
+                        onVideoFullscreenEnter={handleVideoFullscreenEnter}
+                      />
                     );
-                  }
-                  const dataIndex = index;
-                  const prevMsg = dataIndex > 0 ? messages[dataIndex - 1] : null;
-                  const showUsername = groupStartMessageIdsRef.current.has(msg.id);
-                  return (
-                    <MessageItem
-                      key={msg.id}
-                      msg={msg}
-                      showUsername={showUsername}
-                      currentUserId={userIdRef.current}
-                      handleSetReply={handleSetReply}
-                      handleReact={handleReact}
-                      openDeleteMenu={handleOpenDeleteMenu}
-                      openLightbox={openLightbox}
-                      isMediaLoaded={loadedMediaMessageSet.has(msg.id)}
-                      onRequestMediaLoad={handleRequestMediaLoad}
-                      isMediaLoadInProgress={Object.prototype.hasOwnProperty.call(mediaLoadProgressById, msg.id)}
-                      mediaLoadProgress={mediaLoadProgressById[msg.id] ?? 0}
-                      loadedMediaSrc={loadedMediaSrcById[msg.id]}
-                      onRequestDownload={handleRequestDownload}
-                      isDownloadInProgress={Object.prototype.hasOwnProperty.call(downloadProgressById, msg.id)}
-                      downloadProgress={downloadProgressById[msg.id] ?? 0}
-                      activeDeleteMenu={activeDeleteMenu}
-                      deleteMenuRef={deleteMenuRef}
-                      deleteForMe={deleteForMe}
-                      deleteForEveryone={deleteForEveryone}
-                      scrollToMessage={scrollToMessage}
-                      isSelectModeActive={isSelectModeActive}
-                      isSelected={selectedMessageIds.has(msg.id)}
-                      handleToggleSelectMessage={handleToggleSelectMessage}
-                      setActiveDeleteMenu={setActiveDeleteMenu}
-                      handleCopy={handleCopy}
-                      handleOpenReport={handleOpenReport}
-                      handleStartEdit={handleStartEdit}
-                      handleCancelSelectMode={handleCancelSelectMode}
-                      isMobileView={isMobileView}
-                      selectedMessages={selectedMessages}
-                      onOpenReactionPicker={handleOpenReactionPicker}
-                      setReactionsPopup={setReactionsPopup}
-                      handleOpenFullEmojiPicker={handleOpenFullEmojiPicker}
-                      reactionPickerData={reactionPickerData}
-                      editingMessageId={editingMessageId}
-                      handleCancelEdit={handleCancelEdit}
-                      onVideoFullscreenEnter={handleVideoFullscreenEnter}
-                    />
-                  );
-                }) : null}
-                <div style={{ height: '12px', flexShrink: 0 }} />
-              </div>
+                  }) : null}
+                  <div style={{ height: '12px', flexShrink: 0 }} />
+                </div>
               </MessagesContainer>
               <ScrollToBottomButton
                 $isVisible={isScrollToBottomVisible}
                 onClick={handleScrollToBottomButtonClick}
+                onPointerDown={(e) => e.preventDefault()}
                 aria-label={scrollToLatestLabel}
                 title={scrollToLatestTitle}
               >
@@ -4383,7 +4431,7 @@ function Chat() {
       )}
       {showGifPicker && (
         <GifPickerModal onClick={() => {
-          // Ignore clicks that arrive within 500 ms of opening — these are the phantom
+          // Ignore clicks that arrive within 500 ms of opening — these are the phantom
           // synthetic click events that mobile browsers generate after a pointerdown,
           // which would otherwise close the picker immediately after it opens.
           if (Date.now() - gifPickerOpenedAtRef.current < 500) return;

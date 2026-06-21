@@ -3,7 +3,7 @@ import type { LinkPreviewData } from './types';
 import { MAX_LINK_PREVIEW_CACHE_ENTRIES } from './constants';
 import { resolveApiBaseUrl } from './utils';
 import {
-  LinkPreviewCard, LinkPreviewImage, LinkPreviewBody, LinkPreviewSiteName,
+  LinkPreviewCard, LinkPreviewImageWrapper, LinkPreviewImage, LinkPreviewBody, LinkPreviewSiteName,
   LinkPreviewTitle, LinkPreviewDesc,
 } from './ChatStyledComponents';
 
@@ -102,21 +102,27 @@ export const LinkPreview: React.FC<{ url: string; sender: 'me' | 'other' }> = Re
       rel="noopener noreferrer"
       onClick={(e) => e.stopPropagation()}
     >
-      <LinkPreviewImage
-        src={primaryImage}
-        alt=""
-        onError={(e) => {
-          const current = e.currentTarget.getAttribute('src') || '';
-          if (current !== secondaryImage) {
-            e.currentTarget.setAttribute('src', secondaryImage);
-            return;
-          }
-          e.currentTarget.style.visibility = 'hidden';
-        }}
-      />
+      <LinkPreviewImageWrapper>
+        <LinkPreviewImage
+          src={primaryImage}
+          alt=""
+          onError={(e) => {
+            const current = e.currentTarget.getAttribute('src') || '';
+            if (current !== secondaryImage) {
+              e.currentTarget.setAttribute('src', secondaryImage);
+              return;
+            }
+            e.currentTarget.style.visibility = 'hidden';
+          }}
+        />
+      </LinkPreviewImageWrapper>
       <LinkPreviewBody>
         <LinkPreviewSiteName $sender={sender}>{data.siteName || data.hostname}</LinkPreviewSiteName>
-        {data.title && <LinkPreviewTitle $sender={sender}>{data.title}</LinkPreviewTitle>}
+        {data.title ? (
+          <LinkPreviewTitle $sender={sender}>{data.title}</LinkPreviewTitle>
+        ) : (
+          <LinkPreviewTitle $sender={sender} style={{ wordBreak: 'break-all', fontWeight: 500 }}>{url}</LinkPreviewTitle>
+        )}
         {data.description && <LinkPreviewDesc $sender={sender}>{data.description}</LinkPreviewDesc>}
       </LinkPreviewBody>
     </LinkPreviewCard>

@@ -615,7 +615,7 @@ export const MessageItem = React.memo(({
                         handleCancelSelectMode();
                       }}>{currentUserReaction}</ReactionEmoji>
                     ) : (
-                      <ReactionEmoji $isPlusIcon={true} onPointerDown={(e) => {
+                      <ReactionEmoji $isPlusIcon={true} data-is-plus-icon="true" onPointerDown={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
                         // Capture rect & msgId synchronously (e.currentTarget becomes null

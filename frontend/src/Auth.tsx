@@ -639,7 +639,16 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken }) => {
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => { if (e.key === 'Enter') handleLogin(); };
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      if (usernameFocused && !isTempLink && !password) {
+        e.preventDefault();
+        focusPasswordInput();
+      } else {
+        handleLogin();
+      }
+    }
+  };
 
   const focusPasswordInput = useCallback(() => {
     const input = passwordInputRef.current;

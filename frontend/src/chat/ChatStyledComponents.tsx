@@ -4,7 +4,7 @@ import styled, { createGlobalStyle, keyframes, css } from 'styled-components';
 // --- STYLED COMPONENTS ---
 export const GlobalStyle = createGlobalStyle`
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body, #root { height: var(--app-height, 100dvh); width: 100%; overflow: hidden; overscroll-behavior: none; position: fixed; inset: 0; }
+  html, body, #root { height: 100dvh; width: 100%; overflow: hidden; overscroll-behavior: none; position: fixed; inset: 0; background-color: var(--bg-primary); }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: var(--bg-primary); color: var(--text-primary); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; transition: background-color 0.3s ease, color 0.3s ease; }
   * { -webkit-tap-highlight-color: transparent; }
   ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -276,6 +276,11 @@ export const AppContainer = styled.div`
   display: flex;
   flex-direction: column;
   height: var(--app-height, 100dvh);
+  width: 100%;
+  position: absolute;
+  top: var(--app-offset-top, 0px);
+  left: 0;
+  overflow: hidden;
 `;
 export const Header = styled.header`
   background-color: var(--bg-header);
@@ -1951,22 +1956,35 @@ export const LinkPreviewCard = styled.a<{ $sender: 'me' | 'other' }>`
   margin-bottom: 4px;
   background: ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.18)' : 'var(--bg-hover)'};
   border: 1px solid ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.18)' : 'var(--border-primary)'};
-  min-height: 80px;
+  min-height: 50px;
   transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
   &:hover { opacity: 0.95; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
   ${props => props.$sender === 'other' && `
     [data-theme='dark'] & { background: #253348; border-color: rgba(255,255,255,0.08); }
   `}
 `;
+
+export const LinkPreviewImageWrapper = styled.div`
+  width: 70px;
+  min-width: 70px;
+  position: relative;
+  overflow: hidden;
+  background: rgba(0,0,0,0.05);
+  flex-shrink: 0;
+`;
+
 export const LinkPreviewImage = styled.img`
-  width: 78px;
-  min-width: 78px;
-  height: 78px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
   display: block;
 `;
+
 export const LinkPreviewBody = styled.div`
-  padding: 7px 9px;
+  padding: 6px 8px;
   min-width: 0;
   flex: 1;
   border-left: 1px solid rgba(255,255,255,0.12);
@@ -2909,22 +2927,33 @@ export const CVPTapIndicator = styled.div`
   svg { width: 20px; height: 20px; }
 `;
 
-export const CVPCenterPlayBtn = styled.div<{ $visible: boolean }>`
+export const CVPCenterPlayBtn = styled.button<{ $visible: boolean }>`
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 48px;
-  height: 48px;
-  background: rgba(0,0,0,0.55);
+  width: 56px;
+  height: 56px;
+  background: rgba(0,0,0,0.6);
+  border: none;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   opacity: ${p => p.$visible ? 1 : 0};
-  transition: opacity 0.2s ease;
-  pointer-events: none;
-  svg { width: 24px; height: 24px; color: #fff; }
+  transition: opacity 0.2s ease, transform 0.15s ease;
+  pointer-events: ${p => p.$visible ? 'auto' : 'none'};
+  cursor: pointer;
+  z-index: 10;
+
+  svg { width: 28px; height: 28px; color: #fff; }
+
+  &:active {
+    transform: translate(-50%, -50%) scale(0.92);
+  }
+  &:hover {
+    background: rgba(0,0,0,0.75);
+  }
 `;
 
 /* - Download Progress Ring (WhatsApp/Telegram style) - */

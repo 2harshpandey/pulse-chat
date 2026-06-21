@@ -70,10 +70,11 @@ const QUICK_REACTION_SET = new Set<string>(QUICK_REACTIONS);
 export type ReactionUser = { userId: string; username: string };
 export type ReactionMap = Record<string, ReactionUser[]>;
 
-export const normalizeReactionEmoji = (emoji: unknown): QuickReaction | null => {
+export const normalizeReactionEmoji = (emoji: unknown): string | null => {
   if (typeof emoji !== 'string') return null;
   const normalized = emoji.trim().normalize('NFC');
-  return QUICK_REACTION_SET.has(normalized) ? normalized as QuickReaction : null;
+  if (!normalized || normalized.length > 20) return null;
+  return normalized;
 };
 
 export const filterValidReactions = (rawReactions: unknown): ReactionMap => {

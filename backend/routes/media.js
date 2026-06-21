@@ -358,7 +358,7 @@ module.exports = (wss, broadcasts) => {
 
             incoming.on('data', (chunk) => {
               totalSize += chunk.length;
-              if (totalSize > 512 * 1024) {
+              if (totalSize > 5 * 1024 * 1024) {
                 request.destroy();
                 return reject(new Error('Response too large'));
               }

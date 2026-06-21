@@ -119,7 +119,7 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter }: { src: st
   const togglePlay = () => {
     const v = videoRef.current;
     if (!v) return;
-    if (v.paused) v.play().catch(() => {});
+    if (v.paused) v.play().catch(() => { });
     else v.pause();
   };
 
@@ -145,9 +145,9 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter }: { src: st
     const c = containerRef.current;
     if (!c) return;
     if (!document.fullscreenElement && !(document as any).webkitFullscreenElement) {
-      (c.requestFullscreen?.() || (c as any).webkitRequestFullscreen?.())?.catch(() => {});
+      (c.requestFullscreen?.() || (c as any).webkitRequestFullscreen?.())?.catch(() => { });
     } else {
-      (document.exitFullscreen?.() || (document as any).webkitExitFullscreen?.())?.catch(() => {});
+      (document.exitFullscreen?.() || (document as any).webkitExitFullscreen?.())?.catch(() => { });
     }
   };
 
@@ -160,7 +160,7 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter }: { src: st
       } else if (v.requestPictureInPicture) {
         await v.requestPictureInPicture();
       }
-    } catch {}
+    } catch { }
   };
 
   const toggleLoop = () => {
@@ -244,20 +244,33 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter }: { src: st
       doubleTapTimerRef.current = setTimeout(() => setDoubleTapSide(null), 700);
       lastTapTimeRef.current = 0;
     } else {
-      // Single tap - always toggle play/pause AND show controls
+      // Single tap
       lastTapTimeRef.current = now;
       lastTapXRef.current = tapX;
       doubleTapTimerRef.current = setTimeout(() => {
-        // Always toggle play/pause on single tap (works both when playing and paused)
-        togglePlay();
-        resetControlsTimer();
-        // Show center play/pause indicator
-        if (centerPlayTimerRef.current) clearTimeout(centerPlayTimerRef.current);
-        setShowCenterPlay(true);
-        centerPlayTimerRef.current = setTimeout(() => setShowCenterPlay(false), 600);
+        const isTouch = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+        if (isTouch) {
+          // On touch devices, single tap toggles controls visibility.
+          if (showControls) {
+            setShowControls(false);
+            if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current);
+          } else {
+            resetControlsTimer();
+          }
+        } else {
+          // Desktop behavior: toggle play/pause and show controls
+          togglePlay();
+          resetControlsTimer();
+          // Show center play/pause indicator briefly
+          if (centerPlayTimerRef.current) clearTimeout(centerPlayTimerRef.current);
+          setShowCenterPlay(true);
+          centerPlayTimerRef.current = setTimeout(() => setShowCenterPlay(false), 600);
+        }
       }, 200);
     }
   };
+
+  const isTouchDevice = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
 
   return (
     <VideoPlayerWrapper onContextMenu={(e) => e.preventDefault()} onPointerDown={() => onPointerDown?.()}>
@@ -265,7 +278,6 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter }: { src: st
         ref={containerRef}
         onClick={handleContainerTap}
         onMouseMove={resetControlsTimer}
-        onTouchStart={resetControlsTimer}
         data-cvp
       >
         <video
@@ -295,16 +307,26 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter }: { src: st
           </CVPTapIndicator>
         </CVPDoubleTapOverlay>
 
-        {/* Center play/pause flash */}
-        <CVPCenterPlayBtn $visible={showCenterPlay}>
+        {/* Center play/pause flash/button */}
+        <CVPCenterPlayBtn
+          $visible={!isPlaying || showCenterPlay || (isTouchDevice && showControls)}
+          onClick={(e) => { e.stopPropagation(); togglePlay(); }}
+          aria-label={isPlaying ? 'Pause' : 'Play'}
+        >
           {isPlaying
-            ? <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-            : <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            ? <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
+            : <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3" /></svg>
           }
         </CVPCenterPlayBtn>
 
         {/* Controls overlay */}
-        <CVPControls $visible={showControls} data-cvp-controls data-quote-swipe-ignore onClick={(e) => e.stopPropagation()}>
+        <CVPControls
+          $visible={showControls}
+          data-cvp-controls
+          data-quote-swipe-ignore
+          onClick={(e) => e.stopPropagation()}
+          onTouchStart={resetControlsTimer}
+        >
           {/* Timeline */}
           <CVPTimelineWrapper
             data-quote-swipe-ignore
@@ -328,8 +350,8 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter }: { src: st
             {/* Play/Pause */}
             <CVPIconBtn onClick={togglePlay} title={isPlaying ? 'Pause' : 'Play'} aria-label={isPlaying ? 'Pause' : 'Play'}>
               {isPlaying
-                ? <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
-                : <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                ? <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
+                : <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3" /></svg>
               }
             </CVPIconBtn>
 
@@ -355,8 +377,8 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter }: { src: st
             <CVPVolumeWrapper onWheel={handleVolumeWheel}>
               <CVPIconBtn onClick={toggleMute} title={isMuted ? 'Unmute' : 'Mute'} aria-label={isMuted ? 'Unmute' : 'Mute'}>
                 {isMuted || volume === 0
-                  ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
-                  : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+                  ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><line x1="23" y1="9" x2="17" y2="15" /><line x1="17" y1="9" x2="23" y2="15" /></svg>
+                  : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" /></svg>
                 }
               </CVPIconBtn>
               <div className="cvp-volume-slider-panel">
@@ -407,7 +429,7 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter }: { src: st
                 disabled={!document.pictureInPictureEnabled}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="2" y="4" width="20" height="14" rx="2"/><rect x="12" y="10" width="8" height="6" rx="1" fill="currentColor" stroke="none" opacity="0.6"/>
+                  <rect x="2" y="4" width="20" height="14" rx="2" /><rect x="12" y="10" width="8" height="6" rx="1" fill="currentColor" stroke="none" opacity="0.6" />
                 </svg>
               </CVPIconBtn>
             )}
@@ -420,8 +442,8 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter }: { src: st
             {/* Fullscreen */}
             <CVPIconBtn onClick={toggleFullscreen} title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'} aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
               {isFullscreen
-                ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/></svg>
-                : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+                ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3" /><path d="M21 8h-3a2 2 0 0 1-2-2V3" /><path d="M3 16h3a2 2 0 0 1 2 2v3" /><path d="M16 21v-3a2 2 0 0 1 2-2h3" /></svg>
+                : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3" /><path d="M21 8V5a2 2 0 0 0-2-2h-3" /><path d="M3 16v3a2 2 0 0 0 2 2h3" /><path d="M16 21h3a2 2 0 0 0 2-2v-3" /></svg>
               }
             </CVPIconBtn>
           </CVPBottomRow>

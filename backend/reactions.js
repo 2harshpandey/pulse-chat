@@ -6,7 +6,8 @@ const QUICK_REACTION_SET = new Set(QUICK_REACTIONS);
 const normalizeReactionEmoji = (emoji) => {
   if (typeof emoji !== 'string') return null;
   const normalized = emoji.trim().normalize('NFC');
-  return QUICK_REACTION_SET.has(normalized) ? normalized : null;
+  if (!normalized || normalized.length > 20) return null;
+  return normalized;
 };
 
 const normalizeReactionUser = (user) => {
