@@ -304,143 +304,200 @@ module.exports = (wss, broadcasts) => {
       if (!url || typeof url !== 'string') return res.status(400).json({ error: 'URL parameter required' });
       if (!/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'Invalid URL' });
 
+      let parsedUrlFallback;
+      try { parsedUrlFallback = new URL(url); } catch { return res.status(400).json({ error: 'Invalid URL' }); }
+      
+      const hostnameFallback = parsedUrlFallback.hostname.toLowerCase();
+      let fallbackTitle = null;
+      let fallbackDescription = null;
+      let fallbackSiteName = null;
+      let fallbackImage = null;
+
+      if (hostnameFallback.includes('amazon.')) {
+        fallbackSiteName = 'Amazon';
+        const pathParts = parsedUrlFallback.pathname.split('/');
+        if (parsedUrlFallback.searchParams.has('k')) {
+          const keyword = parsedUrlFallback.searchParams.get('k').replace(/\+/g, ' ');
+          fallbackTitle = `Amazon.com: ${keyword.charAt(0).toUpperCase() + keyword.slice(1)}`;
+          fallbackDescription = `Amazon.com: ${keyword}`;
+        } else {
+          for (let i = 0; i < pathParts.length; i++) {
+            if ((pathParts[i] === 'dp' || pathParts[i] === 'gp') && i > 0) {
+              const productName = pathParts[i - 1].replace(/-/g, ' ');
+              if (productName && productName.length > 2) {
+                fallbackTitle = `Amazon: ${productName}`;
+                fallbackDescription = productName;
+              }
+              break;
+            }
+          }
+        }
+      }
+
+      if (hostnameFallback.includes('youtube.com') || hostnameFallback.includes('youtu.be')) {
+        fallbackSiteName = 'YouTube';
+        const ytMatch = url.match(/(?:youtube\.com\/watch\?.*v=|youtu\.be\/)([^&]+)/i);
+        if (ytMatch) {
+          fallbackImage = `https://i.ytimg.com/vi/${ytMatch[1]}/hqdefault.jpg`;
+        }
+      }
+
       const MAX_REDIRECTS = 3;
       let currentUrl = url;
       let finalParsedUrl = null;
       let finalHtml = '';
+      
+      let fetchError = null;
 
-      for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
-        let parsedUrl;
-        try { parsedUrl = new URL(currentUrl); } catch { return res.status(400).json({ error: 'Invalid URL' }); }
+      try {
+        for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
+          let parsedUrl;
+          try { parsedUrl = new URL(currentUrl); } catch { throw new Error('Invalid URL'); }
 
-        // Restrict to standard HTTP/HTTPS ports only — prevents using this as a port scanner.
-        const port = parsedUrl.port;
-        if (port && port !== '80' && port !== '443') return res.status(400).json({ error: 'Invalid URL' });
+          const port = parsedUrl.port;
+          if (port && port !== '80' && port !== '443') throw new Error('Invalid URL');
 
-        if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
-          return res.status(400).json({ error: 'Invalid URL' });
-        }
+          if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+            throw new Error('Invalid URL');
+          }
 
-        const rawHostname = parsedUrl.hostname;
+          const rawHostname = parsedUrl.hostname;
 
-        // Resolve the hostname and block private/internal IPs to prevent SSRF.
-        let resolvedIp;
-        try { ({ address: resolvedIp } = await dns.promises.lookup(rawHostname)); }
-        catch { return res.status(400).json({ error: 'Could not resolve hostname' }); }
-        if (isPrivateOrInternalIp(resolvedIp)) return res.status(400).json({ error: 'Invalid URL' });
+          let resolvedIp;
+          try { ({ address: resolvedIp } = await dns.promises.lookup(rawHostname)); }
+          catch { throw new Error('Could not resolve hostname'); }
+          if (isPrivateOrInternalIp(resolvedIp)) throw new Error('Invalid URL');
 
-        const isHttps = parsedUrl.protocol === 'https:';
-        const reqModule = isHttps ? https : http;
-        const reqPath = (parsedUrl.pathname || '/') + (parsedUrl.search || '');
-        const reqPort = parsedUrl.port ? Number(parsedUrl.port) : (isHttps ? 443 : 80);
+          const isHttps = parsedUrl.protocol === 'https:';
+          const reqModule = isHttps ? https : http;
+          const reqPath = (parsedUrl.pathname || '/') + (parsedUrl.search || '');
+          const reqPort = parsedUrl.port ? Number(parsedUrl.port) : (isHttps ? 443 : 80);
 
-        const response = await new Promise((resolve, reject) => {
-          const opts = {
-            hostname: resolvedIp,          // server-controlled validated IP — not user input
-            port: reqPort,
-            path: reqPath,
-            method: 'GET',
-            headers: {
-              'Host': rawHostname,          // needed for virtual hosting
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              'Accept': 'text/html,application/xhtml+xml',
-              'Connection': 'close',
-            },
-            // TLS: send the real hostname for SNI and certificate validation
-            ...(isHttps ? { servername: rawHostname, rejectUnauthorized: true } : {}),
-          };
+          const response = await new Promise((resolve, reject) => {
+            const opts = {
+              hostname: resolvedIp,
+              port: reqPort,
+              path: reqPath,
+              method: 'GET',
+              headers: {
+                'Host': rawHostname,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml',
+                'Connection': 'close',
+              },
+              ...(isHttps ? { servername: rawHostname, rejectUnauthorized: true } : {}),
+            };
 
-          const request = reqModule.request(opts, (incoming) => {
-            const statusCode = incoming.statusCode || 0;
-            const headers = incoming.headers || {};
-            const chunks = [];
-            let totalSize = 0;
+            const request = reqModule.request(opts, (incoming) => {
+              const statusCode = incoming.statusCode || 0;
+              const headers = incoming.headers || {};
+              const chunks = [];
+              let totalSize = 0;
 
-            incoming.on('data', (chunk) => {
-              totalSize += chunk.length;
-              if (totalSize > 5 * 1024 * 1024) {
-                request.destroy();
-                return reject(new Error('Response too large'));
-              }
-              chunks.push(chunk);
-            });
-
-            incoming.on('end', () => {
-              resolve({
-                statusCode,
-                headers,
-                body: Buffer.concat(chunks).toString('utf8'),
+              incoming.on('data', (chunk) => {
+                totalSize += chunk.length;
+                if (totalSize > 5 * 1024 * 1024) {
+                  request.destroy();
+                  return reject(new Error('Response too large'));
+                }
+                chunks.push(chunk);
               });
+
+              incoming.on('end', () => {
+                resolve({
+                  statusCode,
+                  headers,
+                  body: Buffer.concat(chunks).toString('utf8'),
+                });
+              });
+              incoming.on('error', reject);
             });
-            incoming.on('error', reject);
+
+            request.setTimeout(5000, () => { request.destroy(); reject(new Error('Request timed out')); });
+            request.on('error', reject);
+            request.end();
           });
 
-          request.setTimeout(5000, () => { request.destroy(); reject(new Error('Request timed out')); });
-          request.on('error', reject);
-          request.end();
-        });
+          const statusCode = Number(response.statusCode || 0);
 
-        const statusCode = Number(response.statusCode || 0);
+          if (statusCode >= 300 && statusCode < 400) {
+            const locationHeader = response.headers?.location;
+            if (!locationHeader) throw new Error('Redirect without location');
+            if (Array.isArray(locationHeader)) throw new Error('Invalid redirect location');
+            if (redirectCount >= MAX_REDIRECTS) throw new Error('Too many redirects');
 
-        // Follow a small number of redirects like chat apps do, while re-validating each hop.
-        if (statusCode >= 300 && statusCode < 400) {
-          const locationHeader = response.headers?.location;
-          if (!locationHeader) throw new Error('Redirect without location');
-          if (Array.isArray(locationHeader)) throw new Error('Invalid redirect location');
-          if (redirectCount >= MAX_REDIRECTS) throw new Error('Too many redirects');
-
-          const nextUrl = new URL(locationHeader, parsedUrl);
-          if (nextUrl.protocol !== 'http:' && nextUrl.protocol !== 'https:') {
-            throw new Error('Invalid redirect protocol');
+            const nextUrl = new URL(locationHeader, parsedUrl);
+            if (nextUrl.protocol !== 'http:' && nextUrl.protocol !== 'https:') {
+              throw new Error('Invalid redirect protocol');
+            }
+            currentUrl = nextUrl.href;
+            continue;
           }
-          currentUrl = nextUrl.href;
-          continue;
+
+          if (statusCode < 200 || statusCode >= 300) throw new Error('Bad response');
+
+          const contentType = String(response.headers?.['content-type'] || '').toLowerCase();
+          if (contentType && !contentType.includes('text/html') && !contentType.includes('application/xhtml+xml')) {
+            throw new Error('Unsupported content type');
+          }
+
+          finalParsedUrl = parsedUrl;
+          finalHtml = String(response.body || '');
+          break;
         }
-
-        if (statusCode < 200 || statusCode >= 300) throw new Error('Bad response');
-
-        const contentType = String(response.headers?.['content-type'] || '').toLowerCase();
-        if (contentType && !contentType.includes('text/html') && !contentType.includes('application/xhtml+xml')) {
-          throw new Error('Unsupported content type');
-        }
-
-        finalParsedUrl = parsedUrl;
-        finalHtml = String(response.body || '');
-        break;
+        
+        if (!finalParsedUrl || !finalHtml) throw new Error('Failed to fetch preview HTML');
+      } catch (err) {
+        fetchError = err;
       }
 
-      if (!finalParsedUrl || !finalHtml) throw new Error('Failed to fetch preview HTML');
+      let title = null;
+      let description = null;
+      let siteName = null;
+      let image = null;
 
-      const html = finalHtml;
-      const hostname = finalParsedUrl.hostname.replace(/^www\./, '');
-      const decode = (v) => String(v || '')
-        .replace(/&quot;/g, '"')
-        .replace(/&#39;/g, "'")
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&amp;/g, '&')
-        .trim();
+      if (!fetchError && finalHtml) {
+        const html = finalHtml;
+        const decode = (v) => String(v || '')
+          .replace(/&quot;/g, '"')
+          .replace(/&#39;/g, "'")
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&amp;/g, '&')
+          .trim();
 
-      const getMetaBy = (attrName, attrValue) => {
-        const m = html.match(new RegExp(`<meta[^>]+${attrName}=["']${attrValue}["'][^>]+content=["']([^"']{0,2000})["']`, 'i'))
-          || html.match(new RegExp(`<meta[^>]+content=["']([^"']{0,2000})["'][^>]+${attrName}=["']${attrValue}["']`, 'i'));
-        return m ? decode(m[1]) : null;
-      };
+        const getMetaBy = (attrName, attrValue) => {
+          const m = html.match(new RegExp(`<meta[^>]+${attrName}=["']${attrValue}["'][^>]+content=["']([^"']{0,2000})["']`, 'i'))
+            || html.match(new RegExp(`<meta[^>]+content=["']([^"']{0,2000})["'][^>]+${attrName}=["']${attrValue}["']`, 'i'));
+          return m ? decode(m[1]) : null;
+        };
 
-      const getTitle = () => {
-        const m = html.match(/<title[^>]*>([^<]{0,200})<\/title>/i);
-        return m ? decode(m[1]) : null;
-      };
+        const getTitle = () => {
+          const m = html.match(/<title[^>]*>([^<]{0,200})<\/title>/i);
+          return m ? decode(m[1]) : null;
+        };
 
-      const title = getMetaBy('property', 'og:title') || getMetaBy('name', 'twitter:title') || getTitle();
-      const description = getMetaBy('property', 'og:description')
-        || getMetaBy('name', 'twitter:description')
-        || getMetaBy('name', 'description');
-      const siteName = getMetaBy('property', 'og:site_name');
-      const rawImage = getMetaBy('property', 'og:image') || getMetaBy('name', 'twitter:image');
-      const image = rawImage ? (() => {
-        try { return new URL(rawImage, finalParsedUrl).href; } catch { return null; }
-      })() : null;
+        title = getMetaBy('property', 'og:title') || getMetaBy('name', 'twitter:title') || getTitle();
+        description = getMetaBy('property', 'og:description')
+          || getMetaBy('name', 'twitter:description')
+          || getMetaBy('name', 'description');
+        siteName = getMetaBy('property', 'og:site_name');
+        const rawImage = getMetaBy('property', 'og:image') || getMetaBy('name', 'twitter:image');
+        image = rawImage ? (() => {
+          try { return new URL(rawImage, finalParsedUrl).href; } catch { return null; }
+        })() : null;
+      }
+
+      title = title || fallbackTitle;
+      description = description || fallbackDescription;
+      siteName = siteName || fallbackSiteName;
+      image = image || fallbackImage;
+
+      if (!title && !description && !image && fetchError) {
+        throw fetchError;
+      }
+
+      const hostname = finalParsedUrl ? finalParsedUrl.hostname.replace(/^www\./, '') : parsedUrlFallback.hostname.replace(/^www\./, '');
 
       res.json({ title, description, image, hostname, siteName });
     } catch (error) {
