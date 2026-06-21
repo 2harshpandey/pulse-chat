@@ -313,7 +313,8 @@ module.exports = (wss, broadcasts) => {
       let fallbackSiteName = null;
       let fallbackImage = null;
 
-      if (hostnameFallback.includes('amazon.')) {
+      const isAmazon = hostnameFallback === 'amazon.com' || hostnameFallback.endsWith('.amazon.com') || /(?:^|\.)amazon\.[a-z]{2,3}(?:\.[a-z]{2})?$/.test(hostnameFallback);
+      if (isAmazon) {
         fallbackSiteName = 'Amazon';
         const pathParts = parsedUrlFallback.pathname.split('/');
         if (parsedUrlFallback.searchParams.has('k')) {
@@ -334,11 +335,21 @@ module.exports = (wss, broadcasts) => {
         }
       }
 
-      if (hostnameFallback.includes('youtube.com') || hostnameFallback.includes('youtu.be')) {
+      const isYouTube = hostnameFallback === 'youtube.com' || hostnameFallback.endsWith('.youtube.com') || hostnameFallback === 'youtu.be' || hostnameFallback.endsWith('.youtu.be');
+      if (isYouTube) {
         fallbackSiteName = 'YouTube';
-        const ytMatch = url.match(/(?:youtube\.com\/watch\?.*v=|youtu\.be\/)([^&]+)/i);
-        if (ytMatch) {
-          fallbackImage = `https://i.ytimg.com/vi/${ytMatch[1]}/hqdefault.jpg`;
+        let videoId = null;
+        if (hostnameFallback === 'youtu.be' || hostnameFallback.endsWith('.youtu.be')) {
+          const pathParts = parsedUrlFallback.pathname.split('/');
+          if (pathParts.length > 1 && pathParts[1]) {
+            videoId = pathParts[1];
+          }
+        } else {
+          videoId = parsedUrlFallback.searchParams.get('v');
+        }
+        
+        if (videoId) {
+          fallbackImage = `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
         }
       }
 
