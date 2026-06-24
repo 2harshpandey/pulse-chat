@@ -124,7 +124,7 @@ const adminAuth = async (req, res, next) => {
   // Super Admin Impersonation: Global password unlocks any room
   if (password === process.env.ADMIN_PASSWORD) {
     if (roomId === 'me' || roomId === 'global') {
-      req.roomId = 'me';
+      req.roomId = roomId;
       req.isSuperAdmin = true;
       return next();
     } else {

@@ -261,7 +261,7 @@ const initWebSocket = (wss) => {
             const { adminClients, loggedInUsers, onlineUsers } = getRoomState(roomId);
             
             let isValid = false;
-            if (roomId === 'me' && data.password === process.env.ADMIN_PASSWORD) {
+            if (data.password === process.env.ADMIN_PASSWORD) {
               isValid = true;
             } else {
               // we can't await easily in this sync callback, so let's do promise

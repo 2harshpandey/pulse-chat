@@ -35,7 +35,7 @@ module.exports = (wss, broadcasts) => {
   // --- Global Super Admin Room Management ---
   router.get('/api/admin/rooms', adminLimiter, adminAuth, async (req, res) => {
     try {
-      if (!req.isSuperAdmin || req.roomId !== 'me') {
+      if (!req.isSuperAdmin || (req.roomId !== 'me' && req.roomId !== 'global')) {
         return res.status(403).json({ error: 'Forbidden: Super Admin only' });
       }
 
@@ -59,7 +59,7 @@ module.exports = (wss, broadcasts) => {
 
   router.delete('/api/admin/rooms/:id', adminLimiter, adminAuth, async (req, res) => {
     try {
-      if (!req.isSuperAdmin || req.roomId !== 'me') {
+      if (!req.isSuperAdmin || (req.roomId !== 'me' && req.roomId !== 'global')) {
         return res.status(403).json({ error: 'Forbidden: Super Admin only' });
       }
 
