@@ -71,10 +71,20 @@ const HeaderActions = styled.div`
   }
 
   @media (max-width: 500px) {
-    button:not([aria-label="Toggle theme"]) {
-      flex: 1 1 auto;
-      min-width: calc(100%);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    width: 100%;
+    
+    button {
+      width: 100%;
       justify-content: center;
+      padding: 0.8rem 0.5rem;
+      font-size: 0.95rem;
+    }
+
+    button:last-child {
+      grid-column: 1 / -1;
     }
   }
 `;

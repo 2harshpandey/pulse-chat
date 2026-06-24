@@ -80,7 +80,8 @@ const Logo = styled.a`
   
   @media (max-width: 480px) {
     font-size: 1.5rem;
-    max-width: 100px; /* Forces 'Pulse' and 'Chat' to wrap on separate lines */
+    flex-shrink: 1;
+    min-width: 0;
   }
   
   &::before {
@@ -289,6 +290,7 @@ const NavActions = styled.div`
   display: flex;
   align-items: center;
   gap: 1rem;
+  flex-shrink: 0;
 `;
 
 const ThemeToggle = styled.button`
