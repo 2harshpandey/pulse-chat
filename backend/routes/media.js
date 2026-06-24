@@ -616,7 +616,7 @@ module.exports = (wss, broadcasts) => {
 
   // --- Paginated Messages ---
   router.get('/api/messages', apiLimiter, async (req, res) => {
-    const roomId = req.headers['x-room-id'] || req.query.roomId || 'me';
+    const roomId = String(req.headers['x-room-id'] || req.query.roomId || 'me');
     try {
       const requestedLimit = Number(req.query.limit);
       const pageSize = Number.isFinite(requestedLimit)

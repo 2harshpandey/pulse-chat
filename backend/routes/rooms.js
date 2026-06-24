@@ -8,6 +8,8 @@ const { apiLimiter, extractIp, generateDeviceHash, checkPasswordRateLimit, recor
 
 const router = express.Router();
 
+const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const generateUniqueSentence = () => {
   // Simple generator for unique sentences. For production, use a word list.
   const adjs = ['brave', 'calm', 'eager', 'fancy', 'gentle', 'happy', 'jolly', 'kind', 'lively', 'merry', 'nice', 'proud', 'silly', 'tall', 'witty'];
@@ -52,7 +54,8 @@ router.post('/', apiLimiter, async (req, res) => {
       }
       
       // Check if alias is taken (either as an id or alias)
-      const existing = await Room.findOne({ $or: [{ id: new RegExp(`^${alias}$`, 'i') }, { alias: new RegExp(`^${alias}$`, 'i') }] });
+      const safeAlias = escapeRegExp(alias);
+      const existing = await Room.findOne({ $or: [{ id: new RegExp(`^${safeAlias}$`, 'i') }, { alias: new RegExp(`^${safeAlias}$`, 'i') }] });
       if (existing || alias.toLowerCase() === 'me' || alias.toLowerCase() === 'global') {
         return res.status(409).json({ error: 'Room ID is already taken.' });
       }
@@ -100,7 +103,8 @@ router.get('/check-id', apiLimiter, async (req, res) => {
     return res.json({ available: false });
   }
   try {
-    const existing = await Room.findOne({ $or: [{ id: new RegExp(`^${id}$`, 'i') }, { alias: new RegExp(`^${id}$`, 'i') }] });
+    const safeId = escapeRegExp(id);
+    const existing = await Room.findOne({ $or: [{ id: new RegExp(`^${safeId}$`, 'i') }, { alias: new RegExp(`^${safeId}$`, 'i') }] });
     res.json({ available: !existing });
   } catch (err) {
     res.status(500).json({ error: 'Failed to check ID.' });
@@ -181,11 +185,12 @@ router.get('/search', apiLimiter, async (req, res) => {
     const limit = 9;
     const skip = (page - 1) * limit;
 
+    const safeQ = escapeRegExp(q);
     const query = {
       isPrivate: false,
       $or: [
-        { id: new RegExp(`^${q}`, 'i') },
-        { name: new RegExp(q, 'i') }
+        { id: new RegExp(`^${safeQ}`, 'i') },
+        { name: new RegExp(safeQ, 'i') }
       ]
     };
 
@@ -359,7 +364,8 @@ router.put('/admin/roomId', apiLimiter, async (req, res) => {
     }
 
     // Check availability
-    const existing = await Room.findOne({ $or: [{ id: new RegExp(`^${alias}$`, 'i') }, { alias: new RegExp(`^${alias}$`, 'i') }] });
+    const safeAlias = escapeRegExp(alias);
+    const existing = await Room.findOne({ $or: [{ id: new RegExp(`^${safeAlias}$`, 'i') }, { alias: new RegExp(`^${safeAlias}$`, 'i') }] });
     if (existing || alias.toLowerCase() === 'me' || alias.toLowerCase() === 'global') {
       return res.status(409).json({ error: 'Room ID is already taken.' });
     }

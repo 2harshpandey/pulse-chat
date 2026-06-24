@@ -171,6 +171,7 @@ const generateDeviceHash = (components) => {
 // Check if a user is blocked by any fingerprint match
 const isUserBlocked = async (roomId, userId, ip, userAgent, deviceFingerprint) => {
   if (!roomId) roomId = 'me';
+  roomId = String(roomId);
   // Type-guard: reject non-string values to prevent NoSQL injection via query objects
   if (typeof userId !== 'string') return { blocked: false };
 
@@ -197,6 +198,7 @@ const isUserBlocked = async (roomId, userId, ip, userAgent, deviceFingerprint) =
 // Check if login lockdown is active
 const isLoginLocked = async (roomId) => {
   if (!roomId) roomId = 'me';
+  roomId = String(roomId);
   const lockdown = await LoginLockdown.findOne({ roomId, isActive: true }).sort({ createdAt: -1 });
   if (!lockdown) return { locked: false };
 
