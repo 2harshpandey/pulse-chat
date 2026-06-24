@@ -1,6 +1,11 @@
 const mongoose = require('mongoose');
 
 const auditLogSchema = new mongoose.Schema({
+  roomId: {
+    type: String,
+    required: true,
+    default: 'me',
+  },
   type: {
     type: String,
     required: true,
@@ -38,8 +43,8 @@ const auditLogSchema = new mongoose.Schema({
   },
 }, { timestamps: true });
 
-auditLogSchema.index({ type: 1 });
-auditLogSchema.index({ timestamp: -1 });
+auditLogSchema.index({ roomId: 1, type: 1 });
+auditLogSchema.index({ roomId: 1, timestamp: -1 });
 
 const AuditLog = mongoose.model('AuditLog', auditLogSchema);
 

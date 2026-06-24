@@ -7,9 +7,9 @@ const express = require('express');
 const router = express.Router();
 const AuditLog = require('../models/auditLog');
 const TempLink = require('../models/tempLink');
+const Room = require('../models/room');
 const {
-  onlineUsers,
-  loggedInUsers,
+  getRoomState,
   userFingerprints,
 } = require('../state');
 const {
@@ -18,6 +18,9 @@ const {
   generateDeviceHash,
   isUserBlocked,
   isLoginLocked,
+  checkPasswordRateLimit,
+  recordFailedPasswordAttempt,
+  resetPasswordAttempts,
 } = require('../middleware');
 
 // broadcastToAdmins is injected at startup via initRoutes(); stored here.
@@ -25,38 +28,54 @@ let _broadcastToAdmins = () => {};
 const setBroadcast = (broadcastToAdmins) => { _broadcastToAdmins = broadcastToAdmins; };
 
 // --- Client Auth Verification ---
-router.post('/api/auth/verify', authLimiter, async (req, res) => {
-  const { password, username, userId, fingerprint } = req.body;
+router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req, res) => {
+  const { password, username, userId, fingerprint, roomId = 'me' } = req.body;
   const ip = extractIp(req);
   const userAgent = req.headers['user-agent'] || '';
 
+  const { onlineUsers, loggedInUsers } = getRoomState(roomId);
+
   // Check if user is blocked
-  const blockCheck = await isUserBlocked(userId, ip, userAgent, fingerprint);
+  const blockCheck = await isUserBlocked(roomId, userId, ip, userAgent, fingerprint);
   if (blockCheck.blocked) {
     await AuditLog.create({
+      roomId,
       type: 'join_failed_blocked',
       details: { userId, username, reason: blockCheck.reason, blockedUsername: blockCheck.blockedUser?.username },
       ip, userAgent,
     });
-    _broadcastToAdmins('audit_log', { type: 'join_failed_blocked', details: { userId, username, reason: blockCheck.reason }, ip, timestamp: new Date() });
+    _broadcastToAdmins(roomId, 'audit_log', { type: 'join_failed_blocked', details: { userId, username, reason: blockCheck.reason }, ip, timestamp: new Date() });
     return res.status(403).json({ success: false, error: 'You have been blocked from this chat room.' });
   }
 
   // Check login lockdown (but allow already logged-in users)
   if (!loggedInUsers.has(userId)) {
-    const lockCheck = await isLoginLocked();
+    const lockCheck = await isLoginLocked(roomId);
     if (lockCheck.locked) {
       await AuditLog.create({
+        roomId,
         type: 'join_failed_lockdown',
         details: { userId, username },
         ip, userAgent,
       });
-      _broadcastToAdmins('audit_log', { type: 'join_failed_lockdown', details: { userId, username }, ip, timestamp: new Date() });
+      _broadcastToAdmins(roomId, 'audit_log', { type: 'join_failed_lockdown', details: { userId, username }, ip, timestamp: new Date() });
       return res.status(403).json({ success: false, error: 'New logins are temporarily disabled. Please try again later.' });
     }
   }
 
-  if (password && password === process.env.CLIENT_PASSWORD) {
+  let isPasswordValid = false;
+  if (roomId === 'me' && password === process.env.CLIENT_PASSWORD) {
+    isPasswordValid = true;
+  } else if (roomId === 'global') {
+    isPasswordValid = true;
+  } else {
+    const room = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] });
+    if (room && (!room.isPrivate || room.joinPassword === password)) {
+      isPasswordValid = true;
+    }
+  }
+
+  if (isPasswordValid) {
     // If the client sends a username, verify it is not already in use.
     if (username) {
       const normalised = username.trim().toLowerCase();
@@ -64,7 +83,7 @@ router.post('/api/auth/verify', authLimiter, async (req, res) => {
         u => u.username.trim().toLowerCase() === normalised && u.userId !== userId
       );
       if (taken) {
-        await AuditLog.create({ type: 'join_failed_username_taken', details: { userId, username }, ip, userAgent });
+        await AuditLog.create({ roomId, type: 'join_failed_username_taken', details: { userId, username }, ip, userAgent });
         return res.status(409).json({ success: false, error: 'That username is already in use. Please choose a different one.' });
       }
     }
@@ -86,10 +105,12 @@ router.post('/api/auth/verify', authLimiter, async (req, res) => {
     // Track as logged in
     loggedInUsers.set(userId, { userId, username: username?.trim(), loginTime: new Date(), ip, userAgent });
 
+    resetPasswordAttempts(req.passwordRateLimitKey);
     res.status(200).json({ success: true });
   } else {
-    await AuditLog.create({ type: 'join_failed_password', details: { userId, username }, ip, userAgent });
-    _broadcastToAdmins('audit_log', { type: 'join_failed_password', details: { userId, username }, ip, timestamp: new Date() });
+    recordFailedPasswordAttempt(req.passwordRateLimitKey);
+    await AuditLog.create({ roomId, type: 'join_failed_password', details: { userId, username }, ip, userAgent });
+    _broadcastToAdmins(roomId, 'audit_log', { type: 'join_failed_password', details: { userId, username }, ip, timestamp: new Date() });
     res.status(401).json({ success: false, error: 'Incorrect password.' });
   }
 });
@@ -104,18 +125,6 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
     return res.status(400).json({ success: false, error: 'Token, username, and userId are required.' });
   }
 
-  // Check if user is blocked
-  const blockCheck = await isUserBlocked(userId, ip, userAgent, fingerprint);
-  if (blockCheck.blocked) {
-    await AuditLog.create({
-      type: 'join_failed_blocked',
-      details: { userId, username, reason: blockCheck.reason, viaTempLink: true },
-      ip, userAgent,
-    });
-    _broadcastToAdmins('audit_log', { type: 'join_failed_blocked', details: { userId, username, reason: blockCheck.reason }, ip, timestamp: new Date() });
-    return res.status(403).json({ success: false, error: 'You have been blocked from this chat room.' });
-  }
-
   // Validate token format before querying — crypto.randomBytes(32).hex() always produces 64 hex chars
   if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) {
     return res.status(400).json({ success: false, error: 'This link is invalid or has expired.' });
@@ -124,17 +133,32 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
   // Find and validate the temp link — use $eq to prevent NoSQL injection
   const tempLink = await TempLink.findOne({ token: { $eq: token } });
   if (!tempLink) {
-    await AuditLog.create({ type: 'temp_link_expired_attempt', details: { token: token.substring(0, 8) + '...', userId, username }, ip, userAgent });
+    // Cannot audit log without knowing the roomId reliably, but we can return 404
     return res.status(404).json({ success: false, error: 'This link is invalid or has expired.' });
   }
 
+  const roomId = tempLink.roomId;
+  const { onlineUsers, loggedInUsers } = getRoomState(roomId);
+
+  // Check if user is blocked
+  const blockCheck = await isUserBlocked(roomId, userId, ip, userAgent, fingerprint);
+  if (blockCheck.blocked) {
+    await AuditLog.create({
+      roomId,
+      type: 'join_failed_blocked',
+      details: { userId, username, reason: blockCheck.reason, viaTempLink: true },
+      ip, userAgent,
+    });
+    _broadcastToAdmins(roomId, 'audit_log', { type: 'join_failed_blocked', details: { userId, username, reason: blockCheck.reason }, ip, timestamp: new Date() });
+    return res.status(403).json({ success: false, error: 'You have been blocked from this chat room.' });
+  }
   if (tempLink.isRevoked) {
-    await AuditLog.create({ type: 'temp_link_expired_attempt', details: { token: token.substring(0, 8) + '...', userId, username, reason: 'revoked' }, ip, userAgent });
+    await AuditLog.create({ roomId, type: 'temp_link_expired_attempt', details: { token: token.substring(0, 8) + '...', userId, username, reason: 'revoked' }, ip, userAgent });
     return res.status(410).json({ success: false, error: 'This link has been revoked.' });
   }
 
   if (new Date() > tempLink.expiresAt) {
-    await AuditLog.create({ type: 'temp_link_expired_attempt', details: { token: token.substring(0, 8) + '...', userId, username, reason: 'expired' }, ip, userAgent });
+    await AuditLog.create({ roomId, type: 'temp_link_expired_attempt', details: { token: token.substring(0, 8) + '...', userId, username, reason: 'expired' }, ip, userAgent });
     return res.status(410).json({ success: false, error: 'This link has expired.' });
   }
 
@@ -165,20 +189,22 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
   tempLink.usedBy.push({ username: username.trim(), joinedAt: new Date() });
   await tempLink.save();
 
-  await AuditLog.create({ type: 'temp_link_used', details: { token: token.substring(0, 8) + '...', userId, username: username.trim() }, ip, userAgent });
-  _broadcastToAdmins('audit_log', { type: 'temp_link_used', details: { userId, username: username.trim() }, timestamp: new Date() });
+  await AuditLog.create({ roomId, type: 'temp_link_used', details: { token: token.substring(0, 8) + '...', userId, username: username.trim() }, ip, userAgent });
+  _broadcastToAdmins(roomId, 'audit_log', { type: 'temp_link_used', details: { userId, username: username.trim() }, timestamp: new Date() });
 
   // Track as logged in
   loggedInUsers.set(userId, { userId, username: username.trim(), loginTime: new Date(), ip, userAgent, viaTempLink: true });
 
-  res.status(200).json({ success: true });
+  res.status(200).json({ success: true, roomId });
 });
 
 // --- Username Availability Check ---
 // Returns { available: true } if the username is not currently in use by any online user.
 // Accepts optional `userId` to exclude the requesting user's own existing session.
 router.get('/api/users/check-username', authLimiter, (req, res) => {
-  const { username, userId } = req.query;
+  const { username, userId, roomId = 'me' } = req.query;
+  const { onlineUsers } = getRoomState(roomId);
+  
   if (!username || typeof username !== 'string') {
     return res.status(400).json({ error: 'Username is required.' });
   }

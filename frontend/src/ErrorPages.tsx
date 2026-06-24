@@ -24,6 +24,12 @@ const pulseGlow = keyframes`
   50%      { box-shadow: 0 0 30px 10px rgba(59, 130, 246, 0.15); }
 `;
 
+const pulseRipple = keyframes`
+  0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+  70% { box-shadow: 0 0 0 20px rgba(59, 130, 246, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+`;
+
 const shimmer = keyframes`
   0%   { background-position: -200% 0; }
   100% { background-position: 200% 0; }
@@ -365,29 +371,35 @@ const ThemeToggle = styled.button`
 
 const PulseLogoMini = styled.div`
   position: fixed;
-  top: 1.5rem;
-  left: 1.5rem;
+  top: 2rem;
+  left: 4rem;
   z-index: 100;
-  font-size: 1.1rem;
+  @media (max-width: 768px) {
+    top: 1.5rem;
+    left: 2rem;
+  }
+  
+  font-size: 1.75rem;
   font-weight: 800;
-  letter-spacing: -0.5px;
-  color: var(--text-heading);
   cursor: pointer;
-  transition: color 0.2s ease;
+  text-decoration: none;
+  letter-spacing: -1px;
+  background: linear-gradient(135deg, #60a5fa, #a78bfa, #f472b6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.5rem;
   user-select: none;
-
-  &:hover {
-    color: var(--accent-blue);
-  }
-
-  span {
-    background: linear-gradient(135deg, var(--accent-blue), var(--accent-indigo));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+  
+  &::before {
+    content: '';
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #3b82f6;
+    animation: ${pulseRipple} 2s infinite;
   }
 `;
 
@@ -584,6 +596,11 @@ const ErrorPage: React.FC<ErrorPageProps> = ({
     icon: Ghost404,
   };
 
+  useEffect(() => {
+    document.body.classList.add('hide-global-home-btn');
+    return () => document.body.classList.remove('hide-global-home-btn');
+  }, []);
+
   const title = customTitle || config.title;
   const description = customDescription || config.description;
   const IconComponent = config.icon;
@@ -620,7 +637,7 @@ const ErrorPage: React.FC<ErrorPageProps> = ({
       <BackgroundEffects variant={config.variant} />
 
       <PulseLogoMini onClick={handleGoHome}>
-        <span>Pulse</span> Chat
+        Pulse Chat
       </PulseLogoMini>
 
       <ThemeToggle onClick={toggleTheme} title="Toggle theme" aria-label="Toggle theme">

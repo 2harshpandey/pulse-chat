@@ -9,7 +9,8 @@ export const GlobalStyle = createGlobalStyle`
   * { -webkit-tap-highlight-color: transparent; }
   ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
+  body.is-scrolling ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); }
   ::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
 `;
 
@@ -339,6 +340,11 @@ export const HeaderTitle = styled.h1`
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
+  .hide-on-narrow {
+    @media (max-width: 480px) {
+      display: none;
+    }
+  }
   img {
     height: 44px;
     width: auto;
@@ -389,6 +395,94 @@ export const SoundToggleIcon = styled.svg<{ $enabled: boolean; $animate: boolean
     transition: opacity 0.2s ease;
   }
 `;
+export const PinnedBannerContainer = styled.div`
+  background: rgba(30, 41, 59, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border-primary);
+  padding: 0.5rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  cursor: pointer;
+  z-index: 40;
+  transition: background-color 0.2s ease;
+  flex-shrink: 0;
+  user-select: none;
+  -webkit-user-select: none;
+
+  &:hover {
+    background: rgba(30, 41, 59, 0.95);
+  }
+`;
+
+export const PinnedBannerIconWrapper = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--accent-blue);
+`;
+
+export const PinnedCycleIndicator = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  height: 14px;
+  justify-content: center;
+`;
+
+export const PinnedCycleSegment = styled.div<{ $active: boolean }>`
+  width: 3px;
+  flex-grow: 1;
+  background-color: ${props => props.$active ? 'var(--accent-blue)' : 'rgba(148, 163, 184, 0.3)'};
+  border-radius: 2px;
+  transition: background-color 0.2s ease;
+`;
+
+export const PinnedBannerContentWrapper = styled.div`
+  flex-grow: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+`;
+
+export const PinnedBannerLabel = styled.span`
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--accent-blue);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+`;
+
+export const PinnedBannerText = styled.span`
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+export const MessagePinIconWrapper = styled.div<{ $sender?: string }>`
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: ${props => props.$sender === 'me' ? '#FBBF24' : 'var(--accent-blue)'};
+  color: ${props => props.$sender === 'me' ? '#1E3A8A' : 'white'};
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  z-index: 2;
+  
+  svg {
+    width: 10px;
+    height: 10px;
+  }
+`;
+
 export const LayoutContainer = styled.div`
   display: flex;
   flex-grow: 1;
@@ -531,7 +625,7 @@ export const MobileReactionPicker = styled.div<{ $sender: 'me' | 'other' }>`
 `;
 export const MessageBubble = styled.div<{ $sender: string; $messageType: string; $isUploading?: boolean; $uploadError?: boolean; }>`
   position: relative;
-  max-width: ${props => props.$messageType === 'text' ? '62%' : 'min(84vw, 356px)'};
+  max-width: ${props => props.$messageType === 'text' ? '62%' : props.$messageType === 'file' ? 'min(84vw, 296px)' : 'min(84vw, 356px)'};
     padding: ${props => props.$messageType === 'text' ? '0.24rem 0.48rem 0.12rem' : '0.28rem 0.34rem'};
   border-radius: 0.82rem;
   background-color: ${props => props.$sender === 'me' ? '#3B82F6' : 'var(--bg-message-other)'};
@@ -546,6 +640,7 @@ export const MessageBubble = styled.div<{ $sender: string; $messageType: string;
   border: ${props => props.$sender === 'me' ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(15,23,42,0.08)'};
   will-change: auto;
   align-self: ${props => props.$sender === 'me' ? 'flex-end' : 'flex-start'};
+  margin-right: ${props => props.$sender === 'me' ? '8px' : '0'};
 
   @media (max-width: 768px) {
     max-width: ${props => props.$messageType === 'text' ? '68%' : 'min(76vw, 272px)'};
@@ -751,7 +846,7 @@ export const PlusMenuButton = styled.button<{ $isOpen?: boolean }>`
     width: 22px;
     height: 22px;
     stroke: currentColor;
-    stroke-width: 2;
+    strokeWidth: 2;
     transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
     transform: ${props => props.$isOpen ? 'rotate(45deg)' : 'rotate(0deg)'};
   }
@@ -951,7 +1046,9 @@ export const FileAttachmentCard = styled.div`
   color: inherit;
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-  max-width: 280px;
+  width: 100%;
+  box-sizing: border-box;
+  max-width: 320px;
   animation: ${subtleSlideUp} 0.3s ease-out forwards;
   &:hover { 
     background: rgba(0,0,0,0.13); 
@@ -989,7 +1086,10 @@ export const FileAttachmentDetails = styled.span`
 
 export const MediaContent = styled.div`
   user-select: none;
-  p { margin-bottom: 0.5rem; }
+  p { 
+    margin-bottom: 0.5rem; 
+    padding: 0 0.2rem;
+  }
   p + div, p + img, p + video { margin-top: 0.5rem; }
 `;
 
@@ -1387,7 +1487,7 @@ export const FilePreviewNoPreview = styled.div`
   padding: 40px;
   background: rgba(0,0,0,0.2);
   border-radius: 16px;
-  svg { width: 72px; height: 72px; stroke: rgba(255,255,255,0.35); stroke-width: 1.2; }
+  svg { width: 72px; height: 72px; stroke: rgba(255,255,255,0.35); strokeWidth: 1.2; }
   p { font-size: 1rem; opacity: 0.6; }
   span { font-size: 0.82rem; opacity: 0.4; text-transform: uppercase; }
 `;
@@ -1505,9 +1605,9 @@ export const LightboxCloseButton = styled.button`
     height: 20px;
     fill: none;
     stroke: currentColor;
-    stroke-width: 2.4;
-    stroke-linecap: round;
-    stroke-linejoin: round;
+    strokeWidth: 2.4;
+    strokeLinecap: round;
+    strokeLinejoin: round;
   }
 
   @media (max-width: 768px) {
@@ -1596,9 +1696,9 @@ export const LightboxZoomButton = styled.button`
     height: 19px;
     fill: none;
     stroke: currentColor;
-    stroke-width: 2.2;
-    stroke-linecap: round;
-    stroke-linejoin: round;
+    strokeWidth: 2.2;
+    strokeLinecap: round;
+    strokeLinejoin: round;
   }
 `;
 export const DeleteMenu = styled.div`
@@ -1804,9 +1904,9 @@ export const ClearChatButton = styled.button`
     width: 20px;
     height: 20px;
     stroke: currentColor;
-    stroke-width: 2;
-    stroke-linecap: round;
-    stroke-linejoin: round;
+    strokeWidth: 2;
+    strokeLinecap: round;
+    strokeLinejoin: round;
     transition: transform 0.3s ease;
   }
   &:hover svg { transform: rotate(10deg) scale(1.1); }
@@ -1843,9 +1943,9 @@ export const LogoutButton = styled.button`
     width: 20px;
     height: 20px;
     stroke: white;
-    stroke-width: 2;
-    stroke-linecap: round;
-    stroke-linejoin: round;
+    strokeWidth: 2;
+    strokeLinecap: round;
+    strokeLinejoin: round;
     transition: transform 0.3s ease;
   }
   &:hover svg { transform: translateX(3px); }
@@ -2446,7 +2546,7 @@ export const ReportButton = styled(SendButton)`
 `;
 
 export const ConfirmationModal = styled.div`
-  position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 100;
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 10000;
   animation: ${reactionsModalFadeIn} 0.2s ease-out forwards;
 `;
 
@@ -2978,14 +3078,14 @@ export const DownloadProgressRing = styled.div<{ $progress: number; $visible: bo
   circle.track {
     fill: none;
     stroke: rgba(255,255,255,0.2);
-    stroke-width: 3;
+    strokeWidth: 3;
   }
 
   circle.progress {
     fill: none;
     stroke: #3b82f6;
-    stroke-width: 3;
-    stroke-linecap: round;
+    strokeWidth: 3;
+    strokeLinecap: round;
     stroke-dasharray: 100;
     stroke-dashoffset: ${p => 100 - (p.$progress * 100)};
     transition: stroke-dashoffset 0.15s linear;
@@ -3079,7 +3179,7 @@ export const ScrollToBottomButton = styled.button<{ $isVisible: boolean }>`
     width: 24px;
     height: 24px;
     stroke: var(--text-secondary);
-    stroke-width: 2.5;
+    strokeWidth: 2.5;
     animation: ${props => props.$isVisible ? scrollBtnBounce : 'none'} 2s ease-in-out infinite;
   }
 
@@ -3140,4 +3240,64 @@ export const NewMessagesBadge = styled.span<{ $isVisible: boolean }>`
     padding: 0 5px;
     font-size: 0.58rem;
   }
+`;
+
+export const DiscardDialog = styled.div`
+  width: min(90vw, 380px);
+  background: var(--bg-elevated);
+  border-radius: 20px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  animation: ${modalSlideUp} 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.2), 0 4px 16px rgba(0,0,0,0.08);
+  border: 1px solid var(--border-primary);
+  [data-theme='dark'] & {
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4), 0 4px 16px rgba(0,0,0,0.25);
+  }
+`;
+
+export const DiscardTitle = styled.h3`
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-heading);
+  text-align: center;
+`;
+
+export const DiscardActions = styled.div`
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 8px;
+`;
+
+export const DiscardBtnCancel = styled.button`
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-secondary);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 10px 24px;
+  border-radius: 12px;
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  &:hover { background: var(--bg-hover); transform: translateY(-1px); }
+  &:active { transform: scale(0.96); }
+`;
+
+export const DiscardBtnConfirm = styled.button`
+  background: linear-gradient(135deg, #EF4444, #DC2626);
+  color: white;
+  border: none;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 10px 24px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25);
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  &:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(239, 68, 68, 0.35); filter: brightness(1.1); }
+  &:active { transform: scale(0.96); }
 `;

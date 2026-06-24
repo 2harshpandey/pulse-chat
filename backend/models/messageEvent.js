@@ -1,6 +1,11 @@
 const mongoose = require('mongoose');
 
 const messageEventSchema = new mongoose.Schema({
+  roomId: {
+    type: String,
+    required: true,
+    default: 'me',
+  },
   type: {
     type: String,
     required: true,
@@ -20,6 +25,8 @@ const messageEventSchema = new mongoose.Schema({
   username: { type: String, required: true },
   timestamp: { type: Date, required: true },
 }, { timestamps: true });
+
+messageEventSchema.index({ roomId: 1, createdAt: -1 });
 
 const MessageEvent = mongoose.model('MessageEvent', messageEventSchema);
 

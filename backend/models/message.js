@@ -7,6 +7,7 @@ const reactionSchema = new mongoose.Schema({
 
 const messageSchema = new mongoose.Schema({
   id: { type: String, required: true, unique: true },
+  roomId: { type: String, required: true, default: 'me' },
   userId: { type: String, required: true },
   username: { type: String, required: true },
   
@@ -24,6 +25,10 @@ const messageSchema = new mongoose.Schema({
     type: Object,
     default: null
   },
+  pinned: {
+    type: Object,
+    default: null // { pinnedAt: Date, expiresAt: Date | null }
+  },
   reactions: {
     type: Map,
     of: [reactionSchema],
@@ -31,7 +36,7 @@ const messageSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Supports fast reverse-chronological pagination for chat history.
-messageSchema.index({ createdAt: -1 });
+messageSchema.index({ roomId: 1, createdAt: -1 });
 
 const Message = mongoose.model('Message', messageSchema);
 

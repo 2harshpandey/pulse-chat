@@ -1,6 +1,11 @@
 const mongoose = require('mongoose');
 
 const tempLinkSchema = new mongoose.Schema({
+  roomId: {
+    type: String,
+    required: true,
+    default: 'me',
+  },
   token: {
     type: String,
     required: true,
@@ -31,6 +36,7 @@ const tempLinkSchema = new mongoose.Schema({
 
 // Auto-expire documents 24 hours after expiry for cleanup
 tempLinkSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 86400 });
+tempLinkSchema.index({ roomId: 1, createdAt: -1 });
 
 const TempLink = mongoose.model('TempLink', tempLinkSchema);
 

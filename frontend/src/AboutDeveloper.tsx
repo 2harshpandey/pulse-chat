@@ -384,9 +384,12 @@ const AboutDeveloper: React.FC = () => {
     existing?.remove();
     document.head.appendChild(script);
 
+    document.body.classList.add('hide-global-home-btn');
+
     return () => {
       document.title = previousTitle;
       script.remove();
+      document.body.classList.remove('hide-global-home-btn');
     };
   }, [jsonLd]);
 

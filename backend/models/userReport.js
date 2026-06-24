@@ -1,6 +1,11 @@
 const mongoose = require('mongoose');
 
 const userReportSchema = new mongoose.Schema({
+  roomId: {
+    type: String,
+    required: true,
+    default: 'me',
+  },
   reporterUserId: {
     type: String,
     required: true,
@@ -84,8 +89,8 @@ const userReportSchema = new mongoose.Schema({
   },
 }, { timestamps: true });
 
-userReportSchema.index({ reportedUserId: 1, reportedAt: -1 });
-userReportSchema.index({ reporterUserId: 1, reportedAt: -1 });
+userReportSchema.index({ roomId: 1, reportedUserId: 1, reportedAt: -1 });
+userReportSchema.index({ roomId: 1, reporterUserId: 1, reportedAt: -1 });
 
 const UserReport = mongoose.model('UserReport', userReportSchema);
 

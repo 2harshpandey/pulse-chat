@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import styled, { keyframes } from 'styled-components';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { UserProfile } from './UserContext';
 import { useTheme } from './ThemeContext';
 
@@ -153,8 +153,8 @@ const ThemeToggle = styled.button`
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  border: 1px solid var(--border-primary);
-  background: var(--bg-elevated);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: transparent;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -164,17 +164,66 @@ const ThemeToggle = styled.button`
 
   &:hover {
     transform: scale(1.15);
-    border-color: var(--accent-blue);
-    box-shadow: 0 0 16px rgba(59, 130, 246, 0.2), 0 0 0 3px rgba(59,130,246,0.08);
   }
   &:active { transform: scale(0.9); }
 
   svg {
-    width: 18px;
-    height: 18px;
+    width: 22px;
+    height: 22px;
     transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
   &:hover svg { transform: rotate(30deg); }
+`;
+
+const InfoButton = styled.div`
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  position: relative;
+  
+  &:hover {
+    transform: translateY(-2px);
+    color: var(--text-primary);
+    background: var(--surface-color, rgba(255, 255, 255, 0.05));
+  }
+`;
+
+const Tooltip = styled.div<{ $visible: boolean }>`
+  position: absolute;
+  top: 0;
+  left: calc(100% + 20px);
+  width: 280px;
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-primary);
+  padding: 1rem;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text-primary);
+  opacity: ${props => props.$visible ? 1 : 0};
+  visibility: ${props => props.$visible ? 'visible' : 'hidden'};
+  transform: ${props => props.$visible ? 'translateX(0)' : 'translateX(-10px)'};
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 100;
+  box-shadow: 0 10px 25px var(--shadow-color);
+  text-align: left;
+  
+  @media (max-width: 768px) {
+    top: calc(100% + 10px);
+    left: auto;
+    right: 0;
+    transform: ${props => props.$visible ? 'translateY(0)' : 'translateY(-10px)'};
+  }
 `;
 
 const BrandSection = styled.div`
@@ -234,9 +283,9 @@ const HeartbeatSvg = styled.svg`
   path {
     fill: none;
     stroke: var(--accent-indigo);
-    stroke-width: 2.5;
-    stroke-linecap: round;
-    stroke-linejoin: round;
+    strokeWidth: 2.5;
+    strokeLinecap: round;
+    strokeLinejoin: round;
     stroke-dasharray: 180;
     animation: ${drawLine} 1.5s ease-out forwards;
     filter: drop-shadow(0 0 6px rgba(99, 102, 241, 0.25));
@@ -368,169 +417,7 @@ const SubmitBtn = styled.button<{ $loading?: boolean }>`
   }
 `;
 
-const QuickLinks = styled.div`
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 0.75rem;
-  margin-top: 0.85rem;
-`;
 
-const QuickLinkButton = styled.a`
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.55rem;
-  min-height: 48px;
-  padding: 0.85rem 1rem;
-  width: 100%;
-  border-radius: 12px;
-  border: 1px solid var(--border-primary);
-  background: linear-gradient(135deg, rgba(255,255,255,0.95), rgba(241,245,249,0.95));
-  color: var(--text-heading);
-  text-decoration: none;
-  font-weight: 800;
-  box-shadow: var(--shadow-sm);
-  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
-
-  [data-theme='dark'] & {
-    background: linear-gradient(135deg, rgba(30,41,59,0.95), rgba(15,23,42,0.95));
-  }
-
-  &:hover {
-    transform: translateY(-3px);
-    border-color: var(--accent-blue);
-    box-shadow: 0 14px 28px rgba(59, 130, 246, 0.18);
-  }
-
-  &:active {
-    transform: translateY(-1px) scale(0.99);
-  }
-
-  svg {
-    width: 18px;
-    height: 18px;
-    flex-shrink: 0;
-  }
-`;
-
-const QuickLinkInternal = styled(Link)`
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.55rem;
-  min-height: 48px;
-  padding: 0.85rem 1rem;
-  border-radius: 12px;
-  border: 1px solid rgba(79, 70, 229, 0.24);
-  background: linear-gradient(135deg, rgba(79, 70, 229, 0.14), rgba(59, 130, 246, 0.14));
-  color: var(--text-heading);
-  text-decoration: none;
-  font-weight: 800;
-  box-shadow: var(--shadow-sm);
-  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
-
-  [data-theme='dark'] & {
-    background: linear-gradient(135deg, rgba(79, 70, 229, 0.22), rgba(59, 130, 246, 0.18));
-  }
-
-  &:hover {
-    transform: translateY(-3px);
-    border-color: var(--accent-indigo);
-    box-shadow: 0 14px 28px rgba(79, 70, 229, 0.2);
-  }
-
-  &:active {
-    transform: translateY(-1px) scale(0.99);
-  }
-
-  svg {
-    width: 18px;
-    height: 18px;
-    flex-shrink: 0;
-  }
-`;
-
-const infoSpin = keyframes`
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
-`;
-
-const infoPulse = keyframes`
-  0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.35); }
-  70% { box-shadow: 0 0 0 10px rgba(99, 102, 241, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); }
-`;
-
-const DeveloperInfoButton = styled(Link)`
-  position: relative;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: 1px solid var(--border-primary);
-  background: var(--bg-elevated);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-heading);
-  text-decoration: none;
-  box-shadow: var(--shadow-sm);
-  transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
-  animation: ${infoPulse} 2.8s ease-in-out infinite;
-
-  &::before {
-    content: '';
-    position: absolute;
-    inset: -2px;
-    border-radius: 50%;
-    background: conic-gradient(from 0deg, rgba(99,102,241,0.9), rgba(59,130,246,0.2), rgba(99,102,241,0.9));
-    opacity: 0.65;
-    animation: ${infoSpin} 8s linear infinite;
-    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
-    mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
-  }
-
-  &:hover {
-    transform: translateY(-2px) scale(1.03);
-    border-color: var(--accent-indigo);
-    box-shadow: 0 12px 24px rgba(59, 130, 246, 0.2);
-  }
-
-  &:active {
-    transform: translateY(0) scale(0.98);
-  }
-
-  &::after {
-    content: attr(data-tooltip);
-    position: absolute;
-    right: 0;
-    top: calc(100% + 8px);
-    background: var(--bg-elevated);
-    color: var(--text-primary);
-    border: 1px solid var(--border-primary);
-    border-radius: 10px;
-    padding: 0.35rem 0.55rem;
-    font-size: 0.72rem;
-    font-weight: 600;
-    white-space: nowrap;
-    opacity: 0;
-    transform: translateY(-6px);
-    pointer-events: none;
-    transition: opacity 0.2s ease, transform 0.2s ease;
-    box-shadow: 0 10px 25px rgba(0,0,0,0.12);
-  }
-
-  &:hover::after {
-    opacity: 1;
-    transform: translateY(0);
-  }
-
-  svg {
-    width: 18px;
-    height: 18px;
-    position: relative;
-    z-index: 1;
-  }
-`;
 
 const ErrorText = styled.p`
   color: var(--accent-red);
@@ -556,13 +443,18 @@ const SecuredLine = styled.div`
 interface AuthProps {
   onAuthSuccess: (profile: UserProfile) => void;
   tempToken?: string | null;
+  roomId?: string;
 }
 
-const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken }) => {
+const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken, roomId = 'me' }) => {
   const { isDark, toggleTheme } = useTheme();
-  const [password, setPassword] = useState('');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const routerState = location.state as { autoJoin?: boolean, username?: string, password?: string } | null;
+
+  const [password, setPassword] = useState(routerState?.password || '');
   const [showPw, setShowPw] = useState(false);
-  const [username, setUsername] = useState(() => localStorage.getItem('pulseUsername') || '');
+  const [username, setUsername] = useState(() => routerState?.username || localStorage.getItem(`pulseUsername_${roomId}`) || '');
   const [error, setError] = useState(() => {
     const pending = sessionStorage.getItem('authError');
     if (pending) { sessionStorage.removeItem('authError'); return pending; }
@@ -570,14 +462,39 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken }) => {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [usernameFocused, setUsernameFocused] = useState(false);
+  const [isTempLink, setIsTempLink] = useState(!!tempToken);
+  const [requiresPassword, setRequiresPassword] = useState(true);
   const [passwordFocused, setPasswordFocused] = useState(false);
   const passwordInputRef = useRef<HTMLInputElement>(null);
+  const [showInfo, setShowInfo] = useState(false);
+  const [roomDescription, setRoomDescription] = useState('');
 
-  const isTempLink = !!tempToken;
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token') || tempToken;
+    if (token) {
+      setIsTempLink(true);
+      setRequiresPassword(false);
+    } else if (roomId === 'global') {
+      setRequiresPassword(false);
+    } else if (roomId && roomId !== 'me') {
+      const apiBase = (import.meta.env.REACT_APP_API_URL || '').replace(/\/$/, '');
+      fetch(`${apiBase}/api/rooms/${roomId}/meta`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.id && data.id !== roomId) {
+            navigate(`/room/${data.id}`, { replace: true, state: location.state });
+            return;
+          }
+          if (data && typeof data.requiresPassword === 'boolean') {
+            setRequiresPassword(data.requiresPassword);
+          }
+          if (data && data.description) setRoomDescription(data.description);
+        })
+        .catch(console.error);
+    }
+  }, [roomId, tempToken]);
 
-  // Keyboard-aware scrolling for touch devices.
-  // When the virtual keyboard opens the VisualViewport shrinks — we scroll
-  // the focused input into view so it isn't hidden behind the keyboard.
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
@@ -593,8 +510,10 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken }) => {
     return () => vv.removeEventListener('resize', onResize);
   }, []);
 
+  const [autoJoinAttempted, setAutoJoinAttempted] = useState(false);
+
   const handleLogin = async () => {
-    if (!isTempLink && !password) { setError('Please enter a password.'); return; }
+    if (!isTempLink && roomId === 'me' && !password) { setError('Please enter a password.'); return; }
     if (!username.trim()) { setError('Please enter a username.'); return; }
     if (username.length > 30) { setError('Username cannot exceed 30 characters.'); return; }
     setIsLoading(true);
@@ -604,14 +523,24 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken }) => {
       const fingerprint = collectFingerprint();
 
       if (isTempLink) {
+        let token = new URLSearchParams(window.location.search).get('token') || tempToken || '';
+        token = token.trim();
         const resp = await fetch(`${apiBase}/api/auth/verify-temp`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: tempToken, username: username.trim(), userId: getUserId(), fingerprint }),
+          body: JSON.stringify({ token, username: username.trim(), userId: getUserId(), fingerprint, roomId }),
         });
         if (resp.ok) {
+          const data = await resp.json();
           localStorage.setItem('pulseUsername', username.trim());
-          onAuthSuccess({ userId: getUserId(), username: username.trim() });
+          localStorage.setItem(`pulseUsername_${roomId}`, username.trim());
+          if (data.roomId) {
+            localStorage.setItem('pulseRoomId', data.roomId);
+          }
+          if (routerState?.autoJoin) {
+            navigate(location.pathname, { replace: true, state: {} });
+          }
+          onAuthSuccess({ userId: getUserId(), username: username.trim(), roomId: data.roomId });
         } else {
           const d = await resp.json().catch(() => ({}));
           setError(d.error || 'This link is invalid or has expired.');
@@ -620,10 +549,14 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken }) => {
         const resp = await fetch(`${apiBase}/api/auth/verify`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password, username: username.trim(), userId: getUserId(), fingerprint }),
+          body: JSON.stringify({ password, username: username.trim(), userId: getUserId(), fingerprint, roomId }),
         });
         if (resp.ok) {
           localStorage.setItem('pulseUsername', username.trim());
+          localStorage.setItem(`pulseUsername_${roomId}`, username.trim());
+          if (routerState?.autoJoin) {
+            navigate(location.pathname, { replace: true, state: {} });
+          }
           onAuthSuccess({ userId: getUserId(), username: username.trim() });
         } else {
           const d = await resp.json().catch(() => ({}));
@@ -639,9 +572,16 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken }) => {
     }
   };
 
+  useEffect(() => {
+    if (routerState?.autoJoin && !autoJoinAttempted && username) {
+      setAutoJoinAttempted(true);
+      handleLogin();
+    }
+  }, [routerState, autoJoinAttempted, username]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
-      if (usernameFocused && !isTempLink && !password) {
+      if (usernameFocused && !isTempLink && !password && requiresPassword) {
         e.preventDefault();
         focusPasswordInput();
       } else {
@@ -660,30 +600,38 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken }) => {
     }
   }, []);
 
+  if (routerState?.autoJoin && (isLoading || !autoJoinAttempted)) {
+    return (
+      <>
+        <AnimatedBg>
+          <Orb $color="rgba(99,102,241,0.3)"  $darkColor="rgba(99,102,241,0.25)" $size={500} $top="15%" $left="-10%"  $anim={float1} />
+          <Orb $color="rgba(59,130,246,0.25)"  $darkColor="rgba(59,130,246,0.2)"  $size={400} $top="65%"  $left="60%"   $anim={float2} />
+          <Orb $color="rgba(236,72,153,0.18)"  $darkColor="rgba(236,72,153,0.15)" $size={350} $top="30%"  $left="75%"   $anim={float3} />
+        </AnimatedBg>
+        <PageWrapper style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', color: isDark ? '#f1f5f9' : '#1e293b', zIndex: 10 }}>
+            <div style={{ width: '40px', height: '40px', border: '3px solid rgba(99,102,241,0.3)', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+            <p style={{ fontWeight: 600 }}>Joining Room...</p>
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        </PageWrapper>
+      </>
+    );
+  }
+
   return (
     <>
       <AnimatedBg>
-        <Orb $color="rgba(99,102,241,0.3)"  $darkColor="rgba(99,102,241,0.25)" $size={500} $top="-10%" $left="-10%"  $anim={float1} />
-        <Orb $color="rgba(59,130,246,0.25)"  $darkColor="rgba(59,130,246,0.2)"  $size={400} $top="60%"  $left="60%"   $anim={float2} />
-        <Orb $color="rgba(236,72,153,0.18)"  $darkColor="rgba(236,72,153,0.15)" $size={350} $top="20%"  $left="75%"   $anim={float3} />
+        <Orb $color="rgba(99,102,241,0.3)"  $darkColor="rgba(99,102,241,0.25)" $size={500} $top="15%" $left="-10%"  $anim={float1} />
+        <Orb $color="rgba(59,130,246,0.25)"  $darkColor="rgba(59,130,246,0.2)"  $size={400} $top="65%"  $left="60%"   $anim={float2} />
+        <Orb $color="rgba(236,72,153,0.18)"  $darkColor="rgba(236,72,153,0.15)" $size={350} $top="30%"  $left="75%"   $anim={float3} />
       </AnimatedBg>
 
       <PageWrapper>
         <FormContainer>
           <GlassCard $hasError={!!error}>
             <TopBar>
-              <DeveloperInfoButton
-                to="/about-developer"
-                aria-label="Know about developer"
-                title="Know about developer"
-                data-tooltip="Know about developer"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <circle cx="12" cy="12" r="8.5" />
-                  <path d="M12 16v-4" />
-                  <path d="M12 8h.01" />
-                </svg>
-              </DeveloperInfoButton>
+
               <ThemeToggle onClick={toggleTheme} title={isDark ? 'Switch to light mode' : 'Switch to dark mode'} aria-label="Toggle theme">
                 {isDark ? (
                   <svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -691,6 +639,21 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken }) => {
                   <svg viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
                 )}
               </ThemeToggle>
+              {roomDescription && (
+                <InfoButton 
+                   onMouseEnter={() => setShowInfo(true)} 
+                   onMouseLeave={() => setShowInfo(false)}
+                   onClick={() => setShowInfo(!showInfo)}
+                   aria-label="Room Information"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18, color: isDark ? '#94a3b8' : '#64748b' }}>
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="16" x2="12" y2="12"></line>
+                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                  </svg>
+                  <Tooltip $visible={showInfo}>{roomDescription}</Tooltip>
+                </InfoButton>
+              )}
             </TopBar>
 
             <BrandSection>
@@ -724,16 +687,19 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken }) => {
                 placeholder="Enter your username"
                 autoComplete="username"
                 value={username}
-                onChange={e => setUsername(e.target.value)}
+                onChange={e => {
+                  setUsername(e.target.value);
+                  if (error) setError('');
+                }}
                 onKeyDown={handleKeyDown}
                 onFocus={() => setUsernameFocused(true)}
                 onBlur={() => setUsernameFocused(false)}
                 maxLength={30}
-                autoFocus
+                autoFocus={!window.matchMedia('(pointer: coarse)').matches}
               />
             </InputGroup>
 
-            {!isTempLink && (
+            {requiresPassword && (
               <InputGroup $focused={passwordFocused}>
                 <InputIcon $focused={passwordFocused}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
@@ -743,10 +709,13 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken }) => {
                   id="password"
                   name="password"
                   type={showPw ? 'text' : 'password'}
-                  placeholder="Password"
+                  placeholder={roomId === 'me' ? "Password" : "Password (if any)"}
                   autoComplete="current-password"
                   value={password}
-                  onChange={e => setPassword(e.target.value)}
+                  onChange={e => {
+                    setPassword(e.target.value);
+                    if (error) setError('');
+                  }}
                   onKeyDown={handleKeyDown}
                   onFocus={() => setPasswordFocused(true)}
                   onBlur={() => setPasswordFocused(false)}
@@ -778,12 +747,7 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken }) => {
               {isLoading ? 'Connecting...' : 'Join Chat'}
             </SubmitBtn>
 
-            <QuickLinks aria-label="Quick access links">
-              <QuickLinkButton href="https://github.com/2harshpandey/pulse-chat" target="_blank" rel="noopener noreferrer" aria-label="Open the Pulse Chat GitHub repository">
-                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.42-4.04-1.42-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.21.08 1.85 1.24 1.85 1.24 1.07 1.84 2.81 1.31 3.5 1 .11-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.66.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.63-5.49 5.93.43.37.81 1.1.81 2.22v3.29c0 .32.22.69.83.57A12 12 0 0 0 12 .5Z" /></svg>
-                GitHub Repo
-              </QuickLinkButton>
-            </QuickLinks>
+
 
             {error && <ErrorText>{error}</ErrorText>}
 

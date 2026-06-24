@@ -5,6 +5,7 @@ import { clearCachedMediaForUser } from './mediaCache';
 export interface UserProfile {
   userId: string;
   username: string;
+  roomId?: string;
   isTyping?: boolean; // Added for the typing indicator
   activity?: 'typing' | 'gif_selecting';
 }
@@ -21,8 +22,9 @@ const initialProfile = (): UserProfile | null => {
   if (typeof window !== 'undefined') {
     const userId = localStorage.getItem('pulseUserId');
     const username = localStorage.getItem('pulseUsername');
+    const roomId = localStorage.getItem('pulseRoomId') || undefined;
     if (userId && username) {
-      return { userId, username };
+      return { userId, username, roomId };
     }
   }
   return null;
@@ -43,6 +45,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       void clearCachedMediaForUser(userId);
     }
     localStorage.removeItem('pulseUsername');
+    localStorage.removeItem('pulseRoomId');
     sessionStorage.removeItem('chatCleared'); // Reset the chat clear flag on logout
     setProfile(null);
   };

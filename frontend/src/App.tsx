@@ -1,11 +1,61 @@
 import React from 'react';
 import styled, { keyframes } from 'styled-components';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, useLocation, useParams, useNavigate } from 'react-router-dom';
+import Home from './Home';
+import Rooms from './Rooms';
 import Chat from './Chat';
 import Admin from './Admin';
 import AboutDeveloper from './AboutDeveloper';
 import { GlobalStyle } from './chat/ChatStyledComponents';
 import { NotFoundPage, ForbiddenPage, ServerErrorPage, TimeoutPage, RateLimitPage, MaintenancePage } from './ErrorPages';
+
+const GlobalHomeButton = styled.button`
+  position: fixed;
+  top: 1.5rem;
+  left: 1.5rem;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(30, 41, 59, 0.7);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 9999;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+
+  &:hover {
+    transform: scale(1.08);
+    background: rgba(51, 65, 85, 0.9);
+    border-color: rgba(59, 130, 246, 0.4);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+  }
+
+  svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  body.hide-global-home-btn & {
+    display: none;
+  }
+
+  @media (max-width: 768px) {
+    top: 1rem;
+    left: 1rem;
+    width: 40px;
+    height: 40px;
+    
+    svg {
+      width: 18px;
+      height: 18px;
+    }
+  }
+`;
 
 // ─── Premium crash-fallback components ────────────────────────────────────
 const fallbackShimmer = keyframes`
@@ -103,7 +153,7 @@ class RouteErrorBoundary extends React.Component<
               </div>
             )}
           </FallbackDesc>
-          <FallbackButton href="/">← Go to Chat</FallbackButton>
+          <FallbackButton href="/">← Go to Home</FallbackButton>
         </FallbackPage>
       );
     }
@@ -114,12 +164,26 @@ class RouteErrorBoundary extends React.Component<
 // Wrapper so the boundary resets every time the pathname changes.
 function AppRoutes() {
   const location = useLocation();
+  const navigate = useNavigate();
+
   return (
-    <RouteErrorBoundary key={location.pathname}>
+    <RouteErrorBoundary key={location.pathname.split('/')[1] || 'home'}>
+      {location.pathname !== '/' && (
+        <GlobalHomeButton onClick={() => navigate('/')} aria-label="Go to Home" title="Go to Home">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+            <polyline points="9 22 9 12 15 12 15 22"></polyline>
+          </svg>
+        </GlobalHomeButton>
+      )}
       <Routes>
-        <Route path="/" element={<Chat />} />
-        <Route path="/join/:token" element={<Chat />} />
+        <Route path="/" element={<Home />} />
+        <Route path="/room" element={<Rooms />} />
+        <Route path="/room/:roomId" element={<Chat />} />
+        <Route path="/me" element={<Chat isMe={true} />} />
+        <Route path="/join/:token" element={<Chat isTempLink={true} />} />
         <Route path="/admin" element={<Admin />} />
+        <Route path="/admin/:roomId" element={<Admin />} />
         <Route path="/about-developer" element={<AboutDeveloper />} />
         {/* Explicit error pages */}
         <Route path="/error/403" element={<ForbiddenPage />} />
@@ -136,6 +200,25 @@ function AppRoutes() {
 }
 
 function App() {
+  React.useEffect(() => {
+    let scrollTimeout: NodeJS.Timeout;
+
+    const handleScroll = () => {
+      document.body.classList.add('is-scrolling');
+      clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => {
+        document.body.classList.remove('is-scrolling');
+      }, 1000);
+    };
+
+    window.addEventListener('scroll', handleScroll, true);
+    
+    return () => {
+      window.removeEventListener('scroll', handleScroll, true);
+      clearTimeout(scrollTimeout);
+    };
+  }, []);
+
   return (
     <>
       <GlobalStyle />

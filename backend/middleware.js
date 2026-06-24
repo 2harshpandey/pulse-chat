@@ -6,6 +6,7 @@ const logger = require('./logger');
 const { filterValidReactions } = require('./reactions');
 const BlockedUser = require('./models/blockedUser');
 const LoginLockdown = require('./models/loginLockdown');
+const Room = require('./models/room');
 
 // --- IP Helpers ---
 
@@ -66,22 +67,75 @@ const apiLimiter = rateLimit({
 
 const adminLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 60,
+  max: 1200,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: getClientIp,
   message: { error: 'Too many requests, please try again later.' },
 });
 
+// --- Password Attempt Rate Limiting ---
+const passwordAttemptLocks = new Map(); // key: { count, lockUntil }
+
+const checkPasswordRateLimit = (req, res, next) => {
+  const ip = extractIp(req);
+  const roomId = req.body.roomId || req.body.id || req.headers['x-room-id'] || 'me';
+  const key = `${ip}_${roomId}`;
+
+  const record = passwordAttemptLocks.get(key);
+  if (record && record.lockUntil > Date.now()) {
+    const remaining = Math.ceil((record.lockUntil - Date.now()) / 1000);
+    return res.status(429).json({ error: `Too many failed attempts. Locked out for ${remaining} seconds.` });
+  }
+  
+  if (record && record.lockUntil <= Date.now()) {
+    passwordAttemptLocks.delete(key);
+  }
+  
+  req.passwordRateLimitKey = key;
+  next();
+};
+
+const recordFailedPasswordAttempt = (key) => {
+  let record = passwordAttemptLocks.get(key) || { count: 0, lockUntil: 0 };
+  record.count += 1;
+  if (record.count >= 3) {
+    record.lockUntil = Date.now() + 60 * 1000; // 1 minute lockdown
+    record.count = 0; // Reset count after lockdown starts so they get 3 tries later
+  }
+  passwordAttemptLocks.set(key, record);
+};
+
+const resetPasswordAttempts = (key) => {
+  passwordAttemptLocks.delete(key);
+};
+
 // --- Admin Auth Middleware ---
 
 // Middleware for admin authentication
-const adminAuth = (req, res, next) => {
+const adminAuth = async (req, res, next) => {
   const password = req.headers['x-admin-password'];
-  if (password && password === process.env.ADMIN_PASSWORD) {
-    next();
-  } else {
+  const roomId = req.headers['x-room-id'] || 'me';
+
+  if (!password) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (roomId === 'me' && password === process.env.ADMIN_PASSWORD) {
+    req.roomId = 'me';
+    return next();
+  }
+
+  try {
+    const room = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] });
+    if (room && room.adminPassword === password) {
+      req.roomId = room.id;
+      return next();
+    }
     res.status(401).json({ error: 'Unauthorized' });
+  } catch (error) {
+    logger.error('Error in adminAuth middleware:', error);
+    res.status(500).json({ error: 'Internal server error' });
   }
 };
 
@@ -115,24 +169,25 @@ const generateDeviceHash = (components) => {
 // --- Block / Lockdown Checks ---
 
 // Check if a user is blocked by any fingerprint match
-const isUserBlocked = async (userId, ip, userAgent, deviceFingerprint) => {
+const isUserBlocked = async (roomId, userId, ip, userAgent, deviceFingerprint) => {
+  if (!roomId) roomId = 'me';
   // Type-guard: reject non-string values to prevent NoSQL injection via query objects
   if (typeof userId !== 'string') return { blocked: false };
 
   // Check by userId first (fastest) — use $eq to prevent NoSQL injection
-  const blockedByUserId = await BlockedUser.findOne({ userId: { $eq: userId }, isBlocked: true });
+  const blockedByUserId = await BlockedUser.findOne({ roomId, userId: { $eq: userId }, isBlocked: true });
   if (blockedByUserId) return { blocked: true, reason: 'User ID is blocked', blockedUser: blockedByUserId };
 
   // Check by IP
   if (ip && ip !== 'unknown' && typeof ip === 'string') {
-    const blockedByIp = await BlockedUser.findOne({ 'fingerprints.ips': { $eq: ip }, isBlocked: true });
+    const blockedByIp = await BlockedUser.findOne({ roomId, 'fingerprints.ips': { $eq: ip }, isBlocked: true });
     if (blockedByIp) return { blocked: true, reason: 'IP address is blocked', blockedUser: blockedByIp };
   }
 
   // Check by device hash
   if (deviceFingerprint) {
     const hash = generateDeviceHash({ ...deviceFingerprint, userAgent });
-    const blockedByHash = await BlockedUser.findOne({ 'fingerprints.deviceHashes': { $eq: hash }, isBlocked: true });
+    const blockedByHash = await BlockedUser.findOne({ roomId, 'fingerprints.deviceHashes': { $eq: hash }, isBlocked: true });
     if (blockedByHash) return { blocked: true, reason: 'Device is blocked', blockedUser: blockedByHash };
   }
 
@@ -140,8 +195,9 @@ const isUserBlocked = async (userId, ip, userAgent, deviceFingerprint) => {
 };
 
 // Check if login lockdown is active
-const isLoginLocked = async () => {
-  const lockdown = await LoginLockdown.findOne({ isActive: true }).sort({ createdAt: -1 });
+const isLoginLocked = async (roomId) => {
+  if (!roomId) roomId = 'me';
+  const lockdown = await LoginLockdown.findOne({ roomId, isActive: true }).sort({ createdAt: -1 });
   if (!lockdown) return { locked: false };
 
   // Check if lockdown has expired
@@ -171,6 +227,9 @@ module.exports = {
   uploadLimiter,
   apiLimiter,
   adminLimiter,
+  checkPasswordRateLimit,
+  recordFailedPasswordAttempt,
+  resetPasswordAttempts,
   adminAuth,
   adminSecretAuth,
   generateDeviceHash,

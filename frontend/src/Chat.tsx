@@ -5,7 +5,7 @@ import EmojiPicker, { EmojiClickData, EmojiStyle, Theme } from 'emoji-picker-rea
 import { useDrag } from '@use-gesture/react';
 import { UserContext, UserProfile } from './UserContext';
 import { useTheme } from './ThemeContext';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import Auth from './Auth';
 import { getCachedMediaBlob, setCachedMediaBlob } from './mediaCache';
 import type { Message, Gif, ReplyContext, RouterHistoryState, DownloadProgressCallback, LinkPreviewData, MessageItemProps, TypingIndicatorProps } from './chat/types';
@@ -34,11 +34,62 @@ import {
 } from './chat/utils';
 import { NOTIFICATION_BEEP } from './chat/audioConstants';
 
+const ChatSearchContainer = styled.div<{ $active: boolean }>`
+  display: flex;
+  align-items: center;
+  background: var(--bg-elevated);
+  border-radius: 20px;
+  border: 1px solid var(--border-primary);
+  padding: 0 0.5rem;
+  width: ${p => p.$active ? '200px' : '40px'};
+  height: 40px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+
+  @media (max-width: 768px) {
+    position: ${p => p.$active ? 'absolute' : 'relative'};
+    left: ${p => p.$active ? '1rem' : 'auto'};
+    right: ${p => p.$active ? '1rem' : 'auto'};
+    width: ${p => p.$active ? 'calc(100% - 2rem)' : '40px'};
+    z-index: ${p => p.$active ? 10 : 1};
+  }
+`;
+
+const ChatSearchInput = styled.input<{ $active: boolean }>`
+  background: transparent;
+  border: none;
+  color: #fff;
+  width: ${p => p.$active ? '100%' : '0'};
+  opacity: ${p => p.$active ? 1 : 0};
+  transition: all 0.3s ease;
+  font-size: 0.9rem;
+  padding-left: ${p => p.$active ? '0.5rem' : '0'};
+  &:focus { outline: none; }
+  &::placeholder { color: #94a3b8; }
+`;
+
+const ChatSearchButton = styled.button`
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  padding: 0;
+  &:hover { color: #3b82f6; }
+`;
+
 import {
   GlobalStyle,
   EmojiPickerWrapper, MobileEmojiPanel,
   DragDropOverlay, DragDropCard, DragDropIconWrapper, DragDropTitle, DragDropSubtitle,
   AppContainer, Header, HeaderTitle, SoundToggleButton, SoundToggleIcon,
+  PinnedBannerContainer, PinnedBannerIconWrapper, PinnedCycleIndicator,
+  PinnedCycleSegment, PinnedBannerContentWrapper, PinnedBannerLabel, PinnedBannerText,
   LayoutContainer, ChatWindow, MessagesContainer, MessagesAndScrollWrapper,
   MessageRow, Username, MobileReactionPicker, MessageBubble,
   EditPreviewContainer, EditPreviewIcon, EditPreviewText, EditPreviewDismiss,
@@ -72,6 +123,7 @@ import {
   ConfirmationModal, ConfirmationContent,
   ReportModal, ReportDialog, ReportTitle, ReportSubtext, ReportMessageMeta,
   ReportReasonInput, ReportReasonMeta, ReportError, ReportActions,
+  DiscardDialog, DiscardTitle, DiscardActions, DiscardBtnCancel, DiscardBtnConfirm,
   VideoPlayerWrapper, CVPContainer, CVPControls, CVPTimelineWrapper, CVPTimelineTrack,
   CVPTimelineFill, CVPTimelineThumb, CVPBottomRow, CVPIconBtn, CVPTime, CVPSpeedBtn,
   CVPVolumeWrapper, CVPDoubleTapOverlay, CVPTapIndicator, CVPCenterPlayBtn,
@@ -85,14 +137,55 @@ import { LinkPreview, linkPreviewCache, rememberLinkPreview } from './chat/LinkP
 import { MessageItem } from './chat/MessageItem';
 import { TypingIndicator, FilmIcon, FileIcon } from './chat/TypingIndicator';
 
+const getDateSeparatorText = (timestamp: string | number) => {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
 
-function Chat() {
+  if (date.toDateString() === today.toDateString()) {
+    return 'Today';
+  } else if (date.toDateString() === yesterday.toDateString()) {
+    return 'Yesterday';
+  } else {
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  }
+};
+
+type UploadCacheEntry = {
+  status: 'uploading' | 'success' | 'error';
+  promise?: Promise<any>;
+  data?: any;
+  error?: string;
+};
+
+function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {}) {
   const userContext = useContext(UserContext);
-  const { token: tempToken } = useParams<{ token?: string }>();
+  const { token: tempToken, roomId: urlRoomId } = useParams<{ token?: string; roomId?: string }>();
+  const roomId = isMe ? 'me' : (userContext?.profile?.roomId || urlRoomId || 'me');
   const { isDark, toggleTheme } = useTheme();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (userContext?.profile && roomId && roomId !== 'me') {
+      const apiBase = resolveApiBaseUrl();
+      fetch(`${apiBase}/api/rooms/${roomId}/meta`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.id && data.id !== roomId) {
+            navigate(`/room/${data.id}`, { replace: true, state: location.state });
+          }
+        })
+        .catch(console.error);
+    }
+  }, [userContext?.profile, roomId, navigate, location.state]);
 
   // --- STATE MANAGEMENT ---
   const [messages, setMessages] = useState<Message[]>([]);
+  const [pinnedMessages, setPinnedMessages] = useState<any[]>([]);
+  const [currentPinnedIndex, setCurrentPinnedIndex] = useState(0);
   const [loadedMediaMessageIds, setLoadedMediaMessageIds] = useState<string[]>([]);
   const [mediaLoadProgressById, setMediaLoadProgressById] = useState<Record<string, number>>({});
   const [loadedMediaSrcById, setLoadedMediaSrcById] = useState<Record<string, string>>({});
@@ -112,6 +205,7 @@ function Chat() {
   const [stagedFile, setStagedFile] = useState<File | null>(null);
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
   const [showFilePreview, setShowFilePreview] = useState(false);
+  const [isDiscardConfirmationVisible, setIsDiscardConfirmationVisible] = useState(false);
   const [previewActiveIndex, setPreviewActiveIndex] = useState(0);
   const [previewCaption, setPreviewCaption] = useState('');
   const [stagedGif, setStagedGif] = useState<Gif | null>(null);
@@ -122,6 +216,8 @@ function Chat() {
   const [isDesktopInteraction, setIsDesktopInteraction] = useState(isDesktopInteractionDevice);
   const [onlineUsers, setOnlineUsers] = useState<UserProfile[]>([]);
   const [isConnected, setIsConnected] = useState(false);
+  const [isSearchActive, setIsSearchActive] = useState(false);
+  const [chatSearchQuery, setChatSearchQuery] = useState('');
   const [isBrowserOnline, setIsBrowserOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [isUserListVisible, setIsUserListVisible] = useState(false);
   const [isSoundEnabled, setIsSoundEnabled] = useState(() => {
@@ -151,6 +247,7 @@ function Chat() {
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [historySessionId, setHistorySessionId] = useState(0);
 
+  const lastPingAtRef = useRef<number>(Date.now());
 
   const groupStartMessageIdsRef = useRef<Set<string>>(new Set());
   const [hasMoreOlderMessages, setHasMoreOlderMessages] = useState(true);
@@ -232,6 +329,7 @@ function Chat() {
   const messageInputRef = useRef<HTMLTextAreaElement>(null!);
   const inputOverlayRef = useRef<HTMLDivElement>(null);
   const userIdRef = useRef<string>(getUserId());
+  const uploadCacheRef = useRef<Map<File, UploadCacheEntry>>(new Map());
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Cooldown flag: true while we're within the throttle window after sending start_typing.
   // Prevents sending start_typing more than once per ~3 s even on rapid keystrokes.
@@ -308,6 +406,7 @@ function Chat() {
   const shouldPlayNotificationSound = () => {
     if (typeof document === 'undefined') return false;
     if (!isSoundEnabledRef.current) return false;
+    if (document.hasFocus()) return false;
     return true;
   };
 
@@ -334,7 +433,7 @@ function Chat() {
     }, 120000);
     try {
       if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-        ws.current.send(JSON.stringify({ type: 'file_picker_open', ttlMs: 120000 }));
+        ws.current.send(JSON.stringify({ type: 'file_picker_open', ttlMs: 120000, roomId }));
       }
     } catch (_) {
       // Best-effort presence grace only.
@@ -345,7 +444,7 @@ function Chat() {
     isNativeFilePickerOpenRef.current = false;
     try {
       if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-        ws.current.send(JSON.stringify({ type: 'file_picker_close' }));
+        ws.current.send(JSON.stringify({ type: 'file_picker_close', roomId }));
       }
     } catch (_) {
       // Best-effort presence cleanup only.
@@ -399,15 +498,24 @@ function Chat() {
     return () => window.clearTimeout(timer);
   }, [isSoundToggleAnimating]);
 
+  useEffect(() => {
+    if (isConnected) {
+      document.body.classList.add('hide-global-home-btn');
+    } else {
+      document.body.classList.remove('hide-global-home-btn');
+    }
+    return () => document.body.classList.remove('hide-global-home-btn');
+  }, [isConnected]);
+
   const setPresenceActivity = useCallback((nextActivity: 'typing' | 'gif_selecting' | null) => {
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
     if (presenceActivityRef.current === nextActivity) return;
 
     try {
       if (nextActivity) {
-        ws.current.send(JSON.stringify({ type: 'start_typing', activity: nextActivity }));
+        ws.current.send(JSON.stringify({ type: 'start_typing', activity: nextActivity, roomId }));
       } else {
-        ws.current.send(JSON.stringify({ type: 'stop_typing' }));
+        ws.current.send(JSON.stringify({ type: 'stop_typing', roomId }));
       }
       presenceActivityRef.current = nextActivity;
     } catch (_) {
@@ -751,7 +859,30 @@ function Chat() {
     isEmojiPickerOpen: !!emojiPickerPosition,
     isFullEmojiPickerOpen: !!fullEmojiPickerPosition,
     isPlusMenuOpen,
+    isSearchActive,
   });
+
+  useEffect(() => {
+    if (isSearchActive) {
+      setTimeout(() => {
+        const input = document.getElementById('chat-search-input');
+        if (input) input.focus();
+      }, 50);
+    }
+  }, [isSearchActive]);
+
+  useEffect(() => {
+    if (!isSearchActive) return;
+    const handlePointerDown = (e: PointerEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('#chat-search-container')) {
+        setIsSearchActive(false);
+      }
+    };
+    // Capture phase so it runs before any stopPropagation
+    document.addEventListener('pointerdown', handlePointerDown, { capture: true });
+    return () => document.removeEventListener('pointerdown', handlePointerDown, { capture: true });
+  }, [isSearchActive, isMobileView]);
   // Tracks whether we currently have a guard entry in the history stack.
   // Using a ref (not window.history.state) avoids stale-state issues when
   // overlays are closed programmatically rather than via the back button.
@@ -771,6 +902,7 @@ function Chat() {
       isEmojiPickerOpen: !!emojiPickerPosition,
       isFullEmojiPickerOpen: !!fullEmojiPickerPosition,
       isPlusMenuOpen,
+      isSearchActive,
     };
   }, [
     isSelectModeActive,
@@ -784,6 +916,7 @@ function Chat() {
     emojiPickerPosition,
     fullEmojiPickerPosition,
     isPlusMenuOpen,
+    isSearchActive,
   ]);
 
   // Push exactly ONE history guard entry when going from "nothing open" to
@@ -891,7 +1024,12 @@ function Chat() {
       return Boolean(el.closest('textarea, input, [contenteditable="true"]'));
     };
 
-    const applyAppHeight = (nextHeight: number) => {
+    const applyAppHeight = (nextHeight: number | null) => {
+      if (nextHeight === null) {
+        document.documentElement.style.removeProperty('--app-height');
+        appliedViewportHeightRef.current = 0;
+        return;
+      }
       if (!Number.isFinite(nextHeight) || nextHeight <= 0) return;
       const rounded = Math.round(nextHeight);
       if (Math.abs(rounded - appliedViewportHeightRef.current) < 1) return;
@@ -902,14 +1040,19 @@ function Chat() {
     const getVisibleViewportHeight = () => {
       const vvHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
       const layoutHeight = window.innerHeight;
-      const clamped = Math.min(layoutHeight, vvHeight);
-      return Number.isFinite(clamped) && clamped > 0 ? clamped : layoutHeight;
+      // If the difference is large (>150px), the virtual keyboard is likely open.
+      if (layoutHeight - vvHeight > 150) {
+        return Math.min(layoutHeight, vvHeight);
+      }
+      // Keyboard closed: return null to let CSS 100dvh handle the Safari address bar naturally
+      return null;
     };
 
     const updateStableViewportBaseline = () => {
       stableViewportWidthRef.current = window.innerWidth;
-      stableViewportHeightRef.current = getVisibleViewportHeight();
-      applyAppHeight(stableViewportHeightRef.current);
+      const newHeight = getVisibleViewportHeight();
+      stableViewportHeightRef.current = newHeight !== null ? newHeight : window.innerHeight;
+      applyAppHeight(newHeight);
     };
 
     const handleViewportResize = () => {
@@ -918,23 +1061,13 @@ function Chat() {
       const visibleHeight = Math.min(layoutHeight, vvHeight);
       const widthDelta = Math.abs(window.innerWidth - stableViewportWidthRef.current);
 
-      // Width changes indicate orientation/device rotation; accept a new baseline.
       if (widthDelta > 40) {
-        updateStableViewportBaseline();
+        stableViewportWidthRef.current = window.innerWidth;
       }
 
-      const keyboardLikelyOpen =
-        isTextInput(document.activeElement) &&
-        (stableViewportHeightRef.current - vvHeight) > 96;
-
-      // Keep a stable height while scrolling (browser bars animating), but
-      // still adapt immediately to keyboard-open viewport shrink.
       const vvOffsetTop = window.visualViewport ? window.visualViewport.offsetTop : 0;
-      
-      const targetHeight = keyboardLikelyOpen
-        ? vvHeight
-        : Math.min(stableViewportHeightRef.current, visibleHeight);
-      applyAppHeight(targetHeight);
+
+      applyAppHeight(visibleHeight);
 
       // FIX FOR SAFARI / MOBILE BROWSERS:
       // When the keyboard opens, Safari may apply a visual viewport offset to keep
@@ -951,7 +1084,7 @@ function Chat() {
       // Continuously prevent the layout from scrolling up, and keep offset synced
       const vvOffsetTop = window.visualViewport ? window.visualViewport.offsetTop : 0;
       document.documentElement.style.setProperty('--app-offset-top', `${vvOffsetTop}px`);
-      
+
       if (window.scrollY > 0) {
         window.scrollTo(0, 0);
       }
@@ -1067,7 +1200,7 @@ function Chat() {
       //  • Page on https:// → always use wss://, regardless of env-var scheme
       //  • Page on http://  → use ws:// (local dev only)
       //  • No env var       → fall back to the page's own host/protocol
-      const wsUrl = (() => {
+      const wsUrlBase = (() => {
         const base = import.meta.env.REACT_APP_API_URL;
         if (!base) {
           const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
@@ -1079,6 +1212,10 @@ function Chat() {
         );
       })();
 
+      let wsUrl = `${wsUrlBase}?userId=${userIdRef.current}`;
+      if (tempToken) wsUrl += `&token=${tempToken}`;
+      else if (roomId) wsUrl += `&roomId=${roomId}`;
+
       ws.current = new WebSocket(wsUrl);
 
       ws.current.onopen = () => {
@@ -1087,7 +1224,7 @@ function Chat() {
         reconnectDelayRef.current = 2000;
         presenceActivityRef.current = null;
         ws.current?.send(
-          JSON.stringify({ type: 'user_join', ...(userContext?.profile || {}), userId: userIdRef.current })
+          JSON.stringify({ type: 'user_join', ...(userContext?.profile || {}), userId: userIdRef.current, roomId })
         );
       };
 
@@ -1126,6 +1263,10 @@ function Chat() {
 
       ws.current.onmessage = async (event: MessageEvent) => {
         const messageData = JSON.parse(event.data);
+        if (messageData.type === 'ping') {
+          lastPingAtRef.current = Date.now();
+          return;
+        }
         if (messageData.type === 'username_taken') {
           // The server rejected our join because someone else already holds this username.
           // Store the error so Auth.tsx can display it, then log out back to the login screen.
@@ -1145,6 +1286,15 @@ function Chat() {
             overlayGuardPushed.current = false;
           }
           userContext?.logout();
+          return;
+        }
+        if (messageData.type === 'pinned_messages_update') {
+          setPinnedMessages(messageData.data);
+          // If current pinned index is out of bounds, reset it
+          setCurrentPinnedIndex(prev => {
+            if (messageData.data.length === 0) return 0;
+            return prev >= messageData.data.length ? 0 : prev;
+          });
           return;
         }
         if (messageData.type === 'history') {
@@ -1345,6 +1495,20 @@ function Chat() {
     };
   }, [userContext?.profile]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // --- Watchdog to detect silent TCP drops ---
+  useEffect(() => {
+    if (!isConnected) return;
+    const interval = setInterval(() => {
+      if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+        if (Date.now() - lastPingAtRef.current > 25000) {
+          console.warn('Frontend Heartbeat: Dead connection detected. Closing socket to force reconnect.');
+          ws.current.close();
+        }
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [isConnected]);
+
   // General click/keydown handlers
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -1424,12 +1588,20 @@ function Chat() {
     setPreMediaDraft('');
   }, [preMediaDraft]);
 
+  const handleRequestCloseFilePreview = useCallback(() => {
+    if (stagedFiles.length > 0 || previewCaption) {
+      setIsDiscardConfirmationVisible(true);
+    } else {
+      closeFilePreviewAndRestoreDraft();
+    }
+  }, [stagedFiles.length, previewCaption, closeFilePreviewAndRestoreDraft]);
+
   // - Unquote on Escape / Close file preview -
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (showFilePreview) {
-          closeFilePreviewAndRestoreDraft();
+          handleRequestCloseFilePreview();
         } else if (lightboxUrl) {
           setLightboxUrl(null);
         } else if (editingMessageId) {
@@ -1447,7 +1619,7 @@ function Chat() {
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [closeFilePreviewAndRestoreDraft, editingMessageId, lightboxUrl, priorDraftBeforeEdit, replyingTo, showFilePreview]);
+  }, [handleRequestCloseFilePreview, editingMessageId, lightboxUrl, priorDraftBeforeEdit, replyingTo, showFilePreview]);
 
   const getChatScrollerElement = useCallback((): HTMLElement | null => {
     if (!chatContainerRef.current) return null;
@@ -1754,10 +1926,10 @@ function Chat() {
       const scroller = chatContainerRef.current;
       const metrics = previousScrollMetricsRef.current;
       previousScrollMetricsRef.current = null;
-      
+
       const newScrollHeight = scroller.scrollHeight;
       const heightDiff = newScrollHeight - metrics.height;
-      
+
       if (heightDiff > 0) {
         scroller.scrollTop = metrics.top + heightDiff;
       }
@@ -1840,7 +2012,9 @@ function Chat() {
 
   const fetchAndPrependOlderMessages = useCallback(async (beforeCursor: string) => {
     const before = encodeURIComponent(beforeCursor);
-    const res = await fetch(`${apiBase}/api/messages?before=${before}&limit=${HISTORY_PAGE_SIZE}`);
+    const res = await fetch(`${apiBase}/api/messages?before=${before}&limit=${HISTORY_PAGE_SIZE}`, {
+      headers: { 'x-room-id': roomId }
+    });
     if (!res.ok) throw new Error('Failed to fetch older messages');
 
     const payload = await res.json();
@@ -2034,6 +2208,7 @@ function Chat() {
           type: 'edit',
           messageId: editingMessageId,
           newText: trimmed,
+          roomId
         }));
       }
       setEditingMessageId(null);
@@ -2052,6 +2227,7 @@ function Chat() {
     if (!stagedFile && !stagedGif && !inputMessage.trim()) return;
     if (inputMessage.length > MAX_MESSAGE_LENGTH) return; // Exceed WhatsApp-style character limit
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN || !userContext?.profile) return;
+    if (Date.now() - lastPingAtRef.current > 25000) return; // Prevent sending on dead connection
 
     const tempId = Date.now().toString();
     let replyContext: ReplyContext | undefined = undefined;
@@ -2098,7 +2274,7 @@ function Chat() {
       formData.append('text', inputMessage);
       formData.append('userId', userIdRef.current);
 
-      fetch(`${apiBase}/api/upload`, { method: 'POST', body: formData })
+      fetch(`${apiBase}/api/upload`, { method: 'POST', body: formData, headers: { 'x-room-id': roomId } })
         .then(async response => {
           if (!response.ok) {
             const payload = await response.json().catch(() => null);
@@ -2140,7 +2316,7 @@ function Chat() {
       const gifMessage: Message = { id: Date.now().toString(), userId: userIdRef.current, username: userContext?.profile?.username || '', type: 'image', url: stagedGif.url, text: inputMessage, timestamp: new Date().toISOString(), replyingTo: replyContext };
       setMessages(prev => [...prev, gifMessage]);
       requestAnimationFrame(() => scrollToBottom());
-      ws.current.send(JSON.stringify(gifMessage));
+      ws.current?.send(JSON.stringify({ ...gifMessage, roomId }));
       const hadReply = !!replyingTo;
       resetInput();
       // After resetInput clears the reply preview, the footer height changes.
@@ -2150,7 +2326,7 @@ function Chat() {
       const textMessage: Message = { id: Date.now().toString(), userId: userIdRef.current, username: userContext?.profile?.username || '', type: 'text', text: inputMessage, timestamp: new Date().toISOString(), replyingTo: replyContext };
       setMessages(prev => [...prev, textMessage]);
       requestAnimationFrame(() => scrollToBottom());
-      ws.current.send(JSON.stringify(textMessage));
+      ws.current?.send(JSON.stringify({ ...textMessage, roomId }));
       const hadReply = !!replyingTo;
       resetInput();
       // After resetInput clears the reply preview, the footer height changes.
@@ -2238,7 +2414,7 @@ function Chat() {
 
     // Send to server
     try {
-      ws.current.send(JSON.stringify({ type: 'react', messageId, userId, emoji: canonicalEmoji }));
+      ws.current.send(JSON.stringify({ type: 'react', messageId, userId, emoji: canonicalEmoji, roomId }));
     } catch (e) {
       console.error('Failed to send reaction:', e);
     }
@@ -2252,7 +2428,7 @@ function Chat() {
 
   const deleteForEveryone = useCallback((messageId: string) => {
     if (!ws.current) return;
-    ws.current.send(JSON.stringify({ type: 'delete_for_everyone', messageId }));
+    ws.current.send(JSON.stringify({ type: 'delete_for_everyone', messageId, roomId }));
   }, []);
 
   const handleOpenReactionPicker = useCallback((messageId: string, rect: DOMRect, sender: 'me' | 'other') => {
@@ -2262,8 +2438,51 @@ function Chat() {
     });
   }, []);
 
-  const reactionPickerRef = useRef<HTMLDivElement>(null!);
+  // Background Media Upload
+  useEffect(() => {
+    stagedFiles.forEach(file => {
+      if (!uploadCacheRef.current.has(file)) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('userId', userIdRef.current);
 
+        const apiBase = resolveApiBaseUrl();
+        const promise = fetch(`${apiBase}/api/upload`, {
+          method: 'POST',
+          body: formData,
+          headers: { 'x-room-id': roomId }
+        })
+          .then(async response => {
+            if (!response.ok) {
+              const payload = await response.json().catch(() => null);
+              throw new Error(payload?.error || `Upload failed (${response.status})`);
+            }
+            return response.json();
+          })
+          .then(data => {
+            const entry = uploadCacheRef.current.get(file);
+            if (entry) {
+              entry.status = 'success';
+              entry.data = data;
+            }
+            return data;
+          })
+          .catch(error => {
+            console.error('Background upload failed for', file.name, error);
+            const entry = uploadCacheRef.current.get(file);
+            if (entry) {
+              entry.status = 'error';
+              entry.error = error instanceof Error ? error.message : 'Upload failed';
+            }
+            throw error;
+          });
+
+        uploadCacheRef.current.set(file, { status: 'uploading', promise });
+      }
+    });
+  }, [stagedFiles, roomId]);
+
+  const reactionPickerRef = useRef<HTMLDivElement>(null!);
   // Close reaction picker when clicking/tapping outside
   useEffect(() => {
     if (!reactionPickerData) return;
@@ -2697,7 +2916,7 @@ function Chat() {
   const handleBulkDeleteForEveryone = () => {
     selectedMessages.forEach(id => {
       if (ws.current) {
-        ws.current.send(JSON.stringify({ type: 'delete_for_everyone', messageId: id }));
+        ws.current.send(JSON.stringify({ type: 'delete_for_everyone', messageId: id, roomId }));
       }
     });
     // Same fix as handleBulkDeleteForMe — use replaceState instead of back()
@@ -2829,6 +3048,7 @@ function Chat() {
       messageId: reportTargetMessage.id,
       messageType: reportTargetMessage.type,
       reason: normalizedReason,
+      roomId
     }));
   }, [reportReason, reportTargetMessage]);
 
@@ -3272,11 +3492,15 @@ function Chat() {
       const scroller = getChatScrollerElement();
       if (!scroller) return;
       try {
-        scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'auto' });
+        scroller.scrollTo({ top: scroller.scrollHeight, behavior });
       } catch {
+        if (behavior === 'auto') {
+          scroller.scrollTop = scroller.scrollHeight;
+        }
+      }
+      if (behavior === 'auto') {
         scroller.scrollTop = scroller.scrollHeight;
       }
-      scroller.scrollTop = scroller.scrollHeight;
       quoteLog('scrollToBottom applyScrollerBottom', {
         scrollTop: scroller.scrollTop,
         scrollHeight: scroller.scrollHeight,
@@ -3284,7 +3508,10 @@ function Chat() {
       });
     };
 
-    const scroller = chatContainerRef.current; if (scroller) scroller.scrollTop = scroller.scrollHeight;
+    const scroller = chatContainerRef.current; 
+    if (scroller && behavior === 'auto') {
+      scroller.scrollTop = scroller.scrollHeight;
+    }
     requestAnimationFrame(applyScrollerBottom);
   }, [getChatScrollerElement, shouldSuppressProgrammaticScroll]);
 
@@ -3369,11 +3596,12 @@ function Chat() {
     setNewMessagesWhileScrolledUp(0);
     clearQuoteJumpSuppression();
     quoteLog('scroll-to-bottom falling back to bottom anchor');
-    forceScrollToBottomAsync(true);
+    scrollToBottom('smooth', true);
     requestAnimationFrame(() => syncBottomStateFromScroller());
     window.setTimeout(() => syncBottomStateFromScroller(), 80);
     window.setTimeout(() => syncBottomStateFromScroller(), 220);
-  }, [clearQuoteJumpSuppression, forceScrollToBottomAsync, isMobileView, scrollToLoadedMessage, syncBottomStateFromScroller]);
+    window.setTimeout(() => syncBottomStateFromScroller(), 500);
+  }, [clearQuoteJumpSuppression, scrollToBottom, isMobileView, scrollToLoadedMessage, syncBottomStateFromScroller]);
 
   const handleEmojiClick = (emojiData: EmojiClickData) => { setInputMessage(prev => prev + emojiData.emoji); };
   const handleOpenEmojiPicker = useCallback((rect: DOMRect) => {
@@ -3428,7 +3656,7 @@ function Chat() {
   // 3. Use our isAtBottomRef (set by real user scroll), not Virtuoso's param
 
   // --- RENDER ---
-  if (!userContext?.profile) { return <Auth onAuthSuccess={userContext?.login ?? (() => { })} tempToken={tempToken || null} />; }
+  if (!userContext?.profile) { return <Auth onAuthSuccess={userContext?.login ?? (() => { })} tempToken={tempToken || null} roomId={roomId} />; }
 
   const selectedMessage = messages.find(msg => msg.id === selectedMessages[0]);
   const canEditSelectedMessage = selectedMessages.length === 1 && selectedMessage && selectedMessage.userId === userIdRef.current && selectedMessage.text && (new Date().getTime() - new Date(selectedMessage.timestamp).getTime()) < 15 * 60 * 1000;
@@ -3592,42 +3820,44 @@ function Chat() {
       setMessages(prev => [...prev, message]);
       requestAnimationFrame(() => scrollToBottom());
 
-      const formData = new FormData();
-      formData.append('file', file);
-      if (i === 0 && caption) formData.append('text', caption);
-      formData.append('userId', userIdRef.current);
+      const processUploadedData = (uploadedFileData: any) => {
+        const finalMessage = {
+          ...message,
+          ...uploadedFileData,
+          originalName: chooseReadableFilename(uploadedFileData.originalName, message.originalName),
+          isUploading: false,
+          id: uploadedFileData.id,
+          text: i === 0 ? caption : undefined,
+        };
+        setMessages(prev => prev.map(m => m.id === tempId ? finalMessage : m));
+        ws.current?.send(JSON.stringify(finalMessage));
+      };
 
-      fetch(`${apiBase}/api/upload`, { method: 'POST', body: formData })
-        .then(async response => {
-          if (!response.ok) {
-            const payload = await response.json().catch(() => null);
-            throw new Error(payload?.error || `Upload failed (${response.status})`);
-          }
-          return response.json();
-        })
-        .then(uploadedFileData => {
-          const finalMessage = {
-            ...message,
-            ...uploadedFileData,
-            originalName: chooseReadableFilename(uploadedFileData.originalName, message.originalName),
-            isUploading: false,
-            id: uploadedFileData.id,
-          };
-          setMessages(prev => prev.map(m => m.id === tempId ? finalMessage : m));
-          ws.current?.send(JSON.stringify(finalMessage));
-        })
-        .catch(error => {
-          console.error('File upload failed!', error);
-          const errorText = error instanceof Error && error.message ? error.message : 'Upload failed';
-          setMessages(prev => prev.map(m => m.id === tempId ? {
-            ...message,
-            url: '',
-            isUploading: false,
-            uploadError: true,
-            originalName: sanitizeFilename(message.originalName || file.name, 'file'),
-            text: errorText,
-          } : m));
-        });
+      const handleUploadError = (error: any) => {
+        console.error('File upload failed!', error);
+        const errorText = error instanceof Error && error.message ? error.message : (typeof error === 'string' ? error : 'Upload failed');
+        setMessages(prev => prev.map(m => m.id === tempId ? {
+          ...message,
+          url: '',
+          isUploading: false,
+          uploadError: true,
+          originalName: sanitizeFilename(message.originalName || file.name, 'file'),
+          text: errorText,
+        } : m));
+      };
+
+      const cacheEntry = uploadCacheRef.current.get(file);
+
+      if (cacheEntry?.status === 'success' && cacheEntry.data) {
+        processUploadedData(cacheEntry.data);
+      } else if (cacheEntry?.status === 'uploading' && cacheEntry.promise) {
+        cacheEntry.promise.then(processUploadedData).catch(handleUploadError);
+      } else if (cacheEntry?.status === 'error') {
+        handleUploadError(cacheEntry.error || 'Background upload failed');
+      } else {
+        // Fallback in case the effect hasn't fired yet
+        handleUploadError('Upload failed: File not processing in background');
+      }
     }
 
     resetInput();
@@ -3676,7 +3906,7 @@ function Chat() {
         return (
           <FilePreviewModal>
             <FilePreviewModalHeader>
-              <FilePreviewModalClose aria-label="Close preview" onClick={closeFilePreviewAndRestoreDraft}>
+              <FilePreviewModalClose aria-label="Close preview" onClick={handleRequestCloseFilePreview}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
               </FilePreviewModalClose>
               <FilePreviewModalFilename>{activeFile?.name}</FilePreviewModalFilename>
@@ -3873,10 +4103,10 @@ function Chat() {
       )}
       <AppContainer>
         <Header>
-          <HeaderTitle>
+          <HeaderTitle style={{ flexGrow: 1, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <a href="/">
-              <img src="/pulse_logo.webp" alt="Pulse Chat" />
-              <span>Pulse</span> Chat
+              <img src="/pulse_logo.webp" alt="Pulse Chat" style={{ flexShrink: 0 }} />
+              <span style={{ flexShrink: 0 }}>Pulse</span> <span className="hide-on-narrow">Chat</span>
             </a>
             {(!isConnected || !isBrowserOnline) && (
               <div
@@ -3887,12 +4117,52 @@ function Chat() {
                   borderRadius: '50%',
                   backgroundColor: '#ef4444',
                   boxShadow: '0 0 8px 1px rgba(239,68,68,0.7)',
-                  marginLeft: '10px'
+                  flexShrink: 0,
+                  marginTop: '0.2rem'
                 }}
               />
             )}
           </HeaderTitle>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
+            <ChatSearchContainer id="chat-search-container" $active={isSearchActive}>
+              <ChatSearchButton 
+                onClick={() => { if (!isSearchActive) setIsSearchActive(true); }}
+                style={{ cursor: isSearchActive ? 'default' : 'pointer' }}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '18px', height: '18px' }}>
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+              </ChatSearchButton>
+              <ChatSearchInput
+                id="chat-search-input"
+                $active={isSearchActive}
+                value={chatSearchQuery}
+                onChange={e => setChatSearchQuery(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Escape') {
+                    setChatSearchQuery('');
+                    setIsSearchActive(false);
+                  }
+                }}
+                placeholder="Search messages..."
+              />
+              {isSearchActive && (
+                <ChatSearchButton onClick={(e) => {
+                  e.stopPropagation();
+                  if (chatSearchQuery) {
+                    setChatSearchQuery('');
+                  } else {
+                    setIsSearchActive(false);
+                  }
+                }}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '18px', height: '18px' }}>
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </ChatSearchButton>
+              )}
+            </ChatSearchContainer>
             <SoundToggleButton
               type="button"
               $enabled={isSoundEnabled}
@@ -3949,9 +4219,46 @@ function Chat() {
         </Header>
         <LayoutContainer>
           <ChatWindow>
+            {pinnedMessages.length > 0 && (
+              <PinnedBannerContainer onClick={() => {
+                const currentMsg = pinnedMessages[currentPinnedIndex];
+                if (currentMsg) {
+                  const el = document.getElementById(getMessageElementId(currentMsg.id));
+                  if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    // Highlight effect
+                    el.style.transition = 'background-color 0.5s ease';
+                    el.style.backgroundColor = 'rgba(59, 130, 246, 0.2)';
+                    setTimeout(() => {
+                      el.style.backgroundColor = '';
+                    }, 2000);
+                  }
+                }
+                setCurrentPinnedIndex((prev) => (prev + 1) % pinnedMessages.length);
+              }}>
+                <PinnedBannerIconWrapper>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M16 12V4H17V2H7V4H8V12L6 14V16H11V22H13V16H18V14L16 12Z"/>
+                  </svg>
+                  {pinnedMessages.length > 1 && (
+                    <PinnedCycleIndicator>
+                      {pinnedMessages.map((_, i) => (
+                        <PinnedCycleSegment key={i} $active={i === currentPinnedIndex} />
+                      ))}
+                    </PinnedCycleIndicator>
+                  )}
+                </PinnedBannerIconWrapper>
+                <PinnedBannerContentWrapper>
+                  <PinnedBannerLabel>Pinned Message</PinnedBannerLabel>
+                  <PinnedBannerText>
+                    {pinnedMessages[currentPinnedIndex]?.text || 'Attachment'}
+                  </PinnedBannerText>
+                </PinnedBannerContentWrapper>
+              </PinnedBannerContainer>
+            )}
             <MessagesAndScrollWrapper>
               <MessagesContainer onClick={handleChatAreaClick} $isScrollButtonVisible={isScrollToBottomVisible} $isMobileView={isMobileView}>
-                <div ref={chatContainerRef} style={{ flex: 1, overflowY: 'auto', overflowAnchor: 'auto', display: 'flex', flexDirection: 'column', transform: 'translateZ(0)', WebkitOverflowScrolling: 'touch', willChange: 'transform' }}
+                <div ref={chatContainerRef} style={{ flex: 1, overflowY: 'auto', overflowAnchor: 'auto', display: 'flex', flexDirection: 'column', transform: 'translateZ(0)', WebkitOverflowScrolling: 'touch', willChange: 'transform', paddingTop: '1rem' }}
                   onScroll={(e) => {
                     const target = e.target as HTMLDivElement;
                     if (target.scrollTop < 2500 && !isLoadingOlderRef.current && hasMoreOlderMessages) {
@@ -3962,7 +4269,11 @@ function Chat() {
                     handleAtBottomStateChange(atBottom);
                   }}
                 >
-                  {historyLoaded && messages.length > 0 ? messages.map((msg, index) => {
+                  {historyLoaded && messages.length > 0 ? 
+                    (chatSearchQuery.trim() 
+                      ? messages.filter(m => m.text && m.text.toLowerCase().includes(chatSearchQuery.trim().toLowerCase())) 
+                      : messages
+                    ).map((msg, index, displayArr) => {
                     if (msg.type === 'system_notification') {
                       return (
                         <div key={msg.id || index} style={{ display: 'flex', justifyContent: 'center', padding: '0.4rem 0' }}>
@@ -3971,12 +4282,36 @@ function Chat() {
                       );
                     }
                     const dataIndex = index;
-                    const prevMsg = dataIndex > 0 ? messages[dataIndex - 1] : null;
-                    const showUsername = groupStartMessageIdsRef.current.has(msg.id);
+                    const prevMsg = dataIndex > 0 ? displayArr[dataIndex - 1] : null;
+                    const showUsername = !prevMsg || prevMsg.type === 'system_notification' || prevMsg.userId !== msg.userId;
+
+                    const currentDateStr = msg.timestamp ? new Date(msg.timestamp).toDateString() : null;
+                    const prevDateStr = prevMsg?.timestamp ? new Date(prevMsg.timestamp).toDateString() : null;
+                    const showDateSeparator = currentDateStr && currentDateStr !== prevDateStr;
+
                     return (
-                      <MessageItem
+                      <React.Fragment key={msg.id || `msg-${index}`}>
+                        {showDateSeparator && (
+                          <div style={{ display: 'flex', justifyContent: 'center', margin: '1.5rem 0 1rem 0' }}>
+                            <div style={{ 
+                              background: 'var(--bg-elevated)', 
+                              color: 'var(--text-secondary)', 
+                              padding: '0.25rem 0.8rem', 
+                              borderRadius: '16px', 
+                              fontSize: '0.75rem', 
+                              fontWeight: 600,
+                              boxShadow: 'var(--shadow-sm)',
+                              border: '1px solid var(--border-primary)',
+                              zIndex: 1,
+                            }}>
+                              {getDateSeparatorText(msg.timestamp)}
+                            </div>
+                          </div>
+                        )}
+                        <MessageItem
                         key={msg.id}
                         msg={msg}
+                        isPinned={pinnedMessages.some(p => p.id === msg.id)}
                         showUsername={showUsername}
                         currentUserId={userIdRef.current}
                         handleSetReply={handleSetReply}
@@ -4011,9 +4346,11 @@ function Chat() {
                         handleOpenFullEmojiPicker={handleOpenFullEmojiPicker}
                         reactionPickerData={reactionPickerData}
                         editingMessageId={editingMessageId}
+                        handleSetEditingMessageId={setEditingMessageId}
                         handleCancelEdit={handleCancelEdit}
                         onVideoFullscreenEnter={handleVideoFullscreenEnter}
                       />
+                    </React.Fragment>
                     );
                   }) : null}
                   <div style={{ height: '12px', flexShrink: 0 }} />
@@ -4026,7 +4363,7 @@ function Chat() {
                 aria-label={scrollToLatestLabel}
                 title={scrollToLatestTitle}
               >
-                <svg viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                <svg viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M12 5v14"></path>
                   <path d="m19 12-7 7-7-7"></path>
                 </svg>
@@ -4290,14 +4627,14 @@ function Chat() {
               })()}
             </UserList>
             <ClearChatButton onClick={handleClearChat}>
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 9l-6-6H5a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9z"></path><path d="M15 3v6h6"></path><path d="M9.5 12.5 14.5 17.5"></path><path d="m14.5 12.5-5 5"></path></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 9l-6-6H5a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V9z"></path><path d="M15 3v6h6"></path><path d="M9.5 12.5 14.5 17.5"></path><path d="m14.5 12.5-5 5"></path></svg>
               Clear Chat
             </ClearChatButton>
             <LogoutButton onClick={() => {
               localStorage.removeItem(getInputDraftKey(userIdRef.current));
               // Send explicit logout to server so it removes us from loggedInUsers
               if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-                ws.current.send(JSON.stringify({ type: 'user_logout', userId: userIdRef.current }));
+                ws.current.send(JSON.stringify({ type: 'user_logout', userId: userIdRef.current, roomId }));
               }
               if (overlayGuardPushed.current) {
                 clearOverlayGuardHistoryEntry();
@@ -4305,7 +4642,7 @@ function Chat() {
               }
               userContext?.logout();
             }}>
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
               Logout
             </LogoutButton>
           </UserSidebar>
@@ -4324,6 +4661,21 @@ function Chat() {
               )}
             </div>
           </ConfirmationContent>
+        </ConfirmationModal>
+      )}
+
+      {isDiscardConfirmationVisible && (
+        <ConfirmationModal>
+          <DiscardDialog onClick={(e) => e.stopPropagation()}>
+            <DiscardTitle>Discard selection?</DiscardTitle>
+            <DiscardActions>
+              <DiscardBtnCancel onClick={() => setIsDiscardConfirmationVisible(false)}>Cancel</DiscardBtnCancel>
+              <DiscardBtnConfirm onClick={() => {
+                setIsDiscardConfirmationVisible(false);
+                closeFilePreviewAndRestoreDraft();
+              }}>Discard</DiscardBtnConfirm>
+            </DiscardActions>
+          </DiscardDialog>
         </ConfirmationModal>
       )}
 

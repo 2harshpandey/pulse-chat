@@ -58,6 +58,7 @@ export interface LinkPreviewData {
 
 export interface MessageItemProps {
   msg: Message;
+  isPinned?: boolean;
   showUsername: boolean;
   currentUserId: string;
   activeDeleteMenu: string | null;
@@ -92,6 +93,7 @@ export interface MessageItemProps {
   handleOpenFullEmojiPicker: (rect: DOMRect, messageId: string) => void;
   reactionPickerData: { messageId: string; rect: DOMRect; sender: 'me' | 'other' } | null;
   editingMessageId: string | null;
+  handleSetEditingMessageId: (id: string | null) => void;
   handleCancelEdit: () => void;
   onVideoFullscreenEnter?: (messageId: string) => void;
 }

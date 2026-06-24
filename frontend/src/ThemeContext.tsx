@@ -23,6 +23,10 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
     localStorage.setItem('pulseTheme', isDark ? 'dark' : 'light');
+    const metaTheme = document.getElementById('theme-color-meta');
+    if (metaTheme) {
+      metaTheme.setAttribute('content', isDark ? '#0f172a' : '#f7fafc');
+    }
   }, [isDark]);
 
   const toggleTheme = useCallback(() => setIsDark(prev => !prev), []);

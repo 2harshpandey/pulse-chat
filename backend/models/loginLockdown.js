@@ -1,6 +1,11 @@
 const mongoose = require('mongoose');
 
 const loginLockdownSchema = new mongoose.Schema({
+  roomId: {
+    type: String,
+    required: true,
+    default: 'me',
+  },
   isActive: {
     type: Boolean,
     default: true,
@@ -23,6 +28,8 @@ const loginLockdownSchema = new mongoose.Schema({
     default: 'admin',
   },
 }, { timestamps: true });
+
+loginLockdownSchema.index({ roomId: 1, isActive: 1 });
 
 const LoginLockdown = mongoose.model('LoginLockdown', loginLockdownSchema);
 

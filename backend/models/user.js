@@ -4,7 +4,11 @@ const userSchema = new mongoose.Schema({
   userId: {
     type: String,
     required: true,
-    unique: true,
+  },
+  roomId: {
+    type: String,
+    required: true,
+    default: 'me',
   },
   username: {
     type: String,
@@ -20,8 +24,9 @@ const userSchema = new mongoose.Schema({
   },
 }, { timestamps: true });
 
-userSchema.index({ lastSeen: -1 });
-userSchema.index({ joinHistory: -1 });
+userSchema.index({ roomId: 1, userId: 1 }, { unique: true });
+userSchema.index({ roomId: 1, lastSeen: -1 });
+userSchema.index({ roomId: 1, joinHistory: -1 });
 
 const User = mongoose.model('User', userSchema);
 

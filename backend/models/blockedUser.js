@@ -2,6 +2,11 @@ const mongoose = require('mongoose');
 
 const blockedUserSchema = new mongoose.Schema({
   // Primary identifier
+  roomId: {
+    type: String,
+    required: true,
+    default: 'me',
+  },
   userId: {
     type: String,
     required: true,
@@ -40,10 +45,10 @@ const blockedUserSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Index for fast lookups
-blockedUserSchema.index({ userId: 1 });
-blockedUserSchema.index({ isBlocked: 1 });
-blockedUserSchema.index({ 'fingerprints.ips': 1 });
-blockedUserSchema.index({ 'fingerprints.deviceHashes': 1 });
+blockedUserSchema.index({ roomId: 1, userId: 1 });
+blockedUserSchema.index({ roomId: 1, isBlocked: 1 });
+blockedUserSchema.index({ roomId: 1, 'fingerprints.ips': 1 });
+blockedUserSchema.index({ roomId: 1, 'fingerprints.deviceHashes': 1 });
 
 const BlockedUser = mongoose.model('BlockedUser', blockedUserSchema);
 

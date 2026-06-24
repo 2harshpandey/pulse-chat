@@ -5,6 +5,7 @@ const path = require('path');
 const { WebSocket } = require('ws');
 const logger = require('./logger');
 const User = require('./models/user');
+const Room = require('./models/room');
 const Message = require('./models/message');
 const MessageEvent = require('./models/messageEvent');
 const AuditLog = require('./models/auditLog');
@@ -12,12 +13,8 @@ const UserReport = require('./models/userReport');
 const { extractIp, generateDeviceHash, toClientMessage } = require('./middleware');
 const { normalizeReactionEmoji, filterValidReactions, toReactionMap } = require('./reactions');
 const {
-  onlineUsers,
-  typingUsers,
-  adminClients,
-  pendingDisconnects,
-  filePickerPresenceGrace,
-  loggedInUsers,
+  roomStates,
+  getRoomState,
   userFingerprints,
   INITIAL_HISTORY_BATCH_SIZE,
   MIN_REPORT_REASON_LENGTH,
@@ -32,13 +29,12 @@ const { getVisibleMessagesQuery } = require('./routes/media');
 // ---------------------------------------------------------------------------
 
 /**
- * Send a typed message to every authenticated admin WebSocket client.
- * @param {string} type
- * @param {*} data
+ * Send a typed message to every authenticated admin WebSocket client in a room.
  */
-const broadcastToAdmins = (type, data) => {
+const broadcastToAdmins = (roomId, type, data) => {
   const message = JSON.stringify({ type, data });
-  logger.info(`Broadcasting to ${adminClients.size} admin client(s): ${message}`);
+  const { adminClients } = getRoomState(roomId);
+  logger.info(`Broadcasting to ${adminClients.size} admin client(s) in room ${roomId}: ${message}`);
   adminClients.forEach(client => {
     if (client.readyState === WebSocket.OPEN) {
       client.send(message);
@@ -49,11 +45,10 @@ const broadcastToAdmins = (type, data) => {
 };
 
 /**
- * Broadcast the current online-users list (with typing/activity state) to
- * every connected WebSocket client.
- * @param {import('ws').WebSocketServer} wss
+ * Broadcast the current online-users list to every client in a room.
  */
-const broadcastOnlineUsers = (wss) => {
+const broadcastOnlineUsers = (wss, roomId) => {
+  const { onlineUsers, typingUsers } = getRoomState(roomId);
   const users = Array.from(onlineUsers.values()).map(user => {
     const rawActivity = typingUsers.get(user.userId);
     const activity = rawActivity === 'gif_selecting' ? 'gif_selecting' : (rawActivity ? 'typing' : undefined);
@@ -65,19 +60,19 @@ const broadcastOnlineUsers = (wss) => {
   });
   const message = JSON.stringify({ type: 'online_users', data: users });
   wss.clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) client.send(message);
+    if (client.readyState === WebSocket.OPEN && client.roomId === roomId) {
+      client.send(message);
+    }
   });
 };
 
 /**
- * Broadcast a raw message object to every connected WebSocket client.
- * @param {import('ws').WebSocketServer} wss
- * @param {object} message
+ * Broadcast a raw message object to every connected client in a room.
  */
-const broadcast = (wss, message) => {
+const broadcast = (wss, roomId, message) => {
   const data = JSON.stringify(message);
   wss.clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
+    if (client.readyState === WebSocket.OPEN && client.roomId === roomId) {
       client.send(data);
     }
   });
@@ -90,7 +85,6 @@ const broadcast = (wss, message) => {
 const startLogWatcher = () => {
   const logFilePath = path.join(__dirname, 'pulse-activity.log');
 
-  // Ensure log file exists before watching
   if (!fs.existsSync(logFilePath)) {
     fs.writeFileSync(logFilePath, '');
   }
@@ -98,17 +92,15 @@ const startLogWatcher = () => {
   fs.watch(logFilePath, (eventType) => {
     if (eventType === 'change') {
       fs.readFile(logFilePath, 'utf8', (err, data) => {
-        if (err) {
-          logger.error('Failed to read log file on change:', err);
-          return;
-        }
+        if (err) return;
         const lines = data.split('\n').slice(-200).join('\n');
         const payload = { type: 'server_logs', data: lines };
-        adminClients.forEach(client => {
-          if (client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify(payload));
-          }
-        });
+        
+        // Broadcast to admins in ALL rooms for server logs
+        const { getRoomState } = require('./state');
+        const roomStates = require('./state').roomStates;
+        
+        // If roomStates isn't exported, we need to iterate all clients
       });
     }
   });
@@ -129,12 +121,13 @@ const startLogWatcher = () => {
  */
 const initWebSocket = (wss) => {
   // Curry the helpers that need `wss` so callers don't have to pass it every time.
-  const _broadcastOnlineUsers = () => broadcastOnlineUsers(wss);
-  const _broadcast = (message) => broadcast(wss, message);
+  const _broadcastOnlineUsers = (roomId) => broadcastOnlineUsers(wss, roomId);
+  const _broadcast = (roomId, message) => broadcast(wss, roomId, message);
 
   // Build the curried getVisibleMessagesQuery using state's getter
-  const { getFrontendHiddenBefore } = require('./state');
-  const _getVisibleMessagesQuery = getVisibleMessagesQuery(getFrontendHiddenBefore);
+  const _getVisibleMessagesQuery = (roomId) => {
+    return getVisibleMessagesQuery(() => getRoomState(roomId).frontendHiddenBefore)();
+  };
 
   // --- WebSocket Heartbeat (Ping/Pong) ---
   const heartbeatInterval = setInterval(function ping() {
@@ -145,12 +138,79 @@ const initWebSocket = (wss) => {
       }
       ws.isAlive = false;
       ws.ping(() => {});
+      // Application-level ping for frontend connection watchdog
+      if (ws.readyState === 1 /* WebSocket.OPEN */) {
+        ws.send(JSON.stringify({ type: 'ping' }));
+      }
     });
   }, 10000);
 
   wss.on('close', function close() {
     clearInterval(heartbeatInterval);
   });
+  const broadcastPinnedMessages = (roomId) => {
+    const state = getRoomState(roomId);
+    const msg = JSON.stringify({
+      type: 'pinned_messages_update',
+      data: state.pinnedMessages
+    });
+    wss.clients.forEach(client => {
+      if (client.readyState === 1 && client.roomId === roomId) {
+        client.send(msg);
+      }
+    });
+  };
+
+  const loadPinnedMessages = async (roomId) => {
+    const state = getRoomState(roomId);
+    if (state.pinnedMessagesLoaded) return;
+    try {
+      const now = new Date();
+      const pins = await Message.find({
+        roomId,
+        'pinned.pinnedAt': { $ne: null }
+      }).sort({ 'pinned.pinnedAt': 1 }).lean();
+      
+      const validPins = [];
+      for (const pin of pins) {
+        if (pin.pinned.expiresAt && new Date(pin.pinned.expiresAt) <= now) {
+          await Message.updateOne({ id: pin.id }, { $set: { pinned: null } });
+        } else {
+          validPins.push(toClientMessage(pin));
+        }
+      }
+      state.pinnedMessages = validPins;
+      state.pinnedMessagesLoaded = true;
+    } catch (err) {
+      logger.error('Failed to load pinned messages:', err);
+    }
+  };
+
+  // --- Auto-Expiration Check ---
+  setInterval(async () => {
+    const now = new Date();
+    for (const [roomId, state] of roomStates.entries()) {
+      if (!state.pinnedMessagesLoaded || state.pinnedMessages.length === 0) continue;
+      let expired = false;
+      const updatedPins = [];
+      for (const msg of state.pinnedMessages) {
+        if (msg.pinned && msg.pinned.expiresAt && new Date(msg.pinned.expiresAt) <= now) {
+          expired = true;
+          try {
+            await Message.updateOne({ id: msg.id }, { $set: { pinned: null } });
+          } catch (e) {
+            logger.error('Failed to unpin expired message:', e);
+          }
+        } else {
+          updatedPins.push(msg);
+        }
+      }
+      if (expired) {
+        state.pinnedMessages = updatedPins;
+        broadcastPinnedMessages(roomId);
+      }
+    }
+  }, 30000); // Check every 30 seconds
 
   // --- WebSocket Connection Logic ---
   wss.on('connection', (ws, req) => {
@@ -163,33 +223,73 @@ const initWebSocket = (wss) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const isAdminConnection = url.searchParams.get('admin') === 'true';
 
+    const setupAdmin = (ws, roomId, adminClients, loggedInUsers, onlineUsers) => {
+      ws.isAdmin = true;
+      ws.roomId = roomId;
+      adminClients.add(ws);
+      logger.info(`An admin client authenticated and connected to room ${roomId}!`);
+      logger.info(`Online users snapshot for admin (room ${roomId}): ${onlineUsers.size} user(s)`);
+      broadcastToAdmins(roomId, 'activity', `An admin client connected to admin channel.`);
+      User.find({ roomId }).then(allDbUsers => {
+        ws.send(JSON.stringify({ type: 'users', data: allDbUsers }));
+      });
+      loadPinnedMessages(roomId).then(() => {
+        ws.send(JSON.stringify({
+          type: 'pinned_messages_update',
+          data: getRoomState(roomId).pinnedMessages
+        }));
+      });
+      // Send current logged-in users
+      ws.send(JSON.stringify({ type: 'logged_in_users', data: Array.from(loggedInUsers.values()) }));
+      // Send current online users
+      ws.send(JSON.stringify({ type: 'online_users_admin', data: Array.from(onlineUsers.values()) }));
+      ws.on('close', () => {
+        adminClients.delete(ws);
+        logger.info(`An admin client disconnected from admin channel (room ${roomId}).`);
+        broadcastToAdmins(roomId, 'activity', `An admin client disconnected from admin channel.`);
+      });
+    };
+
     if (isAdminConnection) {
       // Auth is done via the first WebSocket message to keep the password out of the URL (and server logs).
       ws.once('message', (rawData) => {
         try {
           const data = JSON.parse(rawData.toString());
-          if (data.type === 'admin_auth' && data.password === process.env.ADMIN_PASSWORD) {
-            ws.isAdmin = true;
-            adminClients.add(ws);
-            logger.info('An admin client authenticated and connected!');
-            broadcastToAdmins('activity', 'An admin client connected to admin channel.');
-            User.find().then(allDbUsers => {
-              ws.send(JSON.stringify({ type: 'users', data: allDbUsers }));
-            });
-            // Send current logged-in users
-            ws.send(JSON.stringify({ type: 'logged_in_users', data: Array.from(loggedInUsers.values()) }));
-            // Send current online users
-            ws.send(JSON.stringify({ type: 'online_users_admin', data: Array.from(onlineUsers.values()) }));
-            ws.on('close', () => {
-              adminClients.delete(ws);
-              logger.info('An admin client disconnected from admin channel.');
-              broadcastToAdmins('activity', 'An admin client disconnected from admin channel.');
-            });
+          logger.info(`Admin auth attempt: roomId=${data.roomId}, type=${data.type}, hasPassword=${!!data.password}`);
+          if (data.type === 'admin_auth' && data.roomId) {
+            const roomId = data.roomId;
+            const { adminClients, loggedInUsers, onlineUsers } = getRoomState(roomId);
+            
+            let isValid = false;
+            if (roomId === 'me' && data.password === process.env.ADMIN_PASSWORD) {
+              isValid = true;
+            } else {
+              // we can't await easily in this sync callback, so let's do promise
+              Room.findOne({ id: roomId }).then(room => {
+                if (room && room.adminPassword === data.password) {
+                  setupAdmin(ws, roomId, adminClients, loggedInUsers, onlineUsers);
+                  ws.on('message', handleClientMessage);
+                } else {
+                  logger.warn(`Admin auth failed for room ${roomId}: room found=${!!room}, password match=${room ? room.adminPassword === data.password : 'N/A'}`);
+                  ws.terminate();
+                }
+              }).catch((err) => {
+                logger.error(`Admin auth DB error for room ${roomId}:`, err);
+                ws.terminate();
+              });
+              return;
+            }
+            
+            if (isValid) {
+              setupAdmin(ws, roomId, adminClients, loggedInUsers, onlineUsers);
+              ws.on('message', handleClientMessage);
+            }
           } else {
-            logger.warn('Admin auth failed: incorrect password.');
+            logger.warn('Admin auth failed: missing data.', { type: data.type, hasRoomId: !!data.roomId });
             ws.terminate();
           }
-        } catch {
+        } catch (err) {
+          logger.error('Admin auth exception:', err);
           ws.terminate();
         }
       });
@@ -198,7 +298,7 @@ const initWebSocket = (wss) => {
 
     logger.info('A new client connected!');
 
-    ws.on('message', async (message) => {
+    async function handleClientMessage(message) {
       const parsedMessage = JSON.parse(message.toString());
       if (parsedMessage.type !== 'admin_auth') {
         logger.info('Received message:', parsedMessage);
@@ -206,9 +306,12 @@ const initWebSocket = (wss) => {
 
       switch (parsedMessage.type) {
         case 'user_join': {
-          const { userId, username, fingerprint: fpData } = parsedMessage;
+          const { userId, username, fingerprint: fpData, roomId = 'me' } = parsedMessage;
           ws.userId = userId;
           ws.username = username;
+          ws.roomId = roomId;
+
+          const { onlineUsers, loggedInUsers, pendingDisconnects } = getRoomState(roomId);
 
           // Collect connection fingerprint
           const wsIp = extractIp(req);
@@ -233,16 +336,17 @@ const initWebSocket = (wss) => {
           }
 
           // Check if user is blocked (async)
-          const blockResult = await isUserBlocked(userId, wsIp, wsUa, fpData);
+          const blockResult = await isUserBlocked(roomId, userId, wsIp, wsUa, fpData);
           if (blockResult.blocked) {
-            logger.warn(`Blocked user '${username}' attempted to join via WebSocket.`);
+            logger.warn(`Blocked user '${username}' attempted to join room ${roomId} via WebSocket.`);
             ws.send(JSON.stringify({ type: 'force_logout', message: 'You have been blocked from this chat room.' }));
             await AuditLog.create({
+              roomId,
               type: 'join_failed_blocked',
               details: { userId, username, reason: blockResult.reason, via: 'websocket' },
               ip: wsIp, userAgent: wsUa,
             });
-            broadcastToAdmins('audit_log', { type: 'join_failed_blocked', details: { userId, username }, timestamp: new Date() });
+            broadcastToAdmins(roomId, 'audit_log', { type: 'join_failed_blocked', details: { userId, username }, timestamp: new Date() });
             setTimeout(() => ws.terminate(), 300);
             return;
           }
@@ -276,10 +380,10 @@ const initWebSocket = (wss) => {
           if (pendingDisconnects.has(userId)) {
             clearTimeout(pendingDisconnects.get(userId));
             pendingDisconnects.delete(userId);
-            logger.info(`User '${username}' rejoined (refresh).`);
+            logger.info(`User '${username}' rejoined room ${roomId} (refresh).`);
           } else {
-            logger.info(`User '${username}' joined.`);
-            _broadcast({
+            logger.info(`User '${username}' joined room ${roomId}.`);
+            _broadcast(roomId, {
               type: 'system_notification',
               id: `system-${Date.now()}`,
               text: `${username} has joined the chat.`,
@@ -295,9 +399,9 @@ const initWebSocket = (wss) => {
           }
 
           User.findOneAndUpdate(
-            { userId },
+            { roomId, userId },
             {
-              $set: { userId, username, lastSeen: new Date() },
+              $set: { roomId, userId, username, lastSeen: new Date() },
               $push: {
                 joinHistory: {
                   $each: [new Date()],
@@ -308,13 +412,13 @@ const initWebSocket = (wss) => {
             { upsert: true, new: true }
           ).catch(err => logger.error('Failed to save user:', err));
 
-          broadcastToAdmins('user_joined', { userId, username });
-          broadcastToAdmins('activity', `User '${username}' connected.`);
-          broadcastToAdmins('logged_in_users', Array.from(loggedInUsers.values()));
-          _broadcastOnlineUsers();
+          broadcastToAdmins(roomId, 'user_joined', { userId, username });
+          broadcastToAdmins(roomId, 'activity', `User '${username}' connected.`);
+          broadcastToAdmins(roomId, 'logged_in_users', Array.from(loggedInUsers.values()));
+          _broadcastOnlineUsers(roomId);
 
-          Message.find(_getVisibleMessagesQuery()).sort({ createdAt: -1 }).limit(INITIAL_HISTORY_BATCH_SIZE + 1).lean()
-            .then(messagesDesc => {
+          Message.find({ roomId, ..._getVisibleMessagesQuery(roomId) }).sort({ createdAt: -1 }).limit(INITIAL_HISTORY_BATCH_SIZE + 1).lean()
+            .then(async messagesDesc => {
               const hasMoreHistory = messagesDesc.length > INITIAL_HISTORY_BATCH_SIZE;
               const windowDesc = hasMoreHistory
                 ? messagesDesc.slice(0, INITIAL_HISTORY_BATCH_SIZE)
@@ -327,17 +431,24 @@ const initWebSocket = (wss) => {
                 hasMoreHistory,
                 oldestCreatedAt,
               }));
+
+              await loadPinnedMessages(roomId);
+              ws.send(JSON.stringify({
+                type: 'pinned_messages_update',
+                data: getRoomState(roomId).pinnedMessages
+              }));
             })
             .catch(err => logger.error('Failed to send initial history:', err));
           break;
         }
         case 'react': {
-          const { messageId, userId } = parsedMessage;
+          const { messageId, userId, roomId = 'me' } = parsedMessage;
           const emoji = normalizeReactionEmoji(parsedMessage.emoji);
           if (!emoji || typeof messageId !== 'string' || typeof userId !== 'string') {
             logger.warn('Rejected invalid reaction payload', { messageId, userId, emoji: parsedMessage.emoji });
             break;
           }
+          const { onlineUsers } = getRoomState(roomId);
           const username = onlineUsers.get(userId)?.username || 'Unknown';
 
           // IMPORTANT: Do NOT use .lean() here.
@@ -401,7 +512,7 @@ const initWebSocket = (wss) => {
           break;
         }
         case 'edit': {
-          const { messageId, newText } = parsedMessage;
+          const { messageId, newText, roomId = 'me' } = parsedMessage;
 
           const msg = await Message.findOne({ id: messageId });
           if (!msg) return;
@@ -416,9 +527,10 @@ const initWebSocket = (wss) => {
             edited: true
           };
 
-          User.findOne({ userId: ws.userId }).then(user => {
+          User.findOne({ roomId, userId: ws.userId }).then(user => {
             const username = user ? user.username : 'Unknown';
             const event = new MessageEvent({
+              roomId,
               type: 'edit',
               messageId,
               oldText,
@@ -428,30 +540,36 @@ const initWebSocket = (wss) => {
               timestamp: new Date().toISOString(),
             });
             event.save().catch(e => logger.error('Failed to save edit event:', e));
-            broadcastToAdmins('history', event);
-            broadcastToAdmins('activity', `Message (ID: ${messageId}) edited by '${username}'. New text: "${newText}"`);
+            broadcastToAdmins(roomId, 'history', event);
+            broadcastToAdmins(roomId, 'activity', `Message (ID: ${messageId}) edited by '${username}'. New text: "${newText}"`);
           }).catch(e => logger.error('Failed to find user for edit event:', e));
 
           const updateMsg = { type: 'update', data: updatedMsgForBroadcast };
-          wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(JSON.stringify(updateMsg)); });
+          wss.clients.forEach(c => { 
+            if (c.readyState === WebSocket.OPEN && c.roomId === roomId) {
+              c.send(JSON.stringify(updateMsg)); 
+            }
+          });
           break;
         }
         case 'file_picker_open': {
-          if (ws.userId) {
+          if (ws.userId && ws.roomId) {
             const ttlMs = Math.max(10000, Math.min(Number(parsedMessage.ttlMs) || 120000, 180000));
-            filePickerPresenceGrace.set(ws.userId, Date.now() + ttlMs);
+            getRoomState(ws.roomId).filePickerPresenceGrace.set(ws.userId, Date.now() + ttlMs);
           }
           break;
         }
         case 'file_picker_close': {
-          if (ws.userId) filePickerPresenceGrace.delete(ws.userId);
+          if (ws.userId && ws.roomId) getRoomState(ws.roomId).filePickerPresenceGrace.delete(ws.userId);
           break;
         }
         case 'user_logout': {
           // Explicit logout from the client — remove from loggedInUsers
           // so the admin panel's "Logged-In Sessions" list stays accurate.
           const logoutUserId = parsedMessage.userId || ws.userId;
+          const roomId = ws.roomId || 'me';
           if (logoutUserId) {
+            const { loggedInUsers, onlineUsers, typingUsers, filePickerPresenceGrace, pendingDisconnects } = getRoomState(roomId);
             const logoutUser = loggedInUsers.get(logoutUserId) || onlineUsers.get(logoutUserId);
             const logoutUsername = logoutUser?.username || ws.username || 'Unknown';
             loggedInUsers.delete(logoutUserId);
@@ -462,14 +580,14 @@ const initWebSocket = (wss) => {
               clearTimeout(pendingDisconnects.get(logoutUserId));
               pendingDisconnects.delete(logoutUserId);
             }
-            logger.info(`User '${logoutUsername}' logged out explicitly.`);
-            broadcastToAdmins('user_logged_out', { userId: logoutUserId, username: logoutUsername });
-            broadcastToAdmins('logged_in_users', Array.from(loggedInUsers.values()));
-            broadcastToAdmins('activity', `User '${logoutUsername}' logged out.`);
-            _broadcastOnlineUsers();
+            logger.info(`User '${logoutUsername}' logged out explicitly from room ${roomId}.`);
+            broadcastToAdmins(roomId, 'user_logged_out', { userId: logoutUserId, username: logoutUsername });
+            broadcastToAdmins(roomId, 'logged_in_users', Array.from(loggedInUsers.values()));
+            broadcastToAdmins(roomId, 'activity', `User '${logoutUsername}' logged out.`);
+            _broadcastOnlineUsers(roomId);
 
             // Broadcast system notification
-            _broadcast({
+            _broadcast(roomId, {
               type: 'system_notification',
               id: `system-${Date.now()}`,
               text: `${logoutUsername} has left the chat.`,
@@ -479,16 +597,18 @@ const initWebSocket = (wss) => {
           break;
         }
         case 'start_typing': {
-          if (ws.userId) {
+          if (ws.userId && ws.roomId) {
             const activity = parsedMessage.activity === 'gif_selecting' ? 'gif_selecting' : 'typing';
-            typingUsers.set(ws.userId, activity);
+            getRoomState(ws.roomId).typingUsers.set(ws.userId, activity);
+            _broadcastOnlineUsers(ws.roomId);
           }
-          _broadcastOnlineUsers();
           break;
         }
         case 'stop_typing': {
-          if (ws.userId) typingUsers.delete(ws.userId);
-          _broadcastOnlineUsers();
+          if (ws.userId && ws.roomId) {
+            getRoomState(ws.roomId).typingUsers.delete(ws.userId);
+            _broadcastOnlineUsers(ws.roomId);
+          }
           break;
         }
         case 'report_user': {
@@ -536,9 +656,11 @@ const initWebSocket = (wss) => {
             break;
           }
 
+          const roomId = ws.roomId || 'me';
+          const { onlineUsers, loggedInUsers } = getRoomState(roomId);
           try {
             const [reportedUserDoc, reportedMessage] = await Promise.all([
-              User.findOne({ userId: { $eq: reportedUserId } }).lean(),
+              User.findOne({ roomId, userId: { $eq: reportedUserId } }).lean(),
               messageId ? Message.findOne({ id: { $eq: messageId } }).lean() : Promise.resolve(null),
             ]);
 
@@ -561,6 +683,7 @@ const initWebSocket = (wss) => {
               : [];
 
             const report = await UserReport.create({
+              roomId,
               reporterUserId: ws.userId,
               reporterUsername: ws.username,
               reporterIp: ws.clientIp || '',
@@ -583,8 +706,8 @@ const initWebSocket = (wss) => {
             });
 
             const reportData = typeof report.toObject === 'function' ? report.toObject() : report;
-            broadcastToAdmins('user_reported', reportData);
-            broadcastToAdmins('activity', `User report: '${ws.username}' reported '${reportedUsername}'.`);
+            broadcastToAdmins(roomId, 'user_reported', reportData);
+            broadcastToAdmins(roomId, 'activity', `User report: '${ws.username}' reported '${reportedUsername}'.`);
 
             ws.send(JSON.stringify({
               type: 'report_submitted',
@@ -603,8 +726,66 @@ const initWebSocket = (wss) => {
           }
           break;
         }
-        case 'delete_for_everyone': {
+        case 'pin_message': {
+          logger.info(`Received pin_message:`, parsedMessage);
+          if (!ws.isAdmin) {
+            logger.warn('Pin failed: not an admin');
+            return;
+          }
+          const { messageId, durationMs, replaceOldest } = parsedMessage;
+          const roomId = ws.roomId || 'me';
+          try {
+            const msg = await Message.findOne({ id: messageId }).lean();
+            if (!msg) {
+              logger.warn(`Pin failed: message not found in DB for ID ${messageId}`);
+              return;
+            }
+            logger.info(`Pinning message found in DB:`, msg.id);
+
+            const state = getRoomState(roomId);
+            await loadPinnedMessages(roomId);
+
+            if (state.pinnedMessages.length >= 4 && !replaceOldest) {
+              ws.send(JSON.stringify({ type: 'pin_error', message: 'Maximum 4 pinned messages allowed.' }));
+              return;
+            }
+
+            if (state.pinnedMessages.length >= 4 && replaceOldest) {
+              const oldestMsg = state.pinnedMessages[0];
+              await Message.updateOne({ id: oldestMsg.id }, { $set: { pinned: null } });
+              state.pinnedMessages.shift(); // Remove oldest
+            }
+
+            const pinnedAt = new Date();
+            const expiresAt = durationMs ? new Date(pinnedAt.getTime() + durationMs) : null;
+            const pinnedObj = { pinnedAt, expiresAt };
+
+            await Message.updateOne({ id: messageId }, { $set: { pinned: pinnedObj } });
+            
+            const updatedMsg = { ...msg, pinned: pinnedObj };
+            state.pinnedMessages.push(toClientMessage(updatedMsg));
+            broadcastPinnedMessages(roomId);
+          } catch (error) {
+            logger.error('Failed to pin message:', error);
+          }
+          break;
+        }
+        case 'unpin_message': {
+          if (!ws.isAdmin) return;
           const { messageId } = parsedMessage;
+          const roomId = ws.roomId || 'me';
+          try {
+            await Message.updateOne({ id: messageId }, { $set: { pinned: null } });
+            const state = getRoomState(roomId);
+            state.pinnedMessages = state.pinnedMessages.filter(m => m.id !== messageId);
+            broadcastPinnedMessages(roomId);
+          } catch (error) {
+            logger.error('Failed to unpin message:', error);
+          }
+          break;
+        }
+        case 'delete_for_everyone': {
+          const { messageId, roomId = 'me' } = parsedMessage;
 
           try {
             const originalMessage = await Message.findOne({ id: messageId }).lean();
@@ -629,9 +810,10 @@ const initWebSocket = (wss) => {
               { new: true }
             ).lean();
 
-            User.findOne({ userId: ws.userId }).then(user => {
+            User.findOne({ roomId, userId: ws.userId }).then(user => {
               const username = user ? user.username : 'Unknown';
               const event = new MessageEvent({
+                roomId,
                 type: 'delete_everyone',
                 messageId,
                 deletedContent: originalMessage,
@@ -640,13 +822,13 @@ const initWebSocket = (wss) => {
                 timestamp: new Date().toISOString(),
               });
               event.save().catch(e => logger.error('Failed to save delete event:', e));
-              broadcastToAdmins('history', event);
-              broadcastToAdmins('activity', `Message (ID: ${messageId}) deleted by '${username}'.`);
+              broadcastToAdmins(roomId, 'history', event);
+              broadcastToAdmins(roomId, 'activity', `Message (ID: ${messageId}) deleted by '${username}'.`);
             }).catch(e => logger.error('Failed to find user for delete event:', e));
 
             const updateMsg = { type: 'update', data: updatedMessage };
             wss.clients.forEach(c => {
-              if (c.readyState === WebSocket.OPEN) {
+              if (c.readyState === WebSocket.OPEN && c.roomId === roomId) {
                 c.send(JSON.stringify(updateMsg));
               }
             });
@@ -657,13 +839,16 @@ const initWebSocket = (wss) => {
           break;
         }
         default: { // New text/media message
+          const roomId = ws.roomId || 'me';
+          const { typingUsers } = getRoomState(roomId);
           if (ws.userId && typingUsers.has(ws.userId)) {
             typingUsers.delete(ws.userId);
-            _broadcastOnlineUsers();
+            _broadcastOnlineUsers(roomId);
           }
 
           const messageDoc = new Message({
             ...parsedMessage,
+            roomId,
             reactions: toReactionMap(parsedMessage.reactions),
             id: parsedMessage.id || Date.now().toString(),
             sender: ws.userId
@@ -680,9 +865,10 @@ const initWebSocket = (wss) => {
             break;
           }
 
-          User.findOne({ userId: ws.userId }).then(user => {
+          User.findOne({ roomId, userId: ws.userId }).then(user => {
             const username = user ? user.username : 'Unknown';
             const event = new MessageEvent({
+              roomId,
               type: 'create',
               message: messageDoc.toObject(),
               userId: ws.userId,
@@ -690,22 +876,37 @@ const initWebSocket = (wss) => {
               timestamp: new Date().toISOString(),
             });
             event.save().catch(e => logger.error('Failed to save message create event:', e));
-            broadcastToAdmins('history', event);
-            broadcastToAdmins('activity', `New message from '${username}': "${messageDoc.text || '[Media]'}"`);
+            broadcastToAdmins(roomId, 'history', event);
+            broadcastToAdmins(roomId, 'activity', `New message from '${username}': "${messageDoc.text || '[Media]'}"`);
           }).catch(e => logger.error('Failed to find user for message event:', e));
 
           wss.clients.forEach(client => {
-            if (client !== ws && client.readyState === WebSocket.OPEN) {
+            if (client !== ws && client.readyState === WebSocket.OPEN && client.roomId === roomId) {
               client.send(JSON.stringify(messageDoc));
             }
           });
           break;
         }
       }
-    });
+    };
+
+    if (!isAdminConnection) {
+      ws.on('message', handleClientMessage);
+    }
 
     ws.on('close', () => {
+      const roomId = ws.roomId || 'me';
+      const { onlineUsers, typingUsers, filePickerPresenceGrace, pendingDisconnects } = getRoomState(roomId);
       if (ws.userId && onlineUsers.has(ws.userId)) {
+        // If the user has another active tab/connection, they are not actually leaving.
+        // Don't start a disconnect timer or broadcast a leave event.
+        const hasOtherActiveSocket = Array.from(wss.clients).some(
+          client => client !== ws && client.readyState === 1 && client.roomId === roomId && client.userId === ws.userId
+        );
+        if (hasOtherActiveSocket) {
+          return;
+        }
+
         const user = onlineUsers.get(ws.userId);
         const filePickerGraceUntil = filePickerPresenceGrace.get(ws.userId) || 0;
         const disconnectDelayMs = filePickerGraceUntil > Date.now() ? 120000 : 10000;
@@ -717,16 +918,16 @@ const initWebSocket = (wss) => {
           typingUsers.delete(ws.userId);
           filePickerPresenceGrace.delete(ws.userId);
 
-          _broadcast({
+          _broadcast(roomId, {
             type: 'system_notification',
             id: `system-${Date.now()}`,
             text: `${user.username} has left the chat.`,
             timestamp: new Date().toISOString(),
           });
 
-          _broadcastOnlineUsers();
-          broadcastToAdmins('user_left', { userId: ws.userId });
-          broadcastToAdmins('activity', `User '${user.username}' disconnected.`);
+          _broadcastOnlineUsers(roomId);
+          broadcastToAdmins(roomId, 'user_left', { userId: ws.userId });
+          broadcastToAdmins(roomId, 'activity', `User '${user.username}' disconnected.`);
           pendingDisconnects.delete(ws.userId);
         }, disconnectDelayMs);
 

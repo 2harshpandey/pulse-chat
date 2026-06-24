@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const chatStateSchema = new mongoose.Schema({
-  key: { type: String, required: true, unique: true, default: 'global' },
+  roomId: { type: String, required: true, unique: true, default: 'me' },
   frontendHiddenBefore: { type: Date, default: null },
 }, { timestamps: true });
 

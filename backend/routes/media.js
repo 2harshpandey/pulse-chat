@@ -15,10 +15,7 @@ const Message = require('../models/message');
 const MessageEvent = require('../models/messageEvent');
 const ChatState = require('../models/chatState');
 const {
-  onlineUsers,
-  getFrontendHiddenBefore,
-  setFrontendHiddenBefore,
-  GLOBAL_CHAT_STATE_KEY,
+  getRoomState,
   DEFAULT_HISTORY_PAGE_SIZE,
   MAX_HISTORY_PAGE_SIZE,
 } = require('../state');
@@ -108,9 +105,8 @@ const uploadBufferToCloudinary = (file, originalName) => new Promise((resolve, r
 });
 
 // --- Helper: build query that respects frontendHiddenBefore ---
-const getVisibleMessagesQuery = (beforeTimestamp) => {
+const getVisibleMessagesQuery = (beforeTimestamp, frontendHiddenBefore) => {
   const createdAt = {};
-  const frontendHiddenBefore = getFrontendHiddenBefore();
 
   if (frontendHiddenBefore instanceof Date && !Number.isNaN(frontendHiddenBefore.getTime())) {
     createdAt.$gt = frontendHiddenBefore;
@@ -138,13 +134,14 @@ module.exports = (wss, broadcasts) => {
       if (err) {
         logger.error(`Upload middleware error: ${err.message}`);
         if (err.code === 'LIMIT_FILE_SIZE') {
-          return res.status(413).json({ error: 'File too large. Max size is 100 MB.' });
+          return res.status(413).json({ error: 'File too large. Photos or videos are allowed only upto 100 MBs in size.' });
         }
         return res.status(500).json({ error: `Upload failed: ${err.message}` });
       }
       if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
 
-      const { userId } = req.body;
+      const { userId, roomId = 'me' } = req.body;
+      const { onlineUsers } = getRoomState(roomId);
       const username = onlineUsers.get(userId)?.username || 'Unknown';
       const originalName = sanitizeUploadFilename(req.file.originalname);
 
@@ -153,6 +150,7 @@ module.exports = (wss, broadcasts) => {
 
         // Create a MessageEvent for the upload
         const event = new MessageEvent({
+          roomId,
           type: 'upload',
           file: {
             originalname: originalName,
@@ -165,10 +163,10 @@ module.exports = (wss, broadcasts) => {
         });
         event.save();
 
-        broadcastToAdmins('history', event);
-        broadcastToAdmins('activity', `File '${originalName}' uploaded by '${username}'.`);
+        broadcastToAdmins(roomId, 'history', event);
+        broadcastToAdmins(roomId, 'activity', `File '${originalName}' uploaded by '${username}'.`);
 
-        logger.info(`File uploaded: ${originalName}`);
+        logger.info(`File uploaded to room ${roomId}: ${originalName}`);
 
         res.status(200).json({
           id: uploaded.public_id,
@@ -187,7 +185,7 @@ module.exports = (wss, broadcasts) => {
         const providerLimit = /maximum is\s+10485760/i.test(uploadError.message || '');
         return res.status(providerLimit ? 413 : 502).json({
           error: providerLimit
-            ? 'File too large for the current upload provider path. Please try again after the latest server deploy.'
+            ? 'File too large for the current upload provider path. Files are allowed only upto 10 MBs in size. Please try again after the latest server deploy.'
             : `Upload failed: ${uploadError.message || 'Cloudinary upload failed.'}`,
         });
       }
@@ -198,11 +196,12 @@ module.exports = (wss, broadcasts) => {
   router.delete('/api/delete/:id', apiLimiter, async (req, res) => {
     try {
       const messageId = req.params.id;
+      const roomId = req.headers['x-room-id'] || 'me';
       if (!messageId) return res.status(400).json({ error: 'No message ID provided.' });
-      logger.info(`Delete request for message ID: ${messageId}`);
+      logger.info(`Delete request for message ID: ${messageId} in room ${roomId}`);
 
       // Find message to delete from DB
-      const messageToDelete = await Message.findOne({ id: messageId });
+      const messageToDelete = await Message.findOne({ id: messageId, roomId });
 
       if (messageToDelete && messageToDelete.url && messageToDelete.url.includes('cloudinary')) {
         const publicId = messageToDelete.id;
@@ -212,11 +211,13 @@ module.exports = (wss, broadcasts) => {
         }
       }
 
-      await Message.deleteOne({ id: messageId });
+      await Message.deleteOne({ id: messageId, roomId });
 
       const deleteMessage = { type: 'delete', id: messageId };
       wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(deleteMessage));
+        if (client.readyState === WebSocket.OPEN && client.roomId === roomId) {
+          client.send(JSON.stringify(deleteMessage));
+        }
       });
 
       res.status(200).json({ success: true, message: 'Message deleted.' });
@@ -228,14 +229,15 @@ module.exports = (wss, broadcasts) => {
 
   // --- Permanent Clear (admin secret) ---
   router.delete('/api/messages/all', adminLimiter, adminSecretAuth, async (req, res) => {
+    const roomId = req.headers['x-room-id'] || 'me';
     try {
-      await Message.deleteMany({});
-      await MessageEvent.deleteMany({});
+      await Message.deleteMany({ roomId });
+      await MessageEvent.deleteMany({ roomId });
 
-      broadcast({ type: 'chat_cleared' });
+      broadcast(wss, roomId, { type: 'chat_cleared' });
 
-      logger.info('All messages and events have been permanently deleted by an admin.');
-      broadcastToAdmins('activity', 'All messages and events have been permanently deleted.');
+      logger.info(`All messages and events in room ${roomId} have been permanently deleted by an admin.`);
+      broadcastToAdmins(roomId, 'activity', 'All messages and events have been permanently deleted.');
 
       res.status(200).json({ message: 'All messages and events have been permanently deleted.' });
     } catch (error) {
@@ -246,21 +248,22 @@ module.exports = (wss, broadcasts) => {
 
   // --- Hide All From Frontend (admin secret) ---
   router.post('/api/messages/hide-all-frontend', adminLimiter, adminSecretAuth, async (req, res) => {
+    const roomId = req.headers['x-room-id'] || 'me';
     try {
       const hiddenBefore = new Date();
 
       await ChatState.findOneAndUpdate(
-        { key: GLOBAL_CHAT_STATE_KEY },
-        { $set: { frontendHiddenBefore: hiddenBefore } },
+        { roomId },
+        { $set: { roomId, frontendHiddenBefore: hiddenBefore } },
         { upsert: true, setDefaultsOnInsert: true }
       );
 
-      setFrontendHiddenBefore(hiddenBefore);
+      getRoomState(roomId).frontendHiddenBefore = hiddenBefore;
 
-      broadcast({ type: 'chat_hidden_for_everyone', hiddenBefore: hiddenBefore.toISOString() });
+      broadcast(wss, roomId, { type: 'chat_hidden_for_everyone', hiddenBefore: hiddenBefore.toISOString() });
 
-      logger.info('All existing chats have been hidden from frontend for everyone (DB preserved).');
-      broadcastToAdmins('activity', 'All existing chats have been hidden from frontend for everyone.');
+      logger.info(`All existing chats in room ${roomId} have been hidden from frontend for everyone (DB preserved).`);
+      broadcastToAdmins(roomId, 'activity', 'All existing chats have been hidden from frontend for everyone.');
 
       res.status(200).json({
         message: 'All existing chats are now hidden from frontend for everyone.',
@@ -613,6 +616,7 @@ module.exports = (wss, broadcasts) => {
 
   // --- Paginated Messages ---
   router.get('/api/messages', apiLimiter, async (req, res) => {
+    const roomId = req.headers['x-room-id'] || req.query.roomId || 'me';
     try {
       const requestedLimit = Number(req.query.limit);
       const pageSize = Number.isFinite(requestedLimit)
@@ -629,9 +633,9 @@ module.exports = (wss, broadcasts) => {
         }
       }
 
-      const query = getVisibleMessagesQuery(beforeDate);
-
-      const rows = await Message.find(query)
+      const query = getVisibleMessagesQuery(beforeDate, getRoomState(roomId).frontendHiddenBefore);
+      
+      const rows = await Message.find({ roomId, ...query })
         .sort({ createdAt: -1 })
         .limit(pageSize + 1)
         .lean();

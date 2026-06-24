@@ -16,10 +16,7 @@ const AuditLog = require('../models/auditLog');
 const User = require('../models/user');
 const UserReport = require('../models/userReport');
 const {
-  onlineUsers,
-  loggedInUsers,
-  typingUsers,
-  pendingDisconnects,
+  getRoomState,
   userFingerprints,
   MAX_HISTORY,
 } = require('../state');
@@ -36,17 +33,20 @@ module.exports = (wss, broadcasts) => {
 
   // --- Message / History ---
   router.get('/api/admin/messages', adminLimiter, adminAuth, async (req, res) => {
-    const messages = await Message.find().sort({ createdAt: -1 }).limit(MAX_HISTORY);
+    const roomId = req.roomId;
+    const messages = await Message.find({ roomId }).sort({ createdAt: -1 }).limit(MAX_HISTORY);
     res.json(messages.reverse());
   });
 
   router.get('/api/admin/users', adminLimiter, adminAuth, async (req, res) => {
-    const users = await User.find({}).sort({ createdAt: 1 }).lean();
+    const roomId = req.roomId;
+    const users = await User.find({ roomId }).sort({ createdAt: 1 }).lean();
     res.json(users);
   });
 
   router.get('/api/admin/history', adminLimiter, adminAuth, async (req, res) => {
-    const events = await MessageEvent.find().sort({ createdAt: -1 });
+    const roomId = req.roomId;
+    const events = await MessageEvent.find({ roomId }).sort({ createdAt: -1 });
     res.json(events);
   });
 
@@ -64,14 +64,15 @@ module.exports = (wss, broadcasts) => {
 
   // --- Temp Links ---
   router.post('/api/admin/temp-links', adminLimiter, adminAuth, async (req, res) => {
+    const roomId = req.roomId;
     try {
       const token = crypto.randomBytes(32).toString('hex');
       const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
-      const tempLink = await TempLink.create({ token, expiresAt });
+      const tempLink = await TempLink.create({ roomId, token, expiresAt });
 
-      await AuditLog.create({ type: 'temp_link_created', details: { token: token.substring(0, 8) + '...', expiresAt } });
-      broadcastToAdmins('temp_link_created', tempLink);
-      broadcastToAdmins('activity', `Temporary access link created. Expires at ${expiresAt.toLocaleTimeString()}.`);
+      await AuditLog.create({ roomId, type: 'temp_link_created', details: { token: token.substring(0, 8) + '...', expiresAt } });
+      broadcastToAdmins(roomId, 'temp_link_created', tempLink);
+      broadcastToAdmins(roomId, 'activity', `Temporary access link created. Expires at ${expiresAt.toLocaleTimeString()}.`);
 
       res.status(201).json(tempLink);
     } catch (error) {
@@ -81,8 +82,9 @@ module.exports = (wss, broadcasts) => {
   });
 
   router.get('/api/admin/temp-links', adminLimiter, adminAuth, async (req, res) => {
+    const roomId = req.roomId;
     try {
-      const links = await TempLink.find().sort({ createdAt: -1 }).limit(50);
+      const links = await TempLink.find({ roomId }).sort({ createdAt: -1 }).limit(50);
       res.json(links);
     } catch (error) {
       logger.error('Failed to fetch temp links:', error);
@@ -91,17 +93,18 @@ module.exports = (wss, broadcasts) => {
   });
 
   router.post('/api/admin/temp-links/:id/revoke', adminLimiter, adminAuth, async (req, res) => {
+    const roomId = req.roomId;
     try {
-      const link = await TempLink.findByIdAndUpdate(
-        req.params.id,
+      const link = await TempLink.findOneAndUpdate(
+        { _id: req.params.id, roomId },
         { isRevoked: true, revokedAt: new Date() },
         { new: true }
       );
       if (!link) return res.status(404).json({ error: 'Link not found.' });
 
-      await AuditLog.create({ type: 'temp_link_revoked', details: { token: link.token.substring(0, 8) + '...' } });
-      broadcastToAdmins('temp_link_revoked', link);
-      broadcastToAdmins('activity', `Temporary access link revoked.`);
+      await AuditLog.create({ roomId, type: 'temp_link_revoked', details: { token: link.token.substring(0, 8) + '...' } });
+      broadcastToAdmins(roomId, 'temp_link_revoked', link);
+      broadcastToAdmins(roomId, 'activity', `Temporary access link revoked.`);
 
       res.json(link);
     } catch (error) {
@@ -112,6 +115,8 @@ module.exports = (wss, broadcasts) => {
 
   // --- Logged-in Users ---
   router.get('/api/admin/logged-in-users', adminLimiter, adminAuth, (req, res) => {
+    const roomId = req.roomId;
+    const { loggedInUsers } = getRoomState(roomId);
     const users = Array.from(loggedInUsers.values());
     res.json(users);
   });
@@ -119,12 +124,15 @@ module.exports = (wss, broadcasts) => {
   // --- Force Logout ---
   router.post('/api/admin/force-logout/:userId', adminLimiter, adminAuth, async (req, res) => {
     const { userId } = req.params;
+    const roomId = req.roomId;
+    const { loggedInUsers, onlineUsers, typingUsers, pendingDisconnects } = getRoomState(roomId);
+    
     const targetUser = loggedInUsers.get(userId) || onlineUsers.get(userId);
     const username = targetUser?.username || 'Unknown';
 
     // Send force_logout to the specific user's WebSocket(s)
     wss.clients.forEach(client => {
-      if (client.readyState === WebSocket.OPEN && client.userId === userId && !client.isAdmin) {
+      if (client.readyState === WebSocket.OPEN && client.userId === userId && !client.isAdmin && client.roomId === roomId) {
         client.send(JSON.stringify({ type: 'force_logout', message: 'You have been logged out by an administrator.' }));
         setTimeout(() => client.terminate(), 500);
       }
@@ -139,19 +147,22 @@ module.exports = (wss, broadcasts) => {
       pendingDisconnects.delete(userId);
     }
 
-    await AuditLog.create({ type: 'user_force_logged_out', details: { userId, username } });
-    broadcastToAdmins('user_force_logged_out', { userId, username });
-    broadcastToAdmins('activity', `User '${username}' was force-logged out by admin.`);
-    broadcastOnlineUsers();
+    await AuditLog.create({ roomId, type: 'user_force_logged_out', details: { userId, username } });
+    broadcastToAdmins(roomId, 'user_force_logged_out', { userId, username });
+    broadcastToAdmins(roomId, 'activity', `User '${username}' was force-logged out by admin.`);
+    broadcastOnlineUsers(roomId);
 
     res.json({ success: true, message: `User '${username}' has been logged out.` });
   });
 
   // --- Force Logout All ---
   router.post('/api/admin/force-logout-all', adminLimiter, adminAuth, async (req, res) => {
+    const roomId = req.roomId;
+    const { loggedInUsers, onlineUsers, typingUsers, pendingDisconnects } = getRoomState(roomId);
+    
     const affectedUsers = [];
     wss.clients.forEach(client => {
-      if (client.readyState === WebSocket.OPEN && !client.isAdmin) {
+      if (client.readyState === WebSocket.OPEN && !client.isAdmin && client.roomId === roomId) {
         const uid = client.userId;
         const uname = (loggedInUsers.get(uid) || onlineUsers.get(uid))?.username || 'Unknown';
         affectedUsers.push({ userId: uid, username: uname });
@@ -166,18 +177,20 @@ module.exports = (wss, broadcasts) => {
     pendingDisconnects.forEach(t => clearTimeout(t));
     pendingDisconnects.clear();
 
-    await AuditLog.create({ type: 'force_logged_out_all', details: { count: affectedUsers.length, users: affectedUsers } });
-    broadcastToAdmins('activity', `Admin force-logged out ALL ${affectedUsers.length} user(s).`);
-    broadcastOnlineUsers();
+    await AuditLog.create({ roomId, type: 'force_logged_out_all', details: { count: affectedUsers.length, users: affectedUsers } });
+    broadcastToAdmins(roomId, 'activity', `Admin force-logged out ALL ${affectedUsers.length} user(s).`);
+    broadcastOnlineUsers(roomId);
     res.json({ success: true, message: `Force-logged out ${affectedUsers.length} user(s).` });
   });
 
   // --- Block / Unblock User ---
   router.post('/api/admin/block-user', adminLimiter, adminAuth, async (req, res) => {
     const { userId, username, reason } = req.body;
+    const roomId = req.roomId;
     if (!userId || typeof userId !== 'string') return res.status(400).json({ error: 'userId is required and must be a string.' });
 
     try {
+      const { loggedInUsers, onlineUsers, typingUsers } = getRoomState(roomId);
       // Gather all known fingerprints for this user
       const fp = userFingerprints.get(userId);
       const userInfo = loggedInUsers.get(userId) || onlineUsers.get(userId);
@@ -208,7 +221,7 @@ module.exports = (wss, broadcasts) => {
 
       // Also scan active WebSocket connections for this user's IP/UA
       wss.clients.forEach(client => {
-        if (client.userId === userId && !client.isAdmin) {
+        if (client.userId === userId && !client.isAdmin && client.roomId === roomId) {
           const wsIp = client._socket?.remoteAddress || '';
           const wsUa = client.upgradeReq?.headers?.['user-agent'] || '';
           if (wsIp && !fingerprints.ips.includes(wsIp)) fingerprints.ips.push(wsIp);
@@ -217,7 +230,7 @@ module.exports = (wss, broadcasts) => {
       });
 
       // Create or update block entry — use $eq to prevent NoSQL injection
-      let blockedUser = await BlockedUser.findOne({ userId: { $eq: userId } });
+      let blockedUser = await BlockedUser.findOne({ roomId, userId: { $eq: userId } });
       if (blockedUser) {
         blockedUser.isBlocked = true;
         blockedUser.blockedAt = new Date();
@@ -237,6 +250,7 @@ module.exports = (wss, broadcasts) => {
         await blockedUser.save();
       } else {
         blockedUser = await BlockedUser.create({
+          roomId,
           userId,
           username: username || 'Unknown',
           fingerprints,
@@ -246,7 +260,7 @@ module.exports = (wss, broadcasts) => {
 
       // Force logout the blocked user immediately
       wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN && client.userId === userId && !client.isAdmin) {
+        if (client.readyState === WebSocket.OPEN && client.userId === userId && !client.isAdmin && client.roomId === roomId) {
           client.send(JSON.stringify({ type: 'force_logout', message: 'You have been blocked from this chat room.' }));
           setTimeout(() => client.terminate(), 500);
         }
@@ -255,10 +269,10 @@ module.exports = (wss, broadcasts) => {
       loggedInUsers.delete(userId);
       typingUsers.delete(userId);
 
-      await AuditLog.create({ type: 'user_blocked', details: { userId, username: username || 'Unknown', reason } });
-      broadcastToAdmins('user_blocked', blockedUser);
-      broadcastToAdmins('activity', `User '${username || 'Unknown'}' has been blocked.`);
-      broadcastOnlineUsers();
+      await AuditLog.create({ roomId, type: 'user_blocked', details: { userId, username: username || 'Unknown', reason } });
+      broadcastToAdmins(roomId, 'user_blocked', blockedUser);
+      broadcastToAdmins(roomId, 'activity', `User '${username || 'Unknown'}' has been blocked.`);
+      broadcastOnlineUsers(roomId);
 
       res.json({ success: true, blockedUser });
     } catch (error) {
@@ -269,17 +283,18 @@ module.exports = (wss, broadcasts) => {
 
   router.post('/api/admin/unblock-user/:userId', adminLimiter, adminAuth, async (req, res) => {
     const { userId } = req.params;
+    const roomId = req.roomId;
     try {
       const blockedUser = await BlockedUser.findOneAndUpdate(
-        { userId: { $eq: userId }, isBlocked: true },
+        { roomId, userId: { $eq: userId }, isBlocked: true },
         { isBlocked: false, unblockedAt: new Date() },
         { new: true }
       );
       if (!blockedUser) return res.status(404).json({ error: 'Blocked user not found.' });
 
-      await AuditLog.create({ type: 'user_unblocked', details: { userId, username: blockedUser.username } });
-      broadcastToAdmins('user_unblocked', blockedUser);
-      broadcastToAdmins('activity', `User '${blockedUser.username}' has been unblocked.`);
+      await AuditLog.create({ roomId, type: 'user_unblocked', details: { userId, username: blockedUser.username } });
+      broadcastToAdmins(roomId, 'user_unblocked', blockedUser);
+      broadcastToAdmins(roomId, 'activity', `User '${blockedUser.username}' has been unblocked.`);
 
       res.json({ success: true, blockedUser });
     } catch (error) {
@@ -289,8 +304,9 @@ module.exports = (wss, broadcasts) => {
   });
 
   router.get('/api/admin/blocked-users', adminLimiter, adminAuth, async (req, res) => {
+    const roomId = req.roomId;
     try {
-      const blocked = await BlockedUser.find().sort({ blockedAt: -1 });
+      const blocked = await BlockedUser.find({ roomId }).sort({ blockedAt: -1 });
       res.json(blocked);
     } catch (error) {
       logger.error('Failed to fetch blocked users:', error);
@@ -301,11 +317,12 @@ module.exports = (wss, broadcasts) => {
   // --- Login Lockdown ---
   router.post('/api/admin/login-lockdown', adminLimiter, adminAuth, async (req, res) => {
     const { type, customMinutes } = req.body;
+    const roomId = req.roomId;
     if (!type) return res.status(400).json({ error: 'Lockdown type is required.' });
 
     try {
       // Deactivate any existing lockdowns
-      await LoginLockdown.updateMany({ isActive: true }, { isActive: false });
+      await LoginLockdown.updateMany({ roomId, isActive: true }, { isActive: false });
 
       let endTime = null;
       const now = new Date();
@@ -323,11 +340,11 @@ module.exports = (wss, broadcasts) => {
         default: return res.status(400).json({ error: 'Invalid lockdown type.' });
       }
 
-      const lockdown = await LoginLockdown.create({ type, endTime, isActive: true });
+      const lockdown = await LoginLockdown.create({ roomId, type, endTime, isActive: true });
 
-      await AuditLog.create({ type: 'lockdown_enabled', details: { type, endTime } });
-      broadcastToAdmins('lockdown_update', lockdown);
-      broadcastToAdmins('activity', `Login lockdown enabled: ${type}${endTime ? ` until ${endTime.toLocaleString()}` : ' (indefinite)'}.`);
+      await AuditLog.create({ roomId, type: 'lockdown_enabled', details: { type, endTime } });
+      broadcastToAdmins(roomId, 'lockdown_update', lockdown);
+      broadcastToAdmins(roomId, 'activity', `Login lockdown enabled: ${type}${endTime ? ` until ${endTime.toLocaleString()}` : ' (indefinite)'}.`);
 
       res.json(lockdown);
     } catch (error) {
@@ -337,12 +354,13 @@ module.exports = (wss, broadcasts) => {
   });
 
   router.delete('/api/admin/login-lockdown', adminLimiter, adminAuth, async (req, res) => {
+    const roomId = req.roomId;
     try {
-      await LoginLockdown.updateMany({ isActive: true }, { isActive: false });
+      await LoginLockdown.updateMany({ roomId, isActive: true }, { isActive: false });
 
-      await AuditLog.create({ type: 'lockdown_disabled', details: {} });
-      broadcastToAdmins('lockdown_update', { isActive: false });
-      broadcastToAdmins('activity', `Login lockdown has been disabled.`);
+      await AuditLog.create({ roomId, type: 'lockdown_disabled', details: {} });
+      broadcastToAdmins(roomId, 'lockdown_update', { isActive: false });
+      broadcastToAdmins(roomId, 'activity', `Login lockdown has been disabled.`);
 
       res.json({ success: true });
     } catch (error) {
@@ -352,8 +370,9 @@ module.exports = (wss, broadcasts) => {
   });
 
   router.get('/api/admin/login-lockdown', adminLimiter, adminAuth, async (req, res) => {
+    const roomId = req.roomId;
     try {
-      const lockdown = await LoginLockdown.findOne({ isActive: true }).sort({ createdAt: -1 });
+      const lockdown = await LoginLockdown.findOne({ roomId, isActive: true }).sort({ createdAt: -1 });
       if (lockdown && lockdown.endTime && new Date() > lockdown.endTime) {
         lockdown.isActive = false;
         await lockdown.save();
@@ -368,8 +387,9 @@ module.exports = (wss, broadcasts) => {
 
   // --- Audit Logs ---
   router.get('/api/admin/audit-logs', adminLimiter, adminAuth, async (req, res) => {
+    const roomId = req.roomId;
     try {
-      const logs = await AuditLog.find().sort({ timestamp: -1 }).limit(200);
+      const logs = await AuditLog.find({ roomId }).sort({ timestamp: -1 }).limit(200);
       res.json(logs);
     } catch (error) {
       logger.error('Failed to fetch audit logs:', error);
@@ -379,12 +399,48 @@ module.exports = (wss, broadcasts) => {
 
   // --- User Reports ---
   router.get('/api/admin/reports', adminLimiter, adminAuth, async (req, res) => {
+    const roomId = req.roomId;
     try {
-      const reports = await UserReport.find().sort({ reportedAt: -1 }).limit(500).lean();
+      const reports = await UserReport.find({ roomId }).sort({ reportedAt: -1 }).limit(500);
       res.json(reports);
     } catch (error) {
-      logger.error('Failed to fetch user reports:', { message: error.message, stack: error.stack });
-      res.status(500).json({ error: 'Failed to fetch user reports.' });
+      logger.error('Failed to fetch user reports:', error);
+      res.status(500).json({ error: 'Failed to fetch reports.' });
+    }
+  });
+
+  // --- Room Deletion ---
+  router.delete('/api/admin/room', adminLimiter, adminAuth, async (req, res) => {
+    const roomId = req.roomId;
+    if (roomId === 'me' || roomId === 'global') {
+      return res.status(403).json({ error: 'Cannot delete the system default rooms.' });
+    }
+    try {
+      const Room = require('../models/room');
+      const ChatState = require('../models/chatState');
+      
+      await Room.deleteOne({ id: roomId });
+      await Message.deleteMany({ roomId });
+      await MessageEvent.deleteMany({ roomId });
+      await AuditLog.deleteMany({ roomId });
+      await LoginLockdown.deleteMany({ roomId });
+      await BlockedUser.deleteMany({ roomId });
+      await UserReport.deleteMany({ roomId });
+      await ChatState.deleteMany({ roomId });
+      
+      // Force logout all online users in the room
+      const state = getRoomState(roomId);
+      const onlineUserIds = Array.from(state.onlineUsers.keys());
+      onlineUserIds.forEach(uid => {
+        broadcast(roomId, uid, 'admin_force_logout', { reason: 'Room deleted by admin.' });
+      });
+      state.onlineUsers.clear();
+      state.messages = [];
+      
+      res.json({ success: true });
+    } catch (error) {
+      logger.error('Failed to delete room:', error);
+      res.status(500).json({ error: 'Failed to delete room.' });
     }
   });
 

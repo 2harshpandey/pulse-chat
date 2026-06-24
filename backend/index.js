@@ -3,16 +3,18 @@
 require('dotenv').config();
 const http = require('http');
 const express = require('express');
+const helmet = require('helmet');
 const { WebSocketServer } = require('ws');
 const cors = require('cors');
 const cloudinary = require('cloudinary').v2;
 const logger = require('./logger');
 const connectDB = require('./db');
 const ChatState = require('./models/chatState');
-const { setFrontendHiddenBefore, GLOBAL_CHAT_STATE_KEY } = require('./state');
+const { getRoomState } = require('./state');
 const { apiLimiter } = require('./middleware');
 const { initWebSocket } = require('./websocket');
 const authRouter = require('./routes/auth');
+const roomsRouter = require('./routes/rooms');
 
 // ---------------------------------------------------------------------------
 // Cloudinary — configure once at startup so every module that imports
@@ -46,11 +48,12 @@ app.set('trust proxy', 1);
 // Allow all origins (the chat is public) while being explicit about which
 // methods and headers are permitted so mobile-browser CORS preflight checks
 // never fail due to an unrecognised header name.
+app.use(helmet());
 app.use(cors({
-  methods: ['GET', 'HEAD', 'POST', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-password', 'x-admin-secret'],
+  methods: ['GET', 'HEAD', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-password', 'x-admin-secret', 'x-room-id'],
 }));
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 app.use(apiLimiter);
 
 // ---------------------------------------------------------------------------
@@ -71,19 +74,23 @@ app.get('/', (_req, res) => res.send('Pulse Chat Server is running!'));
 app.use('/', authRouter);
 app.use('/', require('./routes/admin')(wss, broadcasts));
 app.use('/', require('./routes/media')(wss, broadcasts));
+app.use('/api/rooms', roomsRouter);
 
 // ---------------------------------------------------------------------------
 // Load persisted chat state from MongoDB
 // ---------------------------------------------------------------------------
 const loadGlobalChatState = async () => {
   try {
-    const state = await ChatState.findOne({ key: GLOBAL_CHAT_STATE_KEY });
-    if (state?.frontendHiddenBefore) {
-      setFrontendHiddenBefore(new Date(state.frontendHiddenBefore));
-      logger.info(`Loaded frontendHiddenBefore: ${state.frontendHiddenBefore}`);
-    }
+    const states = await ChatState.find({});
+    states.forEach(state => {
+      if (state.frontendHiddenBefore) {
+        const roomState = getRoomState(state.roomId);
+        roomState.frontendHiddenBefore = new Date(state.frontendHiddenBefore);
+      }
+    });
+    logger.info(`Loaded chat state for ${states.length} rooms.`);
   } catch (err) {
-    logger.error('Failed to load global chat state:', err);
+    logger.error('Failed to load chat states:', err);
   }
 };
 
