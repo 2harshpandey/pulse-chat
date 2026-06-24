@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import styled, { keyframes, createGlobalStyle } from 'styled-components';
 import { useNavigate } from 'react-router-dom';
+import { useTheme } from './ThemeContext';
 
 const GlobalHomeStyle = createGlobalStyle`
   html, body, #root {
@@ -13,10 +14,10 @@ const GlobalHomeStyle = createGlobalStyle`
     overflow-x: clip !important;
   }
   body {
-    background-color: #0f172a;
+    background-color: var(--bg-primary);
     margin: 0;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    color: #f8fafc;
+    color: var(--text-primary);
   }
 `;
 
@@ -45,9 +46,7 @@ const HeroContainer = styled.div`
   flex-direction: column;
   position: relative;
   overflow-x: clip;
-  background: 
-    linear-gradient(to bottom, #0f172a 0%, transparent 5%),
-    radial-gradient(circle at top, #1e293b 0%, #0f172a 100%);
+  background: var(--bg-primary);
 `;
 
 const TopNav = styled.nav`
@@ -119,7 +118,7 @@ const Title = styled.h1`
 
 const Description = styled.p`
   font-size: clamp(1.1rem, 2.5vw, 1.5rem);
-  color: #94a3b8;
+  color: var(--text-secondary);
   max-width: 650px;
   margin: 0 0 3rem;
   line-height: 1.6;
@@ -135,7 +134,7 @@ const ButtonGroup = styled.div`
 
 const PrimaryButton = styled.button`
   background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-  color: white;
+  color: #ffffff;
   border: none;
   padding: 1rem 2rem;
   font-size: 1.125rem;
@@ -165,9 +164,9 @@ const PrimaryButton = styled.button`
 `;
 
 const SecondaryButton = styled.button`
-  background: rgba(30, 41, 59, 0.6);
-  color: #f8fafc;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: var(--bg-secondary);
+  color: ${p => p.$primary ? '#ffffff' : 'var(--text-primary)'};
+  border: 1px solid var(--border-secondary);
   padding: 1rem 2rem;
   font-size: 1.125rem;
   font-weight: 600;
@@ -187,8 +186,8 @@ const SecondaryButton = styled.button`
   }
 
   &:hover {
-    background: rgba(51, 65, 85, 0.8);
-    border-color: rgba(255, 255, 255, 0.3);
+    background: var(--bg-hover);
+    border-color: var(--border-focus);
     transform: translateY(-3px) scale(1.02);
     box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
   }
@@ -230,8 +229,8 @@ const FeaturesSection = styled.div`
 const FeatureCard = styled.div`
   flex: 1 1 300px;
   max-width: 400px;
-  background: rgba(30, 41, 59, 0.4);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
   padding: 2rem;
   border-radius: 24px;
   text-align: left;
@@ -241,14 +240,14 @@ const FeatureCard = styled.div`
 
   &:hover {
     transform: translateY(-5px);
-    background: rgba(30, 41, 59, 0.6);
+    background: var(--bg-secondary);
     border-color: rgba(59, 130, 246, 0.3);
   }
 
   h3 {
     font-size: 1.25rem;
     margin: 0 0 1rem;
-    color: #f1f5f9;
+    color: var(--text-primary);
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -256,7 +255,7 @@ const FeatureCard = styled.div`
 
   p {
     margin: 0;
-    color: #94a3b8;
+    color: var(--text-secondary);
     line-height: 1.5;
     font-size: 0.95rem;
   }
@@ -284,16 +283,16 @@ const NavActions = styled.div`
   gap: 1rem;
 `;
 
-const NavIconButton = styled.button`
+const ThemeToggle = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
   width: 44px;
   height: 44px;
   border-radius: 12px;
-  background: rgba(30, 41, 59, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #94a3b8;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-secondary);
+  color: var(--text-secondary);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -309,7 +308,46 @@ const NavIconButton = styled.button`
   &:hover {
     background: rgba(59, 130, 246, 0.2);
     border-color: rgba(59, 130, 246, 0.5);
-    color: #f8fafc;
+    color: var(--text-primary);
+    transform: translateY(-3px) scale(1.05);
+    box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.4);
+  }
+  
+  &:active {
+    transform: translateY(1px);
+  }
+  
+  &:hover svg {
+    transform: rotate(30deg);
+  }
+`;
+
+const NavIconButton = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-secondary);
+  color: var(--text-secondary);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  text-decoration: none;
+
+  svg {
+    width: 22px;
+    height: 22px;
+    transition: transform 0.3s ease, color 0.3s ease;
+  }
+
+  &:hover {
+    background: rgba(59, 130, 246, 0.2);
+    border-color: rgba(59, 130, 246, 0.5);
+    color: var(--text-primary);
     transform: translateY(-3px) scale(1.05);
     box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.4);
 
@@ -327,7 +365,7 @@ const NavIconButton = styled.button`
 const ModalOverlay = styled.div`
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.8);
+  background: rgba(var(--bg-primary-rgb, 15, 23, 42), 0.8);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   z-index: 50;
@@ -338,8 +376,8 @@ const ModalOverlay = styled.div`
 `;
 
 const ModalContent = styled.div`
-  background: #1e293b;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-secondary);
   border-radius: 24px;
   padding: 2.5rem;
   width: 100%;
@@ -361,15 +399,15 @@ const Label = styled.label`
   display: block;
   font-size: 0.875rem;
   font-weight: 600;
-  color: #cbd5e1;
+  color: var(--text-secondary);
   margin-bottom: 0.5rem;
 `;
 
 const Input = styled.input`
   width: 100%;
-  background: rgba(15, 23, 42, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: white;
+  background: var(--bg-input);
+  border: 1px solid var(--border-secondary);
+  color: var(--text-primary);
   padding: 0.875rem 1rem;
   border-radius: 12px;
   font-size: 1rem;
@@ -394,7 +432,7 @@ const EyeButton = styled.button`
   right: 12px;
   background: none;
   border: none;
-  color: #94a3b8;
+  color: var(--text-secondary);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -402,7 +440,7 @@ const EyeButton = styled.button`
   padding: 4px;
   
   &:hover {
-    color: #f1f5f9;
+    color: var(--text-primary);
   }
 `;
 
@@ -414,8 +452,8 @@ const ModalActions = styled.div`
 `;
 
 const Button = styled.button<{ $primary?: boolean }>`
-  background: ${p => p.$primary ? 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)' : 'rgba(255, 255, 255, 0.1)'};
-  color: white;
+  background: ${p => p.$primary ? 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)' : 'var(--bg-hover)'};
+  color: ${p => p.$primary ? '#ffffff' : 'var(--text-primary)'};
   border: none;
   padding: 0.75rem 1.5rem;
   border-radius: 12px;
@@ -438,6 +476,7 @@ const ErrorMessage = styled.div`
 
 const Home: React.FC = () => {
   const navigate = useNavigate();
+  const { isDark, toggleTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [adminRoomId, setAdminRoomId] = useState('');
@@ -517,6 +556,13 @@ const Home: React.FC = () => {
         <TopNav>
           <Logo href="/">Pulse Chat</Logo>
           <NavActions>
+            <ThemeToggle onClick={toggleTheme} title={isDark ? 'Switch to light mode' : 'Switch to dark mode'} aria-label="Toggle theme">
+              {isDark ? (
+                <svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+              ) : (
+                <svg viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+              )}
+            </ThemeToggle>
             <NavIconButton 
               onClick={() => navigate('/about-developer')}
               title="About Developer" 
@@ -611,7 +657,7 @@ const Home: React.FC = () => {
       {isAdminModalOpen && (
         <ModalOverlay onClick={() => { setIsAdminModalOpen(false); setAdminError(''); }}>
           <ModalContent onClick={e => e.stopPropagation()}>
-            <h2 style={{ margin: '0 0 1.5rem', color: '#f1f5f9', fontSize: '1.5rem' }}>Room Admin Login</h2>
+            <h2 style={{ margin: '0 0 1.5rem', color: 'var(--text-heading)', fontSize: '1.5rem' }}>Room Admin Login</h2>
             <form onSubmit={handleAdminSubmit}>
               <FormGroup>
                 <Label>Room ID</Label>

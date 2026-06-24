@@ -396,9 +396,7 @@ export const SoundToggleIcon = styled.svg<{ $enabled: boolean; $animate: boolean
   }
 `;
 export const PinnedBannerContainer = styled.div`
-  background: rgba(30, 41, 59, 0.85);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: var(--bg-secondary);
   border-bottom: 1px solid var(--border-primary);
   padding: 0.5rem 1rem;
   display: flex;
@@ -412,7 +410,7 @@ export const PinnedBannerContainer = styled.div`
   -webkit-user-select: none;
 
   &:hover {
-    background: rgba(30, 41, 59, 0.95);
+    background: var(--bg-hover);
   }
 `;
 
@@ -1856,18 +1854,26 @@ export const MobileUserListToggle = styled(SendButton) <{ $isOpen?: boolean }>`
 `;
 
 export const ThemeToggleBtn = styled.button`
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
-  border: 1px solid var(--border-primary);
-  background: var(--bg-hover);
+  border: 1px solid var(--border-secondary);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
   flex-shrink: 0;
-  &:hover { transform: scale(1.15); border-color: var(--accent-blue); box-shadow: 0 0 16px rgba(59,130,246,0.2), 0 0 0 3px rgba(59,130,246,0.08); }
+  &:hover { 
+    transform: scale(1.15); 
+    border-color: rgba(59, 130, 246, 0.5); 
+    background: rgba(59, 130, 246, 0.1);
+    color: var(--text-primary);
+    box-shadow: 0 10px 25px -5px rgba(59,130,246,0.4); 
+  }
   &:active { transform: scale(0.9); }
   svg { width: 18px; height: 18px; transition: transform 0.5s cubic-bezier(0.34,1.56,0.64,1); }
   &:hover svg { transform: rotate(30deg); }
@@ -1881,19 +1887,21 @@ export const ClearChatButton = styled.button`
   width: 100%;
   padding: 10px 15px;
   margin-top: 1rem;
-  background-color: var(--bg-hover);
+  background-color: var(--bg-secondary);
   color: var(--text-primary);
-  border: 1px solid var(--border-primary);
+  border: 1px solid var(--border-secondary);
   border-radius: 8px;
   font-size: 1rem;
   font-weight: 500;
   cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
 
   &:hover {
-    background-color: var(--border-primary);
+    background-color: var(--bg-hover);
+    border-color: rgba(59, 130, 246, 0.3);
     transform: translateY(-2px);
-    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.08);
   }
 
   &:active {

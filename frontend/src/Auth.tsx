@@ -153,8 +153,10 @@ const ThemeToggle = styled.button`
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  background: transparent;
+  border: 1px solid var(--border-secondary);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -164,6 +166,10 @@ const ThemeToggle = styled.button`
 
   &:hover {
     transform: scale(1.15);
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: rgba(59, 130, 246, 0.5);
+    box-shadow: 0 10px 25px -5px rgba(59,130,246,0.4);
   }
   &:active { transform: scale(0.9); }
 
@@ -179,9 +185,10 @@ const InfoButton = styled.div`
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  background: transparent;
+  border: 1px solid var(--border-secondary);
+  background: var(--bg-secondary);
   color: var(--text-secondary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -192,7 +199,9 @@ const InfoButton = styled.div`
   &:hover {
     transform: translateY(-2px);
     color: var(--text-primary);
-    background: var(--surface-color, rgba(255, 255, 255, 0.05));
+    background: var(--bg-hover);
+    border-color: rgba(59, 130, 246, 0.5);
+    box-shadow: 0 10px 25px -5px rgba(59,130,246,0.4);
   }
 `;
 

@@ -3,6 +3,7 @@ import styled, { keyframes, createGlobalStyle } from 'styled-components';
 import { useNavigate } from 'react-router-dom';
 
 import { resolveApiBaseUrl } from './chat/utils';
+import { useTheme } from './ThemeContext';
 
 const apiBase = resolveApiBaseUrl();
 
@@ -17,10 +18,10 @@ const GlobalRoomsStyle = createGlobalStyle`
     overflow-x: clip !important;
   }
   body {
-    background-color: #0f172a;
+    background-color: var(--bg-primary);
     margin: 0;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    color: #f8fafc;
+    color: var(--text-primary);
   }
 `;
 
@@ -58,25 +59,99 @@ const Header = styled.div`
   }
 `;
 
+const HeaderActions = styled.div`
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+
+  @media (max-width: 800px) {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  @media (max-width: 500px) {
+    button:not([aria-label="Toggle theme"]) {
+      flex: 1 1 auto;
+      min-width: calc(100%);
+      justify-content: center;
+    }
+  }
+`;
+
+const ThemeToggle = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-secondary);
+  color: var(--text-secondary);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  text-decoration: none;
+  
+  position: fixed;
+  top: 1.5rem;
+  left: 5.5rem;
+  z-index: 9999;
+
+  @media (max-width: 768px) {
+    top: 1rem;
+    left: 4.2rem;
+    width: 40px;
+    height: 40px;
+    
+    svg {
+      width: 18px;
+      height: 18px;
+    }
+  }
+
+  svg {
+    width: 22px;
+    height: 22px;
+    transition: transform 0.3s ease, color 0.3s ease;
+  }
+
+  &:hover {
+    background: rgba(59, 130, 246, 0.2);
+    border-color: rgba(59, 130, 246, 0.5);
+    color: var(--text-primary);
+    transform: translateY(-3px) scale(1.05);
+    box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.4);
+  }
+  
+  &:active {
+    transform: translateY(1px);
+  }
+  
+  &:hover svg {
+    transform: rotate(30deg);
+  }
+`;
+
 const Title = styled.h1`
   font-size: 2.5rem;
   font-weight: 800;
   margin: 0 0 0.5rem;
-  background: linear-gradient(135deg, #f8fafc, #94a3b8);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--text-heading);
 `;
 
 const Subtitle = styled.p`
   margin: 0;
-  color: #64748b;
+  color: var(--text-secondary);
   font-size: 1.1rem;
 `;
 
 const Button = styled.button<{ $primary?: boolean }>`
-  background: ${p => p.$primary ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)' : 'rgba(30, 41, 59, 0.8)'};
-  color: white;
-  border: ${p => p.$primary ? 'none' : '1px solid rgba(255,255,255,0.1)'};
+  background: ${p => p.$primary ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)' : 'var(--bg-hover)'};
+  color: ${p => p.$primary ? '#ffffff' : 'var(--text-primary)'};
+  border: ${p => p.$primary ? 'none' : '1px solid var(--border-secondary)'};
   padding: 0.875rem 1.5rem;
   font-size: 1rem;
   font-weight: 600;
@@ -108,8 +183,8 @@ const Grid = styled.div`
 `;
 
 const RoomCard = styled.div`
-  background: rgba(30, 41, 59, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
   border-radius: 20px;
   padding: 1.5rem;
   backdrop-filter: blur(12px);
@@ -120,7 +195,7 @@ const RoomCard = styled.div`
 
   &:hover {
     transform: translateY(-4px);
-    background: rgba(30, 41, 59, 0.8);
+    background: var(--bg-hover);
     border-color: rgba(59, 130, 246, 0.3);
     box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
   }
@@ -137,7 +212,7 @@ const RoomName = styled.h3`
   margin: 0;
   font-size: 1.25rem;
   font-weight: 700;
-  color: #f1f5f9;
+  color: var(--text-primary);
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -158,7 +233,7 @@ const RoomStats = styled.div`
   gap: 1rem;
   margin-top: auto;
   padding-top: 1.5rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 1px solid var(--border-secondary);
 `;
 
 const Stat = styled.span`
@@ -166,7 +241,7 @@ const Stat = styled.span`
   align-items: center;
   gap: 0.35rem;
   font-size: 0.875rem;
-  color: #94a3b8;
+  color: var(--text-secondary);
   
   svg {
     width: 16px;
@@ -177,7 +252,7 @@ const Stat = styled.span`
 const ModalOverlay = styled.div`
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.8);
+  background: rgba(var(--bg-primary-rgb, 15, 23, 42), 0.8);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   z-index: 50;
@@ -188,8 +263,8 @@ const ModalOverlay = styled.div`
 `;
 
 const ModalContent = styled.div`
-  background: #1e293b;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-secondary);
   border-radius: 24px;
   padding: 2.5rem;
   width: 100%;
@@ -211,15 +286,15 @@ const Label = styled.label`
   display: block;
   font-size: 0.875rem;
   font-weight: 600;
-  color: #cbd5e1;
+  color: var(--text-secondary);
   margin-bottom: 0.5rem;
 `;
 
 const Input = styled.input`
   width: 100%;
-  background: rgba(15, 23, 42, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: white;
+  background: var(--bg-input);
+  border: 1px solid var(--border-secondary);
+  color: var(--text-primary);
   padding: 0.875rem 1rem;
   border-radius: 12px;
   font-size: 1rem;
@@ -238,7 +313,7 @@ const CheckboxLabel = styled.label`
   align-items: center;
   gap: 0.75rem;
   cursor: pointer;
-  color: #f1f5f9;
+  color: var(--text-primary);
   font-size: 0.95rem;
   user-select: none;
 `;
@@ -266,14 +341,14 @@ const PasswordToggle = styled.button`
   border: none;
   cursor: pointer;
   padding: 0.4rem;
-  color: #94a3b8;
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
   transition: color 0.2s;
   
   &:hover {
-    color: #f8fafc;
+    color: var(--text-primary);
   }
   
   svg {
@@ -290,7 +365,7 @@ const ClearButton = styled.button`
   background: transparent;
   border: none;
   cursor: pointer;
-  color: #94a3b8;
+  color: var(--text-secondary);
   padding: 0.2rem;
   display: flex;
   align-items: center;
@@ -299,8 +374,8 @@ const ClearButton = styled.button`
   transition: all 0.2s;
 
   &:hover {
-    color: #f8fafc;
-    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+    background: var(--bg-hover);
   }
 
   svg {
@@ -333,6 +408,7 @@ interface Room {
 }
 
 const Rooms: React.FC = () => {
+  const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
@@ -557,6 +633,13 @@ const Rooms: React.FC = () => {
   return (
     <>
       <GlobalRoomsStyle />
+      <ThemeToggle onClick={toggleTheme} title={isDark ? 'Switch to light mode' : 'Switch to dark mode'} aria-label="Toggle theme">
+              {isDark ? (
+                <svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+              ) : (
+                <svg viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+              )}
+            </ThemeToggle>
       <Orb $color="#3b82f6" $size="500px" $top="-10%" $left="-10%" />
       <Orb $color="#ec4899" $size="400px" $top="60%" $left="80%" />
 
@@ -566,7 +649,7 @@ const Rooms: React.FC = () => {
             <Title>Explore Rooms</Title>
             <Subtitle>Join a public lounge or create your own secure space.</Subtitle>
           </div>
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          <HeaderActions>
             <Button onClick={() => navigate('/room/global')}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18 }}>
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
@@ -588,7 +671,7 @@ const Rooms: React.FC = () => {
               </svg>
               Create Room
             </Button>
-          </div>
+          </HeaderActions>
         </Header>
 
         <div style={{ marginBottom: '2rem' }}>
@@ -612,11 +695,11 @@ const Rooms: React.FC = () => {
         </div>
 
         {loading ? (
-          <p style={{ color: '#94a3b8' }}>Loading rooms...</p>
+          <p style={{ color: 'var(--text-secondary)' }}>Loading rooms...</p>
         ) : (
           <Grid>
             {rooms.length === 0 ? (
-              <p style={{ color: '#94a3b8', gridColumn: '1 / -1' }}>
+              <p style={{ color: 'var(--text-secondary)', gridColumn: '1 / -1' }}>
                 {searchQuery.trim() ? `No rooms found matching "${searchQuery}".` : 'No public rooms available. Create the first one!'}
               </p>
             ) : (
@@ -641,10 +724,10 @@ const Rooms: React.FC = () => {
                     <RoomBadge $private={room.isPrivate}>{room.isPrivate ? 'Private' : 'Public'}</RoomBadge>
                   </RoomHeader>
 
-                  <div style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '1rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     <div>Room ID: <code>{room.id}</code></div>
                     {room.description && (
-                      <div style={{ color: '#cbd5e1', fontSize: '0.85rem', lineHeight: 1.4, borderTop: '1px solid rgba(255, 255, 255, 0.05)', paddingTop: '0.5rem', marginTop: '0.25rem' }}>
+                      <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: 1.4, borderTop: '1px solid rgba(255, 255, 255, 0.05)', paddingTop: '0.5rem', marginTop: '0.25rem' }}>
                         {room.description}
                       </div>
                     )}
@@ -719,7 +802,7 @@ const Rooms: React.FC = () => {
                   />
                 </InputWrapper>
                 {customId && (
-                  <div style={{ fontSize: '0.85rem', marginTop: '0.5rem', color: checkingId ? '#94a3b8' : idAvailable ? '#22c55e' : '#ef4444' }}>
+                  <div style={{ fontSize: '0.85rem', marginTop: '0.5rem', color: checkingId ? 'var(--text-secondary)' : idAvailable ? 'var(--accent-green)' : 'var(--accent-red)' }}>
                     {checkingId ? 'Checking availability...' : idAvailable ? '✓ ID is available' : '✗ ID is taken'}
                   </div>
                 )}
