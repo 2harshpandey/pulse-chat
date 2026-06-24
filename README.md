@@ -19,12 +19,19 @@
 - [Messaging Experience](#messaging-experience)
 - [Reactions and Engagement](#reactions-and-engagement)
 - [Media and File Pipeline](#media-and-file-pipeline)
+- [Link Intelligence](#link-intelligence)
 - [Security and Privacy](#security-and-privacy)
 - [Moderation and Administration](#moderation-and-administration)
 - [User Experience and Visual Design](#user-experience-and-visual-design)
 - [Realtime Architecture](#realtime-architecture)
+- [System Architecture](#system-architecture)
 - [Technology Stack](#technology-stack)
+- [Environment Configuration](#environment-configuration)
 - [Local Development](#local-development)
+- [Production Build](#production-build)
+- [Project Structure](#project-structure)
+- [Operational Notes](#operational-notes)
+- [License](#license)
 
 ---
 
@@ -56,11 +63,13 @@ Pulse Chat includes a complete real-time messaging foundation suitable for high-
 
 - Persistent multi-user WebSocket messaging with heartbeat `ping` / `pong` reliability checks.
 - Instant join and leave system notifications broadcast to active participants.
+- Unique username enforcement across both HTTP authentication and WebSocket connection layers.
 - Session-aware reconnect handling to prevent false leave events during page refreshes.
 - Persistent client identity using cryptographically strong locally stored user identifiers.
 - Server-side user tracking with join history, last-seen metadata, and moderation context.
+- Initial chat history delivery on connection with paginated infinite scrolling for deeper history.
 - Chronological message ordering with oldest-first delivery and safe prepend behavior during history loads.
-- Virtualized message rendering for smooth performance across large histories.
+- Virtualized message rendering for smooth performance across large message histories.
 - Adaptive overscan and viewport tuning for desktop and mobile scrolling performance.
 - Quote-jump navigation with automatic loading and highlight animation for referenced messages.
 
@@ -82,9 +91,11 @@ Pulse Chat supports distinct, securely isolated rooms, allowing vast communities
 
 The messaging layer is built to support modern conversation patterns while preserving performance and consistency.
 
-- **Inline Message Editing**: Full edit support with `(edited)` state tracking, event logging, and live propagation to all connected clients.
 - Reply and quote system with preview bar, sender context, and clickable quoted message blocks.
 - Quoted media thumbnails optimized through Cloudinary transformations for low-latency previews.
+- **Inline Message Editing**: Full edit support with `(edited)` state tracking, event logging, and live synchronization to clients.
+- Delete-for-everyone workflow with content redaction and persistent event logging.
+- Local delete and uploaded-media removal flows where applicable.
 - Contextual message action toolbar optimized for hover and touch interaction.
 - Selection mode with checkbox interface for multi-message workflows.
 - Bulk actions including delete, copy, edit, and report where relevant.
@@ -99,7 +110,8 @@ Pulse Chat provides lightweight engagement tools designed for clarity and real-t
 
 - **Emoji Reactions**: A beautifully animated, sliding bottom-sheet emoji picker optimized for touch, ensuring reactions can be added quickly without disrupting flow.
 - One reaction per user enforcement with toggle and replace behavior.
-- Reaction detail popup with per-emoji tabs, reaction counts, and aggregate "All" view.
+- Reaction detail popup with per-emoji tabs, reaction counts, and aggregate “All” view.
+- Self-reaction removal directly from the popup participant list.
 - Persistent reactions stored securely in the database with safe map serialization for client delivery.
 
 ---
@@ -108,35 +120,94 @@ Pulse Chat provides lightweight engagement tools designed for clarity and real-t
 
 The media layer supports rich file exchange while applying strict safety and performance controls.
 
+### Supported media workflows
+
+- Images
+- Videos
+- GIFs
+- Generic files
+- Multi-file upload batches
+- Captioned upload sends
+
 ### Upload and preview features
+
 - Cloudinary-backed uploads through secure multipart handling.
+- File metadata preservation for accurate rendering and downloads.
 - **Tiered Upload Limits**: 
   - Raw/General Files: Max **10 MB**.
   - High-res Media (Photos/Videos): Max **100 MB**.
   - Clear, distinct UI error messaging seamlessly integrated into the chat feed for limit violations.
 - Drag-and-drop uploads with full-screen overlay and animated affordance.
-- WhatsApp-style file preview modal with carousel preview, attachment controls, caption input, and thumbnail strips.
+- WhatsApp-style file preview modal with:
+  - Multi-file carousel preview.
+  - Attachment add and remove controls.
+  - Caption input per send batch.
+  - Thumbnail strip navigation.
 - Inline media rendering with consistent frame sizing and intelligent constraints to prevent scroll jitter or horizontal stretching.
+- Image lightbox with zoom controls, wheel scaling, and polished overlay behavior.
 
 ### Custom video player
-- Purpose-built video playback interface with: Play/pause, timeline scrubber, duration display, playback speed cycling, Fullscreen/PiP, loop toggle, and double-tap seek shortcuts.
 
-### Link Intelligence
+Pulse Chat includes a purpose-built video playback interface with:
+
+- Play and pause controls.
+- Timeline scrubber.
+- Duration display.
+- Playback speed cycling.
+- Fullscreen layout reflow.
+- Picture-in-Picture support.
+- Loop toggle.
+- Mute and volume controls.
+- Double-tap seek shortcuts.
+- Auto-hiding controls.
+
+### Download and caching controls
+
+- Hover-only media download overlay for images and videos.
+- Download progress ring with cancel capability.
+- Secure downloads through allowlisted hosts and hardened proxy fallback.
+- IndexedDB media cache keyed by user, message, and source for faster reloads.
+- URL sanitation to block unsafe protocols and reduce XSS risk.
+
+---
+
+## Link Intelligence
+
+Pulse Chat automatically enriches shared links while protecting the backend from unsafe network access.
+
 - Automatic link preview cards with site name, title, description, and image extraction.
-- Server-side metadata fetching with SSRF hardening (DNS checks, internal IP blocking, size-capped reads).
+- Preview caching to reduce redundant metadata fetches.
+- Server-side metadata fetching with SSRF hardening, including:
+  - DNS resolution checks.
+  - Private and internal IP blocking.
+  - Port restrictions.
+  - Redirect limits.
+  - Size-capped HTML reads.
 
 ---
 
 ## Security and Privacy
 
-Security is treated as a primary system requirement, validated by strict scanning pipelines (e.g., GitHub CodeQL).
+Security is treated as a primary system requirement rather than an afterthought.
 
 ### Application safeguards
+
 - **Query Injection Prevention**: Complete immunization against NoSQL injections by strictly casting query parameters (e.g., `roomId`) and leveraging `$eq` MongoDB operators.
 - **ReDoS Prevention**: Escaped and sanitized regex workflows using strict `escapeRegExp` helpers, preventing Denial of Service attacks on search endpoints.
 - Multi-layer rate limiting for authentication, uploads, API endpoints, and admin routes.
+- Strict validation for usernames, tokens, passwords, and report reasons.
 - Device fingerprinting using screen, platform, language, timezone, and user-agent context.
+- User, IP, and device block enforcement across HTTP and WebSocket pathways.
 - Login lockdown mode with timed or indefinite enforcement.
+- Safe URL sanitation against `javascript:` and unsafe `data:` payloads.
+
+### Download proxy hardening
+
+- Host allowlisting.
+- Redirect safety checks.
+- Private IP resolution blocking.
+- Sanitized filenames.
+- Fallback proxy behavior for trusted media download flows.
 
 ---
 
@@ -144,15 +215,23 @@ Security is treated as a primary system requirement, validated by strict scannin
 
 Pulse Chat includes a dedicated administrative control plane for live moderation and operational visibility.
 
-- Password-protected admin dashboard (with per-room scoping).
+- Password-protected admin dashboard.
 - Live admin WebSocket channel for instant telemetry updates.
 - Online user list with session and status tracking.
 - Force logout for individual users or all active users.
 - User blocking and unblocking with fingerprint merging.
 - **Room Settings Management**: Change aliases, descriptions, and convert rooms between Public/Private dynamically via the dashboard.
-- Temporary invite link management (time-boxed invite creation, revocation, usage tracking).
+- Temporary invite link management:
+  - Time-boxed invite creation.
+  - Link revocation.
+  - Usage tracking.
+  - Copy-to-clipboard interface.
 - Login lockdown controls with preset and custom durations.
-- Categorized audit event stream and Server log tailing with live refresh.
+- Message history log covering edits, deletions, uploads, and creation events.
+- Categorized audit event stream with timestamps.
+- User report intake with message snapshot, session data, join history, and metadata.
+- Server log tailing with live refresh and WebSocket pushes.
+- Permanent history purge and frontend-only hide controls for compliance workflows.
 
 ---
 
@@ -162,9 +241,12 @@ The interface is designed to feel premium, responsive, and stable under heavy in
 
 - **Lock-Solid Scrolling**: Highly optimized scrolling mechanics, eliminating "nested scrollbar" bugs and utilizing `overflow-x: clip`. Native `scrollRestoration` is handled manually to prevent layout shifting on load.
 - Theme toggle with persisted preference and system-theme default.
-- Contextual notification sound system providing audio cues (intelligently gated to prevent audio fatigue).
-- Animated UI layers including glow, shimmer, floating orbs, smooth transitions, and premium informational callout boxes.
+- Contextual notification sound system providing audio cues for new messages and user joins. To prevent audio fatigue, it intelligently gates sounds to play only when the chat tab is backgrounded or the device is locked. Users can control this behavior via an animated toggle that persists their preferences locally.
+- Animated UI layers including glow, shimmer, floating orbs, and smooth transitions, alongside premium informational callout boxes.
+- Adaptive mobile layouts with touch-optimized controls.
+- Keyboard-aware login experience for mobile viewport changes.
 - Custom scrollbars and stable long-list behavior, ensuring `min-height: 100vh` fills the exact viewport properly on all devices.
+- Themed error pages for `403`, `404`, `408`, `429`, `500`, and `503` states.
 - Error boundary protection to prevent full-page application failure.
 
 ---
@@ -183,6 +265,42 @@ Pulse Chat uses a hybrid communication model:
 
 ---
 
+## System Architecture
+
+```mermaid
+flowchart TB
+  User[User Browser] --> React[React + TypeScript Client]
+  React -->|WebSocket| WS[WebSocket Server]
+  React -->|REST API| API[Express API]
+  API --> Mongo[(MongoDB)]
+  WS --> Mongo
+  API --> Cloudinary[Cloudinary Media CDN]
+  API --> Tenor[Tenor GIF API]
+  API --> Preview[Hardened Link Preview Fetcher]
+  WS --> Admin[Admin Realtime Dashboard]
+```
+
+### Client application
+
+- React 18 and TypeScript interface.
+- Styled Components design system.
+- React Router routing.
+- WebSocket-driven chat experience.
+- REST integration for authentication, uploads, previews, GIFs, reports, and admin actions.
+- Virtualized message list for large histories.
+
+### Server application
+
+- Express HTTP API.
+- WebSocket server using `ws`.
+- MongoDB persistence through Mongoose.
+- Cloudinary media storage.
+- Multer multipart upload handling.
+- Winston logging.
+- Hardened metadata preview and download proxy services.
+
+---
+
 ## Technology Stack
 
 | Layer | Technologies |
@@ -193,6 +311,32 @@ Pulse Chat uses a hybrid communication model:
 | GIF Search | Tenor API |
 | Storage | MongoDB, IndexedDB media cache |
 | Tooling | Vite, TypeScript, npm |
+
+---
+
+## Environment Configuration
+
+Create environment files for the server and frontend before running locally.
+
+### Backend environment variables
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `MONGODB_URI` | Yes | MongoDB connection string. |
+| `ADMIN_PASSWORD` | Yes | Password used to access the admin dashboard. |
+| `CLIENT_PASSWORD` | Yes | Password required for standard chat login. |
+| `ADMIN_SECRET` | Yes | Secret used to authorize protected admin requests. |
+| `CLOUDINARY_CLOUD_NAME` | Yes | Cloudinary cloud name. |
+| `CLOUDINARY_API_KEY` | Yes | Cloudinary API key. |
+| `CLOUDINARY_API_SECRET` | Yes | Cloudinary API secret. |
+| `TENOR_API_KEY` | Yes | Tenor API key for GIF discovery. |
+
+### Frontend environment variables
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `REACT_APP_API_URL` | Yes | Base URL for the backend API. |
+| `REACT_APP_ADMIN_SECRET` | Yes | Admin secret used by protected frontend admin workflows. |
 
 ---
 
@@ -217,6 +361,57 @@ npm run start
 ```
 
 After both services are running, open the frontend development URL shown by Vite.
+
+---
+
+## Production Build
+
+Build the frontend production bundle:
+
+```bash
+cd frontend
+npm run build
+```
+
+The optimized output is generated in the frontend build directory.
+
+---
+
+## Project Structure
+
+```text
+.
+├── backend/
+│   ├── index.js
+│   ├── db.js
+│   ├── logger.js
+│   └── models/
+├── frontend/
+│   ├── public/
+│   ├── src/
+│   │   ├── App.tsx
+│   │   ├── Auth.tsx
+│   │   ├── Chat.tsx
+│   │   ├── Admin.tsx
+│   │   ├── AboutDeveloper.tsx
+│   │   ├── developerData.ts
+│   │   └── ThemeContext.tsx
+│   ├── index.html
+│   └── vite.config.ts
+├── README.md
+└── netlify.toml
+```
+
+---
+
+## Operational Notes
+
+- WebSocket connections use heartbeat behavior to detect stale sessions.
+- Chat history is loaded initially and then extended through pagination.
+- Large message lists are virtualized to maintain smooth UI performance.
+- Media download and preview logic intentionally restricts unsafe URLs and hosts.
+- Admin workflows are protected and designed for live operational control.
+- The About Developer page includes semantic HTML, dynamic metadata, Open Graph tags, and JSON-LD `Person` structured data for search indexing.
 
 ---
 
