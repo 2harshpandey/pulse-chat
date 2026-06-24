@@ -42,6 +42,7 @@ const Admin = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [roomId, setRoomId] = useState(urlRoomId || 'me');
+  const [isImpersonating] = useState(!!location.state?.isImpersonating);
   const [password, setPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [passwordFocused, setPasswordFocused] = useState(false);
@@ -51,6 +52,7 @@ const Admin = () => {
   const [historyLogs, setHistoryLogs] = useState<any[]>([]);
   const [pinnedMessages, setPinnedMessages] = useState<any[]>([]);
   const [serverLogs, setServerLogs] = useState<string[]>([]);
+  const [globalRooms, setGlobalRooms] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('messages');
   const [activityLogs, setActivityLogs] = useState<string[]>(() => {
@@ -141,11 +143,14 @@ const Admin = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const focusAdminPasswordInput = useCallback(() => {
+  const focusAdminPasswordInput = useCallback((pos?: number | null) => {
     const input = adminPasswordInputRef.current;
     if (!input) return;
     try {
       input.focus({ preventScroll: true });
+      if (pos !== undefined && pos !== null) {
+        input.setSelectionRange(pos, pos);
+      }
     } catch {
       input.focus();
     }
@@ -354,13 +359,13 @@ const Admin = () => {
       setUsers(usersData);
       setIsAuthenticated(true);
       
-      // Update URL if we were on /admin directly
-      if (!urlRoomId || urlRoomId !== roomId) {
-        navigate(`/admin/${roomId}`, { replace: true });
+      // Update URL if the user changed the room ID manually
+      if (urlRoomId !== roomId && !(urlRoomId === undefined && roomId === 'me')) {
+        navigate(`/admin/${roomId}`, { replace: true, state: { autoLoginPassword: authenticatedPassword } });
       }
 
       const headers = { 'x-admin-password': authenticatedPassword, 'x-room-id': roomId };
-      const [historyRes, serverLogsRes, tempLinksRes, blockedRes, lockdownRes, auditRes, reportsRes, loggedInRes, detailsRes] = await Promise.allSettled([
+      const [historyRes, serverLogsRes, tempLinksRes, blockedRes, lockdownRes, auditRes, reportsRes, loggedInRes, detailsRes, globalRoomsRes] = await Promise.allSettled([
         fetch(`${apiUrl}/api/admin/history`, { headers }),
         fetch(`${apiUrl}/api/admin/server-logs`, { headers }),
         fetch(`${apiUrl}/api/admin/temp-links`, { headers }),
@@ -370,6 +375,7 @@ const Admin = () => {
         fetch(`${apiUrl}/api/admin/reports`, { headers }),
         fetch(`${apiUrl}/api/admin/logged-in-users`, { headers }),
         fetch(`${apiUrl}/api/rooms/admin/details`, { headers }),
+        (roomId === 'me' || roomId === 'global') ? fetch(`${apiUrl}/api/admin/rooms`, { headers }) : Promise.resolve({ ok: false }),
       ]);
 
       if (historyRes.status === 'fulfilled' && historyRes.value.ok) {
@@ -414,6 +420,10 @@ const Admin = () => {
         setRoomSettingsLastIdChange(d.lastIdChangeAt || null);
         setRoomSettingsHasJoinPassword(d.hasJoinPassword || false);
       }
+
+      if (globalRoomsRes.status === 'fulfilled' && (globalRoomsRes.value as Response).ok) {
+        setGlobalRooms(await (globalRoomsRes.value as Response).json());
+      }
     } catch {
       setError('An error occurred while trying to log in.');
     } finally {
@@ -438,7 +448,11 @@ const Admin = () => {
     setIsAuthenticated(false);
     setPassword('');
     setActivityLogs([]);
-    navigate('/');
+    if (isImpersonating) {
+      navigate('/admin', { replace: true });
+    } else {
+      navigate(location.pathname, { replace: true, state: {} });
+    }
   };
 
   const handlePermanentClear = async () => {
@@ -901,8 +915,9 @@ const Admin = () => {
               onPointerDown={(e) => e.preventDefault()}
               onTouchStart={(e) => e.preventDefault()}
               onClick={() => {
+                const pos = adminPasswordInputRef.current?.selectionStart ?? null;
                 setIsPasswordVisible(prev => !prev);
-                requestAnimationFrame(focusAdminPasswordInput);
+                requestAnimationFrame(() => focusAdminPasswordInput(pos));
               }}
               aria-label={isPasswordVisible ? 'Hide password' : 'Show password'}
               title={isPasswordVisible ? 'Hide password' : 'Show password'}
@@ -966,6 +981,7 @@ const Admin = () => {
           <>
             <TabButton active={activeTab === 'activity'} onClick={() => setActiveTab('activity')}>Live Activity</TabButton>
             <TabButton active={activeTab === 'logs'} onClick={() => setActiveTab('logs')}>Server Logs</TabButton>
+            <TabButton active={activeTab === 'rooms'} onClick={() => setActiveTab('rooms')}>All Rooms</TabButton>
           </>
         )}
         {roomId !== 'me' && roomId !== 'global' && (
@@ -1599,6 +1615,68 @@ const Admin = () => {
             )}
           </>
         )}
+        {/* ===== ALL ROOMS (SUPER ADMIN ONLY) ===== */}
+        {(roomId === 'me' || roomId === 'global') && activeTab === 'rooms' && (
+          <ScrollContainer>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2>All Chat Rooms</h2>
+              <span style={{ color: '#64748b', fontSize: '0.9rem' }}>Total: {globalRooms.length}</span>
+            </div>
+            {globalRooms.length === 0 ? (
+              <EmptyState><span>No rooms created yet.</span></EmptyState>
+            ) : (
+              <div style={{ overflowX: 'auto', background: 'var(--panel-bg)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '600px' }}>
+                  <thead style={{ background: 'var(--bg-color)', borderBottom: '2px solid var(--border-color)' }}>
+                    <tr>
+                      <th style={{ padding: '1rem', fontWeight: 600 }}>Name</th>
+                      <th style={{ padding: '1rem', fontWeight: 600 }}>Room ID (Alias)</th>
+                      <th style={{ padding: '1rem', fontWeight: 600 }}>Status</th>
+                      <th style={{ padding: '1rem', fontWeight: 600 }}>Created</th>
+                      <th style={{ padding: '1rem', fontWeight: 600, textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {globalRooms.map((room) => (
+                      <tr key={room._id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                        <td style={{ padding: '1rem' }}>
+                          <strong style={{ display: 'block', fontSize: '1.05rem', color: 'var(--text-color)' }}>{room.name || 'Unnamed Room'}</strong>
+                        </td>
+                        <td style={{ padding: '1rem' }}>
+                          <code style={{ background: 'var(--bg-color)', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.85rem' }}>
+                            {room.alias || room.id}
+                          </code>
+                        </td>
+                        <td style={{ padding: '1rem' }}>
+                          {room.hasJoinPassword ? (
+                            <Badge $color="purple"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12" style={{ marginRight: '4px' }}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>Private</Badge>
+                          ) : (
+                            <Badge $color="green">Public</Badge>
+                          )}
+                        </td>
+                        <td style={{ padding: '1rem', color: '#64748b', fontSize: '0.9rem' }}>
+                          {new Date(room.createdAt).toLocaleDateString()}
+                        </td>
+                        <td style={{ padding: '1rem', textAlign: 'right' }}>
+                          <Button 
+                            onClick={() => {
+                              // Impersonate Room Admin by navigating and passing the super admin password
+                              navigate(`/admin/${room.id}`, { state: { autoLoginPassword: passwordRef.current, isImpersonating: true } });
+                            }}
+                            style={{ padding: '0.5rem 1rem', fontSize: '0.85rem', background: '#3b82f6', color: 'white', border: 'none' }}
+                          >
+                            Manage Room
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </ScrollContainer>
+        )}
+
         {/* ===== SETTINGS ===== */}
         {roomId !== 'me' && roomId !== 'global' && activeTab === 'settings' && (
           <ScrollContainer>

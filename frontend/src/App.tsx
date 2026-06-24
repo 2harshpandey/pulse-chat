@@ -179,7 +179,7 @@ function AppRoutes() {
   const navigate = useNavigate();
 
   return (
-    <RouteErrorBoundary key={location.pathname.split('/')[1] || 'home'}>
+    <RouteErrorBoundary key={location.pathname}>
       {location.pathname !== '/' && (
         <GlobalHomeButton onClick={() => navigate('/')} aria-label="Go to Home" title="Go to Home">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

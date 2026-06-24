@@ -599,11 +599,14 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken, roomId = 'me' }) 
     }
   };
 
-  const focusPasswordInput = useCallback(() => {
+  const focusPasswordInput = useCallback((pos?: number | null) => {
     const input = passwordInputRef.current;
     if (!input) return;
     try {
       input.focus({ preventScroll: true });
+      if (pos !== undefined && pos !== null) {
+        input.setSelectionRange(pos, pos);
+      }
     } catch {
       input.focus();
     }
@@ -737,8 +740,9 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken, roomId = 'me' }) 
                   onPointerDown={(e) => e.preventDefault()}
                   onTouchStart={(e) => e.preventDefault()}
                   onClick={() => {
-                    setShowPw(p => !p);
-                    requestAnimationFrame(focusPasswordInput);
+                    const pos = passwordInputRef.current?.selectionStart ?? null;
+                    setShowPw(!showPw);
+                    requestAnimationFrame(() => focusPasswordInput(pos));
                   }}
                   aria-label={showPw ? 'Hide password' : 'Show password'}
                   title={showPw ? 'Hide password' : 'Show password'}

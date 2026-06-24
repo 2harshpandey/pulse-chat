@@ -121,9 +121,27 @@ const adminAuth = async (req, res, next) => {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  if (roomId === 'me' && password === process.env.ADMIN_PASSWORD) {
-    req.roomId = 'me';
-    return next();
+  // Super Admin Impersonation: Global password unlocks any room
+  if (password === process.env.ADMIN_PASSWORD) {
+    if (roomId === 'me' || roomId === 'global') {
+      req.roomId = 'me';
+      req.isSuperAdmin = true;
+      return next();
+    } else {
+      try {
+        const room = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] });
+        if (room) {
+          req.roomId = room.id;
+          req.isSuperAdmin = true;
+          return next();
+        } else {
+          return res.status(404).json({ error: 'Room not found' });
+        }
+      } catch (error) {
+        logger.error('Error in adminAuth super admin check:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+      }
+    }
   }
 
   try {

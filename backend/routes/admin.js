@@ -15,6 +15,7 @@ const LoginLockdown = require('../models/loginLockdown');
 const AuditLog = require('../models/auditLog');
 const User = require('../models/user');
 const UserReport = require('../models/userReport');
+const Room = require('../models/room');
 const {
   getRoomState,
   userFingerprints,
@@ -30,6 +31,71 @@ const { WebSocket } = require('ws');
 module.exports = (wss, broadcasts) => {
   const { broadcastToAdmins, broadcastOnlineUsers, broadcast } = broadcasts;
   const router = express.Router();
+
+  // --- Global Super Admin Room Management ---
+  router.get('/api/admin/rooms', adminLimiter, adminAuth, async (req, res) => {
+    try {
+      if (!req.isSuperAdmin || req.roomId !== 'me') {
+        return res.status(403).json({ error: 'Forbidden: Super Admin only' });
+      }
+
+      const rooms = await Room.find({}).lean();
+      
+      // Strip passwords before sending to frontend
+      const safeRooms = rooms.map(r => {
+        const { joinPassword, adminPassword, ...safeRoom } = r;
+        // Keep a flag indicating if passwords exist
+        safeRoom.hasJoinPassword = !!joinPassword;
+        safeRoom.hasAdminPassword = !!adminPassword;
+        return safeRoom;
+      });
+
+      res.json(safeRooms);
+    } catch (error) {
+      logger.error('Error fetching all rooms for super admin:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  router.delete('/api/admin/rooms/:id', adminLimiter, adminAuth, async (req, res) => {
+    try {
+      if (!req.isSuperAdmin || req.roomId !== 'me') {
+        return res.status(403).json({ error: 'Forbidden: Super Admin only' });
+      }
+
+      const targetRoomId = req.params.id;
+      const room = await Room.findOne({ id: targetRoomId });
+      
+      if (!room) {
+        return res.status(404).json({ error: 'Room not found' });
+      }
+
+      await Room.deleteOne({ id: targetRoomId });
+
+      // Clean up related data (optional depending on system design)
+      await Message.deleteMany({ roomId: targetRoomId });
+      
+      // Force logout everyone in that room
+      const roomState = getRoomState(targetRoomId);
+      if (roomState) {
+        for (const ws of roomState.adminClients) {
+          try { ws.close(1008, 'Room deleted by Super Admin'); } catch (e) {}
+        }
+      }
+
+      await AuditLog.create({
+        roomId: 'me',
+        action: 'ROOM_DELETED',
+        details: `Super Admin deleted room: ${targetRoomId}`,
+        timestamp: new Date()
+      });
+
+      res.json({ success: true, message: 'Room deleted successfully' });
+    } catch (error) {
+      logger.error('Error deleting room by super admin:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
 
   // --- Message / History ---
   router.get('/api/admin/messages', adminLimiter, adminAuth, async (req, res) => {

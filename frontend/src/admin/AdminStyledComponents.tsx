@@ -852,7 +852,7 @@ export const LinkCard = styled(Card)`
   flex-wrap: wrap;
 `;
 
-export const Badge = styled.span<{ $color: 'green' | 'red' | 'yellow' | 'gray' | 'blue' }>`
+export const Badge = styled.span<{ $color: 'green' | 'red' | 'yellow' | 'gray' | 'blue' | 'purple' }>`
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;

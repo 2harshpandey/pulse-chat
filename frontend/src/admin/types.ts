@@ -77,4 +77,4 @@ export interface UserReportData {
   reportedAt: string;
 }
 
-export type Tab = 'messages' | 'users' | 'reports' | 'access' | 'security' | 'activity' | 'logs' | 'settings';
+export type Tab = 'messages' | 'users' | 'reports' | 'access' | 'security' | 'activity' | 'logs' | 'settings' | 'rooms';
