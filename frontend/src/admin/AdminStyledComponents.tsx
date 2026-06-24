@@ -1032,6 +1032,18 @@ export const ClearHistoryButton = styled(Button)`
   &:hover { background-color: #c53030; }
 `;
 
+export const DeleteRoomButton = styled(Button)`
+  background-color: #991b1b;
+  color: white;
+  border: none;
+  flex-shrink: 0;
+  transition: all 0.2s;
+  &:hover { 
+    background-color: #7f1d1d; 
+    box-shadow: 0 4px 12px rgba(153, 27, 27, 0.4);
+  }
+`;
+
 export const HideFrontendButton = styled(Button)`
   background-color: #d97706;
   flex-shrink: 0;

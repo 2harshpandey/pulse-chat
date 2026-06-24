@@ -35,6 +35,18 @@ const GlobalHomeButton = styled.button`
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
   }
 
+  [data-theme='light'] & {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-secondary);
+    color: var(--text-secondary);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+
+    &:hover {
+      background: var(--bg-hover);
+      border-color: var(--text-muted);
+    }
+  }
+
   svg {
     width: 22px;
     height: 22px;
