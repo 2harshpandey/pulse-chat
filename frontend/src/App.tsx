@@ -10,7 +10,7 @@ import { GlobalStyle } from './chat/ChatStyledComponents';
 import { NotFoundPage, ForbiddenPage, ServerErrorPage, TimeoutPage, RateLimitPage, MaintenancePage } from './ErrorPages';
 
 const GlobalHomeButton = styled.button`
-  position: fixed;
+  position: absolute;
   top: 1.5rem;
   left: 1.5rem;
   width: 48px;

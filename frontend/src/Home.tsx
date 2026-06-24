@@ -54,11 +54,12 @@ const TopNav = styled.nav`
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 1rem;
   position: relative;
   z-index: 10;
   
   @media (max-width: 768px) {
-    padding: 1.5rem 2rem;
+    padding: 1.5rem 1.5rem;
   }
 `;
 
@@ -74,6 +75,13 @@ const Logo = styled.a`
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  line-height: 1.1;
+  white-space: normal;
+  
+  @media (max-width: 480px) {
+    font-size: 1.5rem;
+    max-width: 100px; /* Forces 'Pulse' and 'Chat' to wrap on separate lines */
+  }
   
   &::before {
     content: '';
@@ -165,7 +173,7 @@ const PrimaryButton = styled.button`
 
 const SecondaryButton = styled.button`
   background: var(--bg-secondary);
-  color: ${p => p.$primary ? '#ffffff' : 'var(--text-primary)'};
+  color: var(--text-primary);
   border: 1px solid var(--border-secondary);
   padding: 1rem 2rem;
   font-size: 1.125rem;
