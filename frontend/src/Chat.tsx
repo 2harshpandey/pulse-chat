@@ -4223,16 +4223,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
               <PinnedBannerContainer onClick={() => {
                 const currentMsg = pinnedMessages[currentPinnedIndex];
                 if (currentMsg) {
-                  const el = document.getElementById(getMessageElementId(currentMsg.id));
-                  if (el) {
-                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    // Highlight effect
-                    el.style.transition = 'background-color 0.5s ease';
-                    el.style.backgroundColor = 'rgba(59, 130, 246, 0.2)';
-                    setTimeout(() => {
-                      el.style.backgroundColor = '';
-                    }, 2000);
-                  }
+                  scrollToMessage(currentMsg.id || currentMsg._id || currentMsg.messageId, undefined, 'auto', true);
                 }
                 setCurrentPinnedIndex((prev) => (prev + 1) % pinnedMessages.length);
               }}>
