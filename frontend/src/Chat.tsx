@@ -2081,8 +2081,8 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
         // the mobile compositor's momentum scroll physics, causing jitter.
         firstItemIndexRef.current = nextIdx;
         setFirstItemIndexState(nextIdx);
-        setMessages(nextMessages);
         messagesRef.current = nextMessages;
+        setMessages(nextMessages);
         prependScrollLockRef.current = performance.now() + 800;
         scrollLog('prepend', actualPrependedCount, 'msgs → new firstItemIndex', nextIdx);
       }
@@ -3301,7 +3301,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     const ensureVisibleAndHighlight = (attempt: number) => {
       const element = findMessageElement(targetId);
       if (!element) {
-        if (attempt < 15) window.setTimeout(() => ensureVisibleAndHighlight(attempt + 1), 40);
+        if (attempt < 25) window.setTimeout(() => ensureVisibleAndHighlight(attempt + 1), 40);
         return;
       }
       element.scrollIntoView({ block: 'center', inline: 'nearest', behavior });
