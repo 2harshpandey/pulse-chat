@@ -246,6 +246,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   const [newMessagesWhileScrolledUp, setNewMessagesWhileScrolledUp] = useState(0);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [historySessionId, setHistorySessionId] = useState(0);
+  const [isJumpingToPinned, setIsJumpingToPinned] = useState(false);
 
   const lastPingAtRef = useRef<number>(Date.now());
 
@@ -3430,60 +3431,66 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       }
     }
 
-    if (!targetId) {
-      quoteWarn('scrollToMessage aborted: no resolved target id', { messageId, sourceId });
-      return;
-    }
-    if (scrollToLoadedMessage(targetId, behavior, force)) {
-      quoteLog('scrollToMessage resolved within loaded window', { targetId });
-      return;
-    }
-    if (!historyLoaded) {
-      quoteWarn('scrollToMessage aborted: history not loaded yet', { targetId });
-      return;
-    }
-
-    void (async () => {
-      let cursor = oldestLoadedAtRef.current;
-      let hasMore = hasMoreOlderMessagesRef.current;
-      let fetchedPages = 0;
-
-      while (!messagesRef.current.some((m) => normalizeMessageId(m.id) === targetId) && hasMore && cursor && fetchedPages < MAX_QUOTE_AUTO_LOAD_PAGES) {
-        if (isLoadingOlderRef.current) {
-          await new Promise((resolve) => setTimeout(resolve, 80));
-          cursor = oldestLoadedAtRef.current;
-          hasMore = hasMoreOlderMessagesRef.current;
-          continue;
-        }
-
-        isLoadingOlderRef.current = true;
-        try {
-          const result = await fetchAndPrependOlderMessages(cursor);
-          fetchedPages += 1;
-          cursor = result.nextCursor;
-          hasMore = result.hasMore;
-        } catch (error) {
-          console.error('Failed to auto-load quoted message history:', error);
-          break;
-        } finally {
-          isLoadingOlderRef.current = false;
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 0));
+    return new Promise<void>((resolve) => {
+      if (!targetId) {
+        quoteWarn('scrollToMessage aborted: no resolved target id', { messageId, sourceId });
+        resolve();
+        return;
+      }
+      if (scrollToLoadedMessage(targetId, behavior, force)) {
+        quoteLog('scrollToMessage resolved within loaded window', { targetId });
+        resolve();
+        return;
+      }
+      if (!historyLoaded) {
+        quoteWarn('scrollToMessage aborted: history not loaded yet', { targetId });
+        resolve();
+        return;
       }
 
-      quoteLog('scrollToMessage auto-load loop finished', {
-        targetId,
-        fetchedPages,
-        hasMore,
-        cursor,
-        nowContainsTarget: messagesRef.current.some((m) => normalizeMessageId(m.id) === targetId),
-      });
+      void (async () => {
+        let cursor = oldestLoadedAtRef.current;
+        let hasMore = hasMoreOlderMessagesRef.current;
+        let fetchedPages = 0;
 
-      requestAnimationFrame(() => {
-        scrollToLoadedMessage(targetId, behavior, force);
-      });
-    })();
+        while (!messagesRef.current.some((m) => normalizeMessageId(m.id) === targetId) && hasMore && cursor && fetchedPages < MAX_QUOTE_AUTO_LOAD_PAGES) {
+          if (isLoadingOlderRef.current) {
+            await new Promise((res) => setTimeout(res, 80));
+            cursor = oldestLoadedAtRef.current;
+            hasMore = hasMoreOlderMessagesRef.current;
+            continue;
+          }
+
+          isLoadingOlderRef.current = true;
+          try {
+            const result = await fetchAndPrependOlderMessages(cursor);
+            fetchedPages += 1;
+            cursor = result.nextCursor;
+            hasMore = result.hasMore;
+          } catch (error) {
+            console.error('Failed to auto-load quoted message history:', error);
+            break;
+          } finally {
+            isLoadingOlderRef.current = false;
+          }
+
+          await new Promise((res) => setTimeout(res, 0));
+        }
+
+        quoteLog('scrollToMessage auto-load loop finished', {
+          targetId,
+          fetchedPages,
+          hasMore,
+          cursor,
+          nowContainsTarget: messagesRef.current.some((m) => normalizeMessageId(m.id) === targetId),
+        });
+
+        requestAnimationFrame(() => {
+          scrollToLoadedMessage(targetId, behavior, force);
+          resolve();
+        });
+      })();
+    });
   }, [fetchAndPrependOlderMessages, historyLoaded, resolveReplyNavigationTargetId, scrollToLoadedMessage]);
 
   const scrollToBottom = useCallback((behavior: 'auto' | 'smooth' = 'auto', force = false) => {
@@ -4221,18 +4228,35 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
         <LayoutContainer>
           <ChatWindow>
             {pinnedMessages.length > 0 && (
-              <PinnedBannerContainer onClick={() => {
+              <PinnedBannerContainer onClick={async () => {
+                if (isJumpingToPinned) return;
                 const currentMsg = pinnedMessages[currentPinnedIndex];
                 if (currentMsg) {
-                  scrollToMessage(currentMsg.id || currentMsg._id || currentMsg.messageId, undefined, 'auto', true);
+                  setIsJumpingToPinned(true);
+                  try {
+                    await scrollToMessage(currentMsg.id || currentMsg._id || currentMsg.messageId, undefined, 'auto', true);
+                  } finally {
+                    setIsJumpingToPinned(false);
+                    setCurrentPinnedIndex((prev) => (prev + 1) % pinnedMessages.length);
+                  }
+                } else {
+                  setCurrentPinnedIndex((prev) => (prev + 1) % pinnedMessages.length);
                 }
-                setCurrentPinnedIndex((prev) => (prev + 1) % pinnedMessages.length);
               }}>
                 <PinnedBannerIconWrapper>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M16 12V4H17V2H7V4H8V12L6 14V16H11V22H13V16H18V14L16 12Z"/>
-                  </svg>
-                  {pinnedMessages.length > 1 && (
+                  {isJumpingToPinned ? (
+                    <>
+                      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1s linear infinite' }}>
+                        <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+                      </svg>
+                    </>
+                  ) : (
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M16 12V4H17V2H7V4H8V12L6 14V16H11V22H13V16H18V14L16 12Z"/>
+                    </svg>
+                  )}
+                  {pinnedMessages.length > 1 && !isJumpingToPinned && (
                     <PinnedCycleIndicator>
                       {pinnedMessages.map((_, i) => (
                         <PinnedCycleSegment key={i} $active={i === currentPinnedIndex} />

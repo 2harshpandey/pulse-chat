@@ -77,7 +77,7 @@ export interface MessageItemProps {
   downloadProgress: number;
   deleteForMe: (messageId: string) => void;
   deleteForEveryone: (messageId: string) => void;
-  scrollToMessage: (messageId: string, sourceMessageId?: string, behavior?: 'auto' | 'smooth', force?: boolean, replyingToPayload?: any) => void;
+  scrollToMessage: (messageId: string, sourceMessageId?: string, behavior?: 'auto' | 'smooth', force?: boolean, replyingToPayload?: any) => Promise<void> | void;
   isSelectModeActive: boolean;
   isSelected: boolean;
   handleToggleSelectMessage: (messageId: string) => void;
