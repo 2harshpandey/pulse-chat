@@ -73,8 +73,7 @@ export interface MessageItemProps {
   mediaLoadProgress: number;
   loadedMediaSrc?: string;
   onRequestDownload: (messageId: string, mediaUrl: string, filename: string) => void;
-  isDownloadInProgress: boolean;
-  downloadProgress: number;
+
   deleteForMe: (messageId: string) => void;
   deleteForEveryone: (messageId: string) => void;
   scrollToMessage: (messageId: string, sourceMessageId?: string, behavior?: 'auto' | 'smooth', force?: boolean, replyingToPayload?: any) => Promise<void> | void;
@@ -96,6 +95,8 @@ export interface MessageItemProps {
   handleSetEditingMessageId: (id: string | null) => void;
   handleCancelEdit: () => void;
   onVideoFullscreenEnter?: (messageId: string) => void;
+  onResumeUpload?: (messageId: string) => void;
+  onCancelUpload?: (messageId: string) => void;
 }
 
 export interface TypingIndicatorProps {

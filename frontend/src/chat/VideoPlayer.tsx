@@ -15,7 +15,7 @@ const formatTime = (s: number): string => {
   return `${m}:${sec.toString().padStart(2, '0')}`;
 };
 
-export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter }: { src: string; onPointerDown?: () => void; onFullscreenEnter?: () => void }) => {
+export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter, isUploading }: { src: string; onPointerDown?: () => void; onFullscreenEnter?: () => void; isUploading?: boolean }) => {
   const containerRef = useRef<HTMLDivElement>(null!);
   const videoRef = useRef<HTMLVideoElement>(null!);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -309,7 +309,7 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter }: { src: st
 
         {/* Center play/pause flash/button */}
         <CVPCenterPlayBtn
-          $visible={!isPlaying || showCenterPlay || (isTouchDevice && showControls)}
+          $visible={!isUploading && (!isPlaying || showCenterPlay || (isTouchDevice && showControls))}
           onClick={(e) => { e.stopPropagation(); togglePlay(); }}
           aria-label={isPlaying ? 'Pause' : 'Play'}
         >

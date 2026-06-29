@@ -19,6 +19,7 @@ import {
 import { renderMessageContent, detectFirstUrl } from './renderMessage';
 import { LinkPreview } from './LinkPreview';
 import { getCachedMediaBlob, setCachedMediaBlob } from '../mediaCache';
+import { transferManager, TransferInfo } from './TransferManager';
 
 export const MessageItem = React.memo(({
   msg,
@@ -37,8 +38,6 @@ export const MessageItem = React.memo(({
   mediaLoadProgress,
   loadedMediaSrc,
   onRequestDownload,
-  isDownloadInProgress,
-  downloadProgress,
   deleteForMe,
   deleteForEveryone,
   scrollToMessage,
@@ -58,7 +57,9 @@ export const MessageItem = React.memo(({
   reactionPickerData,
   editingMessageId,
   handleCancelEdit,
-  onVideoFullscreenEnter
+  onVideoFullscreenEnter,
+  onResumeUpload,
+  onCancelUpload
 }: MessageItemProps) => {
   const isEditing = editingMessageId === msg.id;
   const quotedPreviewThumbUrl = msg.replyingTo && !msg.replyingTo.isDeleted && (msg.replyingTo.type === 'image' || msg.replyingTo.type === 'video')
@@ -67,6 +68,14 @@ export const MessageItem = React.memo(({
   const messageRowRef = useRef<HTMLDivElement>(null!);
   const messageBubbleRef = useRef<HTMLDivElement>(null!);
   const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; right?: number; left?: number } | null>(null);
+  
+  const [transferInfo, setTransferInfo] = useState<TransferInfo | undefined>(() => transferManager.getTransfer(msg.id));
+  useEffect(() => {
+    const unsubscribe = transferManager.subscribe((transfers) => {
+      setTransferInfo(transfers.get(msg.id));
+    });
+    return () => { unsubscribe(); };
+  }, [msg.id]);
   const [resolvedContentSize, setResolvedContentSize] = useState<number | undefined>(() => {
     if (typeof msg.size === 'number' && msg.size > 0) return msg.size;
     const safeUrl = sanitizeMediaUrl(msg.url);
@@ -681,9 +690,12 @@ export const MessageItem = React.memo(({
                   isMediaLoadInProgress,
                   mediaLoadProgress,
                   onRequestDownload,
-                  isDownloadInProgress,
-                  downloadProgress,
-                  loadedMediaSrc
+                  transferInfo?.type === 'download' && (transferInfo.state === 'downloading' || transferInfo.state === 'paused'),
+                  transferInfo?.type === 'download' ? transferInfo.progress : 0,
+                  loadedMediaSrc,
+                  transferInfo,
+                  onResumeUpload,
+                  onCancelUpload
                 )}
                 <FooterContainer $sender={sender}>
                   <Timestamp $sender={sender}>{msg.edited && <span>(edited) </span>}{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Timestamp>

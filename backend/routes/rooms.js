@@ -29,6 +29,14 @@ router.post('/', apiLimiter, async (req, res) => {
     return res.status(400).json({ error: 'Name and Admin Password are required.' });
   }
 
+  if (name.length > 50) {
+    return res.status(400).json({ error: 'Room name cannot exceed 50 characters.' });
+  }
+
+  if (description && description.length > 150) {
+    return res.status(400).json({ error: 'Room description cannot exceed 150 characters.' });
+  }
+
   const clientIp = extractIp(req);
   const clientUa = req.headers['user-agent'] || '';
   const fingerprint = fpData ? generateDeviceHash({ ...fpData, userAgent: clientUa }) : 'unknown';
@@ -319,6 +327,9 @@ router.put('/admin/details', apiLimiter, async (req, res) => {
   const { name, description } = req.body;
 
   if (!roomId || !adminPassword) return res.status(401).json({ error: 'Unauthorized' });
+
+  if (name && name.length > 50) return res.status(400).json({ error: 'Room name cannot exceed 50 characters.' });
+  if (description && description.length > 150) return res.status(400).json({ error: 'Room description cannot exceed 150 characters.' });
 
   try {
     const room = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] });

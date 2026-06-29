@@ -8,6 +8,7 @@ import Admin from './Admin';
 import AboutDeveloper from './AboutDeveloper';
 import { GlobalStyle } from './chat/ChatStyledComponents';
 import { NotFoundPage, ForbiddenPage, ServerErrorPage, TimeoutPage, RateLimitPage, MaintenancePage } from './ErrorPages';
+import { PwaUpdatePrompt } from './PwaUpdatePrompt';
 
 const GlobalHomeButton = styled.button`
   position: absolute;
@@ -180,7 +181,7 @@ function AppRoutes() {
 
   return (
     <RouteErrorBoundary key={location.pathname}>
-      {location.pathname !== '/' && (
+      {location.pathname !== '/' && !location.pathname.startsWith('/room/') && location.pathname !== '/me' && !location.pathname.startsWith('/join/') && (
         <GlobalHomeButton onClick={() => navigate('/')} aria-label="Go to Home" title="Go to Home">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
@@ -234,6 +235,7 @@ function App() {
   return (
     <>
       <GlobalStyle />
+      <PwaUpdatePrompt />
       <AppRoutes />
     </>
   );

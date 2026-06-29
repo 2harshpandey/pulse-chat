@@ -159,9 +159,9 @@ const Subtitle = styled.p`
 `;
 
 const Button = styled.button<{ $primary?: boolean }>`
-  background: ${p => p.$primary ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)' : 'var(--bg-hover)'};
+  background: ${p => p.$primary ? 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)' : 'var(--bg-secondary)'};
   color: ${p => p.$primary ? '#ffffff' : 'var(--text-primary)'};
-  border: ${p => p.$primary ? 'none' : '1px solid var(--border-secondary)'};
+  border: ${p => p.$primary ? 'none' : '1px solid var(--border-primary)'};
   padding: 0.875rem 1.5rem;
   font-size: 1rem;
   font-weight: 600;
@@ -175,7 +175,7 @@ const Button = styled.button<{ $primary?: boolean }>`
   &:hover {
     transform: translateY(-2px);
     box-shadow: ${p => p.$primary ? '0 10px 20px -5px rgba(59, 130, 246, 0.4)' : 'none'};
-    background: ${p => p.$primary ? '' : 'rgba(51, 65, 85, 0.8)'};
+    background: ${p => p.$primary ? 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)' : 'var(--bg-hover)'};
   }
 
   @media (max-width: 480px) {
@@ -211,6 +211,33 @@ const RoomCard = styled.div`
   }
 `;
 
+const RoomDescription = styled.div`
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  line-height: 1.4;
+  border-top: 1px solid var(--border-primary);
+  padding-top: 0.5rem;
+  margin-top: 0.25rem;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  max-height: 4.2em;
+  overflow-y: auto;
+  
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: var(--border-primary);
+    border-radius: 4px;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
+  }
+`;
+
 const RoomHeader = styled.div`
   display: flex;
   justify-content: space-between;
@@ -226,6 +253,31 @@ const RoomName = styled.h3`
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  word-break: break-all;
+`;
+const CopyIcon = styled.button`
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background: var(--border-primary);
+    color: var(--text-primary);
+    transform: scale(1.05);
+  }
+  
+  &:active {
+    transform: scale(0.95);
+  }
 `;
 
 const RoomBadge = styled.span<{ $private?: boolean }>`
@@ -435,6 +487,16 @@ const Rooms: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showJoinPassword, setShowJoinPassword] = useState(false);
   const [showAdminPassword, setShowAdminPassword] = useState(false);
+
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const handleCopyId = (e: React.MouseEvent, id: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    navigator.clipboard.writeText(id);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
 
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [joinRoomId, setJoinRoomId] = useState('');
@@ -734,12 +796,32 @@ const Rooms: React.FC = () => {
                     <RoomBadge $private={room.isPrivate}>{room.isPrivate ? 'Private' : 'Public'}</RoomBadge>
                   </RoomHeader>
 
-                  <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                    <div>Room ID: <code>{room.id}</code></div>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1rem', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', gap: '0.5rem', minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', minWidth: 0 }}>
+                      <span style={{ flexShrink: 0 }}>Room ID:</span>
+                      <code style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }} title={room.id}>
+                        {room.id}
+                      </code>
+                      <CopyIcon 
+                        title="Copy Room ID" 
+                        onClick={(e) => handleCopyId(e, room.id)}
+                      >
+                        {copiedId === room.id ? (
+                          <svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                          </svg>
+                        ) : (
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 12, height: 12 }}>
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                          </svg>
+                        )}
+                      </CopyIcon>
+                    </div>
                     {room.description && (
-                      <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', lineHeight: 1.4, borderTop: '1px solid rgba(255, 255, 255, 0.05)', paddingTop: '0.5rem', marginTop: '0.25rem' }}>
+                      <RoomDescription>
                         {room.description}
-                      </div>
+                      </RoomDescription>
                     )}
                   </div>
 
@@ -780,35 +862,47 @@ const Rooms: React.FC = () => {
             <h2 style={{ margin: '0 0 1.5rem', fontSize: '1.5rem', fontWeight: 800 }}>Create New Room</h2>
             <form onSubmit={handleCreateRoom} onKeyDown={handleFormKeyDown}>
               <FormGroup>
-                <Label>Room Name</Label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <Label style={{ margin: 0 }}>Room Name</Label>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{roomName.length}/50</span>
+                </div>
                 <Input
                   type="text"
                   value={roomName}
                   onChange={e => setRoomName(e.target.value)}
                   placeholder="e.g. Developer Lounge"
+                  maxLength={50}
                   autoFocus={!window.matchMedia('(pointer: coarse)').matches}
                 />
               </FormGroup>
 
               <FormGroup>
-                <Label>Description (Optional)</Label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <Label style={{ margin: 0 }}>Description (Optional)</Label>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{description.length}/150</span>
+                </div>
                 <Input
                   as="textarea"
                   value={description}
                   onChange={e => setDescription(e.target.value)}
                   placeholder="What is this room about?"
-                  style={{ minHeight: '80px', resize: 'vertical' }}
+                  style={{ minHeight: '150px', resize: 'none' }}
+                  maxLength={150}
                 />
               </FormGroup>
 
               <FormGroup>
-                <Label>Room ID</Label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <Label style={{ margin: 0 }}>Room ID</Label>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{customId.length}/30</span>
+                </div>
                 <InputWrapper>
                   <Input
                     type="text"
                     value={customId}
                     onChange={e => setCustomId(e.target.value.replace(/[^a-zA-Z0-9._]/g, ''))}
                     placeholder="e.g. dev_lounge (alphanumeric, dots, underscores)"
+                    maxLength={30}
                   />
                 </InputWrapper>
                 {customId && (

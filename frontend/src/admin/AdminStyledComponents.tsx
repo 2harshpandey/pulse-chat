@@ -402,6 +402,26 @@ export const Input = styled.input`
   @media (max-height: 500px) { padding: 0.28rem 0.5rem; font-size: 0.78rem; }
 `;
 
+export const TextArea = styled.textarea`
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border-secondary);
+  border-radius: 8px;
+  width: 100%;
+  max-width: 300px;
+  box-sizing: border-box;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  transition: all 0.25s ease;
+  font-family: inherit;
+  resize: none;
+  min-height: 150px;
+  &:focus { outline: none; border-color: var(--border-focus); box-shadow: 0 0 0 3px rgba(59,130,246,0.12); }
+  &::placeholder { color: var(--text-muted); transition: color 0.3s ease; }
+  @media (max-height: 500px) { padding: 0.28rem 0.5rem; font-size: 0.78rem; }
+`;
+
 export const SelectWrapper = styled.div`
   position: relative;
   width: 100%;
@@ -541,6 +561,7 @@ export const ErrorMessage = styled.p`
 
 export const TabContainer = styled.div`
   display: flex;
+  padding-top: 4px; /* Prevents tabs from getting clipped when translating Y on hover */
   border-bottom: 1px solid var(--border-secondary);
   margin-bottom: -1px;
   overflow-x: auto;

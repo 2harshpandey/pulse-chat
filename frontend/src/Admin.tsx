@@ -20,7 +20,7 @@ import {
   CustomTimeInput, ClearHistoryButton, HideFrontendButton,
   ResponsiveTableWrapper, MobileCardList, UserCard, UserCardHeader,
   UserCardMeta, UserCardMetaRow, UserCardMetaLabel, UserCardMetaValue,
-  UserCardActions,
+  UserCardActions, TextArea,
   float1, float2, float3,
   ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, RadioGroup, RadioLabel
 } from './admin/AdminStyledComponents';
@@ -189,6 +189,8 @@ const Admin = () => {
   const [roomSettingsLoading, setRoomSettingsLoading] = useState(false);
   const [roomSettingsSuccess, setRoomSettingsSuccess] = useState('');
   const [roomSettingsError, setRoomSettingsError] = useState('');
+  const [roomIdSuccess, setRoomIdSuccess] = useState('');
+  const [roomIdError, setRoomIdError] = useState('');
   const [roomSettingsCurrentPassword, setRoomSettingsCurrentPassword] = useState('');
   const [roomSettingsNewPassword, setRoomSettingsNewPassword] = useState('');
   const [roomSettingsConfirmPassword, setRoomSettingsConfirmPassword] = useState('');
@@ -416,7 +418,7 @@ const Admin = () => {
         setRoomSettingsName(d.name || '');
         setRoomSettingsDesc(d.description || '');
         setRoomSettingsAlias(d.alias || '');
-        setRoomSettingsNewId(d.alias || '');
+        setRoomSettingsNewId(d.alias || roomId || '');
         setRoomSettingsLastIdChange(d.lastIdChangeAt || null);
         setRoomSettingsHasJoinPassword(d.hasJoinPassword || false);
       }
@@ -735,8 +737,8 @@ const Admin = () => {
 
   const handleSaveRoomId = async () => {
     setRoomSettingsLoading(true);
-    setRoomSettingsError('');
-    setRoomSettingsSuccess('');
+    setRoomIdError('');
+    setRoomIdSuccess('');
     try {
       const res = await fetch(`${apiUrl}/api/rooms/admin/roomId`, {
         method: 'PUT',
@@ -745,17 +747,17 @@ const Admin = () => {
       });
       const data = await res.json();
       if (res.ok) {
-        setRoomSettingsSuccess('Room ID updated successfully. You will be redirected...');
+        setRoomIdSuccess('Room ID updated successfully. You will be redirected...');
         setRoomSettingsAlias(data.newAlias);
         setRoomSettingsLastIdChange(data.lastIdChangeAt);
         setTimeout(() => {
           navigate(`/admin/${data.newAlias}`, { replace: true });
         }, 3000);
       } else {
-        setRoomSettingsError(data.error || 'Failed to update Room ID.');
+        setRoomIdError(data.error || 'Failed to update Room ID.');
       }
     } catch (err) {
-      setRoomSettingsError('Network error occurred.');
+      setRoomIdError('Network error occurred.');
     }
     setRoomSettingsLoading(false);
   };
@@ -794,7 +796,13 @@ const Admin = () => {
 
   const enrichedHistoryLogs = useMemo(() => {
     const userMap = new Map(users.map(u => [u.userId, u.username]));
-    return historyLogs.map(log => ({ ...log, username: log.username || userMap.get(log.userId) || 'Unknown' }));
+    return historyLogs.map(log => {
+      let resolvedUsername = log.username;
+      if (!resolvedUsername || resolvedUsername === 'Unknown') {
+        resolvedUsername = userMap.get(log.userId) || 'Unknown';
+      }
+      return { ...log, username: resolvedUsername };
+    });
   }, [historyLogs, users]);
 
   const sortedUsers = useMemo(() => {
@@ -900,6 +908,7 @@ const Admin = () => {
                 type={isPasswordVisible ? 'text' : 'password'}
                 placeholder="Enter admin password"
                 autoComplete="current-password"
+                autoFocus={!urlRoomId && !window.matchMedia('(pointer: coarse)').matches}
                 value={password}
                 onChange={(e) => {
                   setPassword(e.target.value);
@@ -1055,7 +1064,7 @@ const Admin = () => {
                         <NoWrapTd style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#64748b' }}>{log.messageId || log.message?.id || log.message?._id || log._id || 'N/A'}</NoWrapTd>
                         <Td>{renderMessageDetails(log)}</Td>
                         <NoWrapTd>
-                          {log.type === 'create' && (
+                          {log.type === 'create' && (log.messageId || log.message?.id || log.message?._id || log._id) && (
                             pinnedMessages.some(p => p.id === (log.messageId || log.message?.id || log.message?._id || log._id)) ? (
                               <SmallDangerButton onClick={() => handleUnpin(log.messageId || log.message?.id || log.message?._id || log._id)}>Unpin</SmallDangerButton>
                             ) : (
@@ -1687,24 +1696,31 @@ const Admin = () => {
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: '500px' }}>
                 <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Room Name</label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', maxWidth: '300px' }}>
+                    <label style={{ margin: 0, fontWeight: 600 }}>Room Name</label>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{roomSettingsName.length}/50</span>
+                  </div>
                   <Input 
                     type="text" 
                     value={roomSettingsName} 
                     onChange={e => setRoomSettingsName(e.target.value)} 
                     placeholder="Enter room name"
+                    maxLength={50}
                   />
                 </div>
                 <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Room Description</label>
-                  <textarea 
-                    style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1', background: 'var(--panel-bg)', color: 'var(--text-color)', fontFamily: 'inherit', resize: 'vertical', minHeight: '100px' }}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', maxWidth: '300px' }}>
+                    <label style={{ margin: 0, fontWeight: 600 }}>Room Description</label>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{roomSettingsDesc.length}/150</span>
+                  </div>
+                  <TextArea 
                     value={roomSettingsDesc} 
                     onChange={e => setRoomSettingsDesc(e.target.value)} 
                     placeholder="Enter a brief description"
+                    maxLength={150}
                   />
                 </div>
-                <Button onClick={handleSaveRoomDetails} disabled={roomSettingsLoading}>
+                <Button style={{ maxWidth: '300px' }} onClick={handleSaveRoomDetails} disabled={roomSettingsLoading}>
                   {roomSettingsLoading ? 'Saving...' : 'Save Details'}
                 </Button>
               </div>
@@ -1717,33 +1733,61 @@ const Admin = () => {
                 <strong style={{ color: '#ef4444' }}> Note: This can only be done once every 14 days.</strong>
               </p>
               
-              {roomSettingsLastIdChange && (
-                <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '1rem' }}>
-                  Last changed: {new Date(roomSettingsLastIdChange).toLocaleDateString()}
-                </p>
-              )}
-
-              <div style={{ marginBottom: '1.5rem', padding: '1rem', background: 'var(--chat-bg, rgba(0, 0, 0, 0.05))', borderRadius: '8px', border: '1px solid var(--border-color)', display: 'inline-block' }}>
-                <span style={{ color: 'var(--text-color)', opacity: 0.7, fontSize: '0.9rem', marginRight: '0.75rem' }}>Current Room ID:</span>
-                <strong style={{ fontSize: '1.1rem', fontFamily: 'monospace', color: 'var(--text-color)' }}>{roomId}</strong>
-              </div>
-
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: '500px' }}>
+                {roomSettingsLastIdChange && (
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: '0 0 -0.5rem' }}>
+                    Last changed: {new Date(roomSettingsLastIdChange).toLocaleDateString('en-GB')}
+                  </p>
+                )}
+
                 <div>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>New Room ID</label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', maxWidth: '300px' }}>
+                    <label style={{ margin: 0, fontWeight: 600 }}>New Room ID</label>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{roomSettingsNewId.length}/30</span>
+                  </div>
                   <Input 
                     type="text" 
                     value={roomSettingsNewId} 
-                    onChange={e => setRoomSettingsNewId(e.target.value)} 
+                    onChange={e => setRoomSettingsNewId(e.target.value.replace(/[^a-zA-Z0-9._]/g, ''))} 
                     placeholder="e.g. my-cool-room"
+                    maxLength={30}
                   />
                   <small style={{ color: '#64748b', display: 'block', marginTop: '0.25rem' }}>
                     Letters, numbers, dots, and underscores only. 1-30 chars.
                   </small>
                 </div>
-                <Button onClick={handleSaveRoomId} disabled={roomSettingsLoading}>
-                  {roomSettingsLoading ? 'Saving...' : 'Change Room ID'}
+                <Button style={{ maxWidth: '300px' }} onClick={handleSaveRoomId} disabled={roomSettingsLoading}>
+                  {roomSettingsLoading ? 'Saving...' : 'Save Room ID'}
                 </Button>
+                
+                {(roomIdSuccess || roomIdError) && (
+                  <div style={{ 
+                    padding: '1rem', 
+                    borderRadius: '8px', 
+                    background: roomIdError ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)', 
+                    color: roomIdError ? '#ef4444' : '#22c55e', 
+                    border: `1px solid ${roomIdError ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)'}`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    fontSize: '0.9rem',
+                    maxWidth: '400px'
+                  }}>
+                    {roomIdError ? (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18, flexShrink: 0 }}>
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="8" x2="12" y2="12"></line>
+                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18, flexShrink: 0 }}>
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                      </svg>
+                    )}
+                    <span style={{ fontWeight: 500, lineHeight: 1.4 }}>{roomIdError || roomIdSuccess}</span>
+                  </div>
+                )}
               </div>
             </div>
 

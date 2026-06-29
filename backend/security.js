@@ -31,7 +31,7 @@ const isPrivateOrInternalIp = (ip) => {
   return true; // unknown format — block by default
 };
 
-const ALLOWED_DOWNLOAD_HOSTS = ['res.cloudinary.com', 'media.tenor.com', 'tenor.com'];
+const ALLOWED_DOWNLOAD_HOSTS = ['res.cloudinary.com', 'api.cloudinary.com', 'media.tenor.com', 'tenor.com'];
 
 const getAllowedDownloadHost = (hostname) =>
   ALLOWED_DOWNLOAD_HOSTS.find((host) => hostname === host) || '';
@@ -157,10 +157,12 @@ const parseCloudinaryAssetFromUrl = (assetUrl) => {
 
     const publicPath = publicSegments.join('/');
     const extensionMatch = publicPath.match(/\.([a-zA-Z0-9]{1,16})$/);
-    const format = extensionMatch ? extensionMatch[1] : '';
-    const publicId = extensionMatch
-      ? publicPath.slice(0, -(`.${format}`).length)
-      : publicPath;
+    
+    // For raw resources, Cloudinary expects the extension to be part of the public_id,
+    // and format shouldn't be passed separately.
+    const isRaw = resourceType === 'raw';
+    const format = (extensionMatch && !isRaw) ? extensionMatch[1] : '';
+    const publicId = (extensionMatch && !isRaw) ? publicPath.slice(0, -(format.length + 1)) : publicPath;
 
     if (!publicId) return null;
     return { resourceType, deliveryType, publicId, format };
@@ -174,8 +176,8 @@ const getCloudinaryAttachmentUrl = (assetUrl, filename) => {
   if (!parsedAsset) return '';
 
   try {
-    const attachmentName = sanitizeDownloadFilename(filename, 'download');
-    const transformation = [`fl_attachment:${attachmentName}`];
+    const isRaw = parsedAsset.resourceType === 'raw';
+    const transformation = isRaw ? undefined : [`fl_attachment:${attachmentName}`];
     return cloudinary.url(parsedAsset.publicId, {
       resource_type: parsedAsset.resourceType,
       type: parsedAsset.deliveryType || 'upload',
@@ -195,6 +197,11 @@ const getSignedCloudinaryDownloadUrl = (assetUrl, filename) => {
 
   const expiresAt = Math.floor(Date.now() / 1000) + (5 * 60);
   const attachmentName = sanitizeDownloadFilename(filename, 'download');
+  const isRaw = parsedAsset.resourceType === 'raw';
+  
+  // Cloudinary raw assets do not support transformations (like fl_attachment).
+  const attachmentOpt = isRaw ? {} : { attachment: attachmentName };
+
   const candidateOptions = [
     { resource_type: parsedAsset.resourceType, type: parsedAsset.deliveryType || 'upload' },
     { resource_type: parsedAsset.resourceType, type: 'authenticated' },
@@ -206,7 +213,7 @@ const getSignedCloudinaryDownloadUrl = (assetUrl, filename) => {
     try {
       const signedUrl = cloudinary.utils.private_download_url(parsedAsset.publicId, parsedAsset.format, {
         ...options,
-        attachment: attachmentName,
+        ...attachmentOpt,
         expires_at: expiresAt,
       });
       if (signedUrl) return signedUrl;

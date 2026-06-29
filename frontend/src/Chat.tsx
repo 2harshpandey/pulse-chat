@@ -8,6 +8,7 @@ import { useTheme } from './ThemeContext';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import Auth from './Auth';
 import { getCachedMediaBlob, setCachedMediaBlob } from './mediaCache';
+import { transferManager } from './chat/TransferManager';
 import type { Message, Gif, ReplyContext, RouterHistoryState, DownloadProgressCallback, LinkPreviewData, MessageItemProps, TypingIndicatorProps } from './chat/types';
 import {
   MAX_MESSAGE_LENGTH, GIF_FETCH_LIMIT, getInputDraftKey, isDesktopInteractionDevice,
@@ -34,24 +35,37 @@ import {
 } from './chat/utils';
 import { NOTIFICATION_BEEP } from './chat/audioConstants';
 
-const ChatSearchContainer = styled.div<{ $active: boolean }>`
+const ChatSearchContainer = styled.div<{ $active: boolean; $isClosing?: boolean }>`
   display: flex;
   align-items: center;
-  background: var(--bg-elevated);
+  background: ${p => p.$active || p.$isClosing ? 'var(--bg-elevated)' : 'transparent'};
   border-radius: 20px;
-  border: 1px solid var(--border-primary);
-  padding: 0 0.5rem;
-  width: ${p => p.$active ? '200px' : '40px'};
+  border: none;
+  padding: 0;
+  width: ${p => p.$active ? '240px' : '40px'};
   height: 40px;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  overflow: hidden;
 
   @media (max-width: 768px) {
-    position: ${p => p.$active ? 'absolute' : 'relative'};
-    left: ${p => p.$active ? '1rem' : 'auto'};
-    right: ${p => p.$active ? '1rem' : 'auto'};
-    width: ${p => p.$active ? 'calc(100% - 2rem)' : '40px'};
-    z-index: ${p => p.$active ? 10 : 1};
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: ${p => p.$active ? 'calc(100vw - 2rem)' : '40px'};
+    z-index: 10;
+  }
+`;
+
+const HeaderActionsGroup = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+
+  @media (max-width: 768px) {
+    position: relative;
+    padding-right: 48px;
+    height: 40px;
   }
 `;
 
@@ -69,18 +83,54 @@ const ChatSearchInput = styled.input<{ $active: boolean }>`
 `;
 
 const ChatSearchButton = styled.button`
-  background: transparent;
-  border: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border-secondary);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   cursor: pointer;
-  color: #94a3b8;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
   flex-shrink: 0;
-  padding: 0;
-  &:hover { color: #3b82f6; }
+  &:hover { 
+    transform: scale(1.15); 
+    border-color: rgba(59, 130, 246, 0.5); 
+    background: rgba(59, 130, 246, 0.1);
+    color: var(--text-primary);
+    box-shadow: 0 10px 25px -5px rgba(59,130,246,0.4); 
+  }
+  &:active { transform: scale(0.9); }
+  svg { width: 18px; height: 18px; transition: transform 0.5s cubic-bezier(0.34,1.56,0.64,1); }
+`;
+
+const SearchNotFoundToast = styled.div<{ $visible: boolean }>`
+  position: absolute;
+  bottom: 90px;
+  left: 50%;
+  transform: translateX(-50%) translateY(${p => p.$visible ? '0' : '20px'}) scale(${p => p.$visible ? 1 : 0.95});
+  opacity: ${p => p.$visible ? 1 : 0};
+  pointer-events: none;
+  background: rgba(30, 30, 30, 0.95);
+  color: #fff;
+  padding: 10px 24px;
+  border-radius: 30px;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 1000;
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  
+  @media (max-width: 768px) {
+    bottom: 100px;
+  }
 `;
 
 import {
@@ -133,7 +183,8 @@ import {
 import { VideoPlayer } from './chat/VideoPlayer';
 import { MediaDisplay } from './chat/MediaDisplay';
 import { renderMessageContent, detectFirstUrl, CANDIDATE_URL_RE, renderTextWithLinks } from './chat/renderMessage';
-import { LinkPreview, linkPreviewCache, rememberLinkPreview } from './chat/LinkPreview';
+import { LinkPreview } from './chat/LinkPreview';
+import { linkPreviewCache, rememberLinkPreview } from './chat/linkPreviewState';
 import { MessageItem } from './chat/MessageItem';
 import { TypingIndicator, FilmIcon, FileIcon } from './chat/TypingIndicator';
 
@@ -217,7 +268,17 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   const [onlineUsers, setOnlineUsers] = useState<UserProfile[]>([]);
   const [isConnected, setIsConnected] = useState(false);
   const [isSearchActive, setIsSearchActive] = useState(false);
+  const [isSearchClosing, setIsSearchClosing] = useState(false);
+  
+  const handleCloseSearch = useCallback(() => {
+    setIsSearchActive(false);
+    setIsSearchClosing(true);
+    setTimeout(() => setIsSearchClosing(false), 300); // match CSS transition duration
+  }, []);
   const [chatSearchQuery, setChatSearchQuery] = useState('');
+  const [activeSearchQuery, setActiveSearchQuery] = useState('');
+  const [showSearchNotFound, setShowSearchNotFound] = useState(false);
+  const scrollBeforeSearchRef = useRef<number | null>(null);
   const [isBrowserOnline, setIsBrowserOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [isUserListVisible, setIsUserListVisible] = useState(false);
   const [isSoundEnabled, setIsSoundEnabled] = useState(() => {
@@ -247,7 +308,6 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [historySessionId, setHistorySessionId] = useState(0);
   const [isJumpingToPinned, setIsJumpingToPinned] = useState(false);
-
   const lastPingAtRef = useRef<number>(Date.now());
 
   const groupStartMessageIdsRef = useRef<Set<string>>(new Set());
@@ -298,6 +358,34 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   const messagesRef = useRef<Message[]>([]);
   const isLoadingOlderRef = useRef(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  const filteredMessages = useMemo(() => {
+    return activeSearchQuery.trim() 
+      ? messages.filter(m => m.text && m.text.toLowerCase().includes(activeSearchQuery.trim().toLowerCase())) 
+      : messages;
+  }, [messages, activeSearchQuery]);
+
+  useEffect(() => {
+    if (activeSearchQuery.trim() && filteredMessages.length === 0) {
+      setShowSearchNotFound(true);
+      const timer = setTimeout(() => setShowSearchNotFound(false), 3000);
+      return () => clearTimeout(timer);
+    } else {
+      setShowSearchNotFound(false);
+    }
+  }, [activeSearchQuery, filteredMessages.length]);
+
+  useEffect(() => {
+    if (!activeSearchQuery && scrollBeforeSearchRef.current !== null) {
+      const targetScroll = scrollBeforeSearchRef.current;
+      scrollBeforeSearchRef.current = null;
+      requestAnimationFrame(() => {
+        if (chatContainerRef.current) {
+          chatContainerRef.current.scrollTop = targetScroll;
+        }
+      });
+    }
+  }, [activeSearchQuery]);
   const isNativeFilePickerOpenRef = useRef(false);
   const lastHiddenTimeRef = useRef<number>(0);
   // Tracks whether we've done the very first scroll-to-bottom after history loads.
@@ -385,6 +473,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     focalImageY: number;
   } | null>(null);
   const lightboxTransformRef = useRef(lightboxTransform);
+  const lastLightboxTapRef = useRef<number>(0);
 
   // Base API URL: upgrade http:// to https:// when the page itself is on HTTPS.
   // Mobile networks and many corporate proxies enforce mixed-content policy strictly.
@@ -500,13 +589,11 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   }, [isSoundToggleAnimating]);
 
   useEffect(() => {
-    if (isConnected) {
-      document.body.classList.add('hide-global-home-btn');
-    } else {
+    document.body.classList.add('hide-global-home-btn');
+    return () => {
       document.body.classList.remove('hide-global-home-btn');
-    }
-    return () => document.body.classList.remove('hide-global-home-btn');
-  }, [isConnected]);
+    };
+  }, []);
 
   const setPresenceActivity = useCallback((nextActivity: 'typing' | 'gif_selecting' | null) => {
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
@@ -1257,9 +1344,10 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
 
       ws.current.onerror = () => {
         setIsConnected(false);
-        // Force close so the readyState is CLOSED and the next connect() call
-        // will actually create a new socket.
-        ws.current?.close();
+        // Force close only if it is already open to prevent console errors
+        if (ws.current?.readyState === 1) {
+          ws.current.close();
+        }
       };
 
       ws.current.onmessage = async (event: MessageEvent) => {
@@ -1336,9 +1424,19 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
           setHasMoreOlderMessages(nextHasMore);
           hasMoreOlderMessagesRef.current = nextHasMore;
           // Mark history as loaded so the Virtuoso component renders
-          // for the first time already at the bottom — no visible scroll.
+          // for the first time already at the bottom —  no visible scroll.
           setHistoryLoaded(true);
           setHistorySessionId(prev => prev + 1); // Force Virtuoso destruction on Reconnect
+          transferManager.restoreSessionDownloads().catch(console.error);
+          transferManager.restoreSessionUploads().then((restoredUploads) => {
+            if (restoredUploads.length > 0) {
+              setMessages(prev => {
+                const existingIds = new Set(prev.map(m => m.id));
+                const uniqueRestored = restoredUploads.filter(m => !existingIds.has(m.id));
+                return [...prev, ...uniqueRestored];
+              });
+            }
+          });
         } else if (messageData.type === 'online_users') {
           setOnlineUsers(messageData.data);
         } else if (messageData.type === 'report_submitted') {
@@ -1492,7 +1590,15 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       }
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('online', handleOnline);
-      ws.current?.close();
+      if (ws.current) {
+        const socketToClose = ws.current;
+        ws.current = null; // Clear the ref so strict mode remount creates a new socket
+        if (socketToClose.readyState === 1) { // OPEN
+          socketToClose.close();
+        } else if (socketToClose.readyState === 0) { // CONNECTING
+          socketToClose.onopen = () => socketToClose.close();
+        }
+      }
     };
   }, [userContext?.profile]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -2271,19 +2377,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       // Ensure the view scrolls to show the newly added message
       requestAnimationFrame(() => scrollToBottom());
 
-      const formData = new FormData();
-      formData.append('file', stagedFile);
-      formData.append('text', inputMessage);
-      formData.append('userId', userIdRef.current);
-
-      fetch(`${apiBase}/api/upload`, { method: 'POST', body: formData, headers: { 'x-room-id': roomId } })
-        .then(async response => {
-          if (!response.ok) {
-            const payload = await response.json().catch(() => null);
-            throw new Error(payload?.error || `Upload failed (${response.status})`);
-          }
-          return response.json();
-        })
+      transferManager.startUpload(tempId, stagedFile, roomId, resolveApiBaseUrl(), userIdRef.current, message)
         .then(uploadedFileData => {
           const finalMessage = {
             ...message,
@@ -2296,6 +2390,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
           ws.current?.send(JSON.stringify(finalMessage));
         })
         .catch(error => {
+          if (error.message === 'Aborted') return; // Handled by TransferManager UI
           console.error('File upload failed!', error);
           const errorText = error instanceof Error && error.message ? error.message : 'Upload failed';
           setMessages(prev => prev.map(m => m.id === tempId ? {
@@ -2440,50 +2535,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     });
   }, []);
 
-  // Background Media Upload
-  useEffect(() => {
-    stagedFiles.forEach(file => {
-      if (!uploadCacheRef.current.has(file)) {
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('userId', userIdRef.current);
-
-        const apiBase = resolveApiBaseUrl();
-        const promise = fetch(`${apiBase}/api/upload`, {
-          method: 'POST',
-          body: formData,
-          headers: { 'x-room-id': roomId }
-        })
-          .then(async response => {
-            if (!response.ok) {
-              const payload = await response.json().catch(() => null);
-              throw new Error(payload?.error || `Upload failed (${response.status})`);
-            }
-            return response.json();
-          })
-          .then(data => {
-            const entry = uploadCacheRef.current.get(file);
-            if (entry) {
-              entry.status = 'success';
-              entry.data = data;
-            }
-            return data;
-          })
-          .catch(error => {
-            console.error('Background upload failed for', file.name, error);
-            const entry = uploadCacheRef.current.get(file);
-            if (entry) {
-              entry.status = 'error';
-              entry.error = error instanceof Error ? error.message : 'Upload failed';
-            }
-            throw error;
-          });
-
-        uploadCacheRef.current.set(file, { status: 'uploading', promise });
-      }
-    });
-  }, [stagedFiles, roomId]);
-
+  // Removed background media upload in favor of TransferManager handling it upon send.
   const reactionPickerRef = useRef<HTMLDivElement>(null!);
   // Close reaction picker when clicking/tapping outside
   useEffect(() => {
@@ -2671,11 +2723,33 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   const handleLightboxPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
 
+    e.stopPropagation();
+
+    // Check for double tap/click
+    const now = Date.now();
+    const isDoubleTap = now - lastLightboxTapRef.current < 350;
+    lastLightboxTapRef.current = now;
+
+    if (isDoubleTap) {
+      // Toggle zoom
+      if (lightboxTransformRef.current.scale > PHOTO_LIGHTBOX_MIN_SCALE + 0.001) {
+        setLightboxTransform({ scale: PHOTO_LIGHTBOX_MIN_SCALE, x: 0, y: 0 });
+      } else {
+        // Zoom in to 2.5x where the user clicked
+        const focal = getLightboxRelativePoint(e.clientX, e.clientY);
+        if (focal) {
+          applyLightboxScale(PHOTO_LIGHTBOX_MIN_SCALE * 2.5, focal);
+        } else {
+          applyLightboxScale(PHOTO_LIGHTBOX_MIN_SCALE * 2.5);
+        }
+      }
+      return;
+    }
+
     const current = lightboxTransformRef.current;
     const shouldTrackPointer = e.pointerType !== 'mouse' || current.scale > PHOTO_LIGHTBOX_MIN_SCALE;
     if (!shouldTrackPointer) return;
 
-    e.stopPropagation();
     lightboxPointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     lightboxFrameRef.current?.setPointerCapture(e.pointerId);
     setIsLightboxInteracting(true);
@@ -3204,43 +3278,14 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
 
   const handleRequestDownload = useCallback((messageId: string, mediaUrl: string, filename: string) => {
     if (!messageId || !mediaUrl) return;
-    if (downloadInFlightRef.current.has(messageId)) {
-      downloadAbortControllersRef.current.get(messageId)?.abort();
-      downloadAbortControllersRef.current.delete(messageId);
-      downloadInFlightRef.current.delete(messageId);
-      setDownloadProgressById((prev) => {
-        const { [messageId]: _discard, ...rest } = prev;
-        return rest;
-      });
-      return;
+    const transfer = transferManager.getTransfer(messageId);
+    if (transfer?.type === 'download' && transfer?.state === 'downloading') {
+      transferManager.pauseTransfer(messageId);
+    } else if (transfer?.type === 'download' && transfer?.state === 'paused') {
+      transferManager.resumeDownload(messageId, filename);
+    } else {
+      void transferManager.startDownload(messageId, mediaUrl, filename);
     }
-
-    const abortController = new AbortController();
-    downloadAbortControllersRef.current.set(messageId, abortController);
-    downloadInFlightRef.current.add(messageId);
-    setDownloadProgressById((prev) => ({ ...prev, [messageId]: 0.02 }));
-
-    void (async () => {
-      try {
-        await downloadFile(mediaUrl, filename, (progress) => {
-          setDownloadProgressById((prev) => {
-            if (!(messageId in prev)) return prev;
-            return { ...prev, [messageId]: Math.max(0.02, Math.min(1, progress)) };
-          });
-        }, abortController.signal, true);
-      } catch (err: any) {
-        if (err.name === 'AbortError') return;
-      } finally {
-        downloadInFlightRef.current.delete(messageId);
-        window.setTimeout(() => {
-          setDownloadProgressById((prev) => {
-            if (!(messageId in prev)) return prev;
-            const { [messageId]: _discard, ...rest } = prev;
-            return rest;
-          });
-        }, 320);
-      }
-    })();
   }, []);
 
   // Clicking on empty space in the chat area focuses the input (WhatsApp-style).
@@ -3828,44 +3873,33 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       setMessages(prev => [...prev, message]);
       requestAnimationFrame(() => scrollToBottom());
 
-      const processUploadedData = (uploadedFileData: any) => {
-        const finalMessage = {
-          ...message,
-          ...uploadedFileData,
-          originalName: chooseReadableFilename(uploadedFileData.originalName, message.originalName),
-          isUploading: false,
-          id: uploadedFileData.id,
-          text: i === 0 ? caption : undefined,
-        };
-        setMessages(prev => prev.map(m => m.id === tempId ? finalMessage : m));
-        ws.current?.send(JSON.stringify(finalMessage));
-      };
+      transferManager.startUpload(tempId, file, roomId, resolveApiBaseUrl(), userIdRef.current, message)
+        .then(uploadedFileData => {
+          const finalMessage = {
+            ...message,
+            ...uploadedFileData,
+            originalName: chooseReadableFilename(uploadedFileData.originalName, message.originalName),
+            isUploading: false,
+            id: uploadedFileData.id,
+            text: i === 0 ? caption : undefined,
+          };
+          setMessages(prev => prev.map(m => m.id === tempId ? finalMessage : m));
+          ws.current?.send(JSON.stringify(finalMessage));
+        })
+        .catch(error => {
+          if (error.message === 'Aborted') return;
+          console.error('File upload failed!', error);
+          const errorText = error instanceof Error && error.message ? error.message : (typeof error === 'string' ? error : 'Upload failed');
+          setMessages(prev => prev.map(m => m.id === tempId ? {
+            ...message,
+            url: '',
+            isUploading: false,
+            uploadError: true,
+            originalName: sanitizeFilename(message.originalName || file.name, 'file'),
+            text: errorText,
+          } : m));
+        });
 
-      const handleUploadError = (error: any) => {
-        console.error('File upload failed!', error);
-        const errorText = error instanceof Error && error.message ? error.message : (typeof error === 'string' ? error : 'Upload failed');
-        setMessages(prev => prev.map(m => m.id === tempId ? {
-          ...message,
-          url: '',
-          isUploading: false,
-          uploadError: true,
-          originalName: sanitizeFilename(message.originalName || file.name, 'file'),
-          text: errorText,
-        } : m));
-      };
-
-      const cacheEntry = uploadCacheRef.current.get(file);
-
-      if (cacheEntry?.status === 'success' && cacheEntry.data) {
-        processUploadedData(cacheEntry.data);
-      } else if (cacheEntry?.status === 'uploading' && cacheEntry.promise) {
-        cacheEntry.promise.then(processUploadedData).catch(handleUploadError);
-      } else if (cacheEntry?.status === 'error') {
-        handleUploadError(cacheEntry.error || 'Background upload failed');
-      } else {
-        // Fallback in case the effect hasn't fired yet
-        handleUploadError('Upload failed: File not processing in background');
-      }
     }
 
     resetInput();
@@ -4131,46 +4165,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
               />
             )}
           </HeaderTitle>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
-            <ChatSearchContainer id="chat-search-container" $active={isSearchActive}>
-              <ChatSearchButton 
-                onClick={() => { if (!isSearchActive) setIsSearchActive(true); }}
-                style={{ cursor: isSearchActive ? 'default' : 'pointer' }}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '18px', height: '18px' }}>
-                  <circle cx="11" cy="11" r="8"></circle>
-                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                </svg>
-              </ChatSearchButton>
-              <ChatSearchInput
-                id="chat-search-input"
-                $active={isSearchActive}
-                value={chatSearchQuery}
-                onChange={e => setChatSearchQuery(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Escape') {
-                    setChatSearchQuery('');
-                    setIsSearchActive(false);
-                  }
-                }}
-                placeholder="Search messages..."
-              />
-              {isSearchActive && (
-                <ChatSearchButton onClick={(e) => {
-                  e.stopPropagation();
-                  if (chatSearchQuery) {
-                    setChatSearchQuery('');
-                  } else {
-                    setIsSearchActive(false);
-                  }
-                }}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '18px', height: '18px' }}>
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                  </svg>
-                </ChatSearchButton>
-              )}
-            </ChatSearchContainer>
+          <HeaderActionsGroup>
             <SoundToggleButton
               type="button"
               $enabled={isSoundEnabled}
@@ -4223,7 +4218,61 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
             </MobileUserListToggle>
-          </div>
+            <ChatSearchContainer id="chat-search-container" $active={isSearchActive} $isClosing={isSearchClosing}>
+              <ChatSearchButton 
+                onClick={() => { 
+                  if (!activeSearchQuery) scrollBeforeSearchRef.current = chatContainerRef.current?.scrollTop || null;
+                  if (!isSearchActive) setIsSearchActive(true);
+                  else setActiveSearchQuery(chatSearchQuery);
+                }}
+                style={{ cursor: 'pointer' }}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '18px', height: '18px' }}>
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+              </ChatSearchButton>
+              <ChatSearchInput
+                id="chat-search-input"
+                $active={isSearchActive}
+                value={chatSearchQuery}
+                onChange={e => {
+                  const val = e.target.value;
+                  setChatSearchQuery(val);
+                  if (val.trim() === '') {
+                    setActiveSearchQuery('');
+                  }
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Escape') {
+                    setChatSearchQuery('');
+                    setActiveSearchQuery('');
+                    handleCloseSearch();
+                  } else if (e.key === 'Enter') {
+                    if (!activeSearchQuery) scrollBeforeSearchRef.current = chatContainerRef.current?.scrollTop || null;
+                    setActiveSearchQuery(chatSearchQuery);
+                  }
+                }}
+                placeholder="Search..."
+              />
+              {isSearchActive && (
+                <ChatSearchButton onClick={(e) => {
+                  e.stopPropagation();
+                  if (chatSearchQuery || activeSearchQuery) {
+                    setChatSearchQuery('');
+                    setActiveSearchQuery('');
+                  } else {
+                    handleCloseSearch();
+                  }
+                }}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '18px', height: '18px' }}>
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                  </svg>
+                </ChatSearchButton>
+              )}
+            </ChatSearchContainer>
+          </HeaderActionsGroup>
         </Header>
         <LayoutContainer>
           <ChatWindow>
@@ -4267,7 +4316,44 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                 <PinnedBannerContentWrapper>
                   <PinnedBannerLabel>Pinned Message</PinnedBannerLabel>
                   <PinnedBannerText>
-                    {pinnedMessages[currentPinnedIndex]?.text || 'Attachment'}
+                    {(() => {
+                      const msg = pinnedMessages[currentPinnedIndex];
+                      if (!msg) return 'Attachment';
+                      const isGif = msg.url?.includes('tenor.com') || msg.text?.includes('tenor.com') || msg.originalName?.toLowerCase().endsWith('.gif') || msg.url?.toLowerCase().split('?')[0].endsWith('.gif');
+                      if (isGif) {
+                        return (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2" ry="2"></rect><path d="M10 9l-3 0 0 6 3 0"></path><path d="M14 9l-1 0 0 6 1 0"></path><path d="M19 9l-2 0 0 6"></path><path d="M17 12l2 0"></path></svg>
+                            GIF
+                          </div>
+                        );
+                      }
+                      if (msg.type === 'image') {
+                        return (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                            Photo
+                          </div>
+                        );
+                      }
+                      if (msg.type === 'video') {
+                        return (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+                            Video
+                          </div>
+                        );
+                      }
+                      if (msg.type === 'file') {
+                        return (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path><polyline points="13 2 13 9 20 9"></polyline></svg>
+                            {msg.originalName || 'File'}
+                          </div>
+                        );
+                      }
+                      return msg.text || 'Attachment';
+                    })()}
                   </PinnedBannerText>
                 </PinnedBannerContentWrapper>
               </PinnedBannerContainer>
@@ -4286,10 +4372,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                   }}
                 >
                   {historyLoaded && messages.length > 0 ? 
-                    (chatSearchQuery.trim() 
-                      ? messages.filter(m => m.text && m.text.toLowerCase().includes(chatSearchQuery.trim().toLowerCase())) 
-                      : messages
-                    ).map((msg, index, displayArr) => {
+                    filteredMessages.map((msg, index, displayArr) => {
                     if (msg.type === 'system_notification') {
                       return (
                         <div key={msg.id || index} style={{ display: 'flex', justifyContent: 'center', padding: '0.4rem 0' }}>
@@ -4340,8 +4423,29 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                         mediaLoadProgress={mediaLoadProgressById[msg.id] ?? 0}
                         loadedMediaSrc={loadedMediaSrcById[msg.id]}
                         onRequestDownload={handleRequestDownload}
-                        isDownloadInProgress={Object.prototype.hasOwnProperty.call(downloadProgressById, msg.id)}
-                        downloadProgress={downloadProgressById[msg.id] ?? 0}
+                        onResumeUpload={() => {
+                          transferManager.resumeUpload(msg.id, roomId, resolveApiBaseUrl(), userIdRef.current)?.catch(error => {
+                            if (error.message === 'Aborted') return;
+                            setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, uploadError: true, text: error.message || 'Upload failed' } : m));
+                          }).then(uploadedFileData => {
+                            if (!uploadedFileData) return;
+                            setMessages(prev => prev.map(m => {
+                              if (m.id !== msg.id) return m;
+                              const finalMessage = {
+                                ...m,
+                                ...uploadedFileData,
+                                originalName: chooseReadableFilename(uploadedFileData.originalName, m.originalName),
+                                isUploading: false,
+                                id: uploadedFileData.id,
+                              };
+                              ws.current?.send(JSON.stringify(finalMessage));
+                              return finalMessage;
+                            }));
+                          });
+                        }}
+                        onCancelUpload={() => {
+                          transferManager.pauseTransfer(msg.id);
+                        }}
                         activeDeleteMenu={activeDeleteMenu}
                         deleteMenuRef={deleteMenuRef}
                         deleteForMe={deleteForMe}
@@ -4386,6 +4490,15 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                 <NewMessagesBadge $isVisible={hasNewMessagesIndicator}>{newMessagesIndicatorLabel}</NewMessagesBadge>
               </ScrollToBottomButton>
             </MessagesAndScrollWrapper>
+            
+            <SearchNotFoundToast $visible={showSearchNotFound}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '18px', height: '18px' }}>
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+              Not found
+            </SearchNotFoundToast>
             <TypingIndicator onlineUsers={onlineUsers} currentUserId={userIdRef.current} />
             <Footer>
               {isSelectModeActive && (
@@ -4758,6 +4871,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
           </LightboxCloseButton>
           <LightboxFrame
             ref={lightboxFrameRef}
+            $isZoomed={lightboxTransform.scale > PHOTO_LIGHTBOX_MIN_SCALE + 0.001}
             onClick={(e) => e.stopPropagation()}
             onWheel={handleLightboxWheel}
             onPointerDown={handleLightboxPointerDown}

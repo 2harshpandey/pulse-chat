@@ -740,7 +740,7 @@ const initWebSocket = (wss) => {
               logger.warn(`Pin failed: message not found in DB for ID ${messageId}`);
               return;
             }
-            logger.info(`Pinning message found in DB:`, msg.id);
+            logger.info(`Pinning message found in DB: ${msg.id}`);
 
             const state = getRoomState(roomId);
             await loadPinnedMessages(roomId);

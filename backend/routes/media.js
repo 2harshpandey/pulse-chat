@@ -13,6 +13,7 @@ const multer = require('multer');
 const logger = require('../logger');
 const Message = require('../models/message');
 const MessageEvent = require('../models/messageEvent');
+const User = require('../models/user');
 const ChatState = require('../models/chatState');
 const {
   getRoomState,
@@ -31,22 +32,22 @@ const {
   isAllowedDownloadHost,
   runWithSafeRedirects,
   sanitizeDownloadFilename,
-  getCloudinaryAttachmentUrl,
+  getSignedCloudinaryDownloadUrl,
 } = require('../security');
 const { WebSocket } = require('ws');
 
 const repairMojibakeText = (value) => String(value || '')
-  .replace(/Ã¢â‚¬â„¢|Ã¢â‚¬â„¢|â€™|â/g, "'")
-  .replace(/Ã¢â‚¬Ëœ|â€˜|â/g, "'")
-  .replace(/Ã¢â‚¬Å“|â€œ|â/g, '"')
-  .replace(/Ã¢â‚¬Â|Ã¢â‚¬ï¿½|â€|â/g, '"')
-  .replace(/Ã¢â‚¬â€œ|â€“|â/g, '-')
-  .replace(/Ã¢â‚¬â€|â€”|â/g, '-')
-  .replace(/Ã¢â‚¬Â¦|â€¦|â¦/g, '...')
+  .replace(/Ã¢â‚¬â„¢|Ã¢â‚¬â„¢|â€™|â€™/g, "'")
+  .replace(/Ã¢â‚¬Ëœ|â€˜|â€˜/g, "'")
+  .replace(/Ã¢â‚¬Å“|â€œ|â€œ/g, '"')
+  .replace(/Ã¢â‚¬Â |Ã¢â‚¬ï¿½|â€ |â€ /g, '"')
+  .replace(/Ã¢â‚¬â€œ|â€“|â€“/g, '-')
+  .replace(/Ã¢â‚¬â€ |â€”|â€”/g, '-')
+  .replace(/Ã¢â‚¬Â¦|â€¦|â€¦/g, '...')
   .replace(/Ã‚Â·|Â·/g, '·')
-  .replace(/ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â|ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Å“/g, '-')
-  .replace(/ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦/g, '...')
-  .replace(/ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬/g, 'EUR')
+  .replace(/ÃƒÂ¢Ã¢\u20AC\u2122Ã¢\u20AC\u201D|ÃƒÂ¢Ã¢\u20AC\u2122Ã¢\u20AC\u201C/g, '-')
+  .replace(/ÃƒÂ¢Ã¢\u20AC\u2122Ã‚Â¦/g, '...')
+  .replace(/ÃƒÂ¢Ã¢\u20AC\u201AÃ‚Â¬/g, 'EUR')
   .replace(/Ã‚/g, '')
   .replace(/Â(?=\s|$|[\w().,;:'"-])/g, '')
   .normalize('NFC');
@@ -142,7 +143,13 @@ module.exports = (wss, broadcasts) => {
 
       const { userId, roomId = 'me' } = req.body;
       const { onlineUsers } = getRoomState(roomId);
-      const username = onlineUsers.get(userId)?.username || 'Unknown';
+      let username = onlineUsers.get(userId)?.username;
+      
+      if (!username) {
+        const user = await User.findOne({ userId, roomId });
+        username = user?.username || 'Unknown';
+      }
+
       const originalName = sanitizeUploadFilename(req.file.originalname);
 
       try {
@@ -556,14 +563,21 @@ module.exports = (wss, broadcasts) => {
       const safeFilename = sanitizeDownloadFilename(requestedFilename, fallbackName);
       const contentDisposition = `attachment; filename="${safeFilename.replace(/\"/g, '')}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`;
 
+      const upstreamHeaders = {};
+      if (req.headers.range) {
+        upstreamHeaders['Range'] = req.headers.range;
+      }
+
       const fetchHead = (targetUrl) => axios.head(targetUrl, {
+        headers: upstreamHeaders,
         timeout: 20000,
         maxRedirects: 0,
         validateStatus: (status) => status >= 200 && status < 400,
       });
 
       const fetchBody = (targetUrl) => axios.get(targetUrl, {
-        responseType: 'arraybuffer',
+        headers: upstreamHeaders,
+        responseType: 'stream',
         timeout: 30000,
         maxRedirects: 0,
         validateStatus: (status) => status >= 200 && status < 400,
@@ -573,7 +587,7 @@ module.exports = (wss, broadcasts) => {
         try {
           return await runWithSafeRedirects(executor, parsedUrl.href);
         } catch (err) {
-          const attachmentUrl = getCloudinaryAttachmentUrl(parsedUrl.href, safeFilename);
+          const attachmentUrl = getSignedCloudinaryDownloadUrl(parsedUrl.href, safeFilename);
           if (!attachmentUrl) throw err;
           return runWithSafeRedirects(executor, attachmentUrl);
         }
@@ -587,23 +601,30 @@ module.exports = (wss, broadcasts) => {
         res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Disposition', contentDisposition);
         res.setHeader('Cache-Control', 'private, max-age=120');
+        if (meta.headers['accept-ranges']) res.setHeader('Accept-Ranges', meta.headers['accept-ranges']);
         if (Number.isFinite(contentLength) && contentLength > 0) {
           res.setHeader('Content-Length', String(contentLength));
         }
-        return res.status(200).end();
+        return res.status(meta.status === 206 ? 206 : 200).end();
       }
 
       const payloadResponse = await runWithCloudinaryFallback(fetchBody);
-      const payload = Buffer.from(payloadResponse.data || []);
       const contentType = String(payloadResponse.headers['content-type'] || 'application/octet-stream');
       const upstreamLength = Number.parseInt(String(payloadResponse.headers['content-length'] || ''), 10);
-      const finalLength = Number.isFinite(upstreamLength) && upstreamLength > 0 ? upstreamLength : payload.length;
 
       res.setHeader('Content-Type', contentType);
       res.setHeader('Content-Disposition', contentDisposition);
       res.setHeader('Cache-Control', 'private, max-age=120');
-      res.setHeader('Content-Length', String(finalLength));
-      return res.status(200).send(payload);
+      
+      if (payloadResponse.headers['accept-ranges']) res.setHeader('Accept-Ranges', payloadResponse.headers['accept-ranges']);
+      if (payloadResponse.headers['content-range']) res.setHeader('Content-Range', payloadResponse.headers['content-range']);
+      
+      if (Number.isFinite(upstreamLength) && upstreamLength > 0) {
+        res.setHeader('Content-Length', String(upstreamLength));
+      }
+      
+      res.status(payloadResponse.status === 206 ? 206 : 200);
+      return payloadResponse.data.pipe(res);
     } catch (error) {
       logger.error('Download proxy error:', {
         message: error.message,

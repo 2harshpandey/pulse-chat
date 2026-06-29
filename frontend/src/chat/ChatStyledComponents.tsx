@@ -42,7 +42,7 @@ export const lightboxControlReveal = keyframes`
 `;
 
 /* - Premium Reaction Animations - */
-export const reactionBounceIn = keyframes`
+const reactionBounceIn = keyframes`
   0%   { transform: scale(0); opacity: 0; }
   50%  { transform: scale(1.3); opacity: 1; }
   70%  { transform: scale(0.9); }
@@ -80,7 +80,7 @@ export const reactionPickerSlideIn = keyframes`
   100% { opacity: 1; transform: scale(1) translateY(0); }
 `;
 
-export const countBump = keyframes`
+const countBump = keyframes`
   0%   { transform: scale(1); }
   50%  { transform: scale(1.35); color: var(--accent-blue); }
   100% { transform: scale(1); }
@@ -172,7 +172,7 @@ export const sidebarItemSlide = keyframes`
   to   { opacity: 1; transform: translateX(0); }
 `;
 
-export const scrollBtnBounce = keyframes`
+const scrollBtnBounce = keyframes`
   0%, 100% { transform: translateY(0); }
   50%      { transform: translateY(-3px); }
 `;
@@ -355,28 +355,36 @@ export const HeaderTitle = styled.h1`
   }
 `;
 export const SoundToggleButton = styled.button<{ $enabled: boolean }>`
-  display: inline-flex;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border-secondary);
+  background: ${p => p.$enabled
+    ? 'rgba(59, 130, 246, 0.1)'
+    : 'var(--bg-secondary)'};
+  color: ${p => p.$enabled ? 'var(--text-primary)' : 'var(--text-secondary)'};
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
-  padding: 0.4rem 0.65rem;
-  border-radius: 999px;
-  border: 1px solid var(--border-primary);
-  background: ${p => p.$enabled
-    ? 'linear-gradient(135deg, rgba(59,130,246,0.16), rgba(99,102,241,0.12))'
-    : 'linear-gradient(135deg, rgba(148,163,184,0.16), rgba(71,85,105,0.12))'};
-  color: var(--text-secondary);
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
-  cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
-  &:hover { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(15, 23, 42, 0.22); }
-  &:active { transform: translateY(0); }
-  @media (max-width: 768px) { padding: 0.35rem 0.55rem; }
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  flex-shrink: 0;
+  border-color: ${p => p.$enabled ? 'rgba(59, 130, 246, 0.5)' : 'var(--border-secondary)'};
+  &:hover { 
+    transform: scale(1.15); 
+    border-color: rgba(59, 130, 246, 0.5); 
+    background: rgba(59, 130, 246, 0.1);
+    color: var(--text-primary);
+    box-shadow: 0 10px 25px -5px rgba(59,130,246,0.4); 
+  }
+  &:active { transform: scale(0.9); }
+  @media (max-width: 768px) { width: 40px; height: 40px; }
 `;
 
 export const SoundToggleIcon = styled.svg<{ $enabled: boolean; $animate: boolean }>`
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
   .speaker-core {
     animation: ${p => p.$animate ? css`${speakerPulse} 0.7s ease-in-out` : 'none'};
@@ -631,7 +639,6 @@ export const MessageBubble = styled.div<{ $sender: string; $messageType: string;
   box-shadow: ${props => props.$sender === 'me' ? '0 0.5px 1px rgba(0,0,0,0.07)' : '0 0.5px 1px rgba(0,0,0,0.05)'};
   cursor: pointer;
   min-width: ${props => props.$messageType === 'text' ? '4.5rem' : '0'};
-  opacity: ${props => props.$isUploading ? 0.5 : 1};
     /* Keep message geometry and paint stable while virtualized rows are recycled.
       Animated transitions here can look like shaking/blinking during fast scroll. */
     transition: none;
@@ -654,7 +661,7 @@ export const MessageBubble = styled.div<{ $sender: string; $messageType: string;
 `;
 
 /* - Premium Edit Context Banner (shown above the main composer) - */
-export const editSlideIn = keyframes`
+const editSlideIn = keyframes`
   from { opacity: 0; transform: translateY(6px) scaleY(0.92); }
   to   { opacity: 1; transform: translateY(0) scaleY(1); }
 `;
@@ -858,7 +865,7 @@ export const PlusMenuButton = styled.button<{ $isOpen?: boolean }>`
   }
 `;
 
-export const plusMenuSlideIn = keyframes`
+const plusMenuSlideIn = keyframes`
   from { opacity: 0; transform: translateY(8px) scale(0.92); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 `;
@@ -1091,7 +1098,7 @@ export const MediaContent = styled.div`
   p + div, p + img, p + video { margin-top: 0.5rem; }
 `;
 
-export const mediaFrameStyles = css`
+const mediaFrameStyles = css`
   position: relative;
   display: block;
   width: clamp(208px, 58vw, 320px);
@@ -1130,13 +1137,13 @@ export const MediaDownloadOverlayBtn = styled.button`
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.18s, background 0.15s;
+  opacity: 1;
+  transition: background 0.15s;
   z-index: 4;
   svg { width: 15px; height: 15px; }
   &:hover { background: rgba(0, 0, 0, 0.72); }
-  &:disabled { cursor: default; opacity: 1; }
-  @media (max-width: 768px) { opacity: 1; width: 32px; height: 32px; }
+  &:disabled { cursor: default; }
+  @media (max-width: 768px) { width: 32px; height: 32px; }
 `;
 
 /* Uniform frame wrapper for media objects to prevent scroll glitches during lazy load */
@@ -1152,18 +1159,12 @@ export const MediaImageWrapper = styled.div`
     cursor: pointer;
     border-radius: 0.75rem;
   }
-  
-  &:hover ${MediaDownloadOverlayBtn} { opacity: 1; }
 `;
 
-/* Wrapper div for video player + top-left download overlay.
-   Using a real CSS hover so the button appears on desktop hover,
-   and is always visible on touch devices (mobile). */
+/* Wrapper div for video player + top-left download overlay. */
 export const MediaVideoWrapperDiv = styled.div`
   ${mediaFrameStyles}
   background: #000;
-
-  &:hover ${MediaDownloadOverlayBtn} { opacity: 1; }
 
   video {
     width: 100%;
@@ -1175,7 +1176,7 @@ export const MediaVideoWrapperDiv = styled.div`
   }
 `;
 
-export const MediaLoadGate = styled.button<{ $isLoading: boolean }>`
+export const MediaLoadGate = styled.button<{ $isLoading: boolean, $isUploadGate?: boolean }>`
   position: absolute;
   inset: 0;
   border: none;
@@ -1198,9 +1199,9 @@ export const MediaLoadGate = styled.button<{ $isLoading: boolean }>`
     position: absolute;
     inset: 0;
     border-radius: inherit;
-    background: ${p => p.$isLoading
+    background: ${p => p.$isUploadGate ? 'none' : (p.$isLoading
     ? 'radial-gradient(circle at 24% 20%, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0) 48%), linear-gradient(162deg, rgba(2, 6, 23, 0.38), rgba(15, 23, 42, 0.22))'
-    : 'radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 45%), linear-gradient(160deg, rgba(15, 23, 42, 0.82), rgba(30, 41, 59, 0.74))'};
+    : 'radial-gradient(circle at 30% 24%, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 45%), linear-gradient(160deg, rgba(15, 23, 42, 0.82), rgba(30, 41, 59, 0.74))')};
     transition: background 0.22s ease;
   }
 
@@ -1615,7 +1616,7 @@ export const LightboxCloseButton = styled.button`
     left: calc(env(safe-area-inset-left, 0px) + 10px);
   }
 `;
-export const LightboxFrame = styled.div`
+export const LightboxFrame = styled.div<{ $isZoomed?: boolean }>`
   position: relative;
   width: min(92vw, 1280px);
   height: min(90dvh, 920px);
@@ -1644,8 +1645,7 @@ export const LightboxImage = styled.img<{ $isZoomed: boolean; $isInteracting: bo
   transform-origin: center center;
   will-change: transform;
   transition: ${props => props.$isInteracting ? 'none' : 'transform 180ms cubic-bezier(0.22, 1, 0.36, 1)'};
-  cursor: ${props => props.$isInteracting && props.$isZoomed ? 'grabbing' : props.$isZoomed ? 'grab' : 'zoom-in'};
-  pointer-events: none;
+  cursor: ${props => props.$isZoomed ? 'move' : 'default'};
 `;
 export const LightboxToolbar = styled.div`
   position: absolute;
@@ -1660,6 +1660,10 @@ export const LightboxToolbar = styled.div`
   border: 1px solid rgba(148, 163, 184, 0.35);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+
+  @media (max-width: 1024px), (pointer: coarse), (any-pointer: coarse) {
+    display: none;
+  }
 `;
 export const LightboxZoomButton = styled.button`
   width: 36px;
@@ -1838,15 +1842,34 @@ export const UserListItem = styled.li<{ index: number }>`
     transform: translateX(4px);
   }
 `;
-export const MobileUserListToggle = styled(SendButton) <{ $isOpen?: boolean }>`
+export const MobileUserListToggle = styled.button<{ $isOpen?: boolean }>`
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border-secondary);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  cursor: pointer;
   display: none;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  flex-shrink: 0;
+
   @media (max-width: 768px), (pointer: coarse) {
     display: flex;
-    /* Override inherited hover-rotation - hover is sticky on mobile after a tap.
-       Rotation is controlled by the $isOpen state prop instead. */
-    &:hover:not(:disabled) { transform: scale(1.12); }
-    &:active:not(:disabled) { transform: scale(0.92); }
+    &:hover { 
+      transform: scale(1.15); 
+      border-color: rgba(59, 130, 246, 0.5); 
+      background: rgba(59, 130, 246, 0.1);
+      color: var(--text-primary);
+      box-shadow: 0 10px 25px -5px rgba(59,130,246,0.4); 
+    }
+    &:active { transform: scale(0.9); }
     svg {
+      width: 18px;
+      height: 18px;
       transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
       transform: ${props => props.$isOpen ? 'rotate(20deg)' : 'rotate(0deg)'};
     }
@@ -1959,7 +1982,7 @@ export const LogoutButton = styled.button`
   &:hover svg { transform: translateX(3px); }
 `;
 
-export const bounce = keyframes`
+const bounce = keyframes`
   0%, 80%, 100% { transform: scale(0); }
   40% { transform: scale(1.0); }
 `;
@@ -2292,12 +2315,12 @@ export const ReactionsPopup = ({
   );
 };
 
-export const reactionsModalFadeIn = keyframes`
+const reactionsModalFadeIn = keyframes`
   from { opacity: 0; }
   to   { opacity: 1; }
 `;
 
-export const reactionsContentSlideUp = keyframes`
+const reactionsContentSlideUp = keyframes`
   0%   { opacity: 0; transform: translateY(30px) scale(0.95); }
   60%  { opacity: 1; transform: translateY(-4px) scale(1.01); }
   100% { opacity: 1; transform: translateY(0) scale(1); }
@@ -2383,7 +2406,7 @@ export const ReactionTab = styled.button<{ active: boolean }>`
   }
 `;
 
-export const userRowFadeIn = keyframes`
+const userRowFadeIn = keyframes`
   from { opacity: 0; transform: translateX(-10px); }
   to   { opacity: 1; transform: translateX(0); }
 `;
@@ -2686,12 +2709,12 @@ export const ReportActions = styled.div`
 `;
 
 /* - Custom Video Player Styles - */
-export const videoFadeIn = keyframes`
+const videoFadeIn = keyframes`
   from { opacity: 0; }
   to   { opacity: 1; }
 `;
 
-export const controlsSlideUp = keyframes`
+const controlsSlideUp = keyframes`
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0); }
 `;
@@ -3085,13 +3108,14 @@ export const DownloadProgressRing = styled.div<{ $progress: number; $visible: bo
 
   circle.track {
     fill: none;
-    stroke: rgba(255,255,255,0.2);
+    stroke: currentColor;
+    opacity: 0.25;
     strokeWidth: 3;
   }
 
   circle.progress {
     fill: none;
-    stroke: #3b82f6;
+    stroke: currentColor;
     strokeWidth: 3;
     strokeLinecap: round;
     stroke-dasharray: 100;
@@ -3102,11 +3126,15 @@ export const DownloadProgressRing = styled.div<{ $progress: number; $visible: bo
   .cancel-icon {
     position: relative;
     z-index: 1;
-    color: #fff;
+    color: currentColor;
     display: flex;
     align-items: center;
     justify-content: center;
-    /* Reset any inherited SVG sizes for the center icon if needed, though parent styles might still hit it */
+  }
+
+  .cancel-icon > svg {
+    width: 16px;
+    height: 16px;
   }
 `;
 

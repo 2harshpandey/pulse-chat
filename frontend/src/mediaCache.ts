@@ -9,6 +9,7 @@ type MediaCacheRecord = {
   messageId: string;
   sourceUrl: string;
   blob: Blob;
+  metadata?: any;
   cachedAt: number;
 };
 
@@ -83,6 +84,7 @@ export const setCachedMediaBlob = async (
   messageId: string,
   sourceUrl: string,
   blob: Blob,
+  metadata?: any,
 ): Promise<void> => {
   if (!userId || !messageId || !sourceUrl || !blob || blob.size <= 0) return;
 
@@ -97,6 +99,23 @@ export const setCachedMediaBlob = async (
     blob,
     cachedAt: Date.now(),
   };
+  
+  if (metadata !== undefined) {
+    record.metadata = metadata;
+  } else {
+    // try to keep existing metadata
+    const existing = await new Promise<MediaCacheRecord | null>((resolve) => {
+      const tx = db.transaction(MEDIA_CACHE_STORE, 'readonly');
+      const store = tx.objectStore(MEDIA_CACHE_STORE);
+      const req = store.get(record.key);
+      req.onsuccess = () => resolve(req.result as MediaCacheRecord | null);
+      req.onerror = () => resolve(null);
+    });
+    
+    if (existing && existing.metadata) {
+      record.metadata = existing.metadata;
+    }
+  }
 
   await new Promise<void>((resolve) => {
     const tx = db.transaction(MEDIA_CACHE_STORE, 'readwrite');
@@ -107,6 +126,58 @@ export const setCachedMediaBlob = async (
   });
 
   db.close();
+};
+
+export const removeCachedMediaBlob = async (
+  userId: string,
+  messageId: string,
+  sourceUrl: string,
+): Promise<void> => {
+  if (!userId || !messageId || !sourceUrl) return;
+
+  const db = await openMediaCacheDb();
+  if (!db) return;
+
+  const key = buildMediaCacheKey(userId, messageId, sourceUrl);
+
+  await new Promise<void>((resolve) => {
+    const tx = db.transaction(MEDIA_CACHE_STORE, 'readwrite');
+    const store = tx.objectStore(MEDIA_CACHE_STORE);
+    const request = store.delete(key);
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => resolve();
+
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => resolve();
+    tx.onabort = () => resolve();
+  });
+
+  db.close();
+};
+
+export const getCachedMediaForUser = async (userId: string): Promise<MediaCacheRecord[]> => {
+  if (!userId) return [];
+
+  const db = await openMediaCacheDb();
+  if (!db) return [];
+
+  return new Promise((resolve) => {
+    const tx = db.transaction(MEDIA_CACHE_STORE, 'readonly');
+    const store = tx.objectStore(MEDIA_CACHE_STORE);
+    const index = store.index(MEDIA_CACHE_USER_INDEX);
+    const range = IDBKeyRange.only(userId);
+    const request = index.getAll(range);
+
+    request.onsuccess = () => {
+      resolve(request.result || []);
+    };
+    request.onerror = () => resolve([]);
+
+    tx.oncomplete = () => db.close();
+    tx.onerror = () => db.close();
+    tx.onabort = () => db.close();
+  });
 };
 
 export const clearCachedMediaForUser = async (userId: string): Promise<void> => {
@@ -126,6 +197,37 @@ export const clearCachedMediaForUser = async (userId: string): Promise<void> => 
       const cursor = cursorRequest.result;
       if (!cursor) return;
       store.delete(cursor.primaryKey);
+      cursor.continue();
+    };
+
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => resolve();
+    tx.onabort = () => resolve();
+  });
+
+  db.close();
+};
+
+export const clearOtherSessions = async (currentUserId: string): Promise<void> => {
+  if (!currentUserId) return;
+
+  const db = await openMediaCacheDb();
+  if (!db) return;
+
+  await new Promise<void>((resolve) => {
+    const tx = db.transaction(MEDIA_CACHE_STORE, 'readwrite');
+    const store = tx.objectStore(MEDIA_CACHE_STORE);
+    const cursorRequest = store.openCursor();
+
+    cursorRequest.onsuccess = () => {
+      const cursor = cursorRequest.result;
+      if (!cursor) return;
+      
+      const record = cursor.value as MediaCacheRecord;
+      if (record.sourceUrl === 'upload' && record.userId !== currentUserId) {
+        store.delete(cursor.primaryKey);
+      }
+      
       cursor.continue();
     };
 

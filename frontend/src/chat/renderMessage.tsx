@@ -13,6 +13,8 @@ import {
 } from './ChatStyledComponents';
 import { VideoPlayer } from './VideoPlayer';
 import { MediaDisplay } from './MediaDisplay';
+import { transferManager } from './TransferManager';
+import type { TransferInfo } from './TransferManager';
 
 // --- URL Detection helpers ---
 // Curated list of known valid TLDs - filters gibberish like .gfdgf or .gtd
@@ -157,6 +159,9 @@ export const renderMessageContent = (
   isDownloadInProgress: boolean = false,
   downloadProgress: number = 0,
   loadedMediaSrc?: string | null,
+  transferInfo?: TransferInfo,
+  onResumeUpload?: (messageId: string) => void,
+  onCancelUpload?: (messageId: string) => void,
 ) => {
   const isVideo = msg.type === 'video' || msg.url?.match(/\.(mp4|webm|mov)$/i);
   const isImage = msg.type === 'image' || msg.url?.match(/\.(jpeg|jpg|gif|png|svg)$/i);
@@ -192,15 +197,28 @@ export const renderMessageContent = (
     </svg>
   );
 
-  const RingedDownloadIcon = ({ progress }: { progress: number }) => (
+  const PlaySvg = () => (
+    <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+      <polygon points="8 5 19 12 8 19"></polygon>
+    </svg>
+  );
+
+  const UploadSvg = () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="17 8 12 3 7 8" />
+      <line x1="12" y1="3" x2="12" y2="15" />
+    </svg>
+  );
+
+  const RingedProgressIcon = ({ progress, isPaused, isUpload }: { progress: number, isPaused?: boolean, isUpload?: boolean }) => (
     <DownloadProgressRing $progress={progress} $visible={true}>
       <svg className="ring-svg" width="36" height="36" viewBox="0 0 36 36" aria-hidden="true" style={{ width: '100%', height: '100%' }}>
         <circle className="track" cx="18" cy="18" r="15.8" />
         <circle className="progress" cx="18" cy="18" r="15.8" />
       </svg>
-      {/* Show X cross so user knows tapping will cancel the operation */}
-      <span className="cancel-icon">
-        <CancelSvg />
+      <span className="cancel-icon" style={{ pointerEvents: 'none' }}>
+        {isPaused ? (isUpload ? <UploadSvg /> : <DownloadSvg />) : <CancelSvg />}
       </span>
     </DownloadProgressRing>
   );
@@ -250,25 +268,60 @@ export const renderMessageContent = (
                 $isLoading={isMediaLoadInProgress}
               >
                 <MediaLoadIcon>
-                  {isMediaLoadInProgress ? <RingedDownloadIcon progress={clampedLoadProgress} /> : <DownloadSvg />}
+                  {isMediaLoadInProgress ? <RingedProgressIcon progress={clampedLoadProgress} /> : <DownloadSvg />}
                 </MediaLoadIcon>
                 <MediaLoadLabel>{isMediaLoadInProgress ? `Loading ${Math.round(clampedLoadProgress * 100)}%` : 'Tap to load'}</MediaLoadLabel>
               </MediaLoadGate>
               {mediaSizeLabel && <MediaSizeBadge>{mediaSizeLabel}</MediaSizeBadge>}
             </>
           ) : msg.url ? (
-            <img src={sanitizeMediaUrl(resolvedMediaUrl)} alt={displayFilename} onClick={() => { const u = sanitizeMediaUrl(resolvedMediaUrl); if (u) openLightbox(u); }} onPointerDown={() => onMediaPointerDown?.()} onDoubleClick={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} />
+            <>
+              <img src={sanitizeMediaUrl(resolvedMediaUrl)} alt={displayFilename} onClick={() => { const u = sanitizeMediaUrl(resolvedMediaUrl); if (u) openLightbox(u); }} onPointerDown={() => onMediaPointerDown?.()} onDoubleClick={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} />
+              {msg.isUploading && (
+                <MediaLoadGate
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (transferInfo?.state === 'paused') {
+                      onResumeUpload?.(msg.id);
+                    } else {
+                      onCancelUpload?.(msg.id);
+                    }
+                  }}
+                  $isLoading={true}
+                  $isUploadGate={true}
+                >
+                  <MediaLoadIcon>
+                    <RingedProgressIcon progress={transferInfo?.progress || 0} isPaused={transferInfo?.state === 'paused'} isUpload={true} />
+                  </MediaLoadIcon>
+                  <MediaLoadLabel>
+                    {transferInfo?.state === 'paused' 
+                      ? 'Paused' 
+                      : (transferInfo?.progress || 0) >= 0.9 
+                        ? 'Processing...' 
+                        : `Uploading ${Math.round((transferInfo?.progress || 0) * 100)}%`
+                    }
+                  </MediaLoadLabel>
+                </MediaLoadGate>
+              )}
+            </>
           ) : null}
           {msg.url && !shouldGateMedia && canDownload && (
             <MediaDownloadOverlayBtn
               title={isDownloadInProgress ? 'Tap to cancel' : 'Download'}
               aria-label={isDownloadInProgress ? 'Cancel download' : 'Download image'}
-              onClick={(e) => {
+              onPointerDown={(e) => {
+                // Instantly register the action before high-frequency re-renders can drop the subsequent mouseup/click event
                 e.stopPropagation();
+                e.preventDefault();
                 triggerDownload(displayFilename || 'image');
               }}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
             >
-              {isDownloadInProgress ? <RingedDownloadIcon progress={clampedDownloadProgress} /> : <DownloadSvg />}
+              {isDownloadInProgress ? <RingedProgressIcon progress={clampedDownloadProgress} isPaused={transferInfo?.type === 'download' && transferInfo?.state === 'paused'} /> : <DownloadSvg />}
             </MediaDownloadOverlayBtn>
           )}
         </MediaImageWrapper>
@@ -302,26 +355,60 @@ export const renderMessageContent = (
                 $isLoading={isMediaLoadInProgress}
               >
                 <MediaLoadIcon>
-                  {isMediaLoadInProgress ? <RingedDownloadIcon progress={clampedLoadProgress} /> : <DownloadSvg />}
+                  {isMediaLoadInProgress ? <RingedProgressIcon progress={clampedLoadProgress} /> : <PlaySvg />}
                 </MediaLoadIcon>
                 <MediaLoadLabel>{isMediaLoadInProgress ? `Loading ${Math.round(clampedLoadProgress * 100)}%` : 'Tap to load'}</MediaLoadLabel>
               </MediaLoadGate>
               {mediaSizeLabel && <MediaSizeBadge>{mediaSizeLabel}</MediaSizeBadge>}
             </VideoPlayerWrapper>
           ) : (
-            <VideoPlayer src={resolvedMediaUrl} onPointerDown={onMediaPointerDown} onFullscreenEnter={onVideoFullscreenEnter} />
+            <VideoPlayerWrapper>
+              <VideoPlayer src={resolvedMediaUrl} onPointerDown={onMediaPointerDown} onFullscreenEnter={onVideoFullscreenEnter} isUploading={msg.isUploading} />
+              {msg.isUploading && (
+                <MediaLoadGate
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (transferInfo?.state === 'paused') {
+                      onResumeUpload?.(msg.id);
+                    } else {
+                      onCancelUpload?.(msg.id);
+                    }
+                  }}
+                  $isLoading={true}
+                  $isUploadGate={true}
+                >
+                  <MediaLoadIcon>
+                    <RingedProgressIcon progress={transferInfo?.progress || 0} isPaused={transferInfo?.state === 'paused'} isUpload={true} />
+                  </MediaLoadIcon>
+                  <MediaLoadLabel>
+                    {transferInfo?.state === 'paused' 
+                      ? 'Paused' 
+                      : (transferInfo?.progress || 0) >= 0.9 
+                        ? 'Processing...' 
+                        : `Uploading ${Math.round((transferInfo?.progress || 0) * 100)}%`
+                    }
+                  </MediaLoadLabel>
+                </MediaLoadGate>
+              )}
+            </VideoPlayerWrapper>
           )}
           {/* Download button - top-left overlay, same style as image download btn */}
           {!shouldGateMedia && canDownload && (
             <MediaDownloadOverlayBtn
               title={isDownloadInProgress ? 'Tap to cancel' : 'Download video'}
               aria-label={isDownloadInProgress ? 'Cancel download' : 'Download video'}
-              onClick={(e) => {
+              onPointerDown={(e) => {
                 e.stopPropagation();
+                e.preventDefault();
                 triggerDownload(displayFilename || 'video');
               }}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
             >
-              {isDownloadInProgress ? <RingedDownloadIcon progress={clampedDownloadProgress} /> : <DownloadSvg />}
+              {isDownloadInProgress ? <RingedProgressIcon progress={clampedDownloadProgress} isPaused={transferInfo?.type === 'download' && transferInfo?.state === 'paused'} /> : <DownloadSvg />}
             </MediaDownloadOverlayBtn>
           )}
         </MediaVideoWrapperDiv>
@@ -337,16 +424,19 @@ export const renderMessageContent = (
           role={canDownload ? 'button' : undefined}
           tabIndex={canDownload ? 0 : -1}
           title={canDownload ? (isDownloadInProgress ? 'Downloading' : 'Download file') : undefined}
-          onPointerDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            if (canDownload) triggerDownload(displayFilename || 'file');
+          }}
           onMouseDown={(e) => e.stopPropagation()}
           onTouchStart={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            if (canDownload && !isDownloadInProgress) triggerDownload(displayFilename || 'file');
           }}
           onKeyDown={(e) => {
-            if (!canDownload || isDownloadInProgress || (e.key !== 'Enter' && e.key !== ' ')) return;
+            if (!canDownload || (e.key !== 'Enter' && e.key !== ' ')) return;
             e.preventDefault();
             e.stopPropagation();
             triggerDownload(displayFilename || 'file');
@@ -360,9 +450,28 @@ export const renderMessageContent = (
             <FileAttachmentName>{displayFilename}</FileAttachmentName>
             <FileAttachmentDetails>{fileMetaLabel}</FileAttachmentDetails>
           </FileAttachmentMeta>
-          {canDownload && isDownloadInProgress ? (
-            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px' }}>
-              <RingedDownloadIcon progress={clampedDownloadProgress} />
+          {msg.isUploading ? (
+            <div 
+              style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', cursor: 'pointer' }}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                if (transferInfo?.state === 'paused') {
+                  onResumeUpload?.(msg.id);
+                } else {
+                  onCancelUpload?.(msg.id);
+                }
+              }}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+            >
+              <RingedProgressIcon progress={transferInfo?.progress || 0} isPaused={transferInfo?.state === 'paused'} isUpload={true} />
+            </div>
+          ) : canDownload && isDownloadInProgress ? (
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '28px', height: '28px', cursor: 'pointer' }}>
+              <RingedProgressIcon progress={clampedDownloadProgress} isPaused={transferInfo?.type === 'download' && transferInfo?.state === 'paused'} />
             </div>
           ) : canDownload ? (
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 'auto', flexShrink: 0, opacity: 0.6 }}>

@@ -7,27 +7,28 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon_io/favicon-16x16.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" id="theme-color-meta" content="#0f172a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Pulse" />
     <meta name="description" content="Pulse | A real-time chat application" />
     <script>
       (function () {
         try {
           var saved = localStorage.getItem('pulseTheme');
-          var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-          var theme = saved ? saved : (prefersDark ? 'dark' : 'light');
+          var theme = saved ? saved : 'dark';
           document.documentElement.setAttribute('data-theme', theme);
           var metaTheme = document.getElementById('theme-color-meta');
           if (metaTheme) {
             metaTheme.setAttribute('content', theme === 'dark' ? '#0f172a' : '#f7fafc');
           }
         } catch (e) {
-          document.documentElement.setAttribute('data-theme', 'light');
+          document.documentElement.setAttribute('data-theme', 'dark');
         }
       })();
     </script>
     <link rel="apple-touch-icon" sizes="180x180" href="/favicon_io/apple-touch-icon.png" />
-    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/favicon_io/apple-touch-icon.png" />
     <title>Pulse</title>
   </head>
   <body>

@@ -5,7 +5,7 @@ interface ThemeContextType {
   toggleTheme: () => void;
 }
 
-const ThemeContext = createContext<ThemeContextType>({ isDark: false, toggleTheme: () => {} });
+const ThemeContext = createContext<ThemeContextType>({ isDark: true, toggleTheme: () => {} });
 
 export const useTheme = () => useContext(ThemeContext);
 
@@ -14,10 +14,10 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('pulseTheme');
       if (saved) return saved === 'dark';
-      // Respect system preference on first visit
-      return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
+      // Default to dark mode across the entire site
+      return true;
     }
-    return false;
+    return true;
   });
 
   useEffect(() => {
