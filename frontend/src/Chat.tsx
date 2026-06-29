@@ -4319,7 +4319,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                     {(() => {
                       const msg = pinnedMessages[currentPinnedIndex];
                       if (!msg) return 'Attachment';
-                      const isGif = msg.url?.includes('tenor.com') || msg.text?.includes('tenor.com') || msg.originalName?.toLowerCase().endsWith('.gif') || msg.url?.toLowerCase().split('?')[0].endsWith('.gif');
+                      const isGif = !!msg.url?.match(/^https?:\/\/(?:[a-z0-9-]+\.)*tenor\.com\//i) || !!msg.text?.match(/^https?:\/\/(?:[a-z0-9-]+\.)*tenor\.com\//i) || msg.originalName?.toLowerCase().endsWith('.gif') || msg.url?.toLowerCase().split('?')[0].endsWith('.gif');
                       if (isGif) {
                         return (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>

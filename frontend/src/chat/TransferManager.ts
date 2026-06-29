@@ -7,7 +7,7 @@ let currentSessionId = '';
 if (typeof window !== 'undefined') {
   currentSessionId = sessionStorage.getItem('pulse_session_id') || '';
   if (!currentSessionId) {
-    currentSessionId = Date.now().toString(36) + Math.random().toString(36).substring(2);
+    currentSessionId = crypto.randomUUID();
     sessionStorage.setItem('pulse_session_id', currentSessionId);
   }
 }
@@ -208,7 +208,7 @@ class TransferManager {
       }
       
       let response;
-      const isCloudinaryRaw = url.includes('res.cloudinary.com') && url.includes('/raw/upload/');
+      const isCloudinaryRaw = url.startsWith('https://res.cloudinary.com/') && url.includes('/raw/upload/');
 
       if (!isCloudinaryRaw) {
         try {

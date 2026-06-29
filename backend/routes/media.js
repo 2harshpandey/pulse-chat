@@ -146,7 +146,8 @@ module.exports = (wss, broadcasts) => {
       let username = onlineUsers.get(userId)?.username;
       
       if (!username) {
-        const user = await User.findOne({ userId, roomId });
+        // Cast to string to prevent NoSQL injection from object payloads (CodeQL Alert)
+        const user = await User.findOne({ userId: String(userId), roomId: String(roomId) });
         username = user?.username || 'Unknown';
       }
 
