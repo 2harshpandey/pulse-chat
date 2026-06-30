@@ -678,7 +678,9 @@ const Rooms: React.FC = () => {
     }
   };
 
-  const handleJoinSubmit = (e: React.FormEvent) => {
+  const [isJoining, setIsJoining] = useState(false);
+
+  const handleJoinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setJoinModalError('');
 
@@ -691,6 +693,27 @@ const Rooms: React.FC = () => {
       return;
     }
 
+    setIsJoining(true);
+    try {
+      const res = await fetch(`${apiBase}/api/rooms/verify-join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId: joinRoomId.trim(), password: joinPasswordInput })
+      });
+      const data = await res.json();
+      
+      if (!res.ok) {
+        setJoinModalError(data.error || 'Failed to verify room.');
+        setIsJoining(false);
+        return;
+      }
+    } catch (err) {
+      setJoinModalError('Network error while checking room.');
+      setIsJoining(false);
+      return;
+    }
+
+    setIsJoining(false);
     localStorage.setItem('pulseUsername', joinUsername.trim());
     setIsJoinModalOpen(false);
     navigate(`/room/${joinRoomId.trim()}`, {
@@ -1042,8 +1065,17 @@ const Rooms: React.FC = () => {
                 <Button type="button" onClick={() => setIsJoinModalOpen(false)} style={{ flex: 1, justifyContent: 'center' }}>
                   Cancel
                 </Button>
-                <Button $primary type="submit" style={{ flex: 1, justifyContent: 'center' }}>
-                  Join Room
+                <Button $primary type="submit" disabled={isJoining} style={{ flex: 1, justifyContent: 'center', opacity: isJoining ? 0.7 : 1 }}>
+                  {isJoining ? (
+                    <>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18, animation: 'spin 1s linear infinite' }}>
+                        <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+                      </svg>
+                      Verifying...
+                    </>
+                  ) : (
+                    'Join Room'
+                  )}
                 </Button>
               </div>
             </form>

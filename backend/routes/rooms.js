@@ -141,6 +141,41 @@ router.get('/:id/meta', apiLimiter, async (req, res) => {
   }
 });
 
+// Verify room join credentials before connecting
+router.post('/verify-join', checkPasswordRateLimit, async (req, res) => {
+  const { roomId, password } = req.body;
+  if (!roomId) return res.status(400).json({ error: 'Room ID is required.' });
+  
+  if (roomId === 'global') {
+    return res.json({ valid: true });
+  }
+
+  try {
+    const room = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] });
+    if (!room) {
+      return res.status(404).json({ error: 'Chat room does not exist.' });
+    }
+    
+    // Do not allow joining private room via alias
+    if (room.isPrivate && roomId !== room.id) {
+      return res.status(404).json({ error: 'Chat room does not exist.' });
+    }
+
+    if (room.isPrivate && room.joinPassword) {
+      if (password !== room.joinPassword) {
+        recordFailedPasswordAttempt(req.passwordRateLimitKey);
+        return res.status(401).json({ error: 'Incorrect password.' });
+      }
+    }
+
+    resetPasswordAttempts(req.passwordRateLimitKey);
+    return res.json({ valid: true });
+  } catch (err) {
+    logger.error('Error in verify-join:', err);
+    return res.status(500).json({ error: 'Internal server error.' });
+  }
+});
+
 // Get public rooms
 router.get('/', apiLimiter, async (req, res) => {
   try {
