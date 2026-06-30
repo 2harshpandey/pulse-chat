@@ -578,7 +578,7 @@ const Rooms: React.FC = () => {
     if (isInitialMountForScroll.current && initialState) {
       isInitialMountForScroll.current = false;
       setTimeout(() => {
-        window.scrollTo({ top: initialState.scrollY || 0, behavior: 'instant' });
+        window.scrollTo(0, initialState.scrollY || 0);
       }, 50);
       sessionStorage.removeItem('pulse_rooms_state');
     }
