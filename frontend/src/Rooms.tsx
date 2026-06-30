@@ -113,7 +113,7 @@ const ThemeToggle = styled.button`
   position: absolute;
   top: 1.5rem;
   left: 5.5rem;
-  z-index: 9999;
+  z-index: 40;
 
   @media (max-width: 768px) {
     top: 1rem;
