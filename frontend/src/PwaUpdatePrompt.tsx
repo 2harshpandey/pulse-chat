@@ -97,6 +97,15 @@ export const PwaUpdatePrompt: React.FC = () => {
     setNeedRefresh(false);
   };
 
+  useEffect(() => {
+    if (offlineReady) {
+      const timeout = setTimeout(() => {
+        setOfflineReady(false);
+      }, 5000);
+      return () => clearTimeout(timeout);
+    }
+  }, [offlineReady, setOfflineReady]);
+
   if (!offlineReady && !needRefresh) {
     return null;
   }

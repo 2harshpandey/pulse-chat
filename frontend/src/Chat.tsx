@@ -473,6 +473,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     focalImageY: number;
   } | null>(null);
   const lightboxTransformRef = useRef(lightboxTransform);
+  const lightboxImageRef = useRef<HTMLImageElement>(null);
   const lastLightboxTapRef = useRef<number>(0);
 
   // Base API URL: upgrade http:// to https:// when the page itself is on HTTPS.
@@ -1582,23 +1583,18 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     window.addEventListener('online', handleOnline);
 
     return () => {
-      // Prevent any pending reconnect timer from firing after unmount/logout.
       shouldReconnect = false;
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current);
-        reconnectTimerRef.current = null;
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      if (ws.current) {
+        ws.current.onclose = null;
+        ws.current.onerror = null;
+        ws.current.onmessage = null;
+        ws.current.onopen = null;
+        ws.current.close();
+        ws.current = null;
       }
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('online', handleOnline);
-      if (ws.current) {
-        const socketToClose = ws.current;
-        ws.current = null; // Clear the ref so strict mode remount creates a new socket
-        if (socketToClose.readyState === 1) { // OPEN
-          socketToClose.close();
-        } else if (socketToClose.readyState === 0) { // CONNECTING
-          socketToClose.onopen = () => socketToClose.close();
-        }
-      }
     };
   }, [userContext?.profile]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -2717,6 +2713,9 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     }
 
     lightboxDragRef.current = null;
+    if (lightboxImageRef.current) {
+      lightboxImageRef.current.style.transition = '';
+    }
     setIsLightboxInteracting(false);
   }, [beginLightboxPinch]);
 
@@ -2725,9 +2724,10 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
 
     e.stopPropagation();
 
-    // Check for double tap/click
+    // Check for double tap/click (only if it's a single pointer)
+    const isMultiTouch = lightboxPointersRef.current.size > 0;
     const now = Date.now();
-    const isDoubleTap = now - lastLightboxTapRef.current < 350;
+    const isDoubleTap = !isMultiTouch && (now - lastLightboxTapRef.current < 350);
     lastLightboxTapRef.current = now;
 
     if (isDoubleTap) {
@@ -2752,6 +2752,9 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
 
     lightboxPointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     lightboxFrameRef.current?.setPointerCapture(e.pointerId);
+    if (lightboxImageRef.current) {
+      lightboxImageRef.current.style.transition = 'none';
+    }
     setIsLightboxInteracting(true);
 
     if (lightboxPointersRef.current.size >= 2) {
@@ -2798,14 +2801,21 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       const nextScale = Math.min(PHOTO_LIGHTBOX_MAX_SCALE, Math.max(PHOTO_LIGHTBOX_MIN_SCALE, scaled));
 
       if (nextScale <= PHOTO_LIGHTBOX_MIN_SCALE + 0.001) {
-        setLightboxTransform({ scale: PHOTO_LIGHTBOX_MIN_SCALE, x: 0, y: 0 });
+        lightboxTransformRef.current = { scale: PHOTO_LIGHTBOX_MIN_SCALE, x: 0, y: 0 };
+        if (lightboxImageRef.current) {
+          lightboxImageRef.current.style.transform = `translate3d(0px, 0px, 0) scale(${PHOTO_LIGHTBOX_MIN_SCALE})`;
+        }
         return;
       }
 
       const nextX = focal.x - pinch.focalImageX * nextScale;
       const nextY = focal.y - pinch.focalImageY * nextScale;
       const bounded = clampLightboxOffset(nextScale, nextX, nextY);
-      setLightboxTransform({ scale: nextScale, x: bounded.x, y: bounded.y });
+      const nextTransform = { scale: nextScale, x: bounded.x, y: bounded.y };
+      lightboxTransformRef.current = nextTransform;
+      if (lightboxImageRef.current) {
+        lightboxImageRef.current.style.transform = `translate3d(${bounded.x}px, ${bounded.y}px, 0) scale(${nextScale})`;
+      }
       return;
     }
 
@@ -2818,17 +2828,23 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     const nextX = drag.startOffsetX + (e.clientX - drag.startX);
     const nextY = drag.startOffsetY + (e.clientY - drag.startY);
     const bounded = clampLightboxOffset(currentScale, nextX, nextY);
-    setLightboxTransform({ scale: currentScale, x: bounded.x, y: bounded.y });
+    const nextTransform = { scale: currentScale, x: bounded.x, y: bounded.y };
+    lightboxTransformRef.current = nextTransform;
+    if (lightboxImageRef.current) {
+      lightboxImageRef.current.style.transform = `translate3d(${bounded.x}px, ${bounded.y}px, 0) scale(${currentScale})`;
+    }
   }, [beginLightboxPinch, clampLightboxOffset, getLightboxRelativePoint]);
 
   const handleLightboxPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.stopPropagation();
     finalizeLightboxGesture(e.pointerId);
+    setLightboxTransform(lightboxTransformRef.current);
   }, [finalizeLightboxGesture]);
 
   const handleLightboxPointerCancel = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.stopPropagation();
     finalizeLightboxGesture(e.pointerId);
+    setLightboxTransform(lightboxTransformRef.current);
   }, [finalizeLightboxGesture]);
 
   const handleLightboxWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
@@ -4880,6 +4896,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
             onPointerCancel={handleLightboxPointerCancel}
           >
             <LightboxImage
+              ref={lightboxImageRef}
               src={sanitizeMediaUrl(lightboxUrl)}
               alt="Photo viewer"
               draggable={false}

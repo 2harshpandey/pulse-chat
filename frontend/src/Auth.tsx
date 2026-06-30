@@ -8,9 +8,13 @@ import { useTheme } from './ThemeContext';
 const getUserId = (): string => {
   let userId = localStorage.getItem('pulseUserId');
   if (!userId) {
-    const array = new Uint32Array(3);
-    window.crypto.getRandomValues(array);
-    userId = Date.now().toString(36) + Array.from(array, n => n.toString(36)).join('');
+    if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
+      const array = new Uint32Array(3);
+      window.crypto.getRandomValues(array);
+      userId = Date.now().toString(36) + Array.from(array, n => n.toString(36)).join('');
+    } else {
+      userId = Date.now().toString(36) + Math.random().toString(36).substring(2) + Math.random().toString(36).substring(2);
+    }
     localStorage.setItem('pulseUserId', userId);
   }
   return userId;

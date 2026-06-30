@@ -7,7 +7,9 @@ let currentSessionId = '';
 if (typeof window !== 'undefined') {
   currentSessionId = sessionStorage.getItem('pulse_session_id') || '';
   if (!currentSessionId) {
-    currentSessionId = crypto.randomUUID();
+    currentSessionId = (window.crypto && window.crypto.randomUUID) 
+      ? window.crypto.randomUUID() 
+      : (Date.now().toString(36) + Math.random().toString(36).substring(2));
     sessionStorage.setItem('pulse_session_id', currentSessionId);
   }
 }

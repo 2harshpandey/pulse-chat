@@ -492,11 +492,22 @@ interface Room {
   totalMessages?: number;
 }
 
+const getSavedState = () => {
+  try {
+    const saved = sessionStorage.getItem('pulse_rooms_state');
+    if (saved) return JSON.parse(saved);
+  } catch {}
+  return null;
+};
+
 const Rooms: React.FC = () => {
   const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [loading, setLoading] = useState(true);
+  
+  const initialState = React.useMemo(getSavedState, []);
+  
+  const [rooms, setRooms] = useState<Room[]>(initialState?.rooms || []);
+  const [loading, setLoading] = useState(!initialState);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [roomName, setRoomName] = useState('');
   const [description, setDescription] = useState('');
@@ -507,7 +518,7 @@ const Rooms: React.FC = () => {
   const [joinPassword, setJoinPassword] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [formError, setFormError] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialState?.searchQuery || '');
   const [showJoinPassword, setShowJoinPassword] = useState(false);
   const [showAdminPassword, setShowAdminPassword] = useState(false);
 
@@ -528,9 +539,19 @@ const Rooms: React.FC = () => {
   const [showJoinModalPw, setShowJoinModalPw] = useState(false);
   const [joinModalError, setJoinModalError] = useState('');
 
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(false);
+  const [page, setPage] = useState(initialState?.page || 1);
+  const [hasMore, setHasMore] = useState(initialState?.hasMore || false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  const saveStateBeforeNavigating = () => {
+    sessionStorage.setItem('pulse_rooms_state', JSON.stringify({
+      rooms,
+      page,
+      hasMore,
+      searchQuery,
+      scrollY: window.scrollY
+    }));
+  };
 
   const handleFormKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
     if (e.key === 'Enter') {
@@ -551,9 +572,17 @@ const Rooms: React.FC = () => {
     }
   };
 
+  const isFirstMount = React.useRef(true);
+
   useEffect(() => {
-    fetchRooms(1);
-  }, []);
+    if (isFirstMount.current && initialState) {
+      isFirstMount.current = false;
+      setTimeout(() => {
+        window.scrollTo({ top: initialState.scrollY || 0, behavior: 'instant' });
+      }, 50);
+      sessionStorage.removeItem('pulse_rooms_state');
+    }
+  }, [initialState]);
 
   useEffect(() => {
     const trimmedId = customId.trim();
@@ -613,6 +642,9 @@ const Rooms: React.FC = () => {
   };
 
   useEffect(() => {
+    if (isFirstMount.current && initialState) {
+      return;
+    }
     if (!searchQuery.trim()) {
       setPage(1);
       fetchRooms(1);
@@ -692,6 +724,7 @@ const Rooms: React.FC = () => {
       const data = await res.json();
       if (res.ok) {
         setIsModalOpen(false);
+        saveStateBeforeNavigating();
         navigate(`/room/${data.room.id}`);
       } else {
         setFormError(data.error || 'Failed to create room.');
@@ -739,6 +772,7 @@ const Rooms: React.FC = () => {
     setIsJoining(false);
     localStorage.setItem('pulseUsername', joinUsername.trim());
     setIsJoinModalOpen(false);
+    saveStateBeforeNavigating();
     navigate(`/room/${joinRoomId.trim()}`, {
       state: {
         autoJoin: true,
@@ -882,7 +916,7 @@ const Rooms: React.FC = () => {
                       {room.onlineCount || 0} Online
                     </Stat>
                     <div style={{ marginLeft: 'auto' }}>
-                      <Button style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }} onClick={() => navigate(`/room/${room.id}`)}>
+                      <Button style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }} onClick={() => { saveStateBeforeNavigating(); navigate(`/room/${room.id}`); }}>
                         Join
                       </Button>
                     </div>
