@@ -361,6 +361,7 @@ const initWebSocket = (wss) => {
               client.readyState === WebSocket.OPEN &&
               !client.isAdmin &&
               client.username &&
+              client.roomId === roomId &&
               client.username.trim().toLowerCase() === trimmedLower &&
               client.userId !== userId   // same userId = reconnect/refresh, allow it
           );
