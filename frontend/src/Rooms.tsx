@@ -572,17 +572,20 @@ const Rooms: React.FC = () => {
     }
   };
 
-  const isFirstMount = React.useRef(true);
+  const isInitialMountForScroll = React.useRef(true);
 
   useEffect(() => {
-    if (isFirstMount.current && initialState) {
-      isFirstMount.current = false;
+    if (isInitialMountForScroll.current && initialState) {
+      isInitialMountForScroll.current = false;
       setTimeout(() => {
         window.scrollTo({ top: initialState.scrollY || 0, behavior: 'instant' });
       }, 50);
       sessionStorage.removeItem('pulse_rooms_state');
     }
   }, [initialState]);
+
+  // Use a separate ref for the search/fetch effect so we don't clobber state
+  const isInitialMountForFetch = React.useRef(true);
 
   useEffect(() => {
     const trimmedId = customId.trim();
@@ -642,8 +645,9 @@ const Rooms: React.FC = () => {
   };
 
   useEffect(() => {
-    if (isFirstMount.current && initialState) {
-      return;
+    if (isInitialMountForFetch.current) {
+      isInitialMountForFetch.current = false;
+      if (initialState) return; // Skip fetching on mount if we restored from state
     }
     if (!searchQuery.trim()) {
       setPage(1);
