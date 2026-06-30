@@ -248,6 +248,7 @@ const RoomHeader = styled.div`
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 1rem;
+  gap: 0.2rem;
 `;
 
 const RoomName = styled.h3`
@@ -256,9 +257,14 @@ const RoomName = styled.h3`
   font-weight: 700;
   color: var(--text-primary);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.5rem;
   word-break: break-all;
+  
+  svg {
+    flex-shrink: 0;
+    margin-top: 0.15rem;
+  }
 `;
 const CopyIcon = styled.button`
   background: var(--bg-elevated);
@@ -293,6 +299,7 @@ const RoomBadge = styled.span<{ $private?: boolean }>`
   background: ${p => p.$private ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)'};
   color: ${p => p.$private ? '#ef4444' : '#22c55e'};
   border: 1px solid ${p => p.$private ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)'};
+  flex-shrink: 0;
 `;
 
 const RoomStats = styled.div`
@@ -494,16 +501,16 @@ const getSavedState = () => {
   try {
     const saved = sessionStorage.getItem('pulse_rooms_state');
     if (saved) return JSON.parse(saved);
-  } catch {}
+  } catch { }
   return null;
 };
 
 const Rooms: React.FC = () => {
   const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
-  
+
   const initialState = React.useMemo(getSavedState, []);
-  
+
   const [rooms, setRooms] = useState<Room[]>(initialState?.rooms || []);
   const [loading, setLoading] = useState(!initialState);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -759,7 +766,7 @@ const Rooms: React.FC = () => {
         body: JSON.stringify({ roomId: joinRoomId.trim(), password: joinPasswordInput })
       });
       const data = await res.json();
-      
+
       if (!res.ok) {
         setJoinModalError(data.error || 'Failed to verify room.');
         setIsJoining(false);
@@ -788,12 +795,12 @@ const Rooms: React.FC = () => {
     <>
       <GlobalRoomsStyle />
       <ThemeToggle onClick={toggleTheme} title={isDark ? 'Switch to light mode' : 'Switch to dark mode'} aria-label="Toggle theme">
-              {isDark ? (
-                <svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-              ) : (
-                <svg viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-              )}
-            </ThemeToggle>
+        {isDark ? (
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" /></svg>
+        ) : (
+          <svg viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>
+        )}
+      </ThemeToggle>
       <Orb $color="#3b82f6" $size="500px" $top="-10%" $left="-10%" />
       <Orb $color="#ec4899" $size="400px" $top="60%" $left="80%" />
 
@@ -884,8 +891,8 @@ const Rooms: React.FC = () => {
                       <code style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }} title={room.id}>
                         {room.id}
                       </code>
-                      <CopyIcon 
-                        title="Copy Room ID" 
+                      <CopyIcon
+                        title="Copy Room ID"
                         onClick={(e) => handleCopyId(e, room.id)}
                       >
                         {copiedId === room.id ? (
