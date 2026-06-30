@@ -113,7 +113,7 @@ module.exports = (wss, broadcasts) => {
 
   router.get('/api/admin/history', adminLimiter, adminAuth, async (req, res) => {
     const roomId = req.roomId;
-    const events = await MessageEvent.find({ roomId }).sort({ createdAt: -1 });
+    const events = await MessageEvent.find({ roomId }).sort({ createdAt: -1 }).limit(MAX_HISTORY);
     res.json(events);
   });
 
