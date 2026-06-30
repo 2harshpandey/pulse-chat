@@ -1631,7 +1631,17 @@ const Admin = () => {
               <h2>All Chat Rooms</h2>
               <span style={{ color: '#64748b', fontSize: '0.9rem' }}>Total: {globalRooms.length}</span>
             </div>
-            {globalRooms.length === 0 ? (
+            {isLoading ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '5rem 2rem', background: 'var(--panel-bg)', borderRadius: '16px', border: '1px solid var(--border-color)', boxShadow: '0 8px 32px rgba(0,0,0,0.1)', backdropFilter: 'blur(10px)' }}>
+                <div style={{ position: 'relative', width: '50px', height: '50px' }}>
+                  <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '3px solid var(--border-color)', opacity: 0.3 }}></div>
+                  <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '3px solid transparent', borderTopColor: 'var(--primary-color)', animation: 'pulse-spin 1s cubic-bezier(0.4, 0, 0.2, 1) infinite' }}></div>
+                </div>
+                <span style={{ marginTop: '1.5rem', color: 'var(--text-color)', fontWeight: 600, fontSize: '1.1rem', letterSpacing: '0.5px' }}>Fetching Rooms</span>
+                <span style={{ marginTop: '0.5rem', color: 'var(--text-color)', opacity: 0.6, fontSize: '0.9rem' }}>Securely loading data...</span>
+                <style>{`@keyframes pulse-spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+              </div>
+            ) : globalRooms.length === 0 ? (
               <EmptyState><span>No rooms created yet.</span></EmptyState>
             ) : (
               <div style={{ overflowX: 'auto', background: 'var(--panel-bg)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
