@@ -1872,7 +1872,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
         setIsDragging(false);
       }
     };
-    const onDrop = (e: DragEvent) => {
+    const onDrop = async (e: DragEvent) => {
       e.preventDefault();
       dragCounterRef.current = 0;
       setIsDragging(false);
@@ -1881,7 +1881,11 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
         const fileArr = Array.from(files);
         const carriedCaption = inputMessage;
         setPreMediaDraft(carriedCaption);
-        setStagedFiles(fileArr);
+        
+        // Compress dropped images locally
+        const compressedFiles = await Promise.all(fileArr.map(compressImage));
+        
+        setStagedFiles(compressedFiles);
         setPreviewActiveIndex(0);
         setPreviewCaption(carriedCaption);
         if (carriedCaption) {
@@ -4773,7 +4777,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                       )}
                     </SendButton>
                     <input type="file" ref={fileInputRef} onClick={notifyNativeFilePickerOpen} onChange={handleFileChange} style={{ display: 'none' }} accept="image/*,video/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.txt,.html" multiple />
-                    <input type="file" ref={addFileInputRef} onClick={notifyNativeFilePickerOpen} onChange={(e) => { markNativeFilePickerClosed(); if (e.target.files) { setStagedFiles(prev => [...prev, ...Array.from(e.target.files!)]); } if (e.target) e.target.value = ''; }} style={{ display: 'none' }} accept="image/*,video/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.txt,.html" multiple />
+                    <input type="file" ref={addFileInputRef} onClick={notifyNativeFilePickerOpen} onChange={async (e) => { markNativeFilePickerClosed(); if (e.target.files) { const newFiles = await Promise.all(Array.from(e.target.files).map(compressImage)); setStagedFiles(prev => [...prev, ...newFiles]); } if (e.target) e.target.value = ''; }} style={{ display: 'none' }} accept="image/*,video/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.txt,.html" multiple />
                   </InputContainer>
                   {/* Mobile emoji picker for typing.
                   Rendered here (inside the Footer's normal DOM flow) so the footer
