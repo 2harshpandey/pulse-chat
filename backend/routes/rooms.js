@@ -183,12 +183,10 @@ router.get('/', apiLimiter, async (req, res) => {
     const limit = 9;
     const skip = (page - 1) * limit;
 
-    const publicRooms = await Room.find({ isPrivate: false })
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
-      
-    const totalCount = await Room.countDocuments({ isPrivate: false });
+    const [publicRooms, totalCount] = await Promise.all([
+      Room.find({ isPrivate: false }).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      Room.countDocuments({ isPrivate: false })
+    ]);
     const hasMore = skip + publicRooms.length < totalCount;
       
     const { getRoomState } = require('../state');
@@ -237,12 +235,10 @@ router.get('/search', apiLimiter, async (req, res) => {
       ]
     };
 
-    const rooms = await Room.find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit);
-
-    const totalCount = await Room.countDocuments(query);
+    const [rooms, totalCount] = await Promise.all([
+      Room.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      Room.countDocuments(query)
+    ]);
     const hasMore = skip + rooms.length < totalCount;
 
     const { getRoomState } = require('../state');

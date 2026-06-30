@@ -371,8 +371,10 @@ module.exports = (wss, broadcasts) => {
   router.delete('/api/messages/all', adminLimiter, adminSecretAuth, async (req, res) => {
     const roomId = req.headers['x-room-id'] || 'me';
     try {
-      await Message.deleteMany({ roomId });
-      await MessageEvent.deleteMany({ roomId });
+      await Promise.all([
+        Message.deleteMany({ roomId }),
+        MessageEvent.deleteMany({ roomId })
+      ]);
 
       broadcast(wss, roomId, { type: 'chat_cleared' });
 
