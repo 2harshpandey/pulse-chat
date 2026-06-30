@@ -56,6 +56,15 @@ const uploadLimiter = rateLimit({
   message: { error: 'Too many uploads, please try again later.' },
 });
 
+const chunkUploadLimiter = rateLimit({
+  windowMs: 60 * 1000,      // 1 minute
+  max: 300,                 // 300 chunks per minute (allows fast chunked uploads)
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: getClientIp,
+  message: { error: 'Too many uploads, please try again later.' },
+});
+
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,      // 1 minute
   max: 120,
@@ -245,6 +254,7 @@ module.exports = {
   extractIp,
   authLimiter,
   uploadLimiter,
+  chunkUploadLimiter,
   apiLimiter,
   adminLimiter,
   checkPasswordRateLimit,

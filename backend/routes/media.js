@@ -24,6 +24,7 @@ const {
 } = require('../state');
 const {
   uploadLimiter,
+  chunkUploadLimiter,
   apiLimiter,
   adminLimiter,
   adminSecretAuth,
@@ -214,7 +215,7 @@ module.exports = (wss, broadcasts) => {
     return res.json({ uploadedBytes: 0 });
   });
 
-  router.post('/api/upload/chunk', uploadLimiter, (req, res) => {
+  router.post('/api/upload/chunk', chunkUploadLimiter, (req, res) => {
     upload.single('chunk')(req, res, async (err) => {
       if (err) {
         logger.error(`Upload chunk middleware error: ${err.message}`);
