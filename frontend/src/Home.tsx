@@ -251,7 +251,7 @@ const FeatureCard = styled.div`
     border-color: rgba(59, 130, 246, 0.3);
   }
 
-  h3 {
+  h2 {
     font-size: 1.25rem;
     margin: 0 0 1rem;
     color: var(--text-primary);
@@ -635,7 +635,7 @@ const Home: React.FC = () => {
                   <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
                 </svg>
               </IconWrapper>
-              <h3>Secure Rooms</h3>
+              <h2>Secure Rooms</h2>
               <p>Create private, password-protected chat rooms or open public lounges. You control who enters.</p>
             </FeatureCard>
             <FeatureCard>
@@ -646,7 +646,7 @@ const Home: React.FC = () => {
                   <polyline points="21 15 16 10 5 21"></polyline>
                 </svg>
               </IconWrapper>
-              <h3>Rich Media</h3>
+              <h2>Rich Media</h2>
               <p>Upload photos, videos, files, and GIFs effortlessly. Link previews are automatically generated.</p>
             </FeatureCard>
             <FeatureCard>
@@ -655,7 +655,7 @@ const Home: React.FC = () => {
                   <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path>
                 </svg>
               </IconWrapper>
-              <h3>Real-time Sync</h3>
+              <h2>Real-time Sync</h2>
               <p>Lightning-fast WebSocket delivery with instant read receipts, typing indicators, and emoji reactions.</p>
             </FeatureCard>
           </FeaturesSection>
