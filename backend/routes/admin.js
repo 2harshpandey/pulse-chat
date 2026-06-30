@@ -70,10 +70,11 @@ module.exports = (wss, broadcasts) => {
         return res.status(404).json({ error: 'Room not found' });
       }
 
-      await Room.deleteOne({ id: targetRoomId });
-
-      // Clean up related data (optional depending on system design)
-      await Message.deleteMany({ roomId: targetRoomId });
+      // Clean up related data in parallel
+      await Promise.all([
+        Room.deleteOne({ id: targetRoomId }),
+        Message.deleteMany({ roomId: targetRoomId })
+      ]);
       
       // Force logout everyone in that room
       const roomState = getRoomState(targetRoomId);
@@ -485,14 +486,16 @@ module.exports = (wss, broadcasts) => {
       const Room = require('../models/room');
       const ChatState = require('../models/chatState');
       
-      await Room.deleteOne({ id: roomId });
-      await Message.deleteMany({ roomId });
-      await MessageEvent.deleteMany({ roomId });
-      await AuditLog.deleteMany({ roomId });
-      await LoginLockdown.deleteMany({ roomId });
-      await BlockedUser.deleteMany({ roomId });
-      await UserReport.deleteMany({ roomId });
-      await ChatState.deleteMany({ roomId });
+      await Promise.all([
+        Room.deleteOne({ id: roomId }),
+        Message.deleteMany({ roomId }),
+        MessageEvent.deleteMany({ roomId }),
+        AuditLog.deleteMany({ roomId }),
+        LoginLockdown.deleteMany({ roomId }),
+        BlockedUser.deleteMany({ roomId }),
+        UserReport.deleteMany({ roomId }),
+        ChatState.deleteMany({ roomId })
+      ]);
       
       // Force logout all online users in the room
       const state = getRoomState(roomId);
