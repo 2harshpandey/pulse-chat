@@ -108,6 +108,7 @@ class TransferManager {
           formData.append('chunk', chunk);
           formData.append('uploadId', messageId);
           formData.append('chunkIndex', i.toString());
+          formData.append('chunkStart', (i * CHUNK_SIZE).toString());
           formData.append('totalChunks', totalChunks.toString());
           formData.append('originalname', file.name);
           formData.append('mimetype', file.type);

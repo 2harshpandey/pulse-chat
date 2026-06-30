@@ -227,8 +227,16 @@ module.exports = (wss, broadcasts) => {
 
         const tmpPath = path.join(os.tmpdir(), `pulse_upload_${uploadId}`);
         
-        // Append chunk to temp file
-        fs.appendFileSync(tmpPath, req.file.buffer);
+        // Write chunk at exact offset to prevent corruption
+        const chunkStart = parseInt(req.body.chunkStart, 10) || 0;
+        let fd;
+        try {
+          fd = fs.openSync(tmpPath, 'r+');
+        } catch (e) {
+          fd = fs.openSync(tmpPath, 'w');
+        }
+        fs.writeSync(fd, req.file.buffer, 0, req.file.buffer.length, chunkStart);
+        fs.closeSync(fd);
 
         const currentChunk = parseInt(chunkIndex, 10);
         const total = parseInt(totalChunks, 10);
