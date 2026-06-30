@@ -206,7 +206,9 @@ module.exports = (wss, broadcasts) => {
   // --- Resumable File Upload (Chunked) ---
   router.get('/api/upload/status', apiLimiter, (req, res) => {
     const { uploadId } = req.query;
-    if (!uploadId) return res.status(400).json({ error: 'Missing uploadId' });
+    if (!uploadId || typeof uploadId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(uploadId)) {
+      return res.status(400).json({ error: 'Missing or invalid uploadId' });
+    }
     const tmpPath = path.join(os.tmpdir(), `pulse_upload_${uploadId}`);
     if (fs.existsSync(tmpPath)) {
       const stats = fs.statSync(tmpPath);
@@ -223,7 +225,9 @@ module.exports = (wss, broadcasts) => {
       }
       try {
         const { uploadId, chunkIndex, totalChunks, originalname, mimetype, userId, roomId = 'me', text } = req.body;
-        if (!uploadId || !req.file) return res.status(400).json({ error: 'Missing chunk data' });
+        if (!uploadId || typeof uploadId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(uploadId) || !req.file) {
+          return res.status(400).json({ error: 'Missing or invalid chunk data' });
+        }
 
         const tmpPath = path.join(os.tmpdir(), `pulse_upload_${uploadId}`);
         
@@ -300,8 +304,12 @@ module.exports = (wss, broadcasts) => {
         return res.status(200).json({ message: 'Chunk received' });
       } catch (err) {
         logger.error('Chunk upload error:', { message: err.message, stack: err.stack });
-        const tmpPath = path.join(os.tmpdir(), `pulse_upload_${req.body.uploadId}`);
-        try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (e) {} // Clean up on failure
+        
+        if (req.body && req.body.uploadId && typeof req.body.uploadId === 'string' && /^[a-zA-Z0-9_-]+$/.test(req.body.uploadId)) {
+          const tmpPath = path.join(os.tmpdir(), `pulse_upload_${req.body.uploadId}`);
+          try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (e) {} // Clean up on failure
+        }
+        
         const providerLimit = /maximum is\s+10485760/i.test(err.message || '');
         return res.status(providerLimit ? 413 : 502).json({
           error: providerLimit
