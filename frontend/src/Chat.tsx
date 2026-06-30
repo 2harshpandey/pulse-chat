@@ -211,6 +211,43 @@ type UploadCacheEntry = {
   error?: string;
 };
 
+const compressImage = (file: File): Promise<File> => {
+  return new Promise((resolve) => {
+    if (!file.type.startsWith('image/') || file.type === 'image/gif') return resolve(file);
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(img.src);
+      const canvas = document.createElement('canvas');
+      const MAX_WIDTH = 1920;
+      const MAX_HEIGHT = 1080;
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height) {
+        if (width > MAX_WIDTH) {
+          height *= MAX_WIDTH / width;
+          width = MAX_WIDTH;
+        }
+      } else {
+        if (height > MAX_HEIGHT) {
+          width *= MAX_HEIGHT / height;
+          height = MAX_HEIGHT;
+        }
+      }
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx?.drawImage(img, 0, 0, width, height);
+      canvas.toBlob((blob) => {
+        if (!blob) return resolve(file);
+        resolve(new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() }));
+      }, 'image/jpeg', 0.8);
+    };
+    img.onerror = () => resolve(file);
+  });
+};
+
 function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {}) {
   const userContext = useContext(UserContext);
   const { token: tempToken, roomId: urlRoomId } = useParams<{ token?: string; roomId?: string }>();
@@ -3758,11 +3795,15 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       handleSendMessage();
     }
   };
-  const stageFilesForPreview = (files: File[]) => {
+  const stageFilesForPreview = async (files: File[]) => {
     if (files.length === 0) return;
     const carriedCaption = inputMessage;
     setPreMediaDraft(carriedCaption);
-    setStagedFiles(files);
+    
+    // Compress images locally to save bandwidth
+    const compressedFiles = await Promise.all(files.map(compressImage));
+    
+    setStagedFiles(compressedFiles);
     setPreviewActiveIndex(0);
     setPreviewCaption(carriedCaption);
     if (carriedCaption) {

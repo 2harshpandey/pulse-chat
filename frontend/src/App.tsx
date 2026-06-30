@@ -2,10 +2,11 @@ import React from 'react';
 import styled, { keyframes } from 'styled-components';
 import { Routes, Route, useLocation, useParams, useNavigate } from 'react-router-dom';
 import Home from './Home';
-import Rooms from './Rooms';
-import Chat from './Chat';
-import Admin from './Admin';
-import AboutDeveloper from './AboutDeveloper';
+
+const Rooms = React.lazy(() => import('./Rooms'));
+const Chat = React.lazy(() => import('./Chat'));
+const Admin = React.lazy(() => import('./Admin'));
+const AboutDeveloper = React.lazy(() => import('./AboutDeveloper'));
 import { GlobalStyle } from './chat/ChatStyledComponents';
 import { NotFoundPage, ForbiddenPage, ServerErrorPage, TimeoutPage, RateLimitPage, MaintenancePage } from './ErrorPages';
 import { PwaUpdatePrompt } from './PwaUpdatePrompt';
@@ -188,25 +189,27 @@ function AppRoutes() {
           </svg>
         </GlobalHomeButton>
       )}
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/room" element={<Rooms />} />
-        <Route path="/room/:roomId" element={<Chat />} />
-        <Route path="/me" element={<Chat isMe={true} />} />
-        <Route path="/join/:token" element={<Chat isTempLink={true} />} />
-        <Route path="/admin" element={<Admin />} />
-        <Route path="/admin/:roomId" element={<Admin />} />
-        <Route path="/about-developer" element={<AboutDeveloper />} />
-        {/* Explicit error pages */}
-        <Route path="/error/403" element={<ForbiddenPage />} />
-        <Route path="/error/404" element={<NotFoundPage />} />
-        <Route path="/error/500" element={<ServerErrorPage />} />
-        <Route path="/error/408" element={<TimeoutPage />} />
-        <Route path="/error/429" element={<RateLimitPage />} />
-        <Route path="/error/503" element={<MaintenancePage />} />
-        {/* Catch-all — must be last */}
-        <Route path="*" element={<NotFoundPage />} />
-      </Routes>
+      <React.Suspense fallback={<div style={{ minHeight: '100dvh', background: 'var(--bg-primary)' }} />}>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/room" element={<Rooms />} />
+          <Route path="/room/:roomId" element={<Chat />} />
+          <Route path="/me" element={<Chat isMe={true} />} />
+          <Route path="/join/:token" element={<Chat isTempLink={true} />} />
+          <Route path="/admin" element={<Admin />} />
+          <Route path="/admin/:roomId" element={<Admin />} />
+          <Route path="/about-developer" element={<AboutDeveloper />} />
+          {/* Explicit error pages */}
+          <Route path="/error/403" element={<ForbiddenPage />} />
+          <Route path="/error/404" element={<NotFoundPage />} />
+          <Route path="/error/500" element={<ServerErrorPage />} />
+          <Route path="/error/408" element={<TimeoutPage />} />
+          <Route path="/error/429" element={<RateLimitPage />} />
+          <Route path="/error/503" element={<MaintenancePage />} />
+          {/* Catch-all — must be last */}
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </React.Suspense>
     </RouteErrorBoundary>
   );
 }
