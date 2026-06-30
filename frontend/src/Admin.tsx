@@ -54,6 +54,8 @@ const Admin = () => {
   const [serverLogs, setServerLogs] = useState<string[]>([]);
   const [globalRooms, setGlobalRooms] = useState<any[]>([]);
   const [isRoomsLoading, setIsRoomsLoading] = useState(false);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [isServerLogsLoading, setIsServerLogsLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('messages');
   const [activityLogs, setActivityLogs] = useState<string[]>(() => {
@@ -381,9 +383,31 @@ const Admin = () => {
           .finally(() => setIsRoomsLoading(false));
       }
 
-      const [historyRes, serverLogsRes, tempLinksRes, blockedRes, lockdownRes, auditRes, reportsRes, loggedInRes, detailsRes] = await Promise.allSettled([
-        fetch(`${apiUrl}/api/admin/history`, { headers }),
-        fetch(`${apiUrl}/api/admin/server-logs`, { headers }),
+      // Fetch history independently for instant message log load
+      setIsHistoryLoading(true);
+      fetch(`${apiUrl}/api/admin/history`, { headers })
+        .then(res => res.ok ? res.json() : [])
+        .then(data => {
+          if (Array.isArray(data)) {
+            setHistoryLogs(data.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
+          }
+        })
+        .catch(() => {})
+        .finally(() => setIsHistoryLoading(false));
+
+      // Fetch massive server logs independently so it doesn't block other tabs
+      if (roomId === 'me' || roomId === 'global') {
+        setIsServerLogsLoading(true);
+        fetch(`${apiUrl}/api/admin/server-logs`, { headers })
+          .then(res => res.ok ? res.text() : '')
+          .then(text => {
+            if (text) setServerLogs(text.split('\n').reverse());
+          })
+          .catch(() => {})
+          .finally(() => setIsServerLogsLoading(false));
+      }
+
+      const [tempLinksRes, blockedRes, lockdownRes, auditRes, reportsRes, loggedInRes, detailsRes] = await Promise.allSettled([
         fetch(`${apiUrl}/api/admin/temp-links`, { headers }),
         fetch(`${apiUrl}/api/admin/blocked-users`, { headers }),
         fetch(`${apiUrl}/api/admin/login-lockdown`, { headers }),
@@ -392,15 +416,6 @@ const Admin = () => {
         fetch(`${apiUrl}/api/admin/logged-in-users`, { headers }),
         fetch(`${apiUrl}/api/rooms/admin/details`, { headers }),
       ]);
-
-      if (historyRes.status === 'fulfilled' && historyRes.value.ok) {
-        const historyData = await historyRes.value.json();
-        setHistoryLogs(historyData.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
-      }
-
-      if (serverLogsRes.status === 'fulfilled' && serverLogsRes.value.ok) {
-        setServerLogs((await serverLogsRes.value.text()).split('\n').reverse());
-      }
 
       if (tempLinksRes.status === 'fulfilled' && tempLinksRes.value.ok) {
         setTempLinks(await tempLinksRes.value.json());
@@ -1048,7 +1063,7 @@ const Admin = () => {
                 <Input type="text" placeholder="Filter by Content" value={filterContent} onChange={(e) => setFilterContent(e.target.value)} />
               </FilterContainer>
             </MessageFilterCollapse>
-            {isLoading ? <p>Loading history...</p> : (
+            {isHistoryLoading ? <p>Loading history...</p> : (
               <MessageLogTableWrapper>
                 <MessageLogTable>
                   <thead>
@@ -1626,7 +1641,7 @@ const Admin = () => {
               <h2 style={{ margin: 0 }}>Server Logs</h2>
               <Button onClick={handleRefreshServerLogs}>Refresh</Button>
             </div>
-            {isLoading ? <p>Loading server logs...</p> : (
+            {isServerLogsLoading ? <p>Loading server logs...</p> : (
               <LogViewerContainer>
                 {serverLogs.map((log, index) => <div key={index}>{formatServerLogLine(log)}</div>)}
               </LogViewerContainer>
