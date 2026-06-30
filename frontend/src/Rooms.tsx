@@ -473,11 +473,9 @@ const Orb = styled.div<{ $color: string; $size: string; $top: string; $left: str
   position: fixed;
   width: ${p => p.$size};
   height: ${p => p.$size};
-  background: ${p => p.$color};
-  border-radius: 50%;
+  background: radial-gradient(circle at center, ${p => p.$color} 0%, transparent 65%);
   top: ${p => p.$top};
   left: ${p => p.$left};
-  filter: blur(120px);
   opacity: 0.1;
   pointer-events: none;
   z-index: 1;

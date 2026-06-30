@@ -86,10 +86,9 @@ const FallbackPage = styled.div`
 const FallbackOrb = styled.div<{ $x: string; $y: string; $color: string; $size: number }>`
   position: absolute;
   width: ${p => p.$size}px; height: ${p => p.$size}px;
-  border-radius: 50%;
-  background: ${p => p.$color};
+  background: radial-gradient(circle at center, ${p => p.$color} 0%, transparent 65%);
   top: ${p => p.$y}; left: ${p => p.$x};
-  filter: blur(80px); opacity: 0.4;
+  opacity: 0.4;
   pointer-events: none;
   [data-theme='dark'] & { opacity: 0.2; }
 `;
