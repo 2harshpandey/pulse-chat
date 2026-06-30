@@ -206,10 +206,14 @@ module.exports = (wss, broadcasts) => {
   // --- Resumable File Upload (Chunked) ---
   router.get('/api/upload/status', apiLimiter, (req, res) => {
     const { uploadId } = req.query;
-    if (!uploadId || typeof uploadId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(uploadId)) {
+    if (!uploadId || typeof uploadId !== 'string') {
       return res.status(400).json({ error: 'Missing or invalid uploadId' });
     }
-    const tmpPath = path.join(os.tmpdir(), `pulse_upload_${uploadId}`);
+    const safeUploadId = path.basename(uploadId).replace(/[^a-zA-Z0-9_-]/g, '');
+    if (!safeUploadId || safeUploadId !== uploadId) {
+      return res.status(400).json({ error: 'Invalid uploadId format' });
+    }
+    const tmpPath = path.join(os.tmpdir(), `pulse_upload_${safeUploadId}`);
     if (fs.existsSync(tmpPath)) {
       const stats = fs.statSync(tmpPath);
       return res.json({ uploadedBytes: stats.size });
@@ -225,11 +229,16 @@ module.exports = (wss, broadcasts) => {
       }
       try {
         const { uploadId, chunkIndex, totalChunks, originalname, mimetype, userId, roomId = 'me', text } = req.body;
-        if (!uploadId || typeof uploadId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(uploadId) || !req.file) {
+        if (!uploadId || typeof uploadId !== 'string' || !req.file) {
           return res.status(400).json({ error: 'Missing or invalid chunk data' });
         }
+        
+        const safeUploadId = path.basename(uploadId).replace(/[^a-zA-Z0-9_-]/g, '');
+        if (!safeUploadId || safeUploadId !== uploadId) {
+          return res.status(400).json({ error: 'Invalid uploadId format' });
+        }
 
-        const tmpPath = path.join(os.tmpdir(), `pulse_upload_${uploadId}`);
+        const tmpPath = path.join(os.tmpdir(), `pulse_upload_${safeUploadId}`);
         
         // Write chunk at exact offset to prevent corruption
         const chunkStart = parseInt(req.body.chunkStart, 10) || 0;
@@ -305,9 +314,12 @@ module.exports = (wss, broadcasts) => {
       } catch (err) {
         logger.error('Chunk upload error:', { message: err.message, stack: err.stack });
         
-        if (req.body && req.body.uploadId && typeof req.body.uploadId === 'string' && /^[a-zA-Z0-9_-]+$/.test(req.body.uploadId)) {
-          const tmpPath = path.join(os.tmpdir(), `pulse_upload_${req.body.uploadId}`);
-          try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (e) {} // Clean up on failure
+        if (req.body && typeof req.body.uploadId === 'string') {
+          const safeUploadId = path.basename(req.body.uploadId).replace(/[^a-zA-Z0-9_-]/g, '');
+          if (safeUploadId) {
+            const tmpPath = path.join(os.tmpdir(), `pulse_upload_${safeUploadId}`);
+            try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (e) {} // Clean up on failure
+          }
         }
         
         const providerLimit = /maximum is\s+10485760/i.test(err.message || '');
