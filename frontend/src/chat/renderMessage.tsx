@@ -282,6 +282,9 @@ export const renderMessageContent = (
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
+                    const target = e.target as HTMLElement;
+                    if (!target.closest('[data-action-btn="true"]')) return;
+                    
                     if (transferInfo?.state === 'paused') {
                       onResumeUpload?.(msg.id);
                     } else {
@@ -291,7 +294,7 @@ export const renderMessageContent = (
                   $isLoading={true}
                   $isUploadGate={true}
                 >
-                  <MediaLoadIcon>
+                  <MediaLoadIcon data-action-btn="true">
                     <RingedProgressIcon progress={transferInfo?.progress || 0} isPaused={transferInfo?.state === 'paused'} isUpload={true} />
                   </MediaLoadIcon>
                   <MediaLoadLabel>
@@ -369,6 +372,9 @@ export const renderMessageContent = (
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
+                    const target = e.target as HTMLElement;
+                    if (!target.closest('[data-action-btn="true"]')) return;
+                    
                     if (transferInfo?.state === 'paused') {
                       onResumeUpload?.(msg.id);
                     } else {
@@ -378,7 +384,7 @@ export const renderMessageContent = (
                   $isLoading={true}
                   $isUploadGate={true}
                 >
-                  <MediaLoadIcon>
+                  <MediaLoadIcon data-action-btn="true">
                     <RingedProgressIcon progress={transferInfo?.progress || 0} isPaused={transferInfo?.state === 'paused'} isUpload={true} />
                   </MediaLoadIcon>
                   <MediaLoadLabel>

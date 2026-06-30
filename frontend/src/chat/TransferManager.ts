@@ -57,92 +57,112 @@ class TransferManager {
     // Save to IndexedDB to survive refresh
     await setCachedMediaBlob(currentSessionId, messageId, 'upload', file, messageObj);
 
+    let startProgress = 0;
+    let uploadedBytes = 0;
+
+    // Check status
+    try {
+      const statusRes = await fetch(`${apiBase}/api/upload/status?uploadId=${messageId}`);
+      if (statusRes.ok) {
+        const statusData = await statusRes.json();
+        uploadedBytes = statusData.uploadedBytes || 0;
+        startProgress = (uploadedBytes / file.size) * 0.9;
+      }
+    } catch (e) {
+      // Ignore status check errors, will start from 0
+    }
+
     const abortController = new AbortController();
     const info: TransferInfo = {
       id: messageId,
       type: 'upload',
       state: 'uploading',
-      progress: 0,
+      progress: startProgress || 0,
       file,
       abortController,
     };
     this.transfers.set(messageId, info);
     this.notify();
 
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', `${apiBase}/api/upload`);
-      xhr.setRequestHeader('x-room-id', roomId);
+    const CHUNK_SIZE = 1024 * 1024; // 1MB chunks
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    
+    let startChunkIndex = Math.floor(uploadedBytes / CHUNK_SIZE);
+    if (startChunkIndex >= totalChunks) startChunkIndex = 0;
 
-      let lastNotifyTime = Date.now();
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable) {
-          const progress = (event.loaded / event.total) * 0.9; // Scale to 90%
-          const currentInfo = this.transfers.get(messageId);
-          if (currentInfo && currentInfo.state === 'uploading') {
-            this.transfers.set(messageId, { ...currentInfo, progress });
-            
-            const now = Date.now();
-            if (now - lastNotifyTime >= 100 || progress >= 0.9) {
-              this.notify();
-              lastNotifyTime = now;
-            }
-          }
-        }
-      };
-
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const data = JSON.parse(xhr.responseText);
+    return new Promise(async (resolve, reject) => {
+      try {
+        let lastResponseData = null;
+        for (let i = startChunkIndex; i < totalChunks; i++) {
+          if (abortController.signal.aborted) {
             const currentInfo = this.transfers.get(messageId);
             if (currentInfo) {
-              this.transfers.set(messageId, { ...currentInfo, state: 'success', progress: 1 });
-              this.transfers.delete(messageId);
-              
-              // Remove the uploaded blob from IndexedDB so it doesn't reappear on refresh
-              removeCachedMediaBlob(currentSessionId, messageId, 'upload').catch(() => {});
-              
+              this.transfers.set(messageId, { ...currentInfo, state: 'paused' });
               this.notify();
             }
-            resolve(data);
-          } catch (e) {
-            this.handleUploadError(messageId, 'Invalid response');
-            reject(new Error('Invalid response'));
+            return reject(new Error('Aborted'));
           }
-        } else {
-          try {
-            const data = JSON.parse(xhr.responseText);
-            this.handleUploadError(messageId, data.error || 'Upload failed');
-            reject(new Error(data.error || 'Upload failed'));
-          } catch (e) {
-            this.handleUploadError(messageId, 'Upload failed');
-            reject(new Error('Upload failed'));
+
+          const chunk = file.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+          const formData = new FormData();
+          formData.append('chunk', chunk);
+          formData.append('uploadId', messageId);
+          formData.append('chunkIndex', i.toString());
+          formData.append('totalChunks', totalChunks.toString());
+          formData.append('originalname', file.name);
+          formData.append('mimetype', file.type);
+          formData.append('userId', userId);
+          formData.append('roomId', roomId);
+          formData.append('text', messageObj?.text || '');
+
+          const response = await fetch(`${apiBase}/api/upload/chunk`, {
+            method: 'POST',
+            body: formData,
+            signal: abortController.signal,
+          });
+
+          if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.error || 'Upload failed');
+          }
+
+          lastResponseData = await response.json();
+          
+          const currentInfo = this.transfers.get(messageId);
+          if (currentInfo && currentInfo.state === 'uploading') {
+            const progress = ((i + 1) / totalChunks) * 0.9;
+            this.transfers.set(messageId, { ...currentInfo, progress });
+            
+            // Only notify periodically or on finish to avoid React spam
+            if (i === totalChunks - 1 || i % 2 === 0) {
+              this.notify();
+            }
           }
         }
-      };
 
-      xhr.onerror = () => {
-        this.handleUploadError(messageId, 'Network error');
-        reject(new Error('Network error'));
-      };
-
-      xhr.onabort = () => {
-        const currentInfo = this.transfers.get(messageId);
-        if (currentInfo) {
-          this.transfers.set(messageId, { ...currentInfo, state: 'paused' });
+        // Upload complete
+        const finalInfo = this.transfers.get(messageId);
+        if (finalInfo) {
+          this.transfers.set(messageId, { ...finalInfo, state: 'success', progress: 1 });
+          this.transfers.delete(messageId);
+          removeCachedMediaBlob(currentSessionId, messageId, 'upload').catch(() => {});
           this.notify();
         }
-        reject(new Error('Aborted'));
-      };
+        resolve(lastResponseData);
 
-      abortController.signal.addEventListener('abort', () => xhr.abort());
-
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('text', ''); // text is handled separately or included if needed
-      formData.append('userId', userId);
-      xhr.send(formData);
+      } catch (err: any) {
+        if (err.name === 'AbortError' || err.message === 'Aborted') {
+          const currentInfo = this.transfers.get(messageId);
+          if (currentInfo) {
+            this.transfers.set(messageId, { ...currentInfo, state: 'paused' });
+            this.notify();
+          }
+          reject(new Error('Aborted'));
+        } else {
+          this.handleUploadError(messageId, err.message || 'Upload failed');
+          reject(err);
+        }
+      }
     });
   }
 

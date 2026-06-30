@@ -4,6 +4,8 @@ const express = require('express');
 const http = require('http');
 const https = require('https');
 const dns = require('dns');
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { Readable } = require('stream');
 const crypto = require('crypto');
@@ -55,9 +57,14 @@ const repairMojibakeText = (value) => String(value || '')
 const sanitizeUploadFilename = (name) => sanitizeDownloadFilename(repairMojibakeText(name), 'file');
 
 // --- Cloudinary & Multer Configuration ---
-// Stream files to Cloudinary directly using a custom multer storage engine.
-// This prevents buffering large files in RAM and correctly throttles the client's upload.
+// Keep Multer in-memory and send files to Cloudinary ourselves using the chunked
+// upload stream. The Cloudinary storage adapter uses the normal upload endpoint,
+// which can return a 10 MB provider limit for raw files such as .rar/.zip.
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024; // 100 MB max
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_UPLOAD_BYTES },
+});
 
 const getUploadResourceType = (mimetype = '') => {
   if (mimetype.startsWith('image/')) return 'image';
@@ -71,14 +78,14 @@ const getMessageFileType = (mimetype = '') => {
   return 'file';
 };
 
-const uploadStreamToCloudinary = (fileStream, mimetype, originalName) => new Promise((resolve, reject) => {
+const uploadBufferToCloudinary = (file, originalName) => new Promise((resolve, reject) => {
   const parsedName = path.parse(originalName || 'file');
   const safeBase = sanitizeDownloadFilename(parsedName.name || 'file', 'file')
     .replace(/\.[^.]+$/, '')
     .replace(/\s+/g, '_')
     .slice(0, 80);
   const ext = parsedName.ext ? parsedName.ext.replace(/^\./, '') : '';
-  const resourceType = getUploadResourceType(mimetype || '');
+  const resourceType = getUploadResourceType(file.mimetype || '');
   const publicId = `pulse-chat/${safeBase}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 
   const uploadOptions = {
@@ -97,29 +104,7 @@ const uploadStreamToCloudinary = (fileStream, mimetype, originalName) => new Pro
     return resolve(result);
   });
 
-  fileStream.pipe(uploadStream).on('error', reject);
-});
-
-class CloudinaryStreamStorage {
-  _handleFile(req, file, cb) {
-    const originalName = sanitizeUploadFilename(file.originalname);
-    uploadStreamToCloudinary(file.stream, file.mimetype, originalName)
-      .then(result => cb(null, {
-        cloudinaryResult: result,
-        originalName: originalName,
-        mimetype: file.mimetype,
-        size: result.bytes
-      }))
-      .catch(err => cb(err));
-  }
-  _removeFile(req, file, cb) {
-    cb(null);
-  }
-}
-
-const upload = multer({
-  storage: new CloudinaryStreamStorage(),
-  limits: { fileSize: MAX_UPLOAD_BYTES },
+  Readable.from(file.buffer).pipe(uploadStream).on('error', reject);
 });
 
 // --- Helper: build query that respects frontendHiddenBefore ---
@@ -154,18 +139,7 @@ module.exports = (wss, broadcasts) => {
         if (err.code === 'LIMIT_FILE_SIZE') {
           return res.status(413).json({ error: 'File too large. Photos or videos are allowed only upto 100 MBs in size.' });
         }
-        
-        logger.error('Cloudinary upload error:', {
-          message: err.message,
-          http_code: err.http_code,
-          name: err.name,
-        });
-        const providerLimit = /maximum is\s+10485760/i.test(err.message || '');
-        return res.status(providerLimit ? 413 : 502).json({
-          error: providerLimit
-            ? 'File too large for the current upload provider path. Files are allowed only upto 10 MBs in size. Please try again after the latest server deploy.'
-            : `Upload failed: ${err.message || 'Cloudinary upload failed.'}`,
-        });
+        return res.status(500).json({ error: `Upload failed: ${err.message}` });
       }
       if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
 
@@ -179,9 +153,10 @@ module.exports = (wss, broadcasts) => {
         username = user?.username || 'Unknown';
       }
 
+      const originalName = sanitizeUploadFilename(req.file.originalname);
+
       try {
-        const uploaded = req.file.cloudinaryResult;
-        const originalName = req.file.originalName;
+        const uploaded = await uploadBufferToCloudinary(req.file, originalName);
 
         // Create a MessageEvent for the upload
         const event = new MessageEvent({
@@ -212,8 +187,118 @@ module.exports = (wss, broadcasts) => {
           text: req.body.text,
         });
       } catch (uploadError) {
-        logger.error('Database/broadcast error after upload:', { message: uploadError.message });
-        return res.status(500).json({ error: 'Upload succeeded but message processing failed.' });
+        logger.error('Cloudinary upload error:', {
+          message: uploadError.message,
+          http_code: uploadError.http_code,
+          name: uploadError.name,
+        });
+        const providerLimit = /maximum is\s+10485760/i.test(uploadError.message || '');
+        return res.status(providerLimit ? 413 : 502).json({
+          error: providerLimit
+            ? 'File too large for the current upload provider path. Files are allowed only upto 10 MBs in size. Please try again after the latest server deploy.'
+            : `Upload failed: ${uploadError.message || 'Cloudinary upload failed.'}`,
+        });
+      }
+    });
+  });
+
+  // --- Resumable File Upload (Chunked) ---
+  router.get('/api/upload/status', apiLimiter, (req, res) => {
+    const { uploadId } = req.query;
+    if (!uploadId) return res.status(400).json({ error: 'Missing uploadId' });
+    const tmpPath = path.join(os.tmpdir(), `pulse_upload_${uploadId}`);
+    if (fs.existsSync(tmpPath)) {
+      const stats = fs.statSync(tmpPath);
+      return res.json({ uploadedBytes: stats.size });
+    }
+    return res.json({ uploadedBytes: 0 });
+  });
+
+  router.post('/api/upload/chunk', uploadLimiter, (req, res) => {
+    upload.single('chunk')(req, res, async (err) => {
+      if (err) {
+        logger.error(`Upload chunk middleware error: ${err.message}`);
+        return res.status(500).json({ error: `Upload failed: ${err.message}` });
+      }
+      try {
+        const { uploadId, chunkIndex, totalChunks, originalname, mimetype, userId, roomId = 'me', text } = req.body;
+        if (!uploadId || !req.file) return res.status(400).json({ error: 'Missing chunk data' });
+
+        const tmpPath = path.join(os.tmpdir(), `pulse_upload_${uploadId}`);
+        
+        // Append chunk to temp file
+        fs.appendFileSync(tmpPath, req.file.buffer);
+
+        const currentChunk = parseInt(chunkIndex, 10);
+        const total = parseInt(totalChunks, 10);
+
+        if (currentChunk === total - 1) {
+          // Upload complete, send to Cloudinary
+          const finalBuffer = fs.readFileSync(tmpPath);
+          
+          // Mock a file object for uploadBufferToCloudinary
+          const fileObj = {
+            buffer: finalBuffer,
+            originalname: originalname || 'file',
+            mimetype: mimetype || 'application/octet-stream',
+            size: finalBuffer.length
+          };
+
+          const { onlineUsers } = getRoomState(roomId);
+          let username = onlineUsers.get(userId)?.username;
+          if (!username) {
+            const user = await User.findOne({ userId: String(userId), roomId: String(roomId) });
+            username = user?.username || 'Unknown';
+          }
+
+          const safeName = sanitizeUploadFilename(fileObj.originalname);
+          
+          const uploaded = await uploadBufferToCloudinary(fileObj, safeName);
+
+          // Create a MessageEvent for the upload
+          const event = new MessageEvent({
+            roomId,
+            type: 'upload',
+            file: {
+              originalname: safeName,
+              mimetype: fileObj.mimetype,
+              size: fileObj.size,
+            },
+            userId,
+            username,
+            timestamp: new Date().toISOString(),
+          });
+          event.save();
+
+          broadcastToAdmins(roomId, 'history', event);
+          broadcastToAdmins(roomId, 'activity', `File '${safeName}' uploaded by '${username}'.`);
+
+          logger.info(`File uploaded to room ${roomId} via chunks: ${safeName}`);
+
+          // Cleanup
+          try { fs.unlinkSync(tmpPath); } catch (e) { logger.error(`Failed to delete temp file ${tmpPath}`); }
+
+          return res.status(200).json({
+            id: uploaded.public_id,
+            type: getMessageFileType(fileObj.mimetype || ''),
+            url: uploaded.secure_url,
+            originalName: safeName,
+            size: fileObj.size,
+            text: text,
+          });
+        }
+
+        return res.status(200).json({ message: 'Chunk received' });
+      } catch (err) {
+        logger.error('Chunk upload error:', { message: err.message, stack: err.stack });
+        const tmpPath = path.join(os.tmpdir(), `pulse_upload_${req.body.uploadId}`);
+        try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (e) {} // Clean up on failure
+        const providerLimit = /maximum is\s+10485760/i.test(err.message || '');
+        return res.status(providerLimit ? 413 : 502).json({
+          error: providerLimit
+            ? 'File too large for the current upload provider path. Files are allowed only upto 10 MBs in size. Please try again after the latest server deploy.'
+            : `Upload failed: ${err.message || 'Chunk upload failed.'}`,
+        });
       }
     });
   });
