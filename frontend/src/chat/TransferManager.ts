@@ -7,9 +7,15 @@ let currentSessionId = '';
 if (typeof window !== 'undefined') {
   currentSessionId = sessionStorage.getItem('pulse_session_id') || '';
   if (!currentSessionId) {
-    currentSessionId = (window.crypto && window.crypto.randomUUID) 
-      ? window.crypto.randomUUID() 
-      : (Date.now().toString(36) + Math.random().toString(36).substring(2));
+    if (window.crypto && window.crypto.randomUUID) {
+      currentSessionId = window.crypto.randomUUID();
+    } else if (window.crypto && window.crypto.getRandomValues) {
+      const array = new Uint32Array(4);
+      window.crypto.getRandomValues(array);
+      currentSessionId = Array.from(array, dec => dec.toString(36)).join('');
+    } else {
+      currentSessionId = Date.now().toString(36) + 'fallback';
+    }
     sessionStorage.setItem('pulse_session_id', currentSessionId);
   }
 }
