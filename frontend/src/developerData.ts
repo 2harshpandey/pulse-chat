@@ -12,28 +12,27 @@ export interface DeveloperProfile {
 export const developerData: DeveloperProfile = {
   name: "Harsh",
   identity: [
-    "Polymath",
-    "Visionary Student Developer",
-    "Interdisciplinary Scholar"
+    "Studying English Literature",
+    "Self-Taught Developer",
+    "Curious About Other Things"
   ],
-  bio: "Harsh is a visionary student developer and interdisciplinary scholar whose work fuses analytical rigor with imaginative systems thinking. As the creator of Pulse Chat, he transforms abstract theory into reliable, low-latency software, emphasizing clarity, precision, and resilient architecture.",
+  bio: "I'm a student at the University of Delhi, studying English literature. Outside of coursework, I taught myself software development and built Pulse Chat, a real-time messaging app, mostly through trial and error and a lot of debugging.",
   analyticalMindset: [
-    "Self-driven mastery of kinematics, vectors, projectile motion, and parabolic geometry",
-    "Deep study of psychology, parapsychology, and sociology to understand human interaction in digital spaces",
-    "Mathematical modeling as a discipline for predicting system behavior and optimizing backend workflows",
-    "Precision-first engineering approach shaped by physics-based reasoning and structured logic"
+    "I like breaking a problem into smaller pieces before I start coding, rather than guessing at a fix",
+    "I'm interested in psychology and how people behave online, which occasionally nudges a small UX decision",
+    "I pick up math or logic as a feature needs it, even without a formal computer science background"
   ],
-  philosophicalFoundation: "A seeker of fundamental truths and objective reality, Harsh grounds his software design in first-principles thinking—prioritizing privacy, system integrity, and disruptive clarity over superficial patterns.",
+  philosophicalFoundation: "I've been interested in philosophy for a while, including ideas around first-principles and non-dual thinking. In practice, that mostly means I prefer simple, direct solutions over clever ones, and I try to be upfront about what the app does and does not do with user data.",
   technicalFocus: [
-    "Backend engineering with emphasis on deterministic behavior and fault tolerance",
-    "Privacy-aware data handling and secure system boundaries",
-    "Latency reduction and optimized real-time synchronization",
-    "Scalable architecture shaped by analytical modeling"
+    "Backend work aimed at keeping the app predictable and easy to debug",
+    "Trying to be careful with how user data and authentication are handled",
+    "Reducing latency so messages feel close to instant",
+    "Structuring the codebase so new features don't mean rewriting old ones"
   ],
   creativeInfluences: [
-    "High-stakes interactive media and competitive gaming (notably the Call of Duty franchise)",
-    "Space-themed cinema and science-driven storytelling",
-    "Performance-centric UX expectations shaped by real-time digital arenas"
+    "Years of playing competitive online games, including Call of Duty, shaped what I expect from responsive software",
+    "I enjoy sci-fi films and space stories",
+    "Some of my UX instincts come from gaming, where lag and friction aren't tolerated"
   ],
-  education: "Pursuing a BA (Hons) English at Motilal Nehru College, University of Delhi; leveraging the discipline as an asset for critical thinking, structural narrative design, and precise technical communication."
+  education: "Pursuing a BA (Hons) in English at the University of Delhi. The reading and writing the degree demands carries over into how I document and explain my own code."
 };

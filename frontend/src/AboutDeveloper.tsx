@@ -7,8 +7,8 @@ const SITE_URL = 'https://pulsechat.tech';
 const ABOUT_PATH = '/about-developer';
 const ABOUT_URL = `${SITE_URL}${ABOUT_PATH}`;
 const REPO_URL = 'https://github.com/2harshpandey/pulse-chat';
-const PAGE_TITLE = 'Harsh - Creator and Lead Architect of Pulse Chat';
-const PAGE_DESCRIPTION = 'Meet Harsh, the creator and lead architect of Pulse Chat: a visionary student developer building resilient, low-latency real-time messaging software with privacy-aware architecture.';
+const PAGE_TITLE = 'Harsh, Developer of Pulse Chat';
+const PAGE_DESCRIPTION = "I'm a student developer who built Pulse Chat, a real-time messaging app focused on speed, reliability, and privacy.";
 
 const floatIn = keyframes`
   from { opacity: 0; transform: translateY(28px); filter: blur(10px); }
@@ -323,11 +323,11 @@ const AboutDeveloper: React.FC = () => {
     alternateName: 'Harsh, creator of Pulse Chat',
     url: ABOUT_URL,
     sameAs: [REPO_URL, SITE_URL],
-    jobTitle: 'Creator and Lead Architect of Pulse Chat',
+    jobTitle: 'Developer of Pulse Chat',
     description: developerData.bio,
     alumniOf: {
       '@type': 'CollegeOrUniversity',
-      name: 'Motilal Nehru College, University of Delhi'
+      name: 'University of Delhi'
     },
     knowsAbout: [
       'Pulse Chat',
@@ -345,11 +345,11 @@ const AboutDeveloper: React.FC = () => {
       applicationCategory: 'CommunicationApplication',
       operatingSystem: 'Web',
       url: SITE_URL,
-      description: 'A production-grade real-time scalable web messaging application.',
+      description: 'A real-time messaging web application focused on speed and reliability.',
       creator: {
         '@type': 'Person',
         name: developerData.name,
-        jobTitle: 'Creator and Lead Architect'
+        jobTitle: 'Developer'
       }
     },
     mainEntityOfPage: {
@@ -411,7 +411,7 @@ const AboutDeveloper: React.FC = () => {
 
         <Hero>
           <HeroCopy as="header">
-            <Eyebrow>Creator - Lead Architect - Pulse Chat</Eyebrow>
+            <Eyebrow>Developer of Pulse Chat</Eyebrow>
             <Title itemProp="name"><span>{developerData.name}</span></Title>
             <Subtitle itemProp="description">{developerData.bio}</Subtitle>
           </HeroCopy>
@@ -420,7 +420,7 @@ const AboutDeveloper: React.FC = () => {
             {developerData.identity.map((identity, index) => (
               <IdentityCard key={identity}>
                 <strong>{identity}</strong>
-                <p>{index === 0 ? 'Interdisciplinary mastery translated into practical engineering decisions.' : index === 1 ? 'A student builder shaping Pulse Chat through disciplined systems thinking.' : 'Technical architecture informed by literature, psychology, physics, and sociology.'}</p>
+                <p>{index === 0 ? 'My coursework is in literature, not computer science, but I bring the same habits of close reading to a codebase.' : index === 1 ? "I'm building Pulse Chat one feature and one bug fix at a time. It's still a work in progress." : 'A few things outside computer science occasionally shape how I approach a problem.'}</p>
               </IdentityCard>
             ))}
           </IdentityGrid>
@@ -462,7 +462,7 @@ const AboutDeveloper: React.FC = () => {
         </SectionGrid>
 
         <Footer>
-          <p>Harsh is explicitly linked as creator and lead architect of Pulse Chat.</p>
+          <p>I built and maintain Pulse Chat.</p>
         </Footer>
       </Content>
     </PageShell>
