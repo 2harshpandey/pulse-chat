@@ -53,6 +53,7 @@ const Admin = () => {
   const [pinnedMessages, setPinnedMessages] = useState<any[]>([]);
   const [serverLogs, setServerLogs] = useState<string[]>([]);
   const [globalRooms, setGlobalRooms] = useState<any[]>([]);
+  const [isRoomsLoading, setIsRoomsLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('messages');
   const [activityLogs, setActivityLogs] = useState<string[]>(() => {
@@ -367,7 +368,20 @@ const Admin = () => {
       }
 
       const headers = { 'x-admin-password': authenticatedPassword, 'x-room-id': roomId };
-      const [historyRes, serverLogsRes, tempLinksRes, blockedRes, lockdownRes, auditRes, reportsRes, loggedInRes, detailsRes, globalRoomsRes] = await Promise.allSettled([
+      
+      // Fetch rooms independently for blazing fast tab load
+      if (roomId === 'me' || roomId === 'global') {
+        setIsRoomsLoading(true);
+        fetch(`${apiUrl}/api/admin/rooms`, { headers })
+          .then(res => res.ok ? res.json() : [])
+          .then(data => {
+            if (Array.isArray(data)) setGlobalRooms(data);
+          })
+          .catch(() => {})
+          .finally(() => setIsRoomsLoading(false));
+      }
+
+      const [historyRes, serverLogsRes, tempLinksRes, blockedRes, lockdownRes, auditRes, reportsRes, loggedInRes, detailsRes] = await Promise.allSettled([
         fetch(`${apiUrl}/api/admin/history`, { headers }),
         fetch(`${apiUrl}/api/admin/server-logs`, { headers }),
         fetch(`${apiUrl}/api/admin/temp-links`, { headers }),
@@ -377,7 +391,6 @@ const Admin = () => {
         fetch(`${apiUrl}/api/admin/reports`, { headers }),
         fetch(`${apiUrl}/api/admin/logged-in-users`, { headers }),
         fetch(`${apiUrl}/api/rooms/admin/details`, { headers }),
-        (roomId === 'me' || roomId === 'global') ? fetch(`${apiUrl}/api/admin/rooms`, { headers }) : Promise.resolve({ ok: false }),
       ]);
 
       if (historyRes.status === 'fulfilled' && historyRes.value.ok) {
@@ -421,10 +434,6 @@ const Admin = () => {
         setRoomSettingsNewId(d.alias || roomId || '');
         setRoomSettingsLastIdChange(d.lastIdChangeAt || null);
         setRoomSettingsHasJoinPassword(d.hasJoinPassword || false);
-      }
-
-      if (globalRoomsRes.status === 'fulfilled' && (globalRoomsRes.value as Response).ok) {
-        setGlobalRooms(await (globalRoomsRes.value as Response).json());
       }
     } catch {
       setError('An error occurred while trying to log in.');
@@ -1631,7 +1640,7 @@ const Admin = () => {
               <h2>All Chat Rooms</h2>
               <span style={{ color: '#64748b', fontSize: '0.9rem' }}>Total: {globalRooms.length}</span>
             </div>
-            {isLoading ? (
+            {isRoomsLoading ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '5rem 2rem', background: 'var(--panel-bg)', borderRadius: '16px', border: '1px solid var(--border-color)', boxShadow: '0 8px 32px rgba(0,0,0,0.1)', backdropFilter: 'blur(10px)' }}>
                 <div style={{ position: 'relative', width: '50px', height: '50px' }}>
                   <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', border: '3px solid var(--border-color)', opacity: 0.3 }}></div>
