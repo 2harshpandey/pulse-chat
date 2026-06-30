@@ -380,10 +380,28 @@ const CheckboxLabel = styled.label`
   user-select: none;
 `;
 
-const ErrorText = styled.p`
-  color: #ef4444;
-  font-size: 0.875rem;
-  margin-top: 0.5rem;
+const ErrorMessageContainer = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: 12px;
+  background: var(--error-bg, rgba(239, 68, 68, 0.08));
+  border: 1px solid var(--error-border, rgba(239, 68, 68, 0.2));
+  color: var(--error-text, #ef4444);
+  font-size: 0.9rem;
+  font-weight: 500;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  animation: ${fadeInUp} 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.05);
+
+  svg {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    margin-top: 0.1rem;
+  }
 `;
 
 import { PasswordStrengthIndicator } from './components/PasswordStrengthIndicator';
@@ -991,7 +1009,16 @@ const Rooms: React.FC = () => {
                 <PasswordStrengthIndicator password={adminPassword} />
               </FormGroup>
 
-              {formError && <ErrorText>{formError}</ErrorText>}
+              {formError && (
+                <ErrorMessageContainer>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                  </svg>
+                  <span>{formError}</span>
+                </ErrorMessageContainer>
+              )}
 
               <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
                 <Button type="button" onClick={() => setIsModalOpen(false)} style={{ flex: 1, justifyContent: 'center' }}>
@@ -1059,7 +1086,16 @@ const Rooms: React.FC = () => {
                 </InputWrapper>
               </FormGroup>
 
-              {joinModalError && <ErrorText>{joinModalError}</ErrorText>}
+              {joinModalError && (
+                <ErrorMessageContainer>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                  </svg>
+                  <span>{joinModalError}</span>
+                </ErrorMessageContainer>
+              )}
 
               <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
                 <Button type="button" onClick={() => setIsJoinModalOpen(false)} style={{ flex: 1, justifyContent: 'center' }}>
