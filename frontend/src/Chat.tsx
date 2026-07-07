@@ -1573,16 +1573,13 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
               return m;
             })
           );
-          // If the currently quoted message (reply preview in footer) was deleted,
-          // update the replyingTo state so the preview shows "deleted".
-          if (normalizedUpdate.isDeleted) {
-            setReplyingTo(prev => {
-              if (prev && prev.id === normalizedUpdate.id) {
-                return null; // Clear the quote —  can't reply to a deleted message
-              }
-              return prev;
-            });
-          }
+          // If the currently quoted message (reply preview in footer) was updated, reflect changes.
+          setReplyingTo(prev => {
+            if (prev && prev.id === normalizedUpdate.id) {
+              return { ...prev, ...normalizedUpdate };
+            }
+            return prev;
+          });
         } else if (messageData.type === 'bulk_update') {
           const updatedMessages = messageData.messages.map(normalizeMessage);
           const updatedIds = new Set(updatedMessages.map((m: any) => m.id));
@@ -1604,7 +1601,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
           setReplyingTo(prev => {
             if (prev && updatedIds.has(prev.id)) {
               const updatedTarget = updatedMap.get(prev.id);
-              if (updatedTarget && updatedTarget.isDeleted) return null;
+              if (updatedTarget) return { ...prev, ...updatedTarget };
             }
             return prev;
           });
@@ -2485,7 +2482,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
           replyText = 'Video';
         }
       }
-      replyContext = { id: replyingTo.id, username: replyingTo.username, text: replyText, type, url: replyingTo.url };
+      replyContext = { id: replyingTo.id, username: replyingTo.username, text: replyText, type, url: replyingTo.url, isDeleted: replyingTo.isDeleted, deletedBy: replyingTo.deletedBy };
     }
 
     if (stagedFile) {
@@ -2595,7 +2592,6 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
 
   const handleSetReply = useCallback((message: Message) => {
     if (message.type === 'system_notification') return;
-    if (message.isDeleted) return; // Can't quote a deleted message
     setReplyingTo(message);
     // Focus the input so the keyboard opens automatically on touch devices.
     // Use rAF so the reply-preview has time to render and shift the layout first.
@@ -4000,7 +3996,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
         else if (replyingTo.type === 'image') replyText = 'Image';
         else if (replyingTo.type === 'video') replyText = 'Video';
       }
-      replyContext = { id: replyingTo.id, username: replyingTo.username, text: replyText, type, url: replyingTo.url };
+      replyContext = { id: replyingTo.id, username: replyingTo.username, text: replyText, type, url: replyingTo.url, isDeleted: replyingTo.isDeleted, deletedBy: replyingTo.deletedBy };
     }
 
     const caption = previewCaption.trim();
@@ -4719,8 +4715,11 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                     ) : (replyingTo.type === 'image' || replyingTo.type === 'video') && replyingTo.url && (
                       <FilePreviewImage src={replyingTo.url} alt="Reply preview" />
                     )}
-                    <ReplyText><p>Replying to {replyingTo.username}</p><span>
+                    <ReplyText><p>Replying to {replyingTo.username}</p><span style={replyingTo.isDeleted ? { fontStyle: 'italic', opacity: 0.7 } : undefined}>
                       {(() => {
+                        if (replyingTo.isDeleted) {
+                          return replyingTo.deletedBy === 'admin' ? 'This message has been deleted by an admin.' : (replyingTo.deletedBy === userIdRef.current ? 'You deleted this message.' : 'This message has been deleted.');
+                        }
                         if (replyingTo.text) return replyingTo.text;
                         if (isTenorUrl(replyingTo.url)) return 'GIF';
                         if (replyingTo.type === 'image') return 'Image';

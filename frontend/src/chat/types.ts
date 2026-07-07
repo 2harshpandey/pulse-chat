@@ -8,6 +8,7 @@ export interface ReplyContext {
   type: 'text' | 'image' | 'video' | 'file';
   url?: string;
   isDeleted?: boolean;
+  deletedBy?: string;
 }
 
 export interface Message {

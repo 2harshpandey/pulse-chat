@@ -882,10 +882,18 @@ const Admin = () => {
     return filteredHistoryLogs.filter(log => !!extractMessageId(log));
   }, [filteredHistoryLogs]);
 
+  const uniqueValidMessageIds = useMemo(() => {
+    const ids = new Set<string>();
+    validSelectionLogs.forEach(log => {
+      const id = extractMessageId(log);
+      if (id) ids.add(id);
+    });
+    return ids;
+  }, [validSelectionLogs]);
+
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
-      const allIds = new Set(validSelectionLogs.map(extractMessageId));
-      setSelectedMessages(allIds);
+      setSelectedMessages(new Set(uniqueValidMessageIds));
     } else {
       setSelectedMessages(new Set());
     }
@@ -1163,7 +1171,7 @@ const Admin = () => {
                       <StickyTh style={{ width: '40px', textAlign: 'center' }}>
                         <input
                           type="checkbox"
-                          checked={selectedMessages.size > 0 && selectedMessages.size === validSelectionLogs.length}
+                          checked={uniqueValidMessageIds.size > 0 && selectedMessages.size === uniqueValidMessageIds.size}
                           onChange={handleSelectAll}
                         />
                       </StickyTh>
@@ -1196,7 +1204,7 @@ const Admin = () => {
                           <NoWrapTd>{formatTime(log.timestamp)}</NoWrapTd>
                           <NoWrapTd>{renderEventType(log.type)}</NoWrapTd>
                           <Td>{log.username} ({log.userId})</Td>
-                          <NoWrapTd style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#64748b' }}>{log.messageId || log.message?.id || log.message?._id || log._id || 'N/A'}</NoWrapTd>
+                          <Td style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#64748b', minWidth: '180px', maxWidth: '250px', wordBreak: 'break-all' }}>{log.messageId || log.message?.id || log.message?._id || log._id || 'N/A'}</Td>
                           <Td style={{ textAlign: 'center' }}>
                             {log.message?.deletedBy === 'admin' || log.message?.vanished ? (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>

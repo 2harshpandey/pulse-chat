@@ -426,12 +426,14 @@ module.exports = (wss, broadcasts) => {
         broadcastToAdmins(roomId, 'bulk_history_update', { events: updatedEvents });
         
       } else if (action === 'delete') {
+        const objectIds = messageIds.filter(id => /^[0-9a-fA-F]{24}$/.test(id));
+
         await MessageEvent.deleteMany({
           roomId,
           $or: [
             { 'message.id': { $in: messageIds } },
             { messageId: { $in: messageIds } },
-            { _id: { $in: messageIds } }
+            ...(objectIds.length > 0 ? [{ _id: { $in: objectIds } }] : [])
           ]
         });
         broadcastToAdmins(roomId, 'bulk_history_delete', { messageIds });

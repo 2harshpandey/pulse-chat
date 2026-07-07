@@ -769,6 +769,9 @@ export const NoWrapTd = styled(Td)`
 // Td variant that absorbs all remaining horizontal space — used for the Details column
 export const ExpandTd = styled(Td)`
   width: 100%;
+  min-width: 250px;
+  max-width: 0;
+  word-break: break-word;
 `;
 
 // Table variant with min-width for horizontal-scroll tables (audit log)

@@ -268,7 +268,7 @@ export const MessageItem = React.memo(({
       resetSwipePosition(true);
     }
 
-    if (!isMobileView || isSelectModeActive || isDeleted || !messageRowRef.current) {
+    if (!isMobileView || isSelectModeActive || !messageRowRef.current) {
       return;
     }
 
@@ -460,7 +460,7 @@ export const MessageItem = React.memo(({
         $isActiveDeleteMenu={activeDeleteMenu === msg.id}
         $isGrouped={!showUsername}
         onDoubleClick={(e) => {
-          if (!isMobileView && !isSelectModeActive && !isDeleted) {
+          if (!isMobileView && !isSelectModeActive) {
             // Only quote when double-clicking *outside* the message bubble
             // (i.e. the empty space beside the bubble). If the double-click
             // target is inside the bubble, ignore it so normal text selection
@@ -540,7 +540,9 @@ export const MessageItem = React.memo(({
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <p>{msg.replyingTo.username}</p>
                   <span style={msg.replyingTo.isDeleted ? { fontStyle: 'italic', opacity: 0.7 } : undefined}>
-                    {msg.replyingTo.isDeleted ? 'This message has been deleted.' : msg.replyingTo.text}
+                    {msg.replyingTo.isDeleted 
+                      ? (msg.replyingTo.deletedBy === 'admin' ? 'This message has been deleted by an admin.' : (msg.replyingTo.deletedBy === currentUserId ? 'You deleted this message.' : 'This message has been deleted.'))
+                      : msg.replyingTo.text}
                   </span>
                 </div>
                 {!msg.replyingTo.isDeleted && msg.replyingTo.url && (msg.replyingTo.type === 'image' || msg.replyingTo.type === 'video') && (
@@ -580,7 +582,7 @@ export const MessageItem = React.memo(({
             )}
             {isDeleted ? (
               <>
-                <MessageText style={{ fontStyle: 'italic', color: sender === 'me' ? '#bfdbfe' : '#a0aec0', userSelect: 'none', WebkitUserSelect: 'none', cursor: 'default' }}>
+                <MessageText style={{ fontStyle: 'italic', color: sender === 'me' ? '#bfdbfe' : '#a0aec0' }}>
                   {msg.deletedBy === 'admin' ? 'This message has been deleted by an admin.' : (msg.deletedBy === currentUserId ? 'You deleted this message.' : 'This message has been deleted.')}
                 </MessageText>
                 {!isMobileView && (
@@ -727,10 +729,16 @@ export const MessageItem = React.memo(({
         >
           <DeleteMenu>
             {msg.isDeleted ? (
-              <DeleteMenuItem onClick={() => { handleToggleSelectMessage(msg.id); setActiveDeleteMenu(null); }}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
-                Delete
-              </DeleteMenuItem>
+              <>
+                <DeleteMenuItem onClick={() => { handleSetReply(msg); setActiveDeleteMenu(null); }}>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>
+                  Reply
+                </DeleteMenuItem>
+                <DeleteMenuItem onClick={() => { handleToggleSelectMessage(msg.id); setActiveDeleteMenu(null); }}>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+                  Delete
+                </DeleteMenuItem>
+              </>
             ) : (
               <>
                 <DeleteMenuItem onClick={() => { handleSetReply(msg); setActiveDeleteMenu(null); }}>
