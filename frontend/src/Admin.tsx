@@ -1173,9 +1173,8 @@ const Admin = () => {
                       <StickyTh>User</StickyTh>
                       <StickyTh>Message ID</StickyTh>
                       <StickyTh style={{ textAlign: 'center' }}>Status</StickyTh>
-                      <StickyTh>Details</StickyTh>
+                      <StickyTh style={{ width: '100%' }}>Details</StickyTh>
                       <StickyTh>Actions</StickyTh>
-                      <StickyTh style={{ width: '100%' }}></StickyTh>
                     </tr>
                   </thead>
                   <tbody>
@@ -1224,7 +1223,7 @@ const Admin = () => {
                               </div>
                             )}
                           </Td>
-                          <Td>{renderMessageDetails(log)}</Td>
+                          <ExpandTd>{renderMessageDetails(log)}</ExpandTd>
                           <NoWrapTd>
                             {log.type === 'create' && (log.messageId || log.message?.id || log.message?._id || log._id) && (
                               pinnedMessages.some(p => p.id === (log.messageId || log.message?.id || log.message?._id || log._id)) ? (
@@ -1234,7 +1233,6 @@ const Admin = () => {
                               )
                             )}
                           </NoWrapTd>
-                          <ExpandTd></ExpandTd>
                         </tr>
                       )
                     })}
