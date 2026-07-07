@@ -580,6 +580,7 @@ export const Username = styled.div<{ $sender: 'me' | 'other' }>`
   padding: 0.2rem 0.5rem;
   border-radius: 10px;
   margin-bottom: 4px;
+  margin-right: ${props => props.$sender === 'me' ? '8px' : '0'};
   display: inline-block;
   background-color: ${props => props.$sender === 'me' ? '#DBEAFE' : '#F1F5F9'};
   color: ${props => props.$sender === 'me' ? '#1E40AF' : '#475569'};

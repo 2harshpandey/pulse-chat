@@ -1128,7 +1128,7 @@ const Admin = () => {
                     cursor: selectedMessages.size === 0 ? 'not-allowed' : 'pointer'
                   }}
                 >
-                  Delete Messages {selectedMessages.size > 0 ? `(${selectedMessages.size})` : ''}
+                  Delete Message(s) {selectedMessages.size > 0 ? `(${selectedMessages.size})` : ''}
                 </DangerButton>
                 {roomId !== 'me' && roomId !== 'global' && (
                   <ClearHistoryButton onClick={handleDeleteRoom} style={{ background: '#7f1d1d', color: '#fca5a5', border: '1px solid #991b1b' }}>
