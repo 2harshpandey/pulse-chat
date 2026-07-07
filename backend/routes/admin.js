@@ -380,6 +380,131 @@ module.exports = (wss, broadcasts) => {
       res.status(500).json({ error: 'Failed to fetch blocked users.' });
     }
   });
+  // --- Bulk Message Actions ---
+  router.post('/api/admin/messages/bulk-action', adminLimiter, adminAuth, async (req, res) => {
+    const roomId = req.roomId;
+    const { messageIds, action, vanish } = req.body;
+    
+    if (!Array.isArray(messageIds) || messageIds.length === 0) {
+      return res.status(400).json({ error: 'No message IDs provided.' });
+    }
+    
+    if (!['hide', 'delete'].includes(action)) {
+      return res.status(400).json({ error: 'Invalid action.' });
+    }
+    
+    if (vanish && (!req.isSuperAdmin && roomId !== 'me')) {
+      return res.status(403).json({ error: 'Forbidden: Vanish requires Super Admin privileges' });
+    }
+
+    try {
+      if (action === 'hide') {
+        const updatePayload = vanish 
+          ? { $set: { vanished: true, isDeleted: true, deletedBy: 'admin' } }
+          : { $set: { isDeleted: true, deletedBy: 'admin' } };
+
+        await Message.updateMany({ roomId, id: { $in: messageIds } }, updatePayload);
+        
+        const eventPayload = vanish
+          ? { $set: { 'message.vanished': true, 'message.isDeleted': true, 'message.deletedBy': 'admin' } }
+          : { $set: { 'message.isDeleted': true, 'message.deletedBy': 'admin' } };
+
+        await MessageEvent.updateMany({ roomId, 'message.id': { $in: messageIds } }, eventPayload);
+        
+        if (vanish) {
+          broadcast(roomId, { type: 'bulk_delete', messageIds });
+          await AuditLog.create({ roomId, type: 'messages_deleted_disappear', details: { count: messageIds.length, action: 'hide' } });
+          broadcastToAdmins(roomId, 'activity', `${messageIds.length} message(s) vanished from frontend by super admin (retained in DB).`);
+        } else {
+          const updatedMessages = await Message.find({ roomId, id: { $in: messageIds } }).lean();
+          broadcast(roomId, { type: 'bulk_update', messages: updatedMessages });
+          await AuditLog.create({ roomId, type: 'messages_hidden', details: { count: messageIds.length } });
+          broadcastToAdmins(roomId, 'activity', `${messageIds.length} message(s) hidden from frontend by admin.`);
+        }
+        
+        const updatedEvents = await MessageEvent.find({ roomId, 'message.id': { $in: messageIds } }).lean();
+        broadcastToAdmins(roomId, 'bulk_history_update', { events: updatedEvents });
+        
+      } else if (action === 'delete') {
+        const standaloneEvents = await MessageEvent.find({ roomId, _id: { $in: messageIds } }, '_id').lean();
+        const standaloneIds = standaloneEvents.map(e => e._id.toString());
+        
+        if (standaloneIds.length > 0) {
+          await MessageEvent.deleteMany({ roomId, _id: { $in: standaloneIds } });
+          broadcastToAdmins(roomId, 'bulk_history_delete', { messageIds: standaloneIds });
+        }
+
+        if (vanish) {
+          await Message.deleteMany({ roomId, id: { $in: messageIds } });
+          await MessageEvent.updateMany(
+            { roomId, 'message.id': { $in: messageIds } },
+            { 
+              $set: { 
+                'message.isDeleted': true, 
+                'message.deletedBy': 'admin',
+                'message.vanished': true,
+                'message.text': '[Permanently Scrubbed & Vanished]',
+                'message.url': null,
+                'message.originalName': null,
+                'message.size': null,
+                'message.type': 'text'
+              } 
+            }
+          );
+          
+          broadcast(roomId, { type: 'bulk_delete', messageIds });
+          await AuditLog.create({ roomId, type: 'messages_deleted_disappear', details: { count: messageIds.length, action: 'delete' } });
+          broadcastToAdmins(roomId, 'activity', `${messageIds.length} message(s) permanently deleted (scrubbed and vanished) by super admin.`);
+          
+          const updatedEvents = await MessageEvent.find({ roomId, 'message.id': { $in: messageIds } }).lean();
+          broadcastToAdmins(roomId, 'bulk_history_update', { events: updatedEvents });
+        } else {
+          await Message.updateMany(
+            { roomId, id: { $in: messageIds } },
+            { 
+              $set: { 
+                isDeleted: true, 
+                deletedBy: 'admin', 
+                text: 'This message has been deleted by an admin.',
+                url: null,
+                originalName: null,
+                size: null,
+                type: 'text'
+              } 
+            }
+          );
+          
+          await MessageEvent.updateMany(
+            { roomId, 'message.id': { $in: messageIds } },
+            { 
+              $set: { 
+                'message.isDeleted': true, 
+                'message.deletedBy': 'admin',
+                'message.text': 'This message has been deleted by an admin.',
+                'message.url': null,
+                'message.originalName': null,
+                'message.size': null,
+                'message.type': 'text'
+              } 
+            }
+          );
+          
+          const updatedMessages = await Message.find({ roomId, id: { $in: messageIds } }).lean();
+          broadcast(roomId, { type: 'bulk_update', messages: updatedMessages });
+          await AuditLog.create({ roomId, type: 'messages_deleted_bubble', details: { count: messageIds.length } });
+          broadcastToAdmins(roomId, 'activity', `${messageIds.length} message(s) scrubbed from database (bubble preserved) by admin.`);
+          
+          const updatedEvents = await MessageEvent.find({ roomId, 'message.id': { $in: messageIds } }).lean();
+          broadcastToAdmins(roomId, 'bulk_history_update', { events: updatedEvents });
+        }
+      }
+
+      res.json({ success: true, message: `Successfully applied action to ${messageIds.length} message(s).` });
+    } catch (error) {
+      logger.error('Bulk action error:', error);
+      res.status(500).json({ error: 'Failed to perform bulk action.' });
+    }
+  });
 
   // --- Login Lockdown ---
   router.post('/api/admin/login-lockdown', adminLimiter, adminAuth, async (req, res) => {

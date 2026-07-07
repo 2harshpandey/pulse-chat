@@ -581,7 +581,7 @@ export const MessageItem = React.memo(({
             {isDeleted ? (
               <>
                 <MessageText style={{ fontStyle: 'italic', color: sender === 'me' ? '#bfdbfe' : '#a0aec0', userSelect: 'none', WebkitUserSelect: 'none', cursor: 'default' }}>
-                  {msg.deletedBy === currentUserId ? 'You deleted this message.' : 'This message has been deleted.'}
+                  {msg.deletedBy === 'admin' ? 'This message has been deleted by an admin.' : (msg.deletedBy === currentUserId ? 'You deleted this message.' : 'This message has been deleted.')}
                 </MessageText>
                 {!isMobileView && (
                   <MessageActions>

@@ -20,6 +20,7 @@ const messageSchema = new mongoose.Schema({
   size: { type: Number },
   isDeleted: { type: Boolean, default: false },
   deletedBy: { type: String, default: null },
+  vanished: { type: Boolean, default: false },
   edited: { type: Boolean, default: false },
   replyingTo: {
     type: Object,

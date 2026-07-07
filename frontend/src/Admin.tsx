@@ -5,7 +5,7 @@ import {
   AdminContainer, Title, LoginFormContainer, LoginBox, AdminOrb,
   AdminLoginBrand, AdminBrandLogo, AdminBrandWordmark, AdminHeartbeatSvg,
   AdminBrandSubtitle, AdminInputGroup, AdminInputIcon, AdminStyledInput,
-  AdminEyeBtn, AdminSubmitBtn, AdminThemeToggle, AdminSecuredLine,
+  AdminEyeBtn, AdminSubmitBtn, AdminThemeToggle, AdminFormHomeButton, AdminSecuredLine,
   PanelThemeToggle, HeaderRow, Input, SelectWrapper, Select,
   FilterContainer, FilterToggleButton, MessageFilterCollapse,
   Button, ErrorMessage, TabContainer, TabButton, TabContent,
@@ -51,6 +51,10 @@ const Admin = () => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [historyLogs, setHistoryLogs] = useState<any[]>([]);
   const [pinnedMessages, setPinnedMessages] = useState<any[]>([]);
+  const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
+  const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
+  const [bulkDeleteAction, setBulkDeleteAction] = useState<'hide' | 'delete'>('hide');
+  const [bulkDeleteVanish, setBulkDeleteVanish] = useState(false);
   const [serverLogs, setServerLogs] = useState<string[]>([]);
   const [globalRooms, setGlobalRooms] = useState<any[]>([]);
   const [isRoomsLoading, setIsRoomsLoading] = useState(false);
@@ -247,6 +251,22 @@ const Admin = () => {
         case 'chat_hidden_for_everyone':
           setActivityLogs(prev => [`[${new Date().toLocaleTimeString()}] All existing chats were hidden from frontend for everyone.`, ...prev]);
           break;
+        case 'bulk_history_update':
+          setHistoryLogs(prev => {
+            const updated = [...prev];
+            message.data.events.forEach((ev: any) => {
+              const idx = updated.findIndex(l => (l._id === ev._id || l.messageId === (ev.message?.id || ev.messageId)));
+              if (idx !== -1) updated[idx] = ev;
+            });
+            return updated;
+          });
+          break;
+        case 'bulk_history_delete':
+          setHistoryLogs(prev => prev.filter(l => {
+            const id = l.messageId || l.message?.id || l.message?._id || l._id;
+            return !message.data.messageIds.includes(id);
+          }));
+          break;
         case 'pinned_messages_update':
           setPinnedMessages(message.data);
           break;
@@ -363,14 +383,14 @@ const Admin = () => {
       setPassword(authenticatedPassword);
       setUsers(usersData);
       setIsAuthenticated(true);
-      
+
       // Update URL if the user changed the room ID manually
       if (urlRoomId !== roomId && !(urlRoomId === undefined && roomId === 'me')) {
         navigate(`/admin/${roomId}`, { replace: true, state: { autoLoginPassword: authenticatedPassword } });
       }
 
       const headers = { 'x-admin-password': authenticatedPassword, 'x-room-id': roomId };
-      
+
       // Fetch rooms independently for blazing fast tab load
       if (roomId === 'me' || roomId === 'global') {
         setIsRoomsLoading(true);
@@ -379,7 +399,7 @@ const Admin = () => {
           .then(data => {
             if (Array.isArray(data)) setGlobalRooms(data);
           })
-          .catch(() => {})
+          .catch(() => { })
           .finally(() => setIsRoomsLoading(false));
       }
 
@@ -392,7 +412,7 @@ const Admin = () => {
             setHistoryLogs(data.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()));
           }
         })
-        .catch(() => {})
+        .catch(() => { })
         .finally(() => setIsHistoryLoading(false));
 
       // Fetch massive server logs independently so it doesn't block other tabs
@@ -403,7 +423,7 @@ const Admin = () => {
           .then(text => {
             if (text) setServerLogs(text.split('\n').reverse());
           })
-          .catch(() => {})
+          .catch(() => { })
           .finally(() => setIsServerLogsLoading(false));
       }
 
@@ -568,7 +588,7 @@ const Admin = () => {
         console.error('Failed to revoke temp link:', errText);
         alert('Failed to revoke link: ' + errText);
       }
-    } catch (err: any) { 
+    } catch (err: any) {
       console.error('Failed to revoke temp link', err);
       alert('Failed to revoke link: ' + err.message);
     }
@@ -685,19 +705,19 @@ const Admin = () => {
     setRoomSettingsLoading(true);
     setRoomSettingsError('');
     setRoomSettingsSuccess('');
-    
+
     if (roomSettingsNewPassword.length < 6) {
       setRoomSettingsError('New password must be at least 6 characters.');
       setRoomSettingsLoading(false);
       return;
     }
-    
+
     if (roomSettingsCurrentPassword && roomSettingsNewPassword === roomSettingsCurrentPassword) {
       setRoomSettingsError('New password cannot be the same as the current password.');
       setRoomSettingsLoading(false);
       return;
     }
-    
+
     if (roomSettingsNewPassword !== roomSettingsConfirmPassword) {
       setRoomSettingsError('New passwords do not match.');
       setRoomSettingsLoading(false);
@@ -708,9 +728,9 @@ const Admin = () => {
       const res = await fetch(`${apiUrl}/api/rooms/admin/joinPassword`, {
         method: 'PUT',
         headers: apiHeaders(),
-        body: JSON.stringify({ 
-          currentPassword: roomSettingsCurrentPassword, 
-          newPassword: roomSettingsNewPassword 
+        body: JSON.stringify({
+          currentPassword: roomSettingsCurrentPassword,
+          newPassword: roomSettingsNewPassword
         }),
       });
       const data = await res.json();
@@ -811,7 +831,7 @@ const Admin = () => {
     };
     switch (log.type) {
       case 'create': return <>Content: {formatMedia(log.message)}</>;
-      case 'edit': return <>Old: "{log.oldText}" â†’ New: "{log.newText}"</>;
+      case 'edit': return <>Old: "{log.oldText}" → New: "{log.newText}"</>;
       case 'delete_everyone': return <>Deleted: {formatMedia(log.deletedContent)}</>;
       case 'upload': return `File: '${log.file.originalname}' (${(log.file.size / 1024).toFixed(2)} KB)`;
       default: return JSON.stringify(log);
@@ -841,7 +861,9 @@ const Admin = () => {
     return enrichedHistoryLogs.filter(log => {
       const messageIdMatch = filterMessageId ? (log.messageId || log.message?.id)?.toLowerCase().includes(filterMessageId.toLowerCase()) : true;
       const userMatch = filterUser ? (log.username || '').toLowerCase().includes(filterUser.toLowerCase()) : true;
-      const eventTypeMatch = filterEventType === 'All' ? true : log.type === filterEventType.toLowerCase().replace(' (everyone)', '_everyone');
+      const eventTypeMatch = filterEventType === 'All' ? true 
+        : filterEventType === 'Deleted by admin' ? (log.message?.deletedBy === 'admin' || log.message?.vanished === true)
+        : log.type === filterEventType.toLowerCase().replace(' (everyone)', '_everyone');
       const contentMatch = !filterContent ? true : (() => {
         const lc = filterContent.toLowerCase();
         if (log.type === 'create' && log.message?.text) return log.message.text.toLowerCase().includes(lc);
@@ -853,6 +875,55 @@ const Admin = () => {
       return messageIdMatch && userMatch && eventTypeMatch && contentMatch;
     });
   }, [enrichedHistoryLogs, filterMessageId, filterUser, filterEventType, filterContent]);
+
+  const extractMessageId = (log: any) => log.messageId || log.message?.id || log.message?._id || log._id;
+
+  const validSelectionLogs = useMemo(() => {
+    return filteredHistoryLogs.filter(log => ['create', 'upload'].includes(log.type) && extractMessageId(log));
+  }, [filteredHistoryLogs]);
+
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      const allIds = new Set(validSelectionLogs.map(extractMessageId));
+      setSelectedMessages(allIds);
+    } else {
+      setSelectedMessages(new Set());
+    }
+  };
+
+  const handleSelectMessage = (id: string, checked: boolean) => {
+    setSelectedMessages(prev => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const handleBulkActionSubmit = async () => {
+    if (selectedMessages.size === 0) return;
+    try {
+      const res = await fetch(`${import.meta.env.REACT_APP_API_URL || 'http://localhost:8080'}/api/admin/messages/bulk-action`, {
+        method: 'POST',
+        headers: apiHeaders(),
+        body: JSON.stringify({
+          messageIds: Array.from(selectedMessages),
+          action: bulkDeleteAction,
+          vanish: bulkDeleteVanish
+        })
+      });
+      if (res.ok) {
+        setSelectedMessages(new Set());
+        setShowBulkDeleteModal(false);
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to perform bulk action.');
+      }
+    } catch (err) {
+      console.error('Bulk action error:', err);
+      alert('An error occurred while performing the bulk action.');
+    }
+  };
 
   const sortedReports = useMemo(() => {
     return [...userReports].sort((a, b) => {
@@ -882,18 +953,30 @@ const Admin = () => {
         <AdminOrb $color="rgba(59,130,246,0.25)" $size={400} $top="60%" $left="60%" $anim={float2} />
         <AdminOrb $color="rgba(236,72,153,0.18)" $size={350} $top="30%" $left="70%" $anim={float3} />
         <LoginBox>
-          <AdminThemeToggle
-            onClick={toggleTheme}
-            title={isDark ? 'Light mode' : 'Dark mode'}
-            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-          >
-            {isDark ? (
-              <svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-            ) : (
-              <svg viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-            )}
-          </AdminThemeToggle>
-          <AdminLoginBrand>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', width: '100%' }}>
+            <AdminFormHomeButton
+              onClick={() => navigate('/')}
+              title="Back to Home"
+              aria-label="Back to Home"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                <polyline points="9 22 9 12 15 12 15 22"></polyline>
+              </svg>
+            </AdminFormHomeButton>
+            <AdminThemeToggle
+              onClick={toggleTheme}
+              title={isDark ? 'Light mode' : 'Dark mode'}
+              aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {isDark ? (
+                <svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" /></svg>
+              ) : (
+                <svg viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>
+              )}
+            </AdminThemeToggle>
+          </div>
+          <AdminLoginBrand style={{ marginTop: 0 }}>
             <AdminBrandLogo src="/pulse_logo.webp" alt="Pulse Admin" />
             <AdminBrandWordmark><span>Pulse</span> Chat</AdminBrandWordmark>
             <AdminHeartbeatSvg viewBox="0 0 120 30" width="120" height="30">
@@ -901,47 +984,47 @@ const Admin = () => {
             </AdminHeartbeatSvg>
             <AdminBrandSubtitle>{!urlRoomId ? "Main Admin Console" : "Admin Control Panel"}</AdminBrandSubtitle>
           </AdminLoginBrand>
-            {!!urlRoomId && (
-              <AdminInputGroup $focused={false} style={{ marginBottom: '1rem' }}>
-                <AdminInputIcon $focused={false}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-                </AdminInputIcon>
-                <AdminStyledInput
-                  id="admin-room-id"
-                  type="text"
-                  placeholder="Enter Room ID"
-                  value={roomId}
-                  onChange={(e) => {
-                    setRoomId(e.target.value);
-                    if (error) setError('');
-                  }}
-                  onKeyDown={handleKeyDown}
-                  autoFocus={!window.matchMedia('(pointer: coarse)').matches}
-                />
-              </AdminInputGroup>
-            )}
-
-            <AdminInputGroup $focused={passwordFocused}>
-              <AdminInputIcon $focused={passwordFocused}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          {!!urlRoomId && (
+            <AdminInputGroup $focused={false} style={{ marginBottom: '1rem' }}>
+              <AdminInputIcon $focused={false}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
               </AdminInputIcon>
               <AdminStyledInput
-                ref={adminPasswordInputRef}
-                id="admin-password"
-                name="admin-password"
-                type={isPasswordVisible ? 'text' : 'password'}
-                placeholder="Enter admin password"
-                autoComplete="current-password"
-                autoFocus={!urlRoomId && !window.matchMedia('(pointer: coarse)').matches}
-                value={password}
+                id="admin-room-id"
+                type="text"
+                placeholder="Enter Room ID"
+                value={roomId}
                 onChange={(e) => {
-                  setPassword(e.target.value);
+                  setRoomId(e.target.value);
                   if (error) setError('');
                 }}
                 onKeyDown={handleKeyDown}
-                onFocus={() => setPasswordFocused(true)}
-                onBlur={() => setPasswordFocused(false)}
+                autoFocus={!window.matchMedia('(pointer: coarse)').matches}
               />
+            </AdminInputGroup>
+          )}
+
+          <AdminInputGroup $focused={passwordFocused}>
+            <AdminInputIcon $focused={passwordFocused}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+            </AdminInputIcon>
+            <AdminStyledInput
+              ref={adminPasswordInputRef}
+              id="admin-password"
+              name="admin-password"
+              type={isPasswordVisible ? 'text' : 'password'}
+              placeholder="Enter admin password"
+              autoComplete="current-password"
+              autoFocus={!urlRoomId && !window.matchMedia('(pointer: coarse)').matches}
+              value={password}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (error) setError('');
+              }}
+              onKeyDown={handleKeyDown}
+              onFocus={() => setPasswordFocused(true)}
+              onBlur={() => setPasswordFocused(false)}
+            />
             <AdminEyeBtn
               type="button"
               onMouseDown={(e) => e.preventDefault()}
@@ -956,9 +1039,9 @@ const Admin = () => {
               title={isPasswordVisible ? 'Hide password' : 'Show password'}
             >
               {isPasswordVisible ? (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" /><line x1="1" y1="1" x2="23" y2="23" /></svg>
               ) : (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
               )}
             </AdminEyeBtn>
           </AdminInputGroup>
@@ -967,7 +1050,7 @@ const Admin = () => {
           </AdminSubmitBtn>
           {error && <ErrorMessage>{error}</ErrorMessage>}
           <AdminSecuredLine>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
             Protected admin access
           </AdminSecuredLine>
         </LoginBox>
@@ -995,9 +1078,9 @@ const Admin = () => {
             aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
           >
             {isDark ? (
-              <svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5" /><line x1="12" y1="1" x2="12" y2="3" /><line x1="12" y1="21" x2="12" y2="23" /><line x1="4.22" y1="4.22" x2="5.64" y2="5.64" /><line x1="18.36" y1="18.36" x2="19.78" y2="19.78" /><line x1="1" y1="12" x2="3" y2="12" /><line x1="21" y1="12" x2="23" y2="12" /><line x1="4.22" y1="19.78" x2="5.64" y2="18.36" /><line x1="18.36" y1="5.64" x2="19.78" y2="4.22" /></svg>
             ) : (
-              <svg viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>
             )}
           </PanelThemeToggle>
           <LogoutButton onClick={handleLogout}>Logout</LogoutButton>
@@ -1029,8 +1112,16 @@ const Admin = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.5rem' }}>
               <h2 style={{ margin: 0 }}>Message Log</h2>
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                <HideFrontendButton onClick={handleHideAllFromFrontend}>Hide Existing Chats (Frontend)</HideFrontendButton>
-                <ClearHistoryButton onClick={handlePermanentClear}>Clear Chat History</ClearHistoryButton>
+                <DangerButton
+                  onClick={() => setShowBulkDeleteModal(true)}
+                  disabled={selectedMessages.size === 0}
+                  style={{
+                    opacity: selectedMessages.size === 0 ? 0.5 : 1,
+                    cursor: selectedMessages.size === 0 ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  Delete Messages {selectedMessages.size > 0 ? `(${selectedMessages.size})` : ''}
+                </DangerButton>
                 {roomId !== 'me' && roomId !== 'global' && (
                   <ClearHistoryButton onClick={handleDeleteRoom} style={{ background: '#7f1d1d', color: '#fca5a5', border: '1px solid #991b1b' }}>
                     Delete Chat Room
@@ -1058,6 +1149,7 @@ const Admin = () => {
                     <option value="Edit">Edit</option>
                     <option value="Upload">Upload</option>
                     <option value="Delete (Everyone)">Delete (Everyone)</option>
+                    <option value="Deleted by admin">Deleted by admin</option>
                   </Select>
                 </SelectWrapper>
                 <Input type="text" placeholder="Filter by Content" value={filterContent} onChange={(e) => setFilterContent(e.target.value)} />
@@ -1068,37 +1160,84 @@ const Admin = () => {
                 <MessageLogTable>
                   <thead>
                     <tr>
+                      <StickyTh style={{ width: '40px', textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedMessages.size > 0 && selectedMessages.size === validSelectionLogs.length}
+                          onChange={handleSelectAll}
+                        />
+                      </StickyTh>
                       <StickyTh>Date</StickyTh>
                       <StickyTh>Time</StickyTh>
                       <StickyTh>Event</StickyTh>
                       <StickyTh>User</StickyTh>
                       <StickyTh>Message ID</StickyTh>
+                      <StickyTh style={{ textAlign: 'center' }}>Status</StickyTh>
                       <StickyTh>Details</StickyTh>
                       <StickyTh>Actions</StickyTh>
                       <StickyTh style={{ width: '100%' }}></StickyTh>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredHistoryLogs.slice(0, displayedLogsCount).map((log, index) => (
-                      <tr key={index}>
-                        <NoWrapTd>{formatDate(log.timestamp)}</NoWrapTd>
-                        <NoWrapTd>{formatTime(log.timestamp)}</NoWrapTd>
-                        <NoWrapTd>{renderEventType(log.type)}</NoWrapTd>
-                        <Td>{log.username} ({log.userId})</Td>
-                        <NoWrapTd style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#64748b' }}>{log.messageId || log.message?.id || log.message?._id || log._id || 'N/A'}</NoWrapTd>
-                        <Td>{renderMessageDetails(log)}</Td>
-                        <NoWrapTd>
-                          {log.type === 'create' && (log.messageId || log.message?.id || log.message?._id || log._id) && (
-                            pinnedMessages.some(p => p.id === (log.messageId || log.message?.id || log.message?._id || log._id)) ? (
-                              <SmallDangerButton onClick={() => handleUnpin(log.messageId || log.message?.id || log.message?._id || log._id)}>Unpin</SmallDangerButton>
+                    {filteredHistoryLogs.slice(0, displayedLogsCount).map((log, index) => {
+                      const msgId = extractMessageId(log);
+                      const isSelectable = ['create', 'upload'].includes(log.type) && msgId;
+                      return (
+                        <tr key={index}>
+                          <NoWrapTd style={{ textAlign: 'center' }}>
+                            {isSelectable && (
+                              <input
+                                type="checkbox"
+                                checked={selectedMessages.has(msgId)}
+                                onChange={(e) => handleSelectMessage(msgId, e.target.checked)}
+                              />
+                            )}
+                          </NoWrapTd>
+                          <NoWrapTd>{formatDate(log.timestamp)}</NoWrapTd>
+                          <NoWrapTd>{formatTime(log.timestamp)}</NoWrapTd>
+                          <NoWrapTd>{renderEventType(log.type)}</NoWrapTd>
+                          <Td>{log.username} ({log.userId})</Td>
+                          <NoWrapTd style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#64748b' }}>{log.messageId || log.message?.id || log.message?._id || log._id || 'N/A'}</NoWrapTd>
+                          <Td style={{ textAlign: 'center' }}>
+                            {log.message?.deletedBy === 'admin' || log.message?.vanished ? (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+                                <Badge $color="red" style={{ whiteSpace: 'nowrap' }}>
+                                  <StatusDot $color="red" /> Deleted by Admin
+                                </Badge>
+                                {log.message?.vanished ? (
+                                  <Badge $color="gray" style={{ fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
+                                    <StatusDot $color="gray" /> Vanished (No Bubble)
+                                  </Badge>
+                                ) : (
+                                  <Badge $color="yellow" style={{ fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
+                                    <StatusDot $color="yellow" /> Bubble Showing
+                                  </Badge>
+                                )}
+                              </div>
+                            ) : log.type === 'delete_everyone' ? (
+                              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                                <Badge $color="yellow" style={{ whiteSpace: 'nowrap' }}>Deleted by User</Badge>
+                              </div>
                             ) : (
-                              <SmallSuccessButton onClick={() => handleInitiatePin(log.messageId || log.message?.id || log.message?._id || log._id)}>Pin</SmallSuccessButton>
-                            )
-                          )}
-                        </NoWrapTd>
-                        <ExpandTd></ExpandTd>
-                      </tr>
-                    ))}
+                              <div style={{ display: 'flex', justifyContent: 'center' }}>
+                                <Badge $color="green" style={{ whiteSpace: 'nowrap' }}>Active</Badge>
+                              </div>
+                            )}
+                          </Td>
+                          <Td>{renderMessageDetails(log)}</Td>
+                          <NoWrapTd>
+                            {log.type === 'create' && (log.messageId || log.message?.id || log.message?._id || log._id) && (
+                              pinnedMessages.some(p => p.id === (log.messageId || log.message?.id || log.message?._id || log._id)) ? (
+                                <SmallDangerButton onClick={() => handleUnpin(log.messageId || log.message?.id || log.message?._id || log._id)}>Unpin</SmallDangerButton>
+                              ) : (
+                                <SmallSuccessButton onClick={() => handleInitiatePin(log.messageId || log.message?.id || log.message?._id || log._id)}>Pin</SmallSuccessButton>
+                              )
+                            )}
+                          </NoWrapTd>
+                          <ExpandTd></ExpandTd>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </MessageLogTable>
                 {displayedLogsCount < filteredHistoryLogs.length && (
@@ -1452,7 +1591,7 @@ const Admin = () => {
 
             {tempLinks.length === 0 ? (
               <EmptyState>
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="1.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
                 <span>No links created yet</span>
                 <span style={{ fontSize: '0.8rem' }}>Click "Generate New Link" to create one</span>
               </EmptyState>
@@ -1509,7 +1648,7 @@ const Admin = () => {
           <ScrollContainer>
             {/* Login Lockdown */}
             <SectionTitle>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4a5568" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4a5568" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
               Login Lockdown
             </SectionTitle>
             <Card $variant={lockdownStatus.isActive ? 'danger' : 'default'}>
@@ -1548,7 +1687,7 @@ const Admin = () => {
 
             {/* Blocked Users */}
             <SectionTitle style={{ marginTop: '2rem' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2"><circle cx="12" cy="12" r="10" /><line x1="4.93" y1="4.93" x2="19.07" y2="19.07" /></svg>
               Blocked Users ({blockedUsers.filter(u => u.isBlocked).length})
             </SectionTitle>
             {blockedUsers.filter(u => u.isBlocked).length === 0 ? (
@@ -1593,7 +1732,7 @@ const Admin = () => {
 
             {/* Audit Logs */}
             <SectionTitle style={{ marginTop: '2rem' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4a5568" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4a5568" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /></svg>
               Audit Logs
             </SectionTitle>
             {auditLogs.length === 0 ? (
@@ -1668,40 +1807,40 @@ const Admin = () => {
             ) : globalRooms.length === 0 ? (
               <EmptyState><span>No rooms created yet.</span></EmptyState>
             ) : (
-              <div style={{ overflowX: 'auto', background: 'var(--panel-bg)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '600px' }}>
-                  <thead style={{ background: 'var(--bg-color)', borderBottom: '2px solid var(--border-color)' }}>
+              <TableWrapper>
+                <WideTable>
+                  <thead>
                     <tr>
-                      <th style={{ padding: '1rem', fontWeight: 600 }}>Name</th>
-                      <th style={{ padding: '1rem', fontWeight: 600 }}>Room ID (Alias)</th>
-                      <th style={{ padding: '1rem', fontWeight: 600 }}>Status</th>
-                      <th style={{ padding: '1rem', fontWeight: 600 }}>Created</th>
-                      <th style={{ padding: '1rem', fontWeight: 600, textAlign: 'right' }}>Actions</th>
+                      <StickyTh>Name</StickyTh>
+                      <StickyTh>Room ID (Alias)</StickyTh>
+                      <StickyTh>Status</StickyTh>
+                      <StickyTh>Created</StickyTh>
+                      <StickyTh style={{ textAlign: 'right' }}>Actions</StickyTh>
                     </tr>
                   </thead>
                   <tbody>
                     {globalRooms.map((room) => (
-                      <tr key={room._id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                        <td style={{ padding: '1rem' }}>
+                      <tr key={room._id}>
+                        <Td>
                           <strong style={{ display: 'block', fontSize: '1.05rem', color: 'var(--text-color)' }}>{room.name || 'Unnamed Room'}</strong>
-                        </td>
-                        <td style={{ padding: '1rem' }}>
+                        </Td>
+                        <Td>
                           <code style={{ background: 'var(--bg-color)', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.85rem' }}>
                             {room.alias || room.id}
                           </code>
-                        </td>
-                        <td style={{ padding: '1rem' }}>
+                        </Td>
+                        <Td>
                           {room.hasJoinPassword ? (
                             <Badge $color="purple"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12" style={{ marginRight: '4px' }}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>Private</Badge>
                           ) : (
                             <Badge $color="green">Public</Badge>
                           )}
-                        </td>
-                        <td style={{ padding: '1rem', color: '#64748b', fontSize: '0.9rem' }}>
+                        </Td>
+                        <Td style={{ color: '#64748b', fontSize: '0.9rem' }}>
                           {new Date(room.createdAt).toLocaleDateString()}
-                        </td>
-                        <td style={{ padding: '1rem', textAlign: 'right' }}>
-                          <Button 
+                        </Td>
+                        <Td style={{ textAlign: 'right' }}>
+                          <Button
                             onClick={() => {
                               // Impersonate Room Admin by navigating and passing the super admin password
                               navigate(`/admin/${room.id}`, { state: { autoLoginPassword: passwordRef.current, isImpersonating: true } });
@@ -1710,12 +1849,12 @@ const Admin = () => {
                           >
                             Manage Room
                           </Button>
-                        </td>
+                        </Td>
                       </tr>
                     ))}
                   </tbody>
-                </table>
-              </div>
+                </WideTable>
+              </TableWrapper>
             )}
           </ScrollContainer>
         )}
@@ -1734,10 +1873,10 @@ const Admin = () => {
                     <label style={{ margin: 0, fontWeight: 600 }}>Room Name</label>
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{roomSettingsName.length}/50</span>
                   </div>
-                  <Input 
-                    type="text" 
-                    value={roomSettingsName} 
-                    onChange={e => setRoomSettingsName(e.target.value)} 
+                  <Input
+                    type="text"
+                    value={roomSettingsName}
+                    onChange={e => setRoomSettingsName(e.target.value)}
                     placeholder="Enter room name"
                     maxLength={50}
                   />
@@ -1747,9 +1886,9 @@ const Admin = () => {
                     <label style={{ margin: 0, fontWeight: 600 }}>Room Description</label>
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{roomSettingsDesc.length}/150</span>
                   </div>
-                  <TextArea 
-                    value={roomSettingsDesc} 
-                    onChange={e => setRoomSettingsDesc(e.target.value)} 
+                  <TextArea
+                    value={roomSettingsDesc}
+                    onChange={e => setRoomSettingsDesc(e.target.value)}
                     placeholder="Enter a brief description"
                     maxLength={150}
                   />
@@ -1763,10 +1902,10 @@ const Admin = () => {
             <div style={{ marginBottom: '2rem', paddingTop: '2rem', borderTop: '1px solid var(--border-color)' }}>
               <h2>Room ID</h2>
               <p style={{ color: '#64748b', fontSize: '0.9rem', marginBottom: '1rem' }}>
-                Change the custom URL/ID of your room. 
+                Change the custom URL/ID of your room.
                 <strong style={{ color: '#ef4444' }}> Note: This can only be done once every 14 days.</strong>
               </p>
-              
+
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: '500px' }}>
                 {roomSettingsLastIdChange && (
                   <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', margin: '0 0 -0.5rem' }}>
@@ -1779,10 +1918,10 @@ const Admin = () => {
                     <label style={{ margin: 0, fontWeight: 600 }}>New Room ID</label>
                     <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{roomSettingsNewId.length}/30</span>
                   </div>
-                  <Input 
-                    type="text" 
-                    value={roomSettingsNewId} 
-                    onChange={e => setRoomSettingsNewId(e.target.value.replace(/[^a-zA-Z0-9._]/g, ''))} 
+                  <Input
+                    type="text"
+                    value={roomSettingsNewId}
+                    onChange={e => setRoomSettingsNewId(e.target.value.replace(/[^a-zA-Z0-9._]/g, ''))}
                     placeholder="e.g. my-cool-room"
                     maxLength={30}
                   />
@@ -1793,13 +1932,13 @@ const Admin = () => {
                 <Button style={{ maxWidth: '300px' }} onClick={handleSaveRoomId} disabled={roomSettingsLoading}>
                   {roomSettingsLoading ? 'Saving...' : 'Save Room ID'}
                 </Button>
-                
+
                 {(roomIdSuccess || roomIdError) && (
-                  <div style={{ 
-                    padding: '1rem', 
-                    borderRadius: '8px', 
-                    background: roomIdError ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)', 
-                    color: roomIdError ? '#ef4444' : '#22c55e', 
+                  <div style={{
+                    padding: '1rem',
+                    borderRadius: '8px',
+                    background: roomIdError ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)',
+                    color: roomIdError ? '#ef4444' : '#22c55e',
                     border: `1px solid ${roomIdError ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)'}`,
                     display: 'flex',
                     alignItems: 'center',
@@ -1844,7 +1983,7 @@ const Admin = () => {
                     <line x1="12" y1="8" x2="12.01" y2="8"></line>
                   </svg>
                   <div style={{ color: '#94a3b8', fontSize: '0.85rem', lineHeight: 1.5 }}>
-                    <span style={{ color: '#60a5fa', fontWeight: 600 }}>Note: </span> 
+                    <span style={{ color: '#60a5fa', fontWeight: 600 }}>Note: </span>
                     If there is no current password, leave the current password field blank. Adding a join password to a public chat room will automatically make it a private chat room.
                   </div>
                 </div>
@@ -1853,29 +1992,29 @@ const Admin = () => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: '300px' }}>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Current Join Password</label>
-                  <Input 
-                    type="password" 
-                    value={roomSettingsCurrentPassword} 
-                    onChange={e => setRoomSettingsCurrentPassword(e.target.value)} 
+                  <Input
+                    type="password"
+                    value={roomSettingsCurrentPassword}
+                    onChange={e => setRoomSettingsCurrentPassword(e.target.value)}
                     placeholder="Enter current join password"
                   />
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>New Join Password</label>
-                  <Input 
-                    type="password" 
-                    value={roomSettingsNewPassword} 
-                    onChange={e => setRoomSettingsNewPassword(e.target.value)} 
+                  <Input
+                    type="password"
+                    value={roomSettingsNewPassword}
+                    onChange={e => setRoomSettingsNewPassword(e.target.value)}
                     placeholder="Enter new join password"
                   />
                   <PasswordStrengthIndicator password={roomSettingsNewPassword} />
                 </div>
                 <div>
                   <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600 }}>Confirm New Password</label>
-                  <Input 
-                    type="password" 
-                    value={roomSettingsConfirmPassword} 
-                    onChange={e => setRoomSettingsConfirmPassword(e.target.value)} 
+                  <Input
+                    type="password"
+                    value={roomSettingsConfirmPassword}
+                    onChange={e => setRoomSettingsConfirmPassword(e.target.value)}
                     placeholder="Re-enter new join password"
                   />
                 </div>
@@ -1883,16 +2022,16 @@ const Admin = () => {
                   <Button onClick={handleChangeJoinPassword} disabled={roomSettingsLoading} style={{ flex: 1 }}>
                     {roomSettingsLoading ? 'Saving...' : 'Change Join Password'}
                   </Button>
-                  
+
                   {roomSettingsHasJoinPassword && (
-                    <button 
-                      onClick={handleRemoveJoinPassword} 
+                    <button
+                      onClick={handleRemoveJoinPassword}
                       disabled={roomSettingsLoading}
                       title="Remove password and make room public"
-                      style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'center', 
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
                         gap: '0.6rem',
                         padding: '0.4rem 1.25rem',
                         borderRadius: '8px',
@@ -1932,12 +2071,12 @@ const Admin = () => {
             </div>
 
             {(roomSettingsSuccess || roomSettingsError) && (
-              <div style={{ 
-                marginTop: '1.5rem', 
-                padding: '1rem', 
-                borderRadius: '8px', 
-                background: roomSettingsError ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)', 
-                color: roomSettingsError ? '#ef4444' : '#22c55e', 
+              <div style={{
+                marginTop: '1.5rem',
+                padding: '1rem',
+                borderRadius: '8px',
+                background: roomSettingsError ? 'rgba(239, 68, 68, 0.1)' : 'rgba(34, 197, 94, 0.1)',
+                color: roomSettingsError ? '#ef4444' : '#22c55e',
                 border: `1px solid ${roomSettingsError ? 'rgba(239, 68, 68, 0.2)' : 'rgba(34, 197, 94, 0.2)'}`,
                 display: 'flex',
                 alignItems: 'center',
@@ -2008,6 +2147,59 @@ const Admin = () => {
         </ModalOverlay>
       )}
 
+      {showBulkDeleteModal && (
+        <ModalOverlay>
+          <ModalContent>
+            <ModalHeader>
+              <h3 style={{ margin: 0 }}>Delete {selectedMessages.size} Message(s)</h3>
+            </ModalHeader>
+            <ModalBody>
+              <p style={{ marginBottom: '1rem', color: '#94a3b8' }}>
+                Choose how you want to handle the selected messages:
+              </p>
+              <RadioGroup>
+                <RadioLabel>
+                  <input type="radio" name="bulkDeleteAction" value="hide" checked={bulkDeleteAction === 'hide'} onChange={() => setBulkDeleteAction('hide')} />
+                  <div>
+                    <strong>Hide from frontend (Keep in DB)</strong>
+                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8' }}>Shows a deleted bubble to users by default. Original text remains in the database for admins to review.</p>
+                  </div>
+                </RadioLabel>
+                <RadioLabel>
+                  <input type="radio" name="bulkDeleteAction" value="delete" checked={bulkDeleteAction === 'delete'} onChange={() => setBulkDeleteAction('delete')} />
+                  <div>
+                    <strong>Delete from database</strong>
+                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#94a3b8' }}>Shows a deleted bubble to users by default. The original text and media are permanently scrubbed from the database to save space and ensure privacy.</p>
+                  </div>
+                </RadioLabel>
+              </RadioGroup>
+
+              {(roomId === 'me' || roomId === 'global') && (
+                <div style={{ marginTop: '1.5rem', padding: '1rem', background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.2)', borderRadius: '8px' }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer' }}>
+                    <input 
+                      type="checkbox" 
+                      checked={bulkDeleteVanish} 
+                      onChange={e => setBulkDeleteVanish(e.target.checked)} 
+                      style={{ marginTop: '0.2rem', width: '1.1rem', height: '1.1rem' }}
+                    />
+                    <div>
+                      <strong style={{ display: 'block', color: '#ef4444' }}>Vanish without a trace</strong>
+                      <span style={{ fontSize: '0.85rem', color: '#fca5a5' }}>
+                        Super Admin only. Do not show a deleted bubble on the frontend. The messages will completely disappear for all users.
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              )}
+            </ModalBody>
+            <ModalFooter>
+              <Button onClick={() => setShowBulkDeleteModal(false)}>Cancel</Button>
+              <DangerButton onClick={handleBulkActionSubmit}>Confirm Deletion</DangerButton>
+            </ModalFooter>
+          </ModalContent>
+        </ModalOverlay>
+      )}
     </AdminContainer>
   );
 };

@@ -120,8 +120,11 @@ const getVisibleMessagesQuery = (beforeTimestamp, frontendHiddenBefore) => {
     createdAt.$lt = beforeTimestamp;
   }
 
-  if (Object.keys(createdAt).length === 0) return {};
-  return { createdAt };
+  const query = { vanished: { $ne: true } };
+  if (Object.keys(createdAt).length > 0) {
+    query.createdAt = createdAt;
+  }
+  return query;
 };
 
 // Tenor API
@@ -825,6 +828,9 @@ module.exports.getVisibleMessagesQuery = (getFrontendHiddenBeforeFn) => (beforeT
     createdAt.$lt = beforeTimestamp;
   }
 
-  if (Object.keys(createdAt).length === 0) return {};
-  return { createdAt };
+  const query = { vanished: { $ne: true } };
+  if (Object.keys(createdAt).length > 0) {
+    query.createdAt = createdAt;
+  }
+  return query;
 };

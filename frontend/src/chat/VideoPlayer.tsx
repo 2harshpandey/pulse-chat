@@ -98,11 +98,12 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter, isUploading
       );
 
       setIsFullscreen(isThisVideoFullscreen);
-      if (isThisVideoFullscreen) {
-        onFullscreenEnter?.();
-      } else if (!fsElement) {
-        // On exit: blur to prevent focus-restoration scroll nudge
-        if (document.activeElement instanceof HTMLVideoElement) document.activeElement.blur();
+      if (!isThisVideoFullscreen && !fsElement) {
+        // On exit: blur any focused element within the player to prevent 
+        // focus-restoration from nudging the chat viewport.
+        if (document.activeElement && container && container.contains(document.activeElement)) {
+          (document.activeElement as HTMLElement).blur();
+        }
       }
     };
     document.addEventListener('fullscreenchange', handleFSChange);
@@ -145,6 +146,7 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter, isUploading
     const c = containerRef.current;
     if (!c) return;
     if (!document.fullscreenElement && !(document as any).webkitFullscreenElement) {
+      onFullscreenEnter?.();
       (c.requestFullscreen?.() || (c as any).webkitRequestFullscreen?.())?.catch(() => { });
     } else {
       (document.exitFullscreen?.() || (document as any).webkitExitFullscreen?.())?.catch(() => { });

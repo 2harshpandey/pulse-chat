@@ -23,6 +23,9 @@ const auditLogSchema = new mongoose.Schema({
       'temp_link_expired_attempt',
       'lockdown_enabled',
       'lockdown_disabled',
+      'messages_hidden',
+      'messages_deleted_bubble',
+      'messages_deleted_disappear',
     ],
   },
   details: {

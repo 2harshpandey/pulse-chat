@@ -324,24 +324,80 @@ export const AdminSubmitBtn = styled.button<{ $loading?: boolean }>`
 `;
 
 export const AdminThemeToggle = styled.button`
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  border: 1px solid var(--border-primary);
-  background: var(--bg-elevated);
+  border: 1px solid var(--border-secondary);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-  z-index: 2;
-  &:hover { transform: scale(1.15); border-color: var(--accent-blue); box-shadow: 0 0 16px rgba(59,130,246,0.2); }
+  flex-shrink: 0;
+  &:hover {
+    transform: scale(1.15);
+    background: var(--bg-hover);
+    color: var(--text-primary);
+    border-color: rgba(59, 130, 246, 0.5);
+    box-shadow: 0 10px 25px -5px rgba(59,130,246,0.4);
+  }
   &:active { transform: scale(0.9); }
-  svg { width: 18px; height: 18px; transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  svg { width: 18px; height: 18px; transition: transform 0.5s cubic-bezier(0.34,1.56,0.64,1); }
   &:hover svg { transform: rotate(30deg); }
+`;
+
+export const AdminFormHomeButton = styled.button`
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(30, 41, 59, 0.7);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  flex-shrink: 0;
+
+  &:hover {
+    transform: scale(1.08);
+    background: rgba(51, 65, 85, 0.9);
+    border-color: rgba(59, 130, 246, 0.4);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+  }
+
+  [data-theme='light'] & {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-secondary);
+    color: var(--text-secondary);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+
+    &:hover {
+      background: var(--bg-hover);
+      border-color: var(--text-muted);
+    }
+  }
+
+  svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  @media (max-width: 768px) {
+    width: 40px;
+    height: 40px;
+    
+    svg {
+      width: 18px;
+      height: 18px;
+    }
+  }
 `;
 
 export const AdminSecuredLine = styled.div`

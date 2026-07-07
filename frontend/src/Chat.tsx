@@ -44,7 +44,9 @@ const ChatSearchContainer = styled.div<{ $active: boolean; $isClosing?: boolean 
   padding: 0;
   width: ${p => p.$active ? '240px' : '40px'};
   height: 40px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow: hidden;
+  will-change: width;
 
   @media (max-width: 768px) {
     position: absolute;
@@ -64,8 +66,8 @@ const HeaderActionsGroup = styled.div`
 
   @media (max-width: 768px) {
     position: relative;
-    padding-right: 48px;
     height: 40px;
+    padding-right: 48px; /* Reserve space for absolute search button */
   }
 `;
 
@@ -73,11 +75,14 @@ const ChatSearchInput = styled.input<{ $active: boolean }>`
   background: transparent;
   border: none;
   color: #fff;
-  width: ${p => p.$active ? '100%' : '0'};
+  flex: 1;
+  width: 100%;
+  min-width: 0;
   opacity: ${p => p.$active ? 1 : 0};
-  transition: all 0.3s ease;
+  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   font-size: 0.9rem;
-  padding-left: ${p => p.$active ? '0.5rem' : '0'};
+  padding: 0 0 0 0.5rem;
+  pointer-events: ${p => p.$active ? 'auto' : 'none'};
   &:focus { outline: none; }
   &::placeholder { color: #94a3b8; }
 `;
@@ -94,7 +99,7 @@ const ChatSearchButton = styled.button`
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
   flex-shrink: 0;
   &:hover { 
     transform: scale(1.15); 
@@ -468,7 +473,9 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   const stableViewportHeightRef = useRef<number>(window.innerHeight);
   const stableViewportWidthRef = useRef<number>(window.innerWidth);
   const appliedViewportHeightRef = useRef<number>(0);
-  const notificationAudioRef = useRef<HTMLAudioElement | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const audioBufferRef = useRef<AudioBuffer | null>(null);
+  const audioCtxUnlockedRef = useRef(false);
   const lastNotificationSoundAtRef = useRef<number>(0);
   const fullscreenScrollSnapshotRef = useRef<{ messageId: string; scrollTop: number; bottomOffset: number } | null>(null);
   const isVideoFullscreenSessionRef = useRef(false);
@@ -519,7 +526,25 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      notificationAudioRef.current = new Audio(NOTIFICATION_BEEP);
+      // Initialise Web Audio API and decode the notification beep.
+      // AudioContext is far more reliable than an <Audio> element for background
+      // tab notifications because it does not suffer from the same autoplay
+      // restrictions once the context has been resumed on a user gesture.
+      try {
+        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        audioCtxRef.current = ctx;
+        // Decode base64 WAV → ArrayBuffer → AudioBuffer
+        const base64 = NOTIFICATION_BEEP.split(',')[1];
+        const binaryStr = atob(base64);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+        ctx.decodeAudioData(bytes.buffer).then(buf => {
+          audioBufferRef.current = buf;
+        }).catch(() => {/* ignore decode errors */});
+      } catch {
+        // Web Audio API not available — will fall back to silence.
+      }
+
       const handleOnline = () => setIsBrowserOnline(true);
       const handleOffline = () => setIsBrowserOnline(false);
       window.addEventListener('online', handleOnline);
@@ -534,23 +559,43 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   const shouldPlayNotificationSound = () => {
     if (typeof document === 'undefined') return false;
     if (!isSoundEnabledRef.current) return false;
-    if (document.hasFocus()) return false;
-    return true;
+    // Play if the page is hidden (different app / minimised) OR if the
+    // document is not focused (user is on a different tab in the same browser).
+    const isHidden = document.visibilityState === 'hidden';
+    const isBlurred = !document.hasFocus();
+    return isHidden || isBlurred;
   };
 
-  const playNotificationSound = useCallback(async (variant: 'join' | 'message') => {
+  const playNotificationSound = useCallback((_variant: 'join' | 'message') => {
     if (!shouldPlayNotificationSound()) return;
     const now = Date.now();
     if (now - lastNotificationSoundAtRef.current < 420) return;
     lastNotificationSoundAtRef.current = now;
 
-    if (notificationAudioRef.current) {
+    const ctx = audioCtxRef.current;
+    const buf = audioBufferRef.current;
+    if (!ctx || !buf) return;
+
+    const tryPlay = () => {
       try {
-        notificationAudioRef.current.currentTime = 0;
-        await notificationAudioRef.current.play();
-      } catch (err) {
-        // Ignored; browsers may block autoplay if no interaction occurred yet
+        const source = ctx.createBufferSource();
+        source.buffer = buf;
+        source.connect(ctx.destination);
+        source.start(0);
+      } catch {
+        // Ignore play errors
       }
+    };
+
+    if (ctx.state === 'suspended') {
+      // Context may still be suspended before the first user gesture.
+      // Attempt to resume and then play.
+      ctx.resume().then(() => {
+        audioCtxUnlockedRef.current = true;
+        tryPlay();
+      }).catch(() => {});
+    } else {
+      tryPlay();
     }
   }, [isSoundEnabled]);
 
@@ -595,19 +640,26 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   useEffect(() => {
     if (!userContext?.profile) return;
 
+    // Unlock the AudioContext on the first user interaction.
+    // Browsers require a user gesture before audio can play; calling resume()
+    // here permanently unlocks the context for all future background plays.
     const unlockAudio = () => {
-      if (notificationAudioRef.current) {
-        // Calling load() on a user interaction unlocks the audio element for background play
-        notificationAudioRef.current.load();
+      const ctx = audioCtxRef.current;
+      if (ctx && !audioCtxUnlockedRef.current) {
+        ctx.resume().then(() => {
+          audioCtxUnlockedRef.current = true;
+        }).catch(() => {});
       }
     };
 
-    window.addEventListener('pointerdown', unlockAudio, { once: true });
-    window.addEventListener('keydown', unlockAudio, { once: true });
+    window.addEventListener('pointerdown', unlockAudio);
+    window.addEventListener('keydown', unlockAudio);
+    window.addEventListener('touchstart', unlockAudio);
 
     return () => {
       window.removeEventListener('pointerdown', unlockAudio);
       window.removeEventListener('keydown', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
     };
   }, [userContext?.profile]);
 
@@ -990,10 +1042,13 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
 
   useEffect(() => {
     if (isSearchActive) {
+      // Delay focus to 300ms to allow the CSS expansion animation to finish completely.
+      // Focusing earlier on mobile triggers the OS keyboard, which forces a heavy 
+      // viewport resize and freezes the animation mid-way.
       setTimeout(() => {
         const input = document.getElementById('chat-search-input');
         if (input) input.focus();
-      }, 50);
+      }, 300);
     }
   }, [isSearchActive]);
 
@@ -1523,11 +1578,45 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
           if (normalizedUpdate.isDeleted) {
             setReplyingTo(prev => {
               if (prev && prev.id === normalizedUpdate.id) {
-                return null; // Clear the quote — can't reply to a deleted message
+                return null; // Clear the quote —  can't reply to a deleted message
               }
               return prev;
             });
           }
+        } else if (messageData.type === 'bulk_update') {
+          const updatedMessages = messageData.messages.map(normalizeMessage);
+          const updatedIds = new Set(updatedMessages.map((m: any) => m.id));
+          const updatedMap = new Map<string, Message>(updatedMessages.map((m: any) => [m.id, m]));
+          
+          setMessages(prev =>
+            prev.map(m => {
+              if (updatedMap.has(m.id)) return { ...m, ...(updatedMap.get(m.id) as Message) };
+              if (m.replyingTo && updatedIds.has(m.replyingTo.id)) {
+                const updatedTarget = updatedMap.get(m.replyingTo.id);
+                if (updatedTarget && updatedTarget.isDeleted) {
+                  return { ...m, replyingTo: { ...m.replyingTo, isDeleted: true } };
+                }
+              }
+              return m;
+            })
+          );
+          
+          setReplyingTo(prev => {
+            if (prev && updatedIds.has(prev.id)) {
+              const updatedTarget = updatedMap.get(prev.id);
+              if (updatedTarget && updatedTarget.isDeleted) return null;
+            }
+            return prev;
+          });
+          
+        } else if (messageData.type === 'bulk_delete') {
+          const deletedIds = new Set(messageData.messageIds);
+          setMessages(prev => prev.filter(m => !deletedIds.has(m.id)));
+          
+          setReplyingTo(prev => {
+            if (prev && deletedIds.has(prev.id)) return null;
+            return prev;
+          });
         } else {
           const normalized = normalizeMessage(messageData);
           const isJoinNotification =
@@ -1828,17 +1917,20 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       fullscreenScrollSnapshotRef.current = null;
       if (!snapshot) return;
 
-      const scroller = getChatScrollerElement();
-      if (!scroller) return;
+      // Use a small timeout to allow the browser's fullscreen exit reflow to complete
+      // before measuring and restoring the scroll position.
+      setTimeout(() => {
+        const scroller = getChatScrollerElement();
+        if (!scroller) return;
 
-      requestAnimationFrame(() => {
-        const targetFromBottom = scroller.scrollHeight - snapshot.bottomOffset;
-        const fallbackTarget = snapshot.scrollTop;
-        const target = Number.isFinite(targetFromBottom) ? targetFromBottom : fallbackTarget;
+        // Directly restore the exact scrollTop we captured before entering fullscreen.
+        // This avoids race conditions where scrollHeight is temporarily inflated by
+        // transitioning media elements.
+        const target = snapshot.scrollTop;
         const maxTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
         const clamped = Math.max(0, Math.min(target, maxTop));
         scroller.scrollTop = clamped;
-      });
+      }, 50);
     };
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
@@ -4265,20 +4357,6 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                 <svg viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>
               )}
             </ThemeToggleBtn>
-            <MobileUserListToggle
-              $isOpen={isUserListVisible}
-              onPointerDown={handleHeaderButtonPointerDown}
-              onClick={() => {
-                if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
-                  document.activeElement.blur();
-                }
-                setIsUserListVisible(!isUserListVisible);
-              }}
-              aria-label={isUserListVisible ? 'Hide online users' : 'Show online users'}
-              title={isUserListVisible ? 'Hide online users' : 'Show online users'}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
-            </MobileUserListToggle>
             <ChatSearchContainer id="chat-search-container" $active={isSearchActive} $isClosing={isSearchClosing}>
               <ChatSearchButton 
                 onClick={() => { 
@@ -4316,7 +4394,6 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                 }}
                 placeholder="Search..."
               />
-              {isSearchActive && (
                 <ChatSearchButton onClick={(e) => {
                   e.stopPropagation();
                   if (chatSearchQuery || activeSearchQuery) {
@@ -4325,14 +4402,30 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                   } else {
                     handleCloseSearch();
                   }
-                }}>
+                }}
+                tabIndex={isSearchActive ? 0 : -1}
+                aria-hidden={!isSearchActive}
+                >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '18px', height: '18px' }}>
                     <line x1="18" y1="6" x2="6" y2="18"></line>
                     <line x1="6" y1="6" x2="18" y2="18"></line>
                   </svg>
                 </ChatSearchButton>
-              )}
             </ChatSearchContainer>
+            <MobileUserListToggle
+              $isOpen={isUserListVisible}
+              onPointerDown={handleHeaderButtonPointerDown}
+              onClick={() => {
+                if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+                  document.activeElement.blur();
+                }
+                setIsUserListVisible(!isUserListVisible);
+              }}
+              aria-label={isUserListVisible ? 'Hide online users' : 'Show online users'}
+              title={isUserListVisible ? 'Hide online users' : 'Show online users'}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+            </MobileUserListToggle>
           </HeaderActionsGroup>
         </Header>
         <LayoutContainer>

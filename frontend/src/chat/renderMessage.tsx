@@ -328,7 +328,11 @@ export const renderMessageContent = (
             </MediaDownloadOverlayBtn>
           )}
         </MediaImageWrapper>
-        {msg.text && <MessageText style={{ paddingTop: '0.5rem' }}>{renderTextWithLinks(msg.text, sender)}</MessageText>}
+        {msg.text && (
+          <div style={{ width: 0, minWidth: '100%' }}>
+            <MessageText style={{ paddingTop: '0.5rem' }}>{renderTextWithLinks(msg.text, sender)}</MessageText>
+          </div>
+        )}
       </MediaContent>
     );
   }
@@ -418,7 +422,11 @@ export const renderMessageContent = (
             </MediaDownloadOverlayBtn>
           )}
         </MediaVideoWrapperDiv>
-        {msg.text && <MessageText style={{ paddingTop: '0.5rem' }}>{renderTextWithLinks(msg.text, sender)}</MessageText>}
+        {msg.text && (
+          <div style={{ width: 0, minWidth: '100%' }}>
+            <MessageText style={{ paddingTop: '0.5rem' }}>{renderTextWithLinks(msg.text, sender)}</MessageText>
+          </div>
+        )}
       </MediaContent>
     );
   }
