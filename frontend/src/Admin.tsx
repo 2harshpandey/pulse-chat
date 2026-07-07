@@ -879,7 +879,7 @@ const Admin = () => {
   const extractMessageId = (log: any) => log.messageId || log.message?.id || log.message?._id || log._id;
 
   const validSelectionLogs = useMemo(() => {
-    return filteredHistoryLogs.filter(log => ['create', 'upload'].includes(log.type) && extractMessageId(log));
+    return filteredHistoryLogs.filter(log => !!extractMessageId(log));
   }, [filteredHistoryLogs]);
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1180,7 +1180,7 @@ const Admin = () => {
                   <tbody>
                     {filteredHistoryLogs.slice(0, displayedLogsCount).map((log, index) => {
                       const msgId = extractMessageId(log);
-                      const isSelectable = ['create', 'upload'].includes(log.type) && msgId;
+                      const isSelectable = !!msgId;
                       return (
                         <tr key={index}>
                           <NoWrapTd style={{ textAlign: 'center' }}>

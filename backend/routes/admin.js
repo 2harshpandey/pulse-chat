@@ -426,38 +426,22 @@ module.exports = (wss, broadcasts) => {
         broadcastToAdmins(roomId, 'bulk_history_update', { events: updatedEvents });
         
       } else if (action === 'delete') {
-        const standaloneEvents = await MessageEvent.find({ roomId, _id: { $in: messageIds } }, '_id').lean();
-        const standaloneIds = standaloneEvents.map(e => e._id.toString());
-        
-        if (standaloneIds.length > 0) {
-          await MessageEvent.deleteMany({ roomId, _id: { $in: standaloneIds } });
-          broadcastToAdmins(roomId, 'bulk_history_delete', { messageIds: standaloneIds });
-        }
+        await MessageEvent.deleteMany({
+          roomId,
+          $or: [
+            { 'message.id': { $in: messageIds } },
+            { messageId: { $in: messageIds } },
+            { _id: { $in: messageIds } }
+          ]
+        });
+        broadcastToAdmins(roomId, 'bulk_history_delete', { messageIds });
 
         if (vanish) {
           await Message.deleteMany({ roomId, id: { $in: messageIds } });
-          await MessageEvent.updateMany(
-            { roomId, 'message.id': { $in: messageIds } },
-            { 
-              $set: { 
-                'message.isDeleted': true, 
-                'message.deletedBy': 'admin',
-                'message.vanished': true,
-                'message.text': '[Permanently Scrubbed & Vanished]',
-                'message.url': null,
-                'message.originalName': null,
-                'message.size': null,
-                'message.type': 'text'
-              } 
-            }
-          );
           
           broadcast(roomId, { type: 'bulk_delete', messageIds });
           await AuditLog.create({ roomId, type: 'messages_deleted_disappear', details: { count: messageIds.length, action: 'delete' } });
-          broadcastToAdmins(roomId, 'activity', `${messageIds.length} message(s) permanently deleted (scrubbed and vanished) by super admin.`);
-          
-          const updatedEvents = await MessageEvent.find({ roomId, 'message.id': { $in: messageIds } }).lean();
-          broadcastToAdmins(roomId, 'bulk_history_update', { events: updatedEvents });
+          broadcastToAdmins(roomId, 'activity', `${messageIds.length} message(s) permanently deleted (vanished) and history scrubbed by super admin.`);
         } else {
           await Message.updateMany(
             { roomId, id: { $in: messageIds } },
@@ -474,28 +458,11 @@ module.exports = (wss, broadcasts) => {
             }
           );
           
-          await MessageEvent.updateMany(
-            { roomId, 'message.id': { $in: messageIds } },
-            { 
-              $set: { 
-                'message.isDeleted': true, 
-                'message.deletedBy': 'admin',
-                'message.text': 'This message has been deleted by an admin.',
-                'message.url': null,
-                'message.originalName': null,
-                'message.size': null,
-                'message.type': 'text'
-              } 
-            }
-          );
-          
           const updatedMessages = await Message.find({ roomId, id: { $in: messageIds } }).lean();
           broadcast(roomId, { type: 'bulk_update', messages: updatedMessages });
-          await AuditLog.create({ roomId, type: 'messages_deleted_bubble', details: { count: messageIds.length } });
-          broadcastToAdmins(roomId, 'activity', `${messageIds.length} message(s) scrubbed from database (bubble preserved) by admin.`);
           
-          const updatedEvents = await MessageEvent.find({ roomId, 'message.id': { $in: messageIds } }).lean();
-          broadcastToAdmins(roomId, 'bulk_history_update', { events: updatedEvents });
+          await AuditLog.create({ roomId, type: 'messages_deleted_bubble', details: { count: messageIds.length } });
+          broadcastToAdmins(roomId, 'activity', `${messageIds.length} message(s) scrubbed from database (bubble preserved) and history deleted by admin.`);
         }
       }
 
