@@ -3792,9 +3792,11 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       return;
     }
 
-    // We no longer blur the active element here, because we use onPointerDown={e => e.preventDefault()}
-    // on the button to prevent it from ever stealing focus in the first place, keeping the keyboard open.
-
+    // Explicitly blur any active input so that the mobile virtual keyboard closes 
+    // when programmatically scrolling to bottom, fixing the issue where it snaps open again.
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
     setNewMessagesWhileScrolledUp(0);
     clearQuoteJumpSuppression();
     quoteLog('scroll-to-bottom falling back to bottom anchor');

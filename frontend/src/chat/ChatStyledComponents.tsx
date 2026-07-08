@@ -639,6 +639,9 @@ export const MessageBubble = styled.div<{ $sender: string; $messageType: string;
   color: ${props => props.$sender === 'me' ? 'white' : 'var(--text-primary)'};
   box-shadow: ${props => props.$sender === 'me' ? '0 0.5px 1px rgba(0,0,0,0.07)' : '0 0.5px 1px rgba(0,0,0,0.05)'};
   cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
   min-width: ${props => props.$messageType === 'text' ? '4.5rem' : '0'};
     /* Keep message geometry and paint stable while virtualized rows are recycled.
       Animated transitions here can look like shaking/blinking during fast scroll. */
