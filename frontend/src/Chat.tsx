@@ -305,6 +305,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   const [showGifPicker, setShowGifPicker] = useState(false);
   const [gifResults, setGifResults] = useState<Gif[]>([]);
   const [gifSearchTerm, setGifSearchTerm] = useState('');
+  const [gifError, setGifError] = useState('');
   const [isLoadingGifs, setIsLoadingGifs] = useState(false);
   const [isDesktopInteraction, setIsDesktopInteraction] = useState(isDesktopInteractionDevice);
   const [onlineUsers, setOnlineUsers] = useState<UserProfile[]>([]);
@@ -1155,23 +1156,25 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
 
     const doFetch = async () => {
       setIsLoadingGifs(true);
+      setGifError('');
       try {
-        const q = gifSearchTerm.trim() ? encodeURIComponent(gifSearchTerm.trim()) : 'trending';
-        const key = import.meta.env.REACT_APP_TENOR_KEY || 'LIVDSRZULELA';
-        const url = `https://g.tenor.com/v1/search?q=${q}&key=${key}&limit=${GIF_FETCH_LIMIT}`;
+        const q = gifSearchTerm.trim();
+        const url = q
+          ? `${apiBase}/api/gifs/search?q=${encodeURIComponent(q)}`
+          : `${apiBase}/api/gifs/trending`;
+          
         const res = await fetch(url);
-        if (!res.ok) throw new Error('Failed to fetch GIFs');
+        if (!res.ok) {
+          throw new Error('Failed to fetch GIFs from server');
+        }
         const data = await res.json();
         if (cancelled) return;
-        const results: Gif[] = (data.results || []).map((r: any) => {
-          const media = r.media && r.media[0] ? r.media[0] : {};
-          const preview = media.tinygif?.url || media.nanomp4?.url || media.gif?.url || media.mediumgif?.url || media.preview?.url || '';
-          const full = media.gif?.url || media.mediumgif?.url || media.nanomp4?.url || preview;
-          return { id: r.id, preview, url: full } as Gif;
-        }).filter((g: Gif) => g.preview);
-        setGifResults(results);
-      } catch (err) {
+        
+        // The backend already formats the data as [{ id, preview, url }]
+        setGifResults(data || []);
+      } catch (err: any) {
         console.error('GIF fetch error', err);
+        setGifError(err.message || 'Failed to load GIFs');
         setGifResults([]);
       } finally {
         if (!cancelled) setIsLoadingGifs(false);
@@ -1191,6 +1194,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     if (showGifPicker) return;
     setGifSearchTerm('');
     setGifResults([]);
+    setGifError('');
     setIsLoadingGifs(false);
   }, [showGifPicker]);
 
@@ -4057,6 +4061,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   const openGifPicker = () => {
     setGifSearchTerm('');
     setGifResults([]);
+    setGifError('');
     setShowGifPicker(true);
   };
 
@@ -4064,6 +4069,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     setShowGifPicker(false);
     setGifSearchTerm('');
     setGifResults([]);
+    setGifError('');
     setIsLoadingGifs(false);
   };
 
@@ -5081,7 +5087,16 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
         }}>
           <GifPickerContent ref={gifPickerRef} onClick={(e) => e.stopPropagation()}>
             <GifSearchBar ref={gifSearchInputRef} type="text" placeholder="Search for GIFs..." value={gifSearchTerm} onChange={(e) => setGifSearchTerm(e.target.value)} />
-            {isLoadingGifs ? <p style={{ textAlign: 'center', padding: '1rem' }}>Loading...</p> : <GifGrid>{gifResults.map(gif => <GifGridItem key={gif.id} src={gif.preview} onClick={() => handleGifSelect(gif)} />)}</GifGrid>}
+            {isLoadingGifs ? (
+              <p style={{ textAlign: 'center', padding: '1rem' }}>Loading...</p>
+            ) : gifError ? (
+              <div style={{ textAlign: 'center', padding: '1.5rem 1rem', color: '#ef4444' }}>
+                <svg style={{ width: '32px', height: '32px', marginBottom: '0.5rem', opacity: 0.8 }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                <p style={{ margin: 0, fontSize: '0.95rem', lineHeight: '1.4' }}>{gifError}</p>
+              </div>
+            ) : (
+              <GifGrid>{gifResults.map(gif => <GifGridItem key={gif.id} src={gif.preview} onClick={() => handleGifSelect(gif)} />)}</GifGrid>
+            )}
           </GifPickerContent>
         </GifPickerModal>
       )}

@@ -143,7 +143,7 @@ const initWebSocket = (wss) => {
         ws.send(JSON.stringify({ type: 'ping' }));
       }
     });
-  }, 10000);
+  }, 15000); // Ping every 15s — comfortably within the 40s frontend watchdog threshold
 
   wss.on('close', function close() {
     clearInterval(heartbeatInterval);
@@ -311,7 +311,7 @@ const initWebSocket = (wss) => {
           ws.username = username;
           ws.roomId = roomId;
 
-          const { onlineUsers, loggedInUsers, pendingDisconnects } = getRoomState(roomId);
+          const { onlineUsers, loggedInUsers, pendingDisconnects, typingUsers } = getRoomState(roomId);
 
           // Collect connection fingerprint
           const wsIp = extractIp(req);
@@ -393,6 +393,11 @@ const initWebSocket = (wss) => {
           }
 
           onlineUsers.set(userId, { userId, username });
+          
+          // Clear any lingering typing/gif_selecting status on new connection/refresh
+          if (typingUsers.has(userId)) {
+            typingUsers.delete(userId);
+          }
 
           // Also track as logged in
           if (!loggedInUsers.has(userId)) {

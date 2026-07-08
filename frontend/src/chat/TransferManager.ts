@@ -40,6 +40,9 @@ export interface TransferInfo {
 class TransferManager {
   private transfers: Map<string, TransferInfo> = new Map();
   private listeners: Set<(transfers: Map<string, TransferInfo>) => void> = new Set();
+  // Tracks how many uploads are currently in-flight (HTTP). Used by Chat.tsx
+  // to prevent proactive WebSocket reconnect during active uploads.
+  public activeUploadCount = 0;
 
   subscribe(listener: (transfers: Map<string, TransferInfo>) => void) {
     this.listeners.add(listener);
@@ -98,6 +101,7 @@ class TransferManager {
     let startChunkIndex = Math.floor(uploadedBytes / CHUNK_SIZE);
     if (startChunkIndex >= totalChunks) startChunkIndex = 0;
 
+    this.activeUploadCount++;
     return new Promise(async (resolve, reject) => {
       try {
         let lastResponseData = null;
@@ -108,6 +112,7 @@ class TransferManager {
               this.transfers.set(messageId, { ...currentInfo, state: 'paused' });
               this.notify();
             }
+            this.activeUploadCount = Math.max(0, this.activeUploadCount - 1);
             return reject(new Error('Aborted'));
           }
 
@@ -124,18 +129,47 @@ class TransferManager {
           formData.append('roomId', roomId);
           formData.append('text', messageObj?.text || '');
 
-          const response = await fetch(`${apiBase}/api/upload/chunk`, {
-            method: 'POST',
-            body: formData,
-            signal: abortController.signal,
-          });
+          // Retry each chunk up to 3 times on transient network errors.
+          // This handles brief mobile signal dips without failing the whole upload.
+          const MAX_CHUNK_RETRIES = 3;
+          let lastChunkError: any = null;
+          let chunkSuccess = false;
+          for (let attempt = 0; attempt <= MAX_CHUNK_RETRIES; attempt++) {
+            if (abortController.signal.aborted) break;
+            try {
+              if (attempt > 0) {
+                // Exponential backoff: 1s, 2s, 4s
+                await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
+              }
+              const response = await fetch(`${apiBase}/api/upload/chunk`, {
+                method: 'POST',
+                body: formData,
+                signal: abortController.signal,
+              });
 
-          if (!response.ok) {
-            const data = await response.json().catch(() => ({}));
-            throw new Error(data.error || 'Upload failed');
+              if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                // Don't retry on permanent errors (4xx)
+                if (response.status >= 400 && response.status < 500) {
+                  throw new Error(data.error || 'Upload failed');
+                }
+                lastChunkError = new Error(data.error || `Server error ${response.status}`);
+                continue; // retry on 5xx
+              }
+
+              lastResponseData = await response.json();
+              chunkSuccess = true;
+              break;
+            } catch (fetchErr: any) {
+              if (fetchErr.name === 'AbortError') throw fetchErr; // don't retry aborts
+              lastChunkError = fetchErr;
+              // Network error — retry
+            }
           }
 
-          lastResponseData = await response.json();
+          if (!chunkSuccess) {
+            throw lastChunkError || new Error('Upload failed after retries');
+          }
           
           const currentInfo = this.transfers.get(messageId);
           if (currentInfo && currentInfo.state === 'uploading') {
@@ -157,9 +191,11 @@ class TransferManager {
           removeCachedMediaBlob(currentSessionId, messageId, 'upload').catch(() => {});
           this.notify();
         }
+        this.activeUploadCount = Math.max(0, this.activeUploadCount - 1);
         resolve(lastResponseData);
 
       } catch (err: any) {
+        this.activeUploadCount = Math.max(0, this.activeUploadCount - 1);
         if (err.name === 'AbortError' || err.message === 'Aborted') {
           const currentInfo = this.transfers.get(messageId);
           if (currentInfo) {

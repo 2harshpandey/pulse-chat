@@ -104,6 +104,17 @@ const startServer = async () => {
   server.listen(PORT, () => {
     logger.info(`Server is listening on port ${PORT}`);
   });
+
+  // Extend the default HTTP socket timeout to 10 minutes.
+  // Node.js's built-in default is 5 minutes, but reverse proxies (Azure App Service,
+  // nginx) often enforce their own 230-second idle timeout. The final upload chunk
+  // triggers a Cloudinary upload that can take 1-3 minutes for large videos on slow
+  // mobile connections. Without this, the proxy cuts the connection before the
+  // Cloudinary response arrives, causing the frontend to see 'Failed to fetch' and
+  // permanently fail the upload with no retry possible.
+  server.setTimeout(10 * 60 * 1000); // 10 minutes
+  server.keepAliveTimeout = 10 * 60 * 1000;
+  server.headersTimeout = 10 * 60 * 1000 + 5000; // Must be > keepAliveTimeout
 };
 
 startServer();

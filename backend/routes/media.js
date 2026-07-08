@@ -89,6 +89,7 @@ const uploadBufferToCloudinary = (file, originalName) => new Promise((resolve, r
   const resourceType = getUploadResourceType(file.mimetype || '');
   const publicId = `pulse-chat/${safeBase}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 
+  const isVideo = resourceType === 'video';
   const uploadOptions = {
     resource_type: resourceType,
     public_id: resourceType === 'raw' && ext ? `${publicId}.${ext}` : publicId,
@@ -97,11 +98,22 @@ const uploadBufferToCloudinary = (file, originalName) => new Promise((resolve, r
     unique_filename: false,
     overwrite: false,
     filename_override: originalName,
+    // For videos, use async processing so Cloudinary returns the URL immediately
+    // without waiting for transcoding to complete. This prevents the HTTP connection
+    // from being held open for 1-3+ minutes, which causes Azure/proxy 230s timeouts
+    // that make the frontend think the upload failed ('Failed to fetch').
+    ...(isVideo ? { async: true } : {}),
+    // Explicit timeout: 8 minutes. Cloudinary SDK default is unset (relying on Node
+    // HTTP defaults), which means proxy idle timeouts can fire first.
+    timeout: 8 * 60 * 1000,
   };
 
   const uploadStream = cloudinary.uploader.upload_chunked_stream(uploadOptions, (error, result) => {
     if (error) return reject(error);
-    if (!result?.secure_url) return reject(new Error('Cloudinary upload did not return a secure URL.'));
+    // async:true returns status:'pending' with a secure_url placeholder; treat as success.
+    if (!result?.secure_url && result?.status !== 'pending') {
+      return reject(new Error('Cloudinary upload did not return a secure URL.'));
+    }
     return resolve(result);
   });
 
@@ -127,9 +139,9 @@ const getVisibleMessagesQuery = (beforeTimestamp, frontendHiddenBefore) => {
   return query;
 };
 
-// Tenor API
-const TENOR_API_KEY = process.env.TENOR_API_KEY;
-const TENOR_API_URL = 'https://tenor.googleapis.com/v2';
+// Giphy API
+const GIPHY_API_KEY = process.env.GIPHY_API_KEY;
+const GIPHY_API_URL = 'https://api.giphy.com/v1/gifs';
 
 module.exports = (wss, broadcasts) => {
   const { broadcastToAdmins, broadcast } = broadcasts;
@@ -420,15 +432,19 @@ module.exports = (wss, broadcasts) => {
     }
   });
 
-  // --- GIF Routes ---
+  // --- GIF Routes (Giphy) ---
   router.get('/api/gifs/trending', async (req, res) => {
     try {
-      const response = await axios.get(`${TENOR_API_URL}/featured`, { params: { key: TENOR_API_KEY, limit: 20 } });
-      const gifs = response.data.results.map((gif) => ({ id: gif.id, preview: gif.media_formats.tinygif.url, url: gif.media_formats.gif.url }));
+      const response = await axios.get(`${GIPHY_API_URL}/trending`, { params: { api_key: GIPHY_API_KEY, limit: 48 } });
+      const gifs = (response.data.data || []).map((gif) => ({
+        id: gif.id,
+        preview: gif.images?.fixed_height_small?.url || gif.images?.original?.url || '',
+        url: gif.images?.original?.url || ''
+      }));
       res.json(gifs);
     } catch (error) {
       logger.error('Error fetching trending GIFs:', { message: error.message });
-      res.status(500).json({ error: 'Failed to fetch GIFs' });
+      res.status(500).json({ error: 'Failed to fetch GIFs from Giphy' });
     }
   });
 
@@ -436,12 +452,16 @@ module.exports = (wss, broadcasts) => {
     try {
       const query = req.query.q;
       if (!query) return res.status(400).json({ error: 'Search query is required' });
-      const response = await axios.get(`${TENOR_API_URL}/search`, { params: { key: TENOR_API_KEY, q: query, limit: 20 } });
-      const gifs = response.data.results.map((gif) => ({ id: gif.id, preview: gif.media_formats.tinygif.url, url: gif.media_formats.gif.url }));
+      const response = await axios.get(`${GIPHY_API_URL}/search`, { params: { api_key: GIPHY_API_KEY, q: query, limit: 48 } });
+      const gifs = (response.data.data || []).map((gif) => ({
+        id: gif.id,
+        preview: gif.images?.fixed_height_small?.url || gif.images?.original?.url || '',
+        url: gif.images?.original?.url || ''
+      }));
       res.json(gifs);
     } catch (error) {
       logger.error('Error searching GIFs:', { message: error.message });
-      res.status(500).json({ error: 'Failed to fetch GIFs' });
+      res.status(500).json({ error: 'Failed to fetch GIFs from Giphy' });
     }
   });
 
@@ -774,6 +794,32 @@ module.exports = (wss, broadcasts) => {
   });
 
   // --- Paginated Messages ---
+  router.get('/api/messages/search', apiLimiter, async (req, res) => {
+    const roomId = String(req.headers['x-room-id'] || req.query.roomId || 'me');
+    const { q } = req.query;
+    if (!q || typeof q !== 'string') {
+      return res.status(400).json({ error: 'Query parameter q is required' });
+    }
+    try {
+      // Find all messages in the room that match the query
+      // Exclude messages hidden by frontendHiddenBefore
+      const { frontendHiddenBefore } = getRoomState(roomId);
+      const query = {
+        roomId,
+        text: { $regex: q, $options: 'i' },
+      };
+      if (frontendHiddenBefore) {
+         query.createdAt = { $gte: new Date(frontendHiddenBefore) };
+      }
+      // Sort by newest first, limit to 100 to avoid huge payloads
+      const messages = await Message.find(query).sort({ createdAt: -1 }).limit(100).lean();
+      res.json(messages.reverse()); // Reverse to chronological order like standard chat display
+    } catch (error) {
+      logger.error('Failed to search messages:', error);
+      res.status(500).json({ error: 'Failed to search messages' });
+    }
+  });
+
   router.get('/api/messages', apiLimiter, async (req, res) => {
     const roomId = String(req.headers['x-room-id'] || req.query.roomId || 'me');
     try {

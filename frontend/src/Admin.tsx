@@ -13,6 +13,7 @@ import {
   MessageLogTableWrapper, NoWrapTd, ExpandTd, WideTable, MessageLogTable,
   LogoutButton, DangerButton, SuccessButton, SmallButton,
   SmallDangerButton, SmallSuccessButton, SmallWarningButton,
+  PremiumExportButton,
   ActivityLogContainer, LogViewerContainer, ActivityLogItem,
   SectionTitle, Card, LinkCard, Badge, StatusDot,
   LinkUrlBox, CopyButton, UsedByList, LockdownPanel, LockdownOption,
@@ -1134,6 +1135,49 @@ const Admin = () => {
                   <ClearHistoryButton onClick={handleDeleteRoom} style={{ background: '#7f1d1d', color: '#fca5a5', border: '1px solid #991b1b' }}>
                     Delete Chat Room
                   </ClearHistoryButton>
+                )}
+                <PremiumExportButton onClick={async () => {
+                  try {
+                    const res = await fetch(`${apiUrl}/api/admin/export-messages`, { headers: apiHeaders() });
+                    if (!res.ok) throw new Error('Failed to export messages');
+                    const blob = await res.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `messages_export_${roomId}_${new Date().toISOString().split('T')[0]}.json`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                  } catch (err) {
+                    console.error('Export failed', err);
+                    alert('Failed to export messages.');
+                  }
+                }}>
+                  {roomId === 'me' ? 'Export Private Messages' : 'Export Messages'}
+                </PremiumExportButton>
+
+                {(roomId === 'me' || roomId === 'global') && (
+                  <PremiumExportButton onClick={async () => {
+                    try {
+                      const res = await fetch(`${apiUrl}/api/admin/export-all-messages`, { headers: apiHeaders() });
+                      if (!res.ok) throw new Error('Failed to export all messages');
+                      const blob = await res.blob();
+                      const url = window.URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `all_rooms_messages_export_${new Date().toISOString().split('T')[0]}.json`;
+                      document.body.appendChild(a);
+                      a.click();
+                      window.URL.revokeObjectURL(url);
+                      document.body.removeChild(a);
+                    } catch (err) {
+                      console.error('Export failed', err);
+                      alert('Failed to export all messages.');
+                    }
+                  }}>
+                    Export All Rooms
+                  </PremiumExportButton>
                 )}
               </div>
             </div>

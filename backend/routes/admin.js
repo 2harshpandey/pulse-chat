@@ -105,6 +105,57 @@ module.exports = (wss, broadcasts) => {
     res.json(messages.reverse());
   });
 
+  router.get('/api/admin/export-full-db', adminLimiter, adminAuth, async (req, res) => {
+    if (!req.isSuperAdmin) return res.status(403).json({ error: 'Forbidden' });
+    const messages = await Message.find({}).sort({ createdAt: 1 }).lean();
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', 'attachment; filename=pulse_full_db_export.json');
+    res.send(JSON.stringify(messages, null, 2));
+  });
+
+  router.get('/api/admin/export-all-messages', adminLimiter, adminAuth, async (req, res) => {
+    try {
+      if (!req.isSuperAdmin || (req.roomId !== 'me' && req.roomId !== 'global')) {
+        return res.status(403).json({ error: 'Forbidden: Super Admin only' });
+      }
+      const rooms = await Room.find({}).lean();
+      const allMessages = await Message.find({}).sort({ roomId: 1, createdAt: 1 }).lean();
+      const exportData = {
+        exportedAt: new Date().toISOString(),
+        totalMessages: allMessages.length,
+        rooms: {}
+      };
+      exportData.rooms['me'] = { roomName: 'Super Admin Private Room (me)', messages: [] };
+      exportData.rooms['global'] = { roomName: 'Global Room (global)', messages: [] };
+      rooms.forEach(room => {
+         exportData.rooms[room.id] = {
+            roomName: room.name,
+            alias: room.alias,
+            messages: []
+         };
+      });
+      allMessages.forEach(msg => {
+         if (!exportData.rooms[msg.roomId]) {
+            exportData.rooms[msg.roomId] = { roomName: 'Unknown Room (' + msg.roomId + ')', messages: [] };
+         }
+         exportData.rooms[msg.roomId].messages.push(msg);
+      });
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', 'attachment; filename=all_rooms_messages_export.json');
+      res.send(JSON.stringify(exportData, null, 2));
+    } catch (error) {
+       res.status(500).json({ error: 'Failed to export all messages' });
+    }
+  });
+
+  router.get('/api/admin/export-messages', adminLimiter, adminAuth, async (req, res) => {
+    const roomId = req.roomId;
+    const messages = await Message.find({ roomId }).sort({ createdAt: 1 }).lean();
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', 'attachment; filename=messages_export.json');
+    res.send(JSON.stringify(messages, null, 2));
+  });
+
   router.get('/api/admin/users', adminLimiter, adminAuth, async (req, res) => {
     const roomId = req.roomId;
     const users = await User.find({ roomId }).sort({ createdAt: 1 }).lean();
