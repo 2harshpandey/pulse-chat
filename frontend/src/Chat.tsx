@@ -4749,7 +4749,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
               <MessagesContainer onClick={handleChatAreaClick} $isScrollButtonVisible={isScrollToBottomVisible} $isMobileView={isMobileView}>
                 <Virtuoso
                   scrollerRef={(ref) => {
-                    chatContainerRef.current = ref as HTMLDivElement;
+                    (chatContainerRef as React.MutableRefObject<HTMLDivElement | null>).current = ref as HTMLDivElement;
                   }}
                   data={historyLoaded && messages.length > 0 ? filteredMessages : []}
                   firstItemIndex={firstItemIndex}
@@ -4758,7 +4758,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                   atBottomStateChange={handleAtBottomStateChange}
                   startReached={loadOlderMessages}
                   followOutput={(isAtBottom) => {
-                    if (suppressProgrammaticScrollRef.current > Date.now()) return false;
+                    if (suppressProgrammaticScrollUntilRef.current > Date.now()) return false;
                     return isAtBottomRef.current ? 'auto' : false;
                   }}
                   itemContent={(index, msg) => {
