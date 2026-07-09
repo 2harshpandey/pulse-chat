@@ -755,10 +755,12 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     // Browsers require a user gesture before audio can play; calling resume()
     // here permanently unlocks the context for all future background plays.
     const unlockAudio = () => {
+      let justCreated = false;
       if (!audioCtxRef.current) {
         try {
           const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
           audioCtxRef.current = ctx;
+          justCreated = true;
           // Decode base64 WAV → ArrayBuffer → AudioBuffer
           const base64 = NOTIFICATION_BEEP.split(',')[1];
           const binaryStr = atob(base64);
@@ -774,9 +776,12 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
 
       const ctx = audioCtxRef.current;
       if (ctx && !audioCtxUnlockedRef.current) {
-        // Immediately mark as unlocked so rapid double-clicks don't fire resume() twice
         audioCtxUnlockedRef.current = true; 
-        if (ctx.state === 'suspended') {
+        
+        // If we JUST created it inside a user gesture, the browser will automatically 
+        // transition it to 'running'. Calling resume() synchronously here races with the 
+        // browser's internal initialization and triggers a false-positive Chrome warning.
+        if (!justCreated && ctx.state === 'suspended') {
           ctx.resume().catch(() => {
             audioCtxUnlockedRef.current = false; // revert if it failed
           });
