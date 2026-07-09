@@ -50,11 +50,23 @@ const ChatSearchContainer = styled.div<{ $active: boolean; $isClosing?: boolean 
 
   @media (max-width: 768px) {
     position: absolute;
-    right: 0;
+    /* When active, move to right: 0 to cover the whole header. When closed, stay at right: 48px (left of Users button) */
+    right: ${p => p.$active || p.$isClosing ? '0' : '48px'};
     top: 50%;
     transform: translateY(-50%);
     width: ${p => p.$active ? 'calc(100vw - 2rem)' : '40px'};
     z-index: 10;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+`;
+
+const SearchPlaceholder = styled.div`
+  display: none;
+  @media (max-width: 768px) {
+    display: block;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
   }
 `;
 
@@ -67,7 +79,7 @@ const HeaderActionsGroup = styled.div`
   @media (max-width: 768px) {
     position: relative;
     height: 40px;
-    padding-right: 48px; /* Reserve space for absolute search button */
+    /* Removed padding-right so MobileUserListToggle sits naturally at the right edge */
   }
 `;
 
@@ -4549,6 +4561,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                 <svg viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>
               )}
             </ThemeToggleBtn>
+            <SearchPlaceholder />
             <ChatSearchContainer id="chat-search-container" $active={isSearchActive} $isClosing={isSearchClosing}>
               <ChatSearchButton 
                 onClick={() => { 
