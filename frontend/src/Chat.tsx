@@ -306,6 +306,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   const [gifResults, setGifResults] = useState<Gif[]>([]);
   const [gifSearchTerm, setGifSearchTerm] = useState('');
   const [gifError, setGifError] = useState('');
+  const [gifFetchKey, setGifFetchKey] = useState(0); // increment to force-retry
   const [isLoadingGifs, setIsLoadingGifs] = useState(false);
   const [isDesktopInteraction, setIsDesktopInteraction] = useState(isDesktopInteractionDevice);
   const [onlineUsers, setOnlineUsers] = useState<UserProfile[]>([]);
@@ -542,7 +543,11 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     return () => cleanup?.();
   }, [activeSearchQuery]);
   const isNativeFilePickerOpenRef = useRef(false);
-  const lastHiddenTimeRef = useRef<number>(0);
+  // Initialize to Date.now() so that on the very first tab-switch (e.g. the page
+  // was opened in a background tab), timeHidden computes as a small number (< 5 s)
+  // rather than as Date.now() - 0 = a huge number that would falsely trigger a reconnect
+  // and tear down a socket that is still in the middle of its initial handshake.
+  const lastHiddenTimeRef = useRef<number>(Date.now());
   // Tracks whether we've done the very first scroll-to-bottom after history loads.
   // Must be a ref (not state) so it doesn't trigger re-renders.
   const hasInitialScrolled = useRef(false);
@@ -1281,7 +1286,8 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
           
         const res = await fetch(url);
         if (!res.ok) {
-          throw new Error('Failed to fetch GIFs from server');
+          const errBody = await res.json().catch(() => ({}));
+          throw new Error(errBody?.error || `Failed to fetch GIFs (HTTP ${res.status})`);
         }
         const data = await res.json();
         if (cancelled) return;
@@ -1289,6 +1295,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
         // The backend already formats the data as [{ id, preview, url }]
         setGifResults(data || []);
       } catch (err: any) {
+        if (cancelled) return;
         console.error('GIF fetch error', err);
         setGifError(err.message || 'Failed to load GIFs');
         setGifResults([]);
@@ -1297,20 +1304,21 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       }
     };
 
-    // debounce searches
-    timer = setTimeout(doFetch, 300);
+    // debounce searches; trending loads immediately
+    timer = setTimeout(doFetch, gifSearchTerm.trim() ? 300 : 0);
 
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [showGifPicker, gifSearchTerm]);
+  }, [showGifPicker, gifSearchTerm, gifFetchKey]);
 
   useEffect(() => {
     if (showGifPicker) return;
     setGifSearchTerm('');
     setGifResults([]);
     setGifError('');
+    setGifFetchKey(0);
     setIsLoadingGifs(false);
   }, [showGifPicker]);
 
@@ -1776,21 +1784,46 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       } else if (document.visibilityState === 'visible') {
         const timeHidden = Date.now() - lastHiddenTimeRef.current;
 
-        // If the browser was only in the background for a fraction of a second 
+        // If the browser was only in the background for a fraction of a second
         // (e.g., swiping between recent apps, accidental swipe, or checking a notification),
-        // the OS TCP stack has not frozen the socket yet. We should NOT proactively 
+        // the OS TCP stack has not frozen the socket yet. We should NOT proactively
         // destroy the perfectly healthy socket.
         if (timeHidden > 0 && timeHidden < 5000) {
           return;
         }
 
-        // When waking up from background on mobile after a substantial delay, the OS 
-        // often leaves the TCP socket in a "zombie" half-open state. The connection appears OPEN, 
-        // but downstream data is stalled, leading to a ~60s delay until timeout.
-        // To guarantee instant realtime delivery, we proactively close the old socket
-        // and establish a fresh one. We specifically avoid window.location.reload() 
-        // because the mobile network radio often takes a few seconds to wake up.
+        // If the socket is currently mid-handshake (CONNECTING), do NOT interrupt it.
+        // Closing a CONNECTING socket produces a console error
+        // "WebSocket is closed before the connection is established" and forces an
+        // unnecessary reconnect race. Just wait — the onopen/onclose handlers will
+        // fire naturally and the watchdog will catch any real failure.
+        if (ws.current !== null && ws.current.readyState === WebSocket.CONNECTING) {
+          return;
+        }
 
+        // We consider the socket "alive" if ALL of the following are true:
+        //   1. The readyState is OPEN (not CONNECTING / CLOSING / CLOSED)
+        //   2. A ping from the server arrived within the last 25 s (same threshold
+        //      as the watchdog) — meaning the server can still reach us.
+        //
+        // If alive, there is nothing to do; the watchdog will catch actual zombie
+        // connections on its next tick. Only force-reconnect when the socket is
+        // absent, already closed, or we haven't heard a ping recently (stale).
+        const socketIsAlive =
+          ws.current !== null &&
+          ws.current.readyState === WebSocket.OPEN &&
+          Date.now() - lastPingAtRef.current < 25000;
+
+        if (socketIsAlive) {
+          // Connection is healthy — nothing to do.
+          return;
+        }
+
+        // When waking up from background on mobile after a substantial delay, the OS
+        // often leaves the TCP socket in a "zombie" half-open state. The connection
+        // appears OPEN, but downstream data is stalled, leading to a ~60s delay until
+        // timeout. To guarantee instant realtime delivery, we proactively close the
+        // old socket and establish a fresh one.
         if (ws.current) {
           ws.current.onclose = null; // Prevent competing reconnect timers
           ws.current.close();
@@ -1807,8 +1840,8 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
           presenceActivityRef.current = null;
         }
 
-        // Force an immediate reconnect. If the OS network radio is asleep, this 
-        // will fail and trigger the exponential backoff, but the user will at 
+        // Force an immediate reconnect. If the OS network radio is asleep, this
+        // will fail and trigger the exponential backoff, but the user will at
         // least see their old messages instead of a broken empty screen.
         if (reconnectTimerRef.current) {
           clearTimeout(reconnectTimerRef.current);
@@ -5260,12 +5293,28 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
           <GifPickerContent ref={gifPickerRef} onClick={(e) => e.stopPropagation()}>
             <GifSearchBar ref={gifSearchInputRef} type="text" placeholder="Search for GIFs..." value={gifSearchTerm} onChange={(e) => setGifSearchTerm(e.target.value)} />
             {isLoadingGifs ? (
-              <p style={{ textAlign: 'center', padding: '1rem' }}>Loading...</p>
+              <p style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-secondary)' }}>Loading GIFs...</p>
             ) : gifError ? (
               <div style={{ textAlign: 'center', padding: '1.5rem 1rem', color: '#ef4444' }}>
                 <svg style={{ width: '32px', height: '32px', marginBottom: '0.5rem', opacity: 0.8 }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-                <p style={{ margin: 0, fontSize: '0.95rem', lineHeight: '1.4' }}>{gifError}</p>
+                <p style={{ margin: '0 0 0.75rem', fontSize: '0.9rem', lineHeight: '1.4' }}>
+                  {gifError.includes('not configured') ? 'GIFs are not available right now.' : 'Could not load GIFs. Please check your connection.'}
+                </p>
+                <button
+                  onClick={() => { setGifError(''); setGifResults([]); setGifFetchKey(k => k + 1); }}
+                  style={{
+                    background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)',
+                    color: '#ef4444', borderRadius: '8px', padding: '0.4rem 1rem',
+                    cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600,
+                  }}
+                >
+                  Try again
+                </button>
               </div>
+            ) : gifResults.length === 0 && !isLoadingGifs ? (
+              <p style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                {gifSearchTerm.trim() ? `No GIFs found for "${gifSearchTerm}"` : 'No GIFs available.'}
+              </p>
             ) : (
               <GifGrid>{gifResults.map(gif => <GifGridItem key={gif.id} src={gif.preview} onClick={() => handleGifSelect(gif)} />)}</GifGrid>
             )}
