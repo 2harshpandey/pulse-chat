@@ -774,24 +774,24 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
 
       const ctx = audioCtxRef.current;
       if (ctx && !audioCtxUnlockedRef.current) {
+        // Immediately mark as unlocked so rapid double-clicks don't fire resume() twice
+        audioCtxUnlockedRef.current = true; 
         if (ctx.state === 'suspended') {
-          ctx.resume().then(() => {
-            audioCtxUnlockedRef.current = true;
-          }).catch(() => {});
-        } else {
-          audioCtxUnlockedRef.current = true;
+          ctx.resume().catch(() => {
+            audioCtxUnlockedRef.current = false; // revert if it failed
+          });
         }
       }
     };
 
-    window.addEventListener('pointerdown', unlockAudio);
-    window.addEventListener('keydown', unlockAudio);
-    window.addEventListener('touchstart', unlockAudio);
+    window.addEventListener('click', unlockAudio, { capture: true });
+    window.addEventListener('keydown', unlockAudio, { capture: true });
+    window.addEventListener('touchstart', unlockAudio, { capture: true });
 
     return () => {
-      window.removeEventListener('pointerdown', unlockAudio);
-      window.removeEventListener('keydown', unlockAudio);
-      window.removeEventListener('touchstart', unlockAudio);
+      window.removeEventListener('click', unlockAudio, { capture: true });
+      window.removeEventListener('keydown', unlockAudio, { capture: true });
+      window.removeEventListener('touchstart', unlockAudio, { capture: true });
     };
   }, [userContext?.profile]);
 
