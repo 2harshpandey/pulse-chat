@@ -656,25 +656,6 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      // Initialise Web Audio API and decode the notification beep.
-      // AudioContext is far more reliable than an <Audio> element for background
-      // tab notifications because it does not suffer from the same autoplay
-      // restrictions once the context has been resumed on a user gesture.
-      try {
-        const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        audioCtxRef.current = ctx;
-        // Decode base64 WAV → ArrayBuffer → AudioBuffer
-        const base64 = NOTIFICATION_BEEP.split(',')[1];
-        const binaryStr = atob(base64);
-        const bytes = new Uint8Array(binaryStr.length);
-        for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-        ctx.decodeAudioData(bytes.buffer).then(buf => {
-          audioBufferRef.current = buf;
-        }).catch(() => {/* ignore decode errors */});
-      } catch {
-        // Web Audio API not available — will fall back to silence.
-      }
-
       const handleOnline = () => setIsBrowserOnline(true);
       const handleOffline = () => setIsBrowserOnline(false);
       window.addEventListener('online', handleOnline);
@@ -774,11 +755,32 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     // Browsers require a user gesture before audio can play; calling resume()
     // here permanently unlocks the context for all future background plays.
     const unlockAudio = () => {
+      if (!audioCtxRef.current) {
+        try {
+          const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+          audioCtxRef.current = ctx;
+          // Decode base64 WAV → ArrayBuffer → AudioBuffer
+          const base64 = NOTIFICATION_BEEP.split(',')[1];
+          const binaryStr = atob(base64);
+          const bytes = new Uint8Array(binaryStr.length);
+          for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+          ctx.decodeAudioData(bytes.buffer).then(buf => {
+            audioBufferRef.current = buf;
+          }).catch(() => {});
+        } catch {
+          // Web Audio API not available
+        }
+      }
+
       const ctx = audioCtxRef.current;
       if (ctx && !audioCtxUnlockedRef.current) {
-        ctx.resume().then(() => {
+        if (ctx.state === 'suspended') {
+          ctx.resume().then(() => {
+            audioCtxUnlockedRef.current = true;
+          }).catch(() => {});
+        } else {
           audioCtxUnlockedRef.current = true;
-        }).catch(() => {});
+        }
       }
     };
 
