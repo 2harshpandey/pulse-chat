@@ -320,8 +320,14 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   }, []);
   const [chatSearchQuery, setChatSearchQuery] = useState('');
   const [activeSearchQuery, setActiveSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Message[] | null>(null);
+  const [isSearchLoading, setIsSearchLoading] = useState(false);
   const [showSearchNotFound, setShowSearchNotFound] = useState(false);
   const scrollBeforeSearchRef = useRef<number | null>(null);
+  // Tracks whether the user was at the very bottom when they opened the search bar.
+  // Used to reliably restore to bottom after search closes (can't rely on saved scrollTop
+  // because the container resizes when data switches back to the full message list).
+  const wasAtBottomBeforeSearchRef = useRef<boolean>(false);
   const [isBrowserOnline, setIsBrowserOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [isUserListVisible, setIsUserListVisible] = useState(false);
   const [isSoundEnabled, setIsSoundEnabled] = useState(() => {
@@ -400,34 +406,140 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   const ws = useRef<WebSocket | null>(null);
   const messagesRef = useRef<Message[]>([]);
   const isLoadingOlderRef = useRef(false);
+  // Set to true during search-close scroll restoration to block loadOlderMessages().
+  // Without this guard, overflowAnchor fires onScroll with a small scrollTop during the
+  // data-switch (searchResults → messages), which triggers loadOlderMessages() and
+  // changes scrollHeight before we can restore the correct position.
+  const suppressOlderMessageLoadRef = useRef(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
   const filteredMessages = useMemo(() => {
-    return activeSearchQuery.trim() 
-      ? messages.filter(m => m.text && m.text.toLowerCase().includes(activeSearchQuery.trim().toLowerCase())) 
-      : messages;
-  }, [messages, activeSearchQuery]);
+    if (activeSearchQuery.trim()) {
+      // Use server search results when active; empty array while loading (searchResults is null)
+      return searchResults ?? [];
+    }
+    return messages;
+  }, [messages, activeSearchQuery, searchResults]);
 
   useEffect(() => {
-    if (activeSearchQuery.trim() && filteredMessages.length === 0) {
+    // Only show "not found" once loading is complete and results are truly empty
+    if (activeSearchQuery.trim() && !isSearchLoading && filteredMessages.length === 0) {
       setShowSearchNotFound(true);
       const timer = setTimeout(() => setShowSearchNotFound(false), 3000);
       return () => clearTimeout(timer);
     } else {
       setShowSearchNotFound(false);
     }
-  }, [activeSearchQuery, filteredMessages.length]);
+  }, [activeSearchQuery, filteredMessages.length, isSearchLoading]);
+
+  // ─── CRITICAL: block loadOlderMessages for the ENTIRE search session ───
+  // useLayoutEffect fires synchronously after React commits the DOM, BEFORE the browser's
+  // layout step where overflowAnchor runs. This ensures the flag is set before overflowAnchor
+  // fires its queued onScroll event (which would trigger loadOlderMessages).
+  //
+  // The flag must be set on BOTH the open and close transitions:
+  //
+  // ① Search OPENS (activeSearchQuery becomes non-empty):
+  //   filteredMessages switches to searchResults → overflowAnchor resets scrollTop to 0
+  //   (no DOM anchor exists in the completely new content) → onScroll fires with scrollTop < 2500
+  //   → loadOlderMessages() would prepend older messages, inflating scrollHeight.
+  //   After search closes, applyRestore sets scrollTop = savedValue in the now-LARGER container,
+  //   landing ABOVE the intended position (earlier/older messages). Blocked here.
+  //
+  // ② Search CLOSES (activeSearchQuery becomes ''):
+  //   filteredMessages switches back to messages → overflowAnchor fires again → same risk.
+  //   Blocked here too.
+  useLayoutEffect(() => {
+    if (activeSearchQuery) {
+      // Search just became ACTIVE — block loadOlderMessages for the entire search session
+      suppressOlderMessageLoadRef.current = true;
+    } else if (scrollBeforeSearchRef.current !== null) {
+      // Search just CLOSED with a saved position to restore — keep blocking during restoration
+      suppressOlderMessageLoadRef.current = true;
+    } else {
+      // Not in search mode, nothing to restore — clear any stale flag
+      suppressOlderMessageLoadRef.current = false;
+    }
+  }, [activeSearchQuery]);
 
   useEffect(() => {
-    if (!activeSearchQuery && scrollBeforeSearchRef.current !== null) {
-      const targetScroll = scrollBeforeSearchRef.current;
-      scrollBeforeSearchRef.current = null;
-      requestAnimationFrame(() => {
-        if (chatContainerRef.current) {
-          chatContainerRef.current.scrollTop = targetScroll;
-        }
-      });
+    if (activeSearchQuery || scrollBeforeSearchRef.current === null) {
+      // If closing search but nothing to restore, ensure the flag is cleared
+      if (!activeSearchQuery) suppressOlderMessageLoadRef.current = false;
+      return;
     }
+
+    const targetScroll = scrollBeforeSearchRef.current;
+    const wasAtBottom = wasAtBottomBeforeSearchRef.current;
+    scrollBeforeSearchRef.current = null;
+    wasAtBottomBeforeSearchRef.current = false;
+
+    const scroller = chatContainerRef.current;
+    if (!scroller) return;
+
+    // suppressOlderMessageLoadRef.current is already true — set by the useLayoutEffect above
+    // before the browser's layout step so overflowAnchor's onScroll can't trigger loadOlderMessages.
+
+    let lastHeight = scroller.scrollHeight;
+    let stableFrames = 0;
+    let rafId: number;
+    let cleanup: (() => void) | undefined;
+
+    const applyRestore = () => {
+      // Temporarily suppress overflowAnchor so the browser doesn't fight our scrollTop
+      const prev = scroller.style.overflowAnchor;
+      scroller.style.overflowAnchor = 'none';
+
+      if (wasAtBottom) {
+        // User was at the very bottom — scroll to the absolute maximum
+        scroller.scrollTop = scroller.scrollHeight;
+      } else {
+        const max = scroller.scrollHeight - scroller.clientHeight;
+        scroller.scrollTop = Math.min(Math.max(targetScroll, 0), max);
+      }
+
+      // Re-enable overflowAnchor and unblock loadOlderMessages after one frame
+      requestAnimationFrame(() => {
+        scroller.style.overflowAnchor = prev || '';
+        suppressOlderMessageLoadRef.current = false;
+      });
+    };
+
+    const checkStable = () => {
+      const currentHeight = scroller.scrollHeight;
+      if (currentHeight === lastHeight) {
+        stableFrames += 1;
+      } else {
+        stableFrames = 0;
+        lastHeight = currentHeight;
+      }
+
+      if (stableFrames >= 2) {
+        // Height has been stable for 2 consecutive frames — content has settled
+        cleanup?.();
+        applyRestore();
+      } else {
+        rafId = requestAnimationFrame(checkStable);
+      }
+    };
+
+    // Kick off the stability-check loop
+    rafId = requestAnimationFrame(checkStable);
+
+    // Safety timeout: if content never stabilizes within 500ms, apply anyway
+    const safetyTimer = window.setTimeout(() => {
+      cleanup?.();
+      applyRestore();
+    }, 500);
+
+    cleanup = () => {
+      cancelAnimationFrame(rafId);
+      window.clearTimeout(safetyTimer);
+      suppressOlderMessageLoadRef.current = false; // Always unblock on cleanup
+      cleanup = undefined;
+    };
+
+    return () => cleanup?.();
   }, [activeSearchQuery]);
   const isNativeFilePickerOpenRef = useRef(false);
   const lastHiddenTimeRef = useRef<number>(0);
@@ -1058,7 +1170,11 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     const handlePointerDown = (e: PointerEvent) => {
       const target = e.target as HTMLElement;
       if (!target.closest('#chat-search-container')) {
+        // Bug fix: also clear the query & filter so messages aren't stuck filtered
+        // when the search bar is dismissed by clicking outside (without pressing X)
         setIsSearchActive(false);
+        setChatSearchQuery('');
+        setActiveSearchQuery('');
       }
     };
     // Capture phase so it runs before any stopPropagation
@@ -2246,6 +2362,45 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     const deletedIds = new Set(filtered.filter(m => m.isDeleted).map(m => m.id));
     return markDeletedReplyTargets(filtered, deletedIds);
   }, [markDeletedReplyTargets]);
+
+  // Bug fix #1: Full-history search via backend API.
+  // Previously the frontend only searched the locally loaded ~50 messages.
+  // Now we call /api/messages/search which queries the full database, then
+  // apply filterVisibleMessages to strip out any deleted-for-me messages.
+  useEffect(() => {
+    if (!activeSearchQuery.trim()) {
+      setSearchResults(null);
+      return;
+    }
+    let cancelled = false;
+    setIsSearchLoading(true);
+    setSearchResults(null); // clear stale results while new search is in-flight
+    fetch(
+      `${apiBase}/api/messages/search?q=${encodeURIComponent(activeSearchQuery.trim())}`,
+      { headers: { 'x-room-id': roomId } }
+    )
+      .then(res => {
+        if (!res.ok) throw new Error('Search failed');
+        return res.json();
+      })
+      .then((raw: any[]) => {
+        if (cancelled) return;
+        const normalized = raw.map(normalizeMessage);
+        // Apply filterVisibleMessages so deleted-for-me messages are excluded
+        const visibleResults = filterVisibleMessages(normalized);
+        setSearchResults(visibleResults);
+      })
+      .catch(err => {
+        if (!cancelled) {
+          console.error('Message search error:', err);
+          setSearchResults([]); // treat error as empty so "not found" toast shows
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsSearchLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [activeSearchQuery, apiBase, roomId, normalizeMessage, filterVisibleMessages]);
 
   const fetchAndPrependOlderMessages = useCallback(async (beforeCursor: string) => {
     const before = encodeURIComponent(beforeCursor);
@@ -4364,7 +4519,15 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
             <ChatSearchContainer id="chat-search-container" $active={isSearchActive} $isClosing={isSearchClosing}>
               <ChatSearchButton 
                 onClick={() => { 
-                  if (!activeSearchQuery) scrollBeforeSearchRef.current = chatContainerRef.current?.scrollTop || null;
+                  if (!activeSearchQuery) {
+                    // Save scroll position and bottom-state on the real scroller.
+                    // chatContainerRef IS the scroller (plain div with overflowY:auto).
+                    const scroller = chatContainerRef.current;
+                    scrollBeforeSearchRef.current = scroller?.scrollTop ?? null;
+                    // isAtBottomRef is set by the onScroll handler; read it here before
+                    // the data switch changes scroll position.
+                    wasAtBottomBeforeSearchRef.current = isAtBottomRef.current;
+                  }
                   if (!isSearchActive) setIsSearchActive(true);
                   else setActiveSearchQuery(chatSearchQuery);
                 }}
@@ -4392,7 +4555,11 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                     setActiveSearchQuery('');
                     handleCloseSearch();
                   } else if (e.key === 'Enter') {
-                    if (!activeSearchQuery) scrollBeforeSearchRef.current = chatContainerRef.current?.scrollTop || null;
+                    if (!activeSearchQuery) {
+                      const scroller = chatContainerRef.current;
+                      scrollBeforeSearchRef.current = scroller?.scrollTop ?? null;
+                      wasAtBottomBeforeSearchRef.current = isAtBottomRef.current;
+                    }
                     setActiveSearchQuery(chatSearchQuery);
                   }
                 }}
@@ -4521,7 +4688,10 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                 <div ref={chatContainerRef} style={{ flex: 1, overflowY: 'auto', overflowAnchor: 'auto', display: 'flex', flexDirection: 'column', transform: 'translateZ(0)', WebkitOverflowScrolling: 'touch', willChange: 'transform', paddingTop: '1rem' }}
                   onScroll={(e) => {
                     const target = e.target as HTMLDivElement;
-                    if (target.scrollTop < 2500 && !isLoadingOlderRef.current && hasMoreOlderMessages) {
+                    // Block loadOlderMessages during search-close scroll restoration to
+                    // prevent overflowAnchor-triggered scroll events from prepending messages
+                    // and invalidating the saved scroll position.
+                    if (target.scrollTop < 2500 && !isLoadingOlderRef.current && hasMoreOlderMessages && !suppressOlderMessageLoadRef.current) {
                       loadOlderMessages();
                     }
                     const distanceFromBottom = target.scrollHeight - (target.scrollTop + target.clientHeight);

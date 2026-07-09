@@ -801,19 +801,26 @@ module.exports = (wss, broadcasts) => {
       return res.status(400).json({ error: 'Query parameter q is required' });
     }
     try {
-      // Find all messages in the room that match the query
-      // Exclude messages hidden by frontendHiddenBefore
+      // Find all messages in the room that match the query.
+      // Bug fixes:
+      //  1. Exclude isDeleted:true (messages deleted for everyone) — they have no text
+      //     and should never appear in results regardless of their stored text field.
+      //  2. Exclude vanished:true (admin-hidden messages).
+      //  3. Exclude messages hidden by the frontendHiddenBefore admin toggle.
       const { frontendHiddenBefore } = getRoomState(roomId);
       const query = {
         roomId,
         text: { $regex: q, $options: 'i' },
+        isDeleted: { $ne: true },   // exclude "deleted for everyone" messages
+        vanished: { $ne: true },    // exclude admin-vanished messages
       };
       if (frontendHiddenBefore) {
-         query.createdAt = { $gte: new Date(frontendHiddenBefore) };
+        query.createdAt = { $gte: new Date(frontendHiddenBefore) };
       }
-      // Sort by newest first, limit to 100 to avoid huge payloads
-      const messages = await Message.find(query).sort({ createdAt: -1 }).limit(100).lean();
-      res.json(messages.reverse()); // Reverse to chronological order like standard chat display
+      // Search entire history (no artificial pagination limit for search).
+      // Capped at 200 to avoid huge payloads on very common search terms.
+      const messages = await Message.find(query).sort({ createdAt: -1 }).limit(200).lean();
+      res.json(messages.reverse()); // chronological order for the chat display
     } catch (error) {
       logger.error('Failed to search messages:', error);
       res.status(500).json({ error: 'Failed to search messages' });
