@@ -4866,6 +4866,9 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                     overflowAnchor: 'auto',
                     WebkitOverflowScrolling: 'touch',
                   }}
+                  components={{
+                    Footer: () => <div style={{ height: '12px', flexShrink: 0 }} />
+                  }}
                 />
               </MessagesContainer>
               <ScrollToBottomButton
