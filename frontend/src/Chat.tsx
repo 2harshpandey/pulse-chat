@@ -1876,11 +1876,19 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       shouldReconnect = false;
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       if (ws.current) {
-        ws.current.onclose = null;
-        ws.current.onerror = null;
-        ws.current.onmessage = null;
-        ws.current.onopen = null;
-        ws.current.close();
+        const socket = ws.current;
+        socket.onclose = null;
+        socket.onerror = null;
+        socket.onmessage = null;
+        
+        // Prevent Chrome's "WebSocket is closed before the connection is established" warning
+        // which happens mostly in React Strict Mode dev environments when the component unmounts instantly.
+        if (socket.readyState === WebSocket.CONNECTING) {
+          socket.onopen = () => socket.close();
+        } else {
+          socket.onopen = null;
+          socket.close();
+        }
         ws.current = null;
       }
       document.removeEventListener('visibilitychange', handleVisibilityChange);
