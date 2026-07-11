@@ -879,6 +879,20 @@ const Admin = () => {
 
   const extractMessageId = (log: any) => log.messageId || log.message?.id || log.message?._id || log._id;
 
+  // Build a set of message IDs that were later deleted by their user.
+  // This lets Create event rows show "Sent · Later deleted" instead of the
+  // misleading "Active" badge when the message no longer exists.
+  const laterDeletedByUserIds = useMemo(() => {
+    const ids = new Set<string>();
+    enrichedHistoryLogs.forEach(log => {
+      if (log.type === 'delete_everyone') {
+        const id = extractMessageId(log);
+        if (id) ids.add(id);
+      }
+    });
+    return ids;
+  }, [enrichedHistoryLogs]);
+
   const validSelectionLogs = useMemo(() => {
     return filteredHistoryLogs.filter(log => !!extractMessageId(log));
   }, [filteredHistoryLogs]);
@@ -1250,7 +1264,7 @@ const Admin = () => {
                           <Td>{log.username} ({log.userId})</Td>
                           <Td style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#64748b', minWidth: '180px', maxWidth: '250px', wordBreak: 'break-all' }}>{log.messageId || log.message?.id || log.message?._id || log._id || 'N/A'}</Td>
                           <Td style={{ textAlign: 'center' }}>
-                            {log.message?.deletedBy === 'admin' || log.message?.vanished ? (
+                          {log.message?.deletedBy === 'admin' || log.message?.vanished ? (
                               <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
                                 <Badge $color="red" style={{ whiteSpace: 'nowrap' }}>
                                   <StatusDot $color="red" /> Deleted by Admin
@@ -1268,6 +1282,14 @@ const Admin = () => {
                             ) : log.type === 'delete_everyone' ? (
                               <div style={{ display: 'flex', justifyContent: 'center' }}>
                                 <Badge $color="yellow" style={{ whiteSpace: 'nowrap' }}>Deleted by User</Badge>
+                              </div>
+                            ) : log.type === 'create' && laterDeletedByUserIds.has(extractMessageId(log)) ? (
+                              // This create event's message was later deleted by the user.
+                              // Show "Sent" + a secondary indicator so the admin isn't confused
+                              // by seeing "Active" on a message that no longer exists.
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+                                <Badge $color="green" style={{ whiteSpace: 'nowrap' }}>Sent</Badge>
+                                <Badge $color="yellow" style={{ fontSize: '0.7rem', whiteSpace: 'nowrap' }}>↳ Deleted by User</Badge>
                               </div>
                             ) : (
                               <div style={{ display: 'flex', justifyContent: 'center' }}>

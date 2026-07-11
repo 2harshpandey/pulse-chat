@@ -493,7 +493,7 @@ export const MessageItem = React.memo(({
         <div
           style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: sender === 'me' ? 'flex-end' : 'flex-start', width: '100%' }}
         >
-          {!isDeleted && showUsername && <Username $sender={sender}>{msg.username}</Username>}
+          {showUsername && <Username $sender={sender}>{msg.username}</Username>}
           <MessageBubble
             ref={messageBubbleRef}
             $sender={sender}
