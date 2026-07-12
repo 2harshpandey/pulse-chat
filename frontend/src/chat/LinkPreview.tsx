@@ -32,7 +32,7 @@ export const LinkPreviewSkeleton = ({ sender }: { sender: 'me' | 'other' }) => (
 export const LinkPreview: React.FC<{ url: string; sender: 'me' | 'other' }> = React.memo(({ url, sender }) => {
   const [data, setData] = useState<LinkPreviewData | null | undefined>(
     () => {
-      if (!linkPreviewCache.has(url)) return getLinkPreviewFallback(url);
+      if (!linkPreviewCache.has(url)) return null;
       return linkPreviewCache.get(url) ?? getLinkPreviewFallback(url);
     }
   );
