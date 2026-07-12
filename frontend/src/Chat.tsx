@@ -2497,9 +2497,10 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     return () => { cancelled = true; };
   }, [activeSearchQuery, apiBase, roomId, normalizeMessage, filterVisibleMessages]);
 
-  const fetchAndPrependOlderMessages = useCallback(async (beforeCursor: string) => {
+  const fetchAndPrependOlderMessages = useCallback(async (beforeCursor: string, limitOverride?: number) => {
     const before = encodeURIComponent(beforeCursor);
-    const res = await fetch(`${apiBase}/api/messages?before=${before}&limit=${HISTORY_PAGE_SIZE}`, {
+    const limit = limitOverride || HISTORY_PAGE_SIZE;
+    const res = await fetch(`${apiBase}/api/messages?before=${before}&limit=${limit}`, {
       headers: { 'x-room-id': roomId }
     });
     if (!res.ok) throw new Error('Failed to fetch older messages');
@@ -2509,7 +2510,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       ? payload
       : (Array.isArray(payload.messages) ? payload.messages : []);
     const hasMore = Array.isArray(payload)
-      ? rawBatch.length >= HISTORY_PAGE_SIZE
+      ? rawBatch.length >= limit
       : Boolean(payload.hasMore);
 
     if (rawBatch.length === 0) {
@@ -3911,7 +3912,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
 
           isLoadingOlderRef.current = true;
           try {
-            const result = await fetchAndPrependOlderMessages(cursor);
+            const result = await fetchAndPrependOlderMessages(cursor, 500);
             fetchedPages += 1;
             cursor = result.nextCursor;
             hasMore = result.hasMore;

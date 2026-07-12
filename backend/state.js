@@ -33,7 +33,7 @@ const userFingerprints = new Map();  // Map<userId, { ips: Set, userAgents: Set,
 // --- Tuning Constants ---
 const INITIAL_HISTORY_BATCH_SIZE = 80;
 const DEFAULT_HISTORY_PAGE_SIZE = 50;
-const MAX_HISTORY_PAGE_SIZE = 100;
+const MAX_HISTORY_PAGE_SIZE = 500;
 const MAX_HISTORY = 5000;
 const MIN_REPORT_REASON_LENGTH = 5;
 const MAX_REPORT_REASON_LENGTH = 500;
