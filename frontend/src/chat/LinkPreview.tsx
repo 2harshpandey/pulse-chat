@@ -19,7 +19,7 @@ export const LinkPreviewSkeleton = ({ sender }: { sender: 'me' | 'other' }) => (
     as="div"
     style={{ opacity: 0.6, pointerEvents: 'none' }}
   >
-    <div style={{ width: '78px', minWidth: '78px', height: '78px', background: sender === 'me' ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)', display: 'block' }} />
+    <div style={{ width: '96px', minWidth: '96px', height: '96px', background: sender === 'me' ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.05)', display: 'block' }} />
     <LinkPreviewBody>
       <div style={{ height: '14px', width: '50%', background: sender === 'me' ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.1)', marginBottom: '8px', borderRadius: '3px' }} />
       <div style={{ height: '12px', width: '80%', background: sender === 'me' ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.08)', marginBottom: '6px', borderRadius: '3px' }} />

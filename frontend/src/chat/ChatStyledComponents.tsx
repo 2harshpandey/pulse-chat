@@ -2100,9 +2100,8 @@ export const LinkPreviewCard = styled.a<{ $sender: 'me' | 'other' }>`
   margin-bottom: 4px;
   background: ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.18)' : 'var(--bg-hover)'};
   border: 1px solid ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.18)' : 'var(--border-primary)'};
-  min-height: 78px;
-  height: auto;
-  width: 22rem;
+  height: 96px;
+  width: 26rem;
   max-width: 100%;
   transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
   &:hover { opacity: 0.95; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
@@ -2112,8 +2111,8 @@ export const LinkPreviewCard = styled.a<{ $sender: 'me' | 'other' }>`
 `;
 
 export const LinkPreviewImageWrapper = styled.div`
-  width: 78px;
-  min-width: 78px;
+  width: 96px;
+  min-width: 96px;
   position: relative;
   overflow: hidden;
   background: rgba(0,0,0,0.05);
