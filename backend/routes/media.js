@@ -568,7 +568,7 @@ module.exports = (wss, broadcasts) => {
           const rawHostname = parsedUrl.hostname;
 
           let resolvedIp;
-          try { ({ address: resolvedIp } = await dns.promises.lookup(rawHostname)); }
+          try { ({ address: resolvedIp } = await dns.promises.lookup(rawHostname, { family: 4 })); }
           catch { throw new Error('Could not resolve hostname'); }
           if (isPrivateOrInternalIp(resolvedIp)) throw new Error('Invalid URL');
 
