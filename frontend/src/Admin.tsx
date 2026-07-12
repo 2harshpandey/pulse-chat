@@ -31,7 +31,7 @@ import type {
   AuditLogData, LoggedInUser, UserReportData, Tab,
 } from './admin/types';
 import {
-  sanitizeUrl, isTenorUrl, sanitizePathId,
+  sanitizeUrl, isGiphyUrl, sanitizePathId,
   formatDate, formatTime, formatDateTime, formatDuration,
   formatServerLogLine, getTimeRemaining, getLinkStatus, auditTypeLabel,
 } from './admin/utils';
@@ -827,7 +827,7 @@ const Admin = () => {
       if (!content) return '"[Empty]"';
       const text = content.text || '';
       if (content.url) {
-        const isGif = isTenorUrl(content.url);
+        const isGif = isGiphyUrl(content.url);
         const fileName = content.originalName || (isGif ? 'GIF' : 'Uploaded File');
         const safeHref = sanitizeUrl(content.url);
         return <>{text && `"${text}" `}{safeHref ? <AdminLogLink href={safeHref} target="_blank" rel="noopener noreferrer">[{fileName}]</AdminLogLink> : <span>[{fileName}]</span>}</>;

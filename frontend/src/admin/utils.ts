@@ -14,11 +14,11 @@ export const sanitizeUrl = (url: string | undefined | null): string => {
   }
 };
 
-export const isTenorUrl = (url: string | undefined | null): boolean => {
+export const isGiphyUrl = (url: string | undefined | null): boolean => {
   if (!url) return false;
   try {
     const { hostname } = new URL(url);
-    return hostname === 'tenor.com' || hostname.endsWith('.tenor.com');
+    return hostname === 'giphy.com' || hostname.endsWith('.giphy.com');
   } catch {
     return false;
   }

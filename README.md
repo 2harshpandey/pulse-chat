@@ -261,7 +261,7 @@ Pulse Chat uses a hybrid communication model:
 | REST API | Authentication, uploads, link previews, GIF discovery, admin workflows, reports, and operational actions. |
 | MongoDB | Persistent storage for users, messages, events, reports, moderation state, and chat state. |
 | Cloudinary | Media upload storage, delivery, and transformation-backed previews. |
-| Tenor API | GIF search and discovery. |
+| Giphy API | GIF search and discovery. |
 
 ---
 
@@ -275,7 +275,7 @@ flowchart TB
   API --> Mongo[(MongoDB)]
   WS --> Mongo
   API --> Cloudinary[Cloudinary Media CDN]
-  API --> Tenor[Tenor GIF API]
+  API --> Giphy[Giphy API]
   API --> Preview[Hardened Link Preview Fetcher]
   WS --> Admin[Admin Realtime Dashboard]
 ```
@@ -308,7 +308,7 @@ flowchart TB
 | Frontend | React 18, TypeScript, Vite, Styled Components, React Router, React Virtuoso, Emoji Picker, `@use-gesture/react` |
 | Backend | Node.js, Express, WebSocket `ws`, MongoDB, Mongoose, Multer, Axios, Winston |
 | Media | Cloudinary |
-| GIF Search | Tenor API |
+| GIF Search | Giphy API |
 | Storage | MongoDB, IndexedDB media cache |
 | Tooling | Vite, TypeScript, npm |
 
@@ -329,7 +329,7 @@ Create environment files for the server and frontend before running locally.
 | `CLOUDINARY_CLOUD_NAME` | Yes | Cloudinary cloud name. |
 | `CLOUDINARY_API_KEY` | Yes | Cloudinary API key. |
 | `CLOUDINARY_API_SECRET` | Yes | Cloudinary API secret. |
-| `TENOR_API_KEY` | Yes | Tenor API key for GIF discovery. |
+| `GIPHY_API_KEY` | Yes | Giphy API key for GIF discovery. |
 
 ### Frontend environment variables
 

@@ -31,7 +31,7 @@ const isPrivateOrInternalIp = (ip) => {
   return true; // unknown format — block by default
 };
 
-const ALLOWED_DOWNLOAD_HOSTS = ['res.cloudinary.com', 'api.cloudinary.com', 'media.tenor.com', 'tenor.com', 'giphy.com'];
+const ALLOWED_DOWNLOAD_HOSTS = ['res.cloudinary.com', 'api.cloudinary.com', 'giphy.com'];
 
 const getAllowedDownloadHost = (hostname) => {
   if (hostname.endsWith('.giphy.com') || hostname === 'giphy.com') return hostname;

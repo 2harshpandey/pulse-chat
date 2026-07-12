@@ -84,7 +84,7 @@ export const resolveReplyTargetId = (replyingTo: any, sourceMessageId?: string):
 /**
  * Trusted CDN hostnames allowed as download targets in downloadFile.
  */
-export const ALLOWED_DOWNLOAD_HOSTS = ['res.cloudinary.com', 'media.tenor.com', 'tenor.com'];
+export const ALLOWED_DOWNLOAD_HOSTS = ['res.cloudinary.com', 'giphy.com'];
 
 export const resolveApiBaseUrl = (): string => {
   const base = (import.meta.env.REACT_APP_API_URL || '').trim().replace(/\/$/, '');
@@ -308,13 +308,13 @@ export const sanitizeMediaUrl = (url: string | undefined | null): string => {
 };
 
 /**
- * Returns true only if the URL hostname is exactly tenor.com or a subdomain.
+ * Returns true only if the URL hostname is exactly giphy.com or a subdomain.
  */
-export const isTenorUrl = (url: string | undefined | null): boolean => {
+export const isGiphyUrl = (url: string | undefined | null): boolean => {
   if (!url) return false;
   try {
     const { hostname } = new URL(url);
-    return hostname === 'tenor.com' || hostname.endsWith('.tenor.com');
+    return hostname === 'giphy.com' || hostname.endsWith('.giphy.com');
   } catch {
     return false;
   }

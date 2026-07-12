@@ -1,7 +1,7 @@
 import React from 'react';
 import type { Message } from './types';
 import {
-  sanitizeMediaUrl, isTenorUrl, withCloudinaryTransform, getMediaGatePreviewUrl,
+  sanitizeMediaUrl, isGiphyUrl, withCloudinaryTransform, getMediaGatePreviewUrl,
   formatMediaSize, getFileContainerLabel, buildDownloadProxyUrl,
   fetchBlobWithProgress, downloadFile, wrapEmojis, getDisplayFilename, EMOJI_SEQUENCE_RE,
 } from './utils';

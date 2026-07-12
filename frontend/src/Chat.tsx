@@ -26,7 +26,7 @@ import {
   getUserId, normalizeMessageId, getMessageElementId, normalizeOverlayText,
   EMOJI_SEQUENCE_RE, wrapEmojis, findMessageElement, resolveReplyTargetId,
   ALLOWED_DOWNLOAD_HOSTS, resolveApiBaseUrl,  buildDownloadProxyUrl, fetchBlobWithProgress, downloadFile,
-  sanitizeMediaUrl, isTenorUrl, withCloudinaryTransform,
+  sanitizeMediaUrl, isGiphyUrl, withCloudinaryTransform,
   getQuotedPreviewThumbUrl, getMediaGatePreviewUrl, formatMediaSize,
   getMediaCacheLookupKey, getFileContainerLabel, chooseReadableFilename,
   sanitizeFilename, inferredContentLengthByUrlCache, getCurrentHistoryPath,
@@ -2740,7 +2740,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
 
       let replyText = replyingTo.text || 'Message';
       if (!replyingTo.text) {
-        if (isTenorUrl(replyingTo.url)) {
+        if (isGiphyUrl(replyingTo.url)) {
           replyText = 'GIF';
         } else if (replyingTo.type === 'image') {
           replyText = 'Image';
@@ -4263,7 +4263,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       if (type === 'system_notification') { setReplyingTo(null); return; }
       let replyText = replyingTo.text || 'Message';
       if (!replyingTo.text) {
-        if (isTenorUrl(replyingTo.url)) replyText = 'GIF';
+        if (isGiphyUrl(replyingTo.url)) replyText = 'GIF';
         else if (replyingTo.type === 'image') replyText = 'Image';
         else if (replyingTo.type === 'video') replyText = 'Video';
       }
@@ -4755,7 +4755,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                     {(() => {
                       const msg = pinnedMessages[currentPinnedIndex];
                       if (!msg) return 'Attachment';
-                      const isGif = !!msg.url?.match(/^https?:\/\/(?:[a-z0-9-]+\.)*tenor\.com\//i) || !!msg.text?.match(/^https?:\/\/(?:[a-z0-9-]+\.)*tenor\.com\//i) || msg.originalName?.toLowerCase().endsWith('.gif') || msg.url?.toLowerCase().split('?')[0].endsWith('.gif');
+                      const isGif = !!msg.url?.match(/^https?:\/\/(?:[a-z0-9-]+\.)*giphy\.com\//i) || !!msg.text?.match(/^https?:\/\/(?:[a-z0-9-]+\.)*giphy\.com\//i) || msg.originalName?.toLowerCase().endsWith('.gif') || msg.url?.toLowerCase().split('?')[0].endsWith('.gif');
                       if (isGif) {
                         return (
                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -5048,7 +5048,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                           return replyingTo.deletedBy === 'admin' ? 'This message has been deleted by an admin.' : (replyingTo.deletedBy === userIdRef.current ? 'You deleted this message.' : 'This message has been deleted.');
                         }
                         if (replyingTo.text) return replyingTo.text;
-                        if (isTenorUrl(replyingTo.url)) return 'GIF';
+                        if (isGiphyUrl(replyingTo.url)) return 'GIF';
                         if (replyingTo.type === 'image') return 'Image';
                         if (replyingTo.type === 'video') return 'Video';
                         return 'Message';
