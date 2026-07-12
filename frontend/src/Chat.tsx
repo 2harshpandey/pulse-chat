@@ -5313,7 +5313,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
               onChange={(e) => setReportReason(e.target.value)}
               placeholder="Tell us why this user/message should be reviewed..."
               maxLength={MAX_REPORT_REASON_LENGTH}
-              autoFocus
+              autoFocus={!('ontouchstart' in window || navigator.maxTouchPoints > 0)}
             />
             <ReportReasonMeta>
               <span>Minimum {MIN_REPORT_REASON_LENGTH} characters</span>
