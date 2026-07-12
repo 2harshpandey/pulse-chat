@@ -162,6 +162,8 @@ export const renderMessageContent = (
   transferInfo?: TransferInfo,
   onResumeUpload?: (messageId: string) => void,
   onCancelUpload?: (messageId: string) => void,
+  onMediaLoad?: () => void,
+  isSelectModeActive: boolean = false,
 ) => {
   const isVideo = msg.type === 'video' || msg.url?.match(/\.(mp4|webm|mov)$/i);
   const isImage = msg.type === 'image' || msg.url?.match(/\.(jpeg|jpg|gif|png|svg)$/i);
@@ -276,7 +278,7 @@ export const renderMessageContent = (
             </>
           ) : msg.url ? (
             <>
-              <img src={sanitizeMediaUrl(resolvedMediaUrl)} alt={displayFilename} onClick={() => { const u = sanitizeMediaUrl(resolvedMediaUrl); if (u) openLightbox(u); }} onPointerDown={() => onMediaPointerDown?.()} onDoubleClick={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} />
+              <img onLoad={onMediaLoad} src={sanitizeMediaUrl(resolvedMediaUrl)} alt={displayFilename} onClick={() => { if (isSelectModeActive) return; const u = sanitizeMediaUrl(resolvedMediaUrl); if (u) openLightbox(u); }} onPointerDown={() => onMediaPointerDown?.()} onDoubleClick={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} />
               {msg.isUploading && (
                 <MediaLoadGate
                   type="button"
@@ -370,7 +372,14 @@ export const renderMessageContent = (
             </VideoPlayerWrapper>
           ) : (
             <VideoPlayerWrapper>
-              <VideoPlayer src={resolvedMediaUrl} onPointerDown={onMediaPointerDown} onFullscreenEnter={onVideoFullscreenEnter} isUploading={msg.isUploading} />
+              <VideoPlayer
+                src={sanitizeMediaUrl(resolvedMediaUrl) || ''}
+                onPointerDown={() => onMediaPointerDown?.()}
+                onFullscreenEnter={onVideoFullscreenEnter}
+                isUploading={msg.isUploading}
+                onLoadedData={onMediaLoad}
+                isSelectModeActive={isSelectModeActive}
+              />
               {msg.isUploading && (
                 <MediaLoadGate
                   type="button"
@@ -438,16 +447,10 @@ export const renderMessageContent = (
           role={canDownload ? 'button' : undefined}
           tabIndex={canDownload ? 0 : -1}
           title={canDownload ? (isDownloadInProgress ? 'Downloading' : 'Download file') : undefined}
-          onPointerDown={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            if (canDownload) triggerDownload(displayFilename || 'file');
-          }}
-          onMouseDown={(e) => e.stopPropagation()}
-          onTouchStart={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
+            if (canDownload && !isSelectModeActive) triggerDownload(displayFilename || 'file');
           }}
           onKeyDown={(e) => {
             if (!canDownload || (e.key !== 'Enter' && e.key !== ' ')) return;
@@ -502,6 +505,46 @@ export const renderMessageContent = (
 
   if (msg.text) {
     return <MessageText>{renderTextWithLinks(msg.text, sender)}</MessageText>;
+  }
+
+  // Fallback for media messages where the URL is missing or unusable
+  // (e.g. Cloudinary async upload, stale blob: URL from a previous session).
+  // Show a small placeholder so the message bubble is not silently invisible.
+  // Cast to string to bypass TS narrowing — runtime data may have type='video'|'image'|'file' with no url.
+  const msgTypeStr = msg.type as string;
+  if (msgTypeStr === 'video' || msgTypeStr === 'image' || msgTypeStr === 'file') {
+    return (
+      <MediaContent>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '10px 14px', borderRadius: 10,
+          background: 'rgba(255,255,255,0.06)',
+          color: 'rgba(255,255,255,0.45)', fontSize: 13,
+        }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+            style={{ width: 18, height: 18, flexShrink: 0, opacity: 0.6 }}>
+            {msgTypeStr === 'video' ? (
+              <>
+                <path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2" />
+                <polyline points="23 7 16 12 23 17 23 7" />
+                <line x1="1" y1="1" x2="23" y2="23" />
+              </>
+            ) : msgTypeStr === 'image' ? (
+              <>
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <line x1="3" y1="3" x2="21" y2="21" />
+              </>
+            ) : (
+              <>
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+              </>
+            )}
+          </svg>
+          <span>Media unavailable</span>
+        </div>
+      </MediaContent>
+    );
   }
 
   return null;

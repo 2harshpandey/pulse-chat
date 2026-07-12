@@ -15,7 +15,7 @@ const formatTime = (s: number): string => {
   return `${m}:${sec.toString().padStart(2, '0')}`;
 };
 
-export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter, isUploading }: { src: string; onPointerDown?: () => void; onFullscreenEnter?: () => void; isUploading?: boolean }) => {
+export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter, isUploading, onLoadedData, isSelectModeActive }: { src: string; onPointerDown?: () => void; onFullscreenEnter?: () => void; isUploading?: boolean; onLoadedData?: () => void; isSelectModeActive?: boolean }) => {
   const containerRef = useRef<HTMLDivElement>(null!);
   const videoRef = useRef<HTMLVideoElement>(null!);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -31,6 +31,8 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter, isUploading
   const isScrubbingRef = useRef(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  const retryCountRef = useRef(0);
   const hideControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const doubleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTapTimeRef = useRef(0);
@@ -47,6 +49,12 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter, isUploading
     }
   }, [isPlaying]);
 
+  // Reset error state when the source URL changes
+  useEffect(() => {
+    setHasError(false);
+    retryCountRef.current = 0;
+  }, [src]);
+
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -57,6 +65,8 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter, isUploading
     };
     const onLoadedMetadata = () => {
       setDuration(video.duration);
+      setHasError(false);
+      retryCountRef.current = 0;
       video.currentTime = 0.01;
     };
     const onPlay = () => { setIsPlaying(true); resetControlsTimer(); };
@@ -70,12 +80,32 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter, isUploading
       setShowControls(true);
     };
     const onVolumeChange = () => { setVolume(video.volume); setIsMuted(video.muted); };
+    const onError = () => {
+      // blob: URLs that fail are dead references — retrying is pointless.
+      const currentSrc = video.src || '';
+      if (currentSrc.startsWith('blob:')) {
+        setHasError(true);
+        return;
+      }
+      // Auto-retry up to 2 times for non-blob sources (real network errors)
+      if (retryCountRef.current < 2) {
+        retryCountRef.current += 1;
+        setTimeout(() => {
+          if (videoRef.current) {
+            videoRef.current.load();
+          }
+        }, 500 * retryCountRef.current);
+      } else {
+        setHasError(true);
+      }
+    };
     video.addEventListener('timeupdate', onTimeUpdate);
     video.addEventListener('loadedmetadata', onLoadedMetadata);
     video.addEventListener('play', onPlay);
     video.addEventListener('pause', onPause);
     video.addEventListener('ended', onEnded);
     video.addEventListener('volumechange', onVolumeChange);
+    video.addEventListener('error', onError);
     return () => {
       video.removeEventListener('timeupdate', onTimeUpdate);
       video.removeEventListener('loadedmetadata', onLoadedMetadata);
@@ -83,6 +113,7 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter, isUploading
       video.removeEventListener('pause', onPause);
       video.removeEventListener('ended', onEnded);
       video.removeEventListener('volumechange', onVolumeChange);
+      video.removeEventListener('error', onError);
     };
   }, [resetControlsTimer]);
 
@@ -120,8 +151,23 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter, isUploading
   const togglePlay = () => {
     const v = videoRef.current;
     if (!v) return;
-    if (v.paused) v.play().catch(() => { });
-    else v.pause();
+    // If the video is in an error state or has no data, try reloading before playing
+    if (hasError || v.readyState === 0) {
+      setHasError(false);
+      retryCountRef.current = 0;
+      v.load();
+      v.play().catch(() => { });
+      return;
+    }
+    if (v.paused) {
+      v.play().catch(() => {
+        // play() failed — try forcing a reload and then playing
+        v.load();
+        v.play().catch(() => { });
+      });
+    } else {
+      v.pause();
+    }
   };
 
   const skip = (sec: number) => {
@@ -228,6 +274,7 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter, isUploading
   const handleContainerTap = (e: React.MouseEvent<HTMLDivElement>) => {
     // Ignore clicks on control buttons
     if ((e.target as HTMLElement).closest('button, input, [data-cvp-controls]')) return;
+    if (isSelectModeActive) return;
 
     const now = Date.now();
     const dt = now - lastTapTimeRef.current;
@@ -285,11 +332,27 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter, isUploading
         <video
           ref={videoRef}
           src={sanitizeMediaUrl(src)}
-          crossOrigin="anonymous"
           preload="metadata"
           playsInline
           style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000', display: 'block' }}
         />
+
+        {/* Error overlay — shown when the video src is unloadable (e.g. expired blob: URL) */}
+        {hasError && (
+          <div style={{
+            position: 'absolute', inset: 0,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(0,0,0,0.72)', color: 'rgba(255,255,255,0.7)', gap: '8px', pointerEvents: 'none',
+          }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+              style={{ width: 36, height: 36, opacity: 0.7 }}>
+              <path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2" />
+              <polyline points="23 7 16 12 23 17 23 7" />
+              <line x1="1" y1="1" x2="23" y2="23" />
+            </svg>
+            <span style={{ fontSize: 12, fontWeight: 500 }}>Media unavailable</span>
+          </div>
+        )}
 
         {/* Double tap indicators */}
         <CVPDoubleTapOverlay $side={doubleTapSide === 'left' ? 'left' : null} style={{ left: 0 }}>

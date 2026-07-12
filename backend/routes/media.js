@@ -110,9 +110,16 @@ const uploadBufferToCloudinary = (file, originalName) => new Promise((resolve, r
 
   const uploadStream = cloudinary.uploader.upload_chunked_stream(uploadOptions, (error, result) => {
     if (error) return reject(error);
-    // async:true returns status:'pending' with a secure_url placeholder; treat as success.
-    if (!result?.secure_url && result?.status !== 'pending') {
-      return reject(new Error('Cloudinary upload did not return a secure URL.'));
+    // async:true returns status:'pending' and may omit secure_url; we must construct it.
+    if (!result?.secure_url && result?.public_id) {
+      result.secure_url = cloudinary.url(result.public_id, { 
+        resource_type: result.resource_type || (isVideo ? 'video' : 'image'), 
+        secure: true 
+      });
+    }
+    
+    if (!result?.secure_url) {
+      return reject(new Error('Cloudinary upload did not return or generate a secure URL.'));
     }
     return resolve(result);
   });

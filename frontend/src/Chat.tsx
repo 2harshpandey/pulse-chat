@@ -25,16 +25,17 @@ import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import {
   getUserId, normalizeMessageId, getMessageElementId, normalizeOverlayText,
   EMOJI_SEQUENCE_RE, wrapEmojis, findMessageElement, resolveReplyTargetId,
-  ALLOWED_DOWNLOAD_HOSTS, resolveApiBaseUrl, buildDownloadProxyUrl,
-  fetchBlobWithProgress, downloadFile, sanitizeMediaUrl, isTenorUrl,
-  withCloudinaryTransform, getQuotedPreviewThumbUrl, getMediaGatePreviewUrl,
-  formatMediaSize, getMediaCacheLookupKey, getFileContainerLabel, chooseReadableFilename,
+  ALLOWED_DOWNLOAD_HOSTS, resolveApiBaseUrl,  buildDownloadProxyUrl, fetchBlobWithProgress, downloadFile,
+  sanitizeMediaUrl, isTenorUrl, withCloudinaryTransform,
+  getQuotedPreviewThumbUrl, getMediaGatePreviewUrl, formatMediaSize,
+  getMediaCacheLookupKey, getFileContainerLabel, chooseReadableFilename,
   sanitizeFilename, inferredContentLengthByUrlCache, getCurrentHistoryPath,
   readRouterHistoryState, readRouterUserState, buildOverlayGuardState,
   pushOverlayGuardHistoryEntry, clearOverlayGuardHistoryEntry,
   getBlobUrl, revokeBlobUrl, getDeletedForMeIds, addDeletedForMeIds,
 } from './chat/utils';
 import { NOTIFICATION_BEEP } from './chat/audioConstants';
+import { VirtualMessageWrapper } from './chat/VirtualMessageWrapper';
 
 const ChatSearchContainer = styled.div<{ $active: boolean; $isClosing?: boolean }>`
   display: flex;
@@ -426,6 +427,25 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   // changes scrollHeight before we can restore the correct position.
   const suppressOlderMessageLoadRef = useRef(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const messageHeightsRef = useRef<{ [id: string]: number }>({});
+  const scrollAtSelectModeRef = useRef<number | null>(null);
+  const scrollAtReactionPickerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (isSelectModeActive && chatContainerRef.current) {
+      scrollAtSelectModeRef.current = chatContainerRef.current.scrollTop;
+    } else if (!isSelectModeActive) {
+      scrollAtSelectModeRef.current = null;
+    }
+  }, [isSelectModeActive]);
+
+  useEffect(() => {
+    if (reactionPickerData && chatContainerRef.current) {
+      scrollAtReactionPickerRef.current = chatContainerRef.current.scrollTop;
+    } else if (!reactionPickerData) {
+      scrollAtReactionPickerRef.current = null;
+    }
+  }, [reactionPickerData]);
 
   const filteredMessages = useMemo(() => {
     if (activeSearchQuery.trim()) {
@@ -608,7 +628,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   const audioBufferRef = useRef<AudioBuffer | null>(null);
   const audioCtxUnlockedRef = useRef(false);
   const lastNotificationSoundAtRef = useRef<number>(0);
-  const fullscreenScrollSnapshotRef = useRef<{ messageId: string; scrollTop: number; bottomOffset: number } | null>(null);
+  const fullscreenScrollSnapshotRef = useRef<{ messageId: string; scrollTop: number; bottomOffset: number; clientHeight: number } | null>(null);
   const isVideoFullscreenSessionRef = useRef(false);
   const suppressProgrammaticScrollUntilRef = useRef<number>(0);
   const quoteJumpLockRef = useRef(false);
@@ -2095,20 +2115,34 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       fullscreenScrollSnapshotRef.current = null;
       if (!snapshot) return;
 
-      // Use a small timeout to allow the browser's fullscreen exit reflow to complete
-      // before measuring and restoring the scroll position.
-      setTimeout(() => {
+      // We use two targeted timeouts instead of a constant loop:
+      // 1. 50ms: Defeats the browser's native focus-restoration scroll jump immediately.
+      // 2. 500ms: Aligns perfectly after all native animations (video shrink, URL bar resize) complete.
+      // This allows the native transitions to play out smoothly without JavaScript fighting them and causing jitter.
+      const restoreScroll = () => {
         const scroller = getChatScrollerElement();
         if (!scroller) return;
 
-        // Directly restore the exact scrollTop we captured before entering fullscreen.
-        // This avoids race conditions where scrollHeight is temporarily inflated by
-        // transitioning media elements.
-        const target = snapshot.scrollTop;
         const maxTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
-        const clamped = Math.max(0, Math.min(target, maxTop));
-        scroller.scrollTop = clamped;
-      }, 50);
+        
+        // If the user was anchored to the very bottom before entering fullscreen,
+        // keep them anchored to the bottom (vital for mobile URL bar resizes).
+        const wasAtBottom = (snapshot.bottomOffset - snapshot.clientHeight) <= 20;
+          
+        if (wasAtBottom) {
+          scroller.scrollTop = maxTop;
+        } else {
+          // Directly restore the exact scrollTop we captured before entering fullscreen.
+          // This avoids race conditions where scrollHeight is temporarily inflated by
+          // transitioning media elements.
+          const target = snapshot.scrollTop;
+          const clamped = Math.max(0, Math.min(target, maxTop));
+          scroller.scrollTop = clamped;
+        }
+      };
+
+      setTimeout(restoreScroll, 50);
+      setTimeout(restoreScroll, 500);
     };
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
@@ -2502,11 +2536,11 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     const existingIdsSnapshot = new Set(messagesRef.current.map((m) => m.id));
     const prependedCount = filteredBatch.reduce((count, m) => count + (existingIdsSnapshot.has(m.id) ? 0 : 1), 0);
 
-    // - FIX: Atomic prepend — update firstItemIndex inside the same
+    // - FIX: Atomic prepend —  update firstItemIndex inside the same
     // setMessages updater so Virtuoso receives the new index and new data
     // in ONE React batch. Splitting into two setState calls means Virtuoso
     // can see the old index with the new (larger) data array for one frame,
-    // causing the visible anchor row to jump upward — the primary flicker
+    // causing the visible anchor row to jump upward —  the primary flicker
     // root cause on first-pass upward scroll.
     const prev = messagesRef.current;
     const prevIds = new Set(prev.map((m) => m.id));
@@ -2556,7 +2590,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     // to hit the "roof" of the DOM, causing a violent layout snap.
 
     // - FIX: Throttle startReached -
-    // Virtuoso fires startReached on every scroll frame near the top — up to
+    // Virtuoso fires startReached on every scroll frame near the top —  up to
     // 60 calls per second. The lock prevents parallel fetches and the cooldown
     // ensures we only prepend once per 1.5 s window.
     const now = performance.now();
@@ -2625,6 +2659,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       messageId,
       scrollTop,
       bottomOffset: scroller.scrollHeight - scrollTop,
+      clientHeight: scroller.clientHeight,
     };
 
     clearPendingBottomScrollTimers();
@@ -3296,6 +3331,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   };
 
   const handleToggleSelectMessage = useCallback((messageId: string) => {
+    document.body.classList.remove('hide-mobile-picker');
     setSelectedMessages(prevSelected => {
       const newSelected = prevSelected.includes(messageId)
         ? prevSelected.filter(id => id !== messageId)
@@ -3303,6 +3339,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
 
       if (newSelected.length === 0) {
         setIsSelectModeActive(false);
+        document.body.classList.remove('hide-mobile-picker');
       } else if (prevSelected.length === 0) {
         setIsSelectModeActive(true);
         if (!overlayGuardPushed.current) {
@@ -3316,6 +3353,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   }, []);
 
   const handleCancelSelectMode = useCallback(() => {
+    document.body.classList.remove('hide-mobile-picker');
     setIsSelectModeActive(false);
     setSelectedMessages([]);
   }, []);
@@ -4746,22 +4784,53 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
               </PinnedBannerContainer>
             )}
             <MessagesAndScrollWrapper>
-              <MessagesContainer onClick={handleChatAreaClick} $isScrollButtonVisible={isScrollToBottomVisible} $isMobileView={isMobileView}>
-                <Virtuoso
-                  scrollerRef={(ref) => {
-                    (chatContainerRef as React.MutableRefObject<HTMLDivElement | null>).current = ref as HTMLDivElement;
-                  }}
-                  data={historyLoaded && messages.length > 0 ? filteredMessages : []}
-                  firstItemIndex={firstItemIndex}
-                  initialTopMostItemIndex={initialTopMostItemIndexRef.current ?? 0}
-                  isScrolling={handleVirtuosoIsScrolling}
-                  atBottomStateChange={handleAtBottomStateChange}
-                  startReached={loadOlderMessages}
-                  followOutput={(isAtBottom) => {
-                    if (suppressProgrammaticScrollUntilRef.current > Date.now()) return false;
-                    return isAtBottomRef.current ? 'auto' : false;
-                  }}
-                  itemContent={(index, msg) => {
+              <MessagesContainer 
+                onClick={handleChatAreaClick}
+                $isScrollButtonVisible={isScrollToBottomVisible} 
+                $isMobileView={isMobileView}
+                ref={chatContainerRef as any}
+                onScroll={(e) => {
+                  const target = e.target as HTMLDivElement;
+                  if (reactionPickerData && scrollAtReactionPickerRef.current !== null) {
+                    if (Math.abs(target.scrollTop - scrollAtReactionPickerRef.current) > 20) {
+                      setReactionPickerData(null);
+                    }
+                  }
+                  if (isSelectModeActive && selectedMessages.length === 1 && scrollAtSelectModeRef.current !== null) {
+                    if (Math.abs(target.scrollTop - scrollAtSelectModeRef.current) > 20) {
+                      document.body.classList.add('hide-mobile-picker');
+                    }
+                  }
+                  if (target.scrollTop < 2500 && !isLoadingOlderRef.current && hasMoreOlderMessages && !suppressOlderMessageLoadRef.current) {
+                    loadOlderMessages();
+                  }
+                  const distanceFromBottom = target.scrollHeight - (target.scrollTop + target.clientHeight);
+                  const atBottom = distanceFromBottom <= 20;
+                  handleAtBottomStateChange(atBottom);
+                }}
+              >
+                {historyLoaded && messages.length > 0 ? (() => {
+                let viewportTop = chatContainerRef.current?.scrollTop ?? 0;
+                if (scrollBeforeSearchRef.current !== null) {
+                    viewportTop = scrollBeforeSearchRef.current;
+                }
+                const viewportBottom = viewportTop + (chatContainerRef.current?.clientHeight ?? 800);
+                let currentY = 0;
+                const fastMountVisibility = new Set<string>();
+                const useFastMount = filteredMessages.length > 100;
+                
+                if (useFastMount) {
+                   filteredMessages.forEach(msg => {
+                       const h = messageHeightsRef.current[msg.id] ?? 80;
+                       if (currentY + h > viewportTop - 3000 && currentY < viewportBottom + 3000) {
+                           fastMountVisibility.add(msg.id);
+                       }
+                       currentY += h;
+                   });
+                }
+
+                return (
+                  filteredMessages.map((msg, index, displayArr) => {
                     if (msg.type === 'system_notification') {
                       return (
                         <div key={msg.id || index} style={{ display: 'flex', justifyContent: 'center', padding: '0.4rem 0' }}>
@@ -4769,8 +4838,8 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                         </div>
                       );
                     }
-                    const dataIndex = index - firstItemIndex;
-                    const prevMsg = dataIndex > 0 ? filteredMessages[dataIndex - 1] : null;
+                    const dataIndex = index;
+                    const prevMsg = dataIndex > 0 ? displayArr[dataIndex - 1] : null;
                     const showUsername = !prevMsg || prevMsg.type === 'system_notification' || prevMsg.userId !== msg.userId;
 
                     const currentDateStr = msg.timestamp ? new Date(msg.timestamp).toDateString() : null;
@@ -4778,7 +4847,14 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                     const showDateSeparator = currentDateStr && currentDateStr !== prevDateStr;
 
                     return (
-                      <React.Fragment key={msg.id || `msg-${index}`}>
+                      <VirtualMessageWrapper
+                        key={msg.id || `msg-${index}`}
+                        id={msg.id}
+                        containerRef={chatContainerRef}
+                        messageHeightsRef={messageHeightsRef}
+                        initialIsVisible={useFastMount ? fastMountVisibility.has(msg.id) : true}
+                      >
+                        <React.Fragment>
                         {showDateSeparator && (
                           <div style={{ display: 'flex', justifyContent: 'center', margin: '1.5rem 0 1rem 0' }}>
                             <div style={{ 
@@ -4858,18 +4934,13 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                           handleCancelEdit={handleCancelEdit}
                           onVideoFullscreenEnter={handleVideoFullscreenEnter}
                         />
-                      </React.Fragment>
+                        </React.Fragment>
+                      </VirtualMessageWrapper>
                     );
-                  }}
-                  style={{
-                    flex: 1,
-                    overflowAnchor: 'auto',
-                    WebkitOverflowScrolling: 'touch',
-                  }}
-                  components={{
-                    Footer: () => <div style={{ height: '12px', flexShrink: 0 }} />
-                  }}
-                />
+                  })
+                );
+                })() : null}
+                <div style={{ height: '12px', flexShrink: 0 }} />
               </MessagesContainer>
               <ScrollToBottomButton
                 $isVisible={isScrollToBottomVisible}
@@ -4917,7 +4988,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                         title="Report"
                         aria-label="Report selected message"
                       >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18"></path><path d="M3 4h10l-1.5 3L13 10H3"></path></svg>
+                        <svg style={{ position: 'relative', left: '1px' }} xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path><line x1="4" y1="22" x2="4" y2="15"></line></svg>
                       </ReportButton>
                     )}
                     <DeleteButton onClick={handleInitiateDelete} title="Delete" aria-label="Delete selected messages">

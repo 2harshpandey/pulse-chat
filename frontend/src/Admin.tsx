@@ -268,6 +268,10 @@ const Admin = () => {
             return !message.data.messageIds.includes(id);
           }));
           break;
+        case 'error':
+        case 'pin_error':
+          alert(`Error: ${message.message || 'Unknown error'}`);
+          break;
         case 'pinned_messages_update':
           setPinnedMessages(message.data);
           break;

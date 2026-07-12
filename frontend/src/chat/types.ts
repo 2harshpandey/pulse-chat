@@ -59,6 +59,8 @@ export interface LinkPreviewData {
 
 export interface MessageItemProps {
   msg: Message;
+  isLastMessage?: boolean;
+  scrollToBottom?: () => void;
   isPinned?: boolean;
   showUsername: boolean;
   currentUserId: string;
@@ -70,6 +72,7 @@ export interface MessageItemProps {
   openLightbox: (url: string) => void;
   isMediaLoaded: boolean;
   onRequestMediaLoad: (messageId: string, mediaUrl?: string) => void;
+  onMediaLoad?: (messageId: string) => void;
   isMediaLoadInProgress: boolean;
   mediaLoadProgress: number;
   loadedMediaSrc?: string;
@@ -90,6 +93,7 @@ export interface MessageItemProps {
   onOpenReactionPicker: (messageId: string, rect: DOMRect, sender: 'me' | 'other') => void;
   setReactionsPopup: (popup: { messageId: string; reactions: { [emoji: string]: { userId: string; username: string; }[] }; rect: DOMRect } | null) => void;
   selectedMessages: string[];
+  isMobileReactionPickerHidden?: boolean;
   handleOpenFullEmojiPicker: (rect: DOMRect, messageId: string) => void;
   reactionPickerData: { messageId: string; rect: DOMRect; sender: 'me' | 'other' } | null;
   editingMessageId: string | null;

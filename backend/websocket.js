@@ -741,9 +741,28 @@ const initWebSocket = (wss) => {
           const { messageId, durationMs, replaceOldest } = parsedMessage;
           const roomId = ws.roomId || 'me';
           try {
-            const msg = await Message.findOne({ id: messageId }).lean();
+            let targetMsgId = messageId;
+            const mongoose = require('mongoose');
+            if (mongoose.Types.ObjectId.isValid(messageId)) {
+              const MessageEvent = mongoose.model('MessageEvent');
+              const event = await MessageEvent.findById(messageId).lean();
+              if (event) {
+                if (event.message?.id) targetMsgId = event.message.id;
+                else if (event.message?._id) targetMsgId = event.message._id.toString();
+                else if (event.messageId) targetMsgId = event.messageId;
+              }
+            }
+
+            const msg = await Message.findOne({
+              $or: [
+                { id: targetMsgId },
+                ...(mongoose.Types.ObjectId.isValid(targetMsgId) ? [{ _id: targetMsgId }] : [])
+              ]
+            }).lean();
+
             if (!msg) {
-              logger.warn(`Pin failed: message not found in DB for ID ${messageId}`);
+              logger.warn(`Pin failed: message not found in DB for ID ${targetMsgId} (original: ${messageId})`);
+              ws.send(JSON.stringify({ type: 'error', message: 'Failed to pin: Message not found in database.' }));
               return;
             }
             logger.info(`Pinning message found in DB: ${msg.id}`);
@@ -781,9 +800,24 @@ const initWebSocket = (wss) => {
           const { messageId } = parsedMessage;
           const roomId = ws.roomId || 'me';
           try {
-            await Message.updateOne({ id: messageId }, { $set: { pinned: null } });
+            let targetMsgId = messageId;
+            const mongoose = require('mongoose');
+            if (mongoose.Types.ObjectId.isValid(messageId)) {
+              const MessageEvent = mongoose.model('MessageEvent');
+              const event = await MessageEvent.findById(messageId).lean();
+              if (event) {
+                if (event.message?.id) targetMsgId = event.message.id;
+                else if (event.message?._id) targetMsgId = event.message._id.toString();
+                else if (event.messageId) targetMsgId = event.messageId;
+              }
+            }
+
+            await Message.updateOne(
+              { $or: [{ id: targetMsgId }, ...(mongoose.Types.ObjectId.isValid(targetMsgId) ? [{ _id: targetMsgId }] : [])] },
+              { $set: { pinned: null } }
+            );
             const state = getRoomState(roomId);
-            state.pinnedMessages = state.pinnedMessages.filter(m => m.id !== messageId);
+            state.pinnedMessages = state.pinnedMessages.filter(m => m.id !== targetMsgId && m.id !== messageId);
             broadcastPinnedMessages(roomId);
           } catch (error) {
             logger.error('Failed to unpin message:', error);
@@ -852,11 +886,24 @@ const initWebSocket = (wss) => {
             _broadcastOnlineUsers(roomId);
           }
 
+          // Sanitise: blob: URLs are ephemeral browser-only object references that
+          // become invalid after a page reload. They must never be persisted.
+          const sanitisedMessage = { ...parsedMessage };
+          if (typeof sanitisedMessage.url === 'string' && sanitisedMessage.url.startsWith('blob:')) {
+            logger.warn(`[DIAG] Stripped blob URL for message type=${sanitisedMessage.type} id=${sanitisedMessage.id}`);
+            sanitisedMessage.url = undefined;
+          }
+
+          // Diagnostic: log what URL is being saved to MongoDB
+          if (sanitisedMessage.type === 'video' || sanitisedMessage.type === 'image' || sanitisedMessage.type === 'file') {
+            logger.info(`[DIAG] Media message received: type=${sanitisedMessage.type} id=${sanitisedMessage.id} url=${sanitisedMessage.url ? sanitisedMessage.url.substring(0, 80) : 'MISSING'}`);
+          }
+
           const messageDoc = new Message({
-            ...parsedMessage,
+            ...sanitisedMessage,
             roomId,
-            reactions: toReactionMap(parsedMessage.reactions),
-            id: parsedMessage.id || Date.now().toString(),
+            reactions: toReactionMap(sanitisedMessage.reactions),
+            id: sanitisedMessage.id || Date.now().toString(),
             sender: ws.userId
           });
           

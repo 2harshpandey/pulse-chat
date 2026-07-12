@@ -510,7 +510,10 @@ export const MessagesContainer = styled.div<{ $isScrollButtonVisible?: boolean; 
   display: flex;
   flex-direction: column;
   gap: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overflow-anchor: auto;
+  overscroll-behavior-y: none;
   padding: 0 1rem;
   padding-right: ${props => !props.$isMobileView && props.$isScrollButtonVisible ? '64px' : '1rem'};
   transition: none;
@@ -596,6 +599,11 @@ export const MobileReactionPicker = styled.div<{ $sender: 'me' | 'other' }>`
   position: absolute;
   top: -44px;
   z-index: 30;
+  
+  .hide-mobile-picker & {
+    display: none !important;
+  }
+  
   background: var(--bg-elevated);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -2023,6 +2031,7 @@ export const TypingIndicatorContainer = styled.div`
 `;
 export const ReplyPreviewContainer = styled.div`
   padding: 10px 1rem; border-bottom: 1px solid var(--border-primary); background-color: var(--bg-tertiary); display: flex; align-items: center; gap: 10px; overflow: hidden; transition: background-color 0.3s ease, border-color 0.3s ease;
+  cursor: pointer;
   animation: ${replySlideIn} 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 `;
 export const ReplyText = styled.div`

@@ -23,6 +23,8 @@ import { transferManager, TransferInfo } from './TransferManager';
 
 export const MessageItem = React.memo(({
   msg,
+  isLastMessage,
+  scrollToBottom,
   isPinned,
   showUsername,
   currentUserId,
@@ -66,6 +68,8 @@ export const MessageItem = React.memo(({
     ? getQuotedPreviewThumbUrl(msg.replyingTo.type, msg.replyingTo.url)
     : '';
   const messageRowRef = useRef<HTMLDivElement>(null!);
+  const prevCurrentUserReaction = useRef<string | null>(null);
+
   const messageBubbleRef = useRef<HTMLDivElement>(null!);
   const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; right?: number; left?: number } | null>(null);
   
@@ -150,14 +154,20 @@ export const MessageItem = React.memo(({
     document.addEventListener('scroll', close, true);
     return () => document.removeEventListener('scroll', close, true);
   }, [activeDeleteMenu, msg.id, menuPos, setActiveDeleteMenu]);
-  // Tracks whether the pointer-down landed on a media preview element.
-  // When true the gesture-tap handler skips selection so the lightbox/player
-  // can open without also selecting the message.
-  const mediaWasTapped = useRef(false);
+
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const swipeTransitionResetTimerRef = useRef<number | null>(null);
   const reactButtonRef = useRef<HTMLButtonElement>(null!);
   const wasLongPressed = useRef(false);
+  const lastSelectModeExitTimeRef = useRef(0);
+  const isSelectModeActiveRef = useRef(isSelectModeActive);
+
+  useEffect(() => {
+    if (!isSelectModeActive && isSelectModeActiveRef.current) {
+        lastSelectModeExitTimeRef.current = Date.now();
+    }
+    isSelectModeActiveRef.current = isSelectModeActive;
+  }, [isSelectModeActive]);
   const touchStartPointRef = useRef<{ x: number; y: number } | null>(null);
   const suppressTapSelectionRef = useRef(false);
   const ignoreSwipeGestureRef = useRef(false);
@@ -226,7 +236,6 @@ export const MessageItem = React.memo(({
       // Ignore synthetic tap events that are actually part of a scroll gesture.
       if (suppressTapSelectionRef.current) {
         suppressTapSelectionRef.current = false;
-        mediaWasTapped.current = false;
         return;
       }
 
@@ -242,12 +251,6 @@ export const MessageItem = React.memo(({
         if (target.closest('[data-checkbox]')) {
           return;
         }
-        // If the tap landed directly on a media preview (image/video/GIF),
-        // let the lightbox/player handle it without also selecting the message.
-        if (mediaWasTapped.current) {
-          mediaWasTapped.current = false;
-          return;
-        }
         handleToggleSelectMessage(msg.id);
         return;
       }
@@ -256,7 +259,6 @@ export const MessageItem = React.memo(({
     // When a gesture ends as a drag (not a tap), clean up refs so the
     // next tap always starts from a known-good state.
     if (last && !tap) {
-      mediaWasTapped.current = false;
       wasLongPressed.current = false;
       suppressTapSelectionRef.current = false;
       ignoreSwipeGestureRef.current = false;
@@ -320,13 +322,31 @@ export const MessageItem = React.memo(({
     return null;
   }, [validReactions, currentUserId]);
 
+  useEffect(() => {
+    if (currentUserReaction !== prevCurrentUserReaction.current) {
+      if (currentUserReaction) {
+        if (isLastMessage && scrollToBottom) {
+          setTimeout(() => {
+            scrollToBottom();
+          }, 150);
+        } else if (messageRowRef.current) {
+          setTimeout(() => {
+            if (messageRowRef.current) {
+              messageRowRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+          }, 150);
+        }
+      }
+      prevCurrentUserReaction.current = currentUserReaction;
+    }
+  }, [currentUserReaction, isLastMessage, scrollToBottom]);
+
   // Reset gesture refs when Virtuoso recycles this component for a different message
   const prevMsgIdRef = useRef(msg.id);
   useLayoutEffect(() => {
     if (prevMsgIdRef.current !== msg.id) {
       prevMsgIdRef.current = msg.id;
       wasLongPressed.current = false;
-      mediaWasTapped.current = false;
       suppressTapSelectionRef.current = false;
       ignoreSwipeGestureRef.current = false;
       touchStartPointRef.current = null;
@@ -459,6 +479,14 @@ export const MessageItem = React.memo(({
         $isSelected={isSelected}
         $isActiveDeleteMenu={activeDeleteMenu === msg.id}
         $isGrouped={!showUsername}
+        onClickCapture={(e) => {
+          // If we just exited select mode in the last 300ms, suppress this native click
+          // so it doesn't accidentally trigger a download or open a lightbox.
+          if (Date.now() - lastSelectModeExitTimeRef.current < 300) {
+            e.stopPropagation();
+            e.preventDefault();
+          }
+        }}
         onDoubleClick={(e) => {
           if (!isMobileView && !isSelectModeActive) {
             // Only quote when double-clicking *outside* the message bubble
@@ -684,7 +712,7 @@ export const MessageItem = React.memo(({
                 {renderMessageContent(
                   messageWithResolvedSize,
                   openLightbox,
-                  isMobileView && isSelectModeActive ? () => { mediaWasTapped.current = true; } : undefined,
+                  undefined,
                   sender,
                   handleVideoFullscreenEnterForMessage,
                   isMediaLoaded,
@@ -697,7 +725,9 @@ export const MessageItem = React.memo(({
                   loadedMediaSrc,
                   transferInfo,
                   onResumeUpload,
-                  onCancelUpload
+                  onCancelUpload,
+                  undefined,
+                  isSelectModeActive
                 )}
                 <FooterContainer $sender={sender}>
                   <Timestamp $sender={sender}>{msg.edited && <span>(edited) </span>}{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Timestamp>
