@@ -145,6 +145,34 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter, isUploading
     };
   }, [onFullscreenEnter]);
 
+  // Auto-pause video when scrolled off-screen (unless in PiP mode)
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) {
+          // Check if the video is currently the picture-in-picture element
+          if (document.pictureInPictureElement !== video) {
+            if (!video.paused) {
+              video.pause();
+            }
+          }
+        }
+      });
+    }, {
+      threshold: 0,
+    });
+
+    observer.observe(video);
+
+    return () => {
+      observer.unobserve(video);
+      observer.disconnect();
+    };
+  }, []);
+
   useEffect(() => { return () => { if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current); }; }, []);
   useEffect(() => { resetControlsTimer(); }, [isPlaying, resetControlsTimer]);
 
