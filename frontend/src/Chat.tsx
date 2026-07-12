@@ -1387,14 +1387,18 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     };
 
     const getVisibleViewportHeight = () => {
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.userAgent.includes("Mac") && "ontouchend" in document);
       const vvHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
       const layoutHeight = window.innerHeight;
-      // If the difference is large (>150px), the virtual keyboard is likely open.
-      if (layoutHeight - vvHeight > 150) {
-        return Math.min(layoutHeight, vvHeight);
+      
+      if (isIOS) {
+        if (layoutHeight - vvHeight > 150) {
+          return Math.min(layoutHeight, vvHeight);
+        }
+        return null;
       }
-      // Keyboard closed: return null to let CSS 100dvh handle the Safari address bar naturally
-      return null;
+      
+      return layoutHeight;
     };
 
     const updateStableViewportBaseline = () => {
@@ -1405,11 +1409,13 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     };
 
     const handleViewportResize = () => {
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.userAgent.includes("Mac") && "ontouchend" in document);
+      
       const vvHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
       const layoutHeight = window.innerHeight;
-      const visibleHeight = Math.min(layoutHeight, vvHeight);
+      const visibleHeight = isIOS ? Math.min(layoutHeight, vvHeight) : layoutHeight;
+      
       const widthDelta = Math.abs(window.innerWidth - stableViewportWidthRef.current);
-
       if (widthDelta > 40) {
         stableViewportWidthRef.current = window.innerWidth;
       }
@@ -1422,7 +1428,11 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       // When the keyboard opens, Safari may apply a visual viewport offset to keep
       // the focused input visible, effectively shifting the fixed layout viewport UP.
       // We counteract this by shifting the AppContainer DOWN by exactly that offset.
-      document.documentElement.style.setProperty('--app-offset-top', `${vvOffsetTop}px`);
+      if (isIOS) {
+        document.documentElement.style.setProperty('--app-offset-top', `${vvOffsetTop}px`);
+      } else {
+        document.documentElement.style.setProperty('--app-offset-top', `0px`);
+      }
 
       if (window.scrollY > 0) {
         window.scrollTo(0, 0);
