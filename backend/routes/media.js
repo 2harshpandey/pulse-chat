@@ -33,6 +33,7 @@ const {
 const {
   isPrivateOrInternalIp,
   isAllowedDownloadHost,
+  getAllowedDownloadHost,
   runWithSafeRedirects,
   sanitizeDownloadFilename,
   getSignedCloudinaryDownloadUrl,
@@ -773,14 +774,22 @@ module.exports = (wss, broadcasts) => {
         upstreamHeaders['Range'] = req.headers.range;
       }
 
-      const fetchHead = (targetUrl) => axios.head(targetUrl, {
+      const getSafeAxiosUrl = (urlStr) => {
+        const u = new URL(urlStr);
+        const allowedHost = getAllowedDownloadHost(u.hostname);
+        if (!allowedHost) throw new Error('Untrusted host in proxy');
+        // Reconstruct URL using the server-controlled allowedHost string to satisfy CodeQL
+        return `${u.protocol}//${allowedHost}${u.pathname}${u.search}`;
+      };
+
+      const fetchHead = (targetUrl) => axios.head(getSafeAxiosUrl(targetUrl), {
         headers: upstreamHeaders,
         timeout: 20000,
         maxRedirects: 0,
         validateStatus: (status) => status >= 200 && status < 400,
       });
 
-      const fetchBody = (targetUrl) => axios.get(targetUrl, {
+      const fetchBody = (targetUrl) => axios.get(getSafeAxiosUrl(targetUrl), {
         headers: upstreamHeaders,
         responseType: 'stream',
         timeout: 30000,
