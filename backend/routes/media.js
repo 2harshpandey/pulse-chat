@@ -531,6 +531,22 @@ module.exports = (wss, broadcasts) => {
 
       const isYouTube = hostnameFallback === 'youtube.com' || hostnameFallback.endsWith('.youtube.com') || hostnameFallback === 'youtu.be' || hostnameFallback.endsWith('.youtu.be');
       if (isYouTube) {
+        try {
+          const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+          const oembedRes = await axios.get(oembedUrl, { timeout: 3000 });
+          if (oembedRes.data && oembedRes.data.title) {
+            return res.json({
+              title: oembedRes.data.title,
+              description: oembedRes.data.author_name ? `By ${oembedRes.data.author_name}` : null,
+              image: oembedRes.data.thumbnail_url,
+              siteName: 'YouTube',
+              url: url
+            });
+          }
+        } catch (e) {
+          // OEmbed failed, fallback to manual parsing
+        }
+
         fallbackSiteName = 'YouTube';
         let videoId = null;
         if (hostnameFallback === 'youtu.be' || hostnameFallback.endsWith('.youtu.be')) {
@@ -539,7 +555,12 @@ module.exports = (wss, broadcasts) => {
             videoId = pathParts[1];
           }
         } else {
-          videoId = parsedUrlFallback.searchParams.get('v');
+          const pathParts = parsedUrlFallback.pathname.split('/');
+          if (pathParts.length > 2 && (pathParts[1] === 'shorts' || pathParts[1] === 'live')) {
+            videoId = pathParts[2];
+          } else {
+            videoId = parsedUrlFallback.searchParams.get('v');
+          }
         }
         
         if (videoId) {
