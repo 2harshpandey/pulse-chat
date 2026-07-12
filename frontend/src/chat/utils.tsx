@@ -61,15 +61,14 @@ export const findMessageElement = (rawId: any): HTMLElement | null => {
   const normalized = normalizeMessageId(rawId);
   if (!normalized) return null;
 
+  // Prefer the actual element ID so highlights apply to the styled component
   const byId = document.getElementById(getMessageElementId(normalized)) as HTMLElement | null;
   if (byId) return byId;
 
-  const candidates = document.querySelectorAll<HTMLElement>('[data-message-id]');
-  for (const candidate of Array.from(candidates)) {
-    if (normalizeMessageId(candidate.dataset.messageId) === normalized) {
-      return candidate;
-    }
-  }
+  // Fallback to VirtualMessageWrapper if the message is off-screen (unmounted)
+  const byVirtualId = document.querySelector(`[data-virtual-id="${normalized}"]`) as HTMLElement | null;
+  if (byVirtualId) return byVirtualId;
+
   return null;
 };
 

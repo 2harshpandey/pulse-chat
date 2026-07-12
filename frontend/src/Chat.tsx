@@ -3698,7 +3698,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   const handleChatAreaClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target !== chatContainerRef.current) return;
     if (isSelectModeActive || !!lightboxUrl || isDeleteConfirmationVisible) return;
-    // On mobile, don't auto-focus the input when tapping empty space —
+    // On mobile, don't auto-focus the input when tapping empty space — 
     // the user may be intentionally dismissing the keyboard, and fighting
     // the blur causes a visible stutter in the keyboard animation.
     if (isMobileView) return;
@@ -3712,7 +3712,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     const attemptDelayMs = 60;
 
     const applyHighlight = (attempt: number) => {
-      const element = findMessageElement(messageId);
+      const element = document.getElementById(getMessageElementId(messageId));
       if (!element) {
         if (attempt < maxAttempts) {
           window.setTimeout(() => applyHighlight(attempt + 1), attemptDelayMs);
