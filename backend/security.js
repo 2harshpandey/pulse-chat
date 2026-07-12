@@ -31,10 +31,12 @@ const isPrivateOrInternalIp = (ip) => {
   return true; // unknown format — block by default
 };
 
-const ALLOWED_DOWNLOAD_HOSTS = ['res.cloudinary.com', 'api.cloudinary.com', 'media.tenor.com', 'tenor.com'];
+const ALLOWED_DOWNLOAD_HOSTS = ['res.cloudinary.com', 'api.cloudinary.com', 'media.tenor.com', 'tenor.com', 'giphy.com'];
 
-const getAllowedDownloadHost = (hostname) =>
-  ALLOWED_DOWNLOAD_HOSTS.find((host) => hostname === host) || '';
+const getAllowedDownloadHost = (hostname) => {
+  if (hostname.endsWith('.giphy.com') || hostname === 'giphy.com') return hostname;
+  return ALLOWED_DOWNLOAD_HOSTS.find((host) => hostname === host) || '';
+};
 
 const isAllowedDownloadHost = (hostname) => Boolean(getAllowedDownloadHost(hostname));
 
