@@ -778,15 +778,10 @@ module.exports = (wss, broadcasts) => {
         const u = new URL(urlStr);
         const allowedHost = getAllowedDownloadHost(u.hostname);
         if (!allowedHost) throw new Error('Untrusted host in proxy');
-        
-        const rawPath = u.pathname ? u.pathname.replace(/\\/g, '/') : '/';
-        const normalizedPath = path.posix.normalize(rawPath);
-        if (!normalizedPath.startsWith('/') || normalizedPath.startsWith('/..')) {
-          throw new Error('Invalid URL path.');
-        }
 
-        // Reconstruct URL using the server-controlled allowedHost string to satisfy CodeQL
-        return `${u.protocol}//${allowedHost}${normalizedPath}${u.search}`;
+        // Reconstruct URL using the server-controlled allowedHost string to satisfy CodeQL.
+        // The URL constructor already safely resolves any path traversal (../) attempts.
+        return `${u.protocol}//${allowedHost}${u.pathname}${u.search}`;
       };
 
       const fetchHead = (targetUrl) => axios.head(getSafeAxiosUrl(targetUrl), {
