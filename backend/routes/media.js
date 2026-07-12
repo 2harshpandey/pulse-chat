@@ -114,6 +114,7 @@ const uploadBufferToCloudinary = (file, originalName) => new Promise((resolve, r
     if (!result?.secure_url && result?.public_id) {
       result.secure_url = cloudinary.url(result.public_id, { 
         resource_type: result.resource_type || (isVideo ? 'video' : 'image'), 
+        format: result.format || ext || (isVideo ? 'mp4' : undefined),
         secure: true 
       });
     }
