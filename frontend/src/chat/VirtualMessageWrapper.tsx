@@ -118,15 +118,8 @@ export const VirtualMessageWrapper = React.memo(({ id, children, containerRef, m
     <div
       ref={wrapperRef}
       data-virtual-id={id}
-      style={{
-        // If it is hidden, lock the height to exactly what was measured, or fallback to the estimated height.
-        // If it is visible, let it flow naturally (height: undefined) so it can resize with the window.
-        height: !isVisible ? (cachedHeight !== undefined ? `${cachedHeight}px` : `${estimatedHeight}px`) : undefined,
-        // We use minHeight as a fallback just in case
-        minHeight: !isVisible ? (cachedHeight !== undefined ? `${cachedHeight}px` : `${estimatedHeight}px`) : undefined,
-      }}
     >
-      {isVisible ? children : null}
+      {children}
     </div>
   );
 });
