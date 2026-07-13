@@ -735,6 +735,13 @@ module.exports = (wss, broadcasts) => {
           }
         }
 
+        if (isFinalAmazon && rawImage && rawImage.includes('m.media-amazon.com/images/I/')) {
+          rawImage = rawImage
+            .replace(/\._[a-z0-9_]+_\.jpg$/i, '._SY250_.jpg')
+            .replace(/\.jpg$/i, '._SY250_.jpg')
+            .replace(/\._SY250_\._SY250_\.jpg/i, '._SY250_.jpg');
+        }
+
         image = rawImage ? (() => {
           try { return new URL(rawImage, finalParsedUrl).href; } catch { return null; }
         })() : null;
