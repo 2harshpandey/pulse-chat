@@ -339,6 +339,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   const [isSearchLoading, setIsSearchLoading] = useState(false);
   const [showSearchNotFound, setShowSearchNotFound] = useState(false);
   const scrollBeforeSearchRef = useRef<number | null>(null);
+  const scrollTimeoutRef = useRef<number | null>(null);
   // Tracks whether the user was at the very bottom when they opened the search bar.
   // Used to reliably restore to bottom after search closes (can't rely on saved scrollTop
   // because the container resizes when data switches back to the full message list).
@@ -4813,7 +4814,15 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                     }
                   }
                   if (target.scrollTop < 2500 && !isLoadingOlderRef.current && hasMoreOlderMessages && !suppressOlderMessageLoadRef.current) {
-                    loadOlderMessages();
+                    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+                    scrollTimeoutRef.current = window.setTimeout(() => {
+                      if (!isLoadingOlderRef.current && hasMoreOlderMessages && !suppressOlderMessageLoadRef.current) {
+                        loadOlderMessages();
+                      }
+                    }, 150);
+                  } else if (scrollTimeoutRef.current) {
+                    clearTimeout(scrollTimeoutRef.current);
+                    scrollTimeoutRef.current = null;
                   }
                   const distanceFromBottom = target.scrollHeight - (target.scrollTop + target.clientHeight);
                   const atBottom = distanceFromBottom <= 20;
