@@ -48,9 +48,10 @@ interface VirtualMessageWrapperProps {
   containerRef: React.RefObject<HTMLDivElement>;
   messageHeightsRef: React.MutableRefObject<{ [id: string]: number }>;
   initialIsVisible: boolean;
+  estimatedHeight: number;
 }
 
-export const VirtualMessageWrapper = React.memo(({ id, children, containerRef, messageHeightsRef, initialIsVisible }: VirtualMessageWrapperProps) => {
+export const VirtualMessageWrapper = React.memo(({ id, children, containerRef, messageHeightsRef, initialIsVisible, estimatedHeight }: VirtualMessageWrapperProps) => {
   const [isVisible, setIsVisible] = useState(initialIsVisible);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -97,11 +98,11 @@ export const VirtualMessageWrapper = React.memo(({ id, children, containerRef, m
       ref={wrapperRef}
       data-virtual-id={id}
       style={{
-        // If it is hidden, lock the height to exactly what was measured, or fallback to 80px.
+        // If it is hidden, lock the height to exactly what was measured, or fallback to the estimated height.
         // If it is visible, let it flow naturally (height: undefined) so it can resize with the window.
-        height: !isVisible ? (cachedHeight !== undefined ? `${cachedHeight}px` : '80px') : undefined,
+        height: !isVisible ? (cachedHeight !== undefined ? `${cachedHeight}px` : `${estimatedHeight}px`) : undefined,
         // We use minHeight as a fallback just in case
-        minHeight: !isVisible ? (cachedHeight !== undefined ? `${cachedHeight}px` : '80px') : undefined,
+        minHeight: !isVisible ? (cachedHeight !== undefined ? `${cachedHeight}px` : `${estimatedHeight}px`) : undefined,
       }}
     >
       {isVisible ? children : null}

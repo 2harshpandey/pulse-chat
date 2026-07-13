@@ -32,7 +32,7 @@ import {
   sanitizeFilename, inferredContentLengthByUrlCache, getCurrentHistoryPath,
   readRouterHistoryState, readRouterUserState, buildOverlayGuardState,
   pushOverlayGuardHistoryEntry, clearOverlayGuardHistoryEntry,
-  getBlobUrl, revokeBlobUrl, getDeletedForMeIds, addDeletedForMeIds,
+  getBlobUrl, revokeBlobUrl, getDeletedForMeIds, addDeletedForMeIds, estimateMessageHeight
 } from './chat/utils';
 import { NOTIFICATION_BEEP } from './chat/audioConstants';
 import { VirtualMessageWrapper } from './chat/VirtualMessageWrapper';
@@ -4832,7 +4832,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                 
                 if (useFastMount) {
                    filteredMessages.forEach(msg => {
-                       const h = messageHeightsRef.current[msg.id] ?? 80;
+                       const h = messageHeightsRef.current[msg.id] ?? estimateMessageHeight(msg);
                        if (currentY + h > viewportTop - 3000 && currentY < viewportBottom + 3000) {
                            fastMountVisibility.add(msg.id);
                        }
@@ -4864,6 +4864,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                         containerRef={chatContainerRef}
                         messageHeightsRef={messageHeightsRef}
                         initialIsVisible={useFastMount ? fastMountVisibility.has(msg.id) : true}
+                        estimatedHeight={estimateMessageHeight(msg)}
                       >
                         <React.Fragment>
                         {showDateSeparator && (

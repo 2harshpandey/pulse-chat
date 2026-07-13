@@ -17,6 +17,21 @@ export const getUserId = (): string => {
   return userId;
 };
 
+export const estimateMessageHeight = (msg: any): number => {
+  let h = 50; 
+  if (msg.replyingTo) h += 60;
+  if (msg.type === 'image' || msg.type === 'video') h += 300;
+  else if (msg.type === 'file') h += 80;
+  if (msg.text) {
+    const lines = msg.text.split('\n').length;
+    const wrapLines = Math.ceil(msg.text.length / 40);
+    h += Math.max(lines, wrapLines) * 20;
+  }
+  if (msg.url) h += 100;
+  if (msg.reactions && Object.keys(msg.reactions).length > 0) h += 30;
+  return h;
+};
+
 export const normalizeMessageId = (rawId: any): string => {
   if (rawId === null || rawId === undefined) return '';
   if (typeof rawId === 'string' || typeof rawId === 'number') return String(rawId);
