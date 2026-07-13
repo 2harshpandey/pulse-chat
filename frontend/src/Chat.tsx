@@ -35,7 +35,7 @@ import {
   getBlobUrl, revokeBlobUrl, getDeletedForMeIds, addDeletedForMeIds
 } from './chat/utils';
 import { NOTIFICATION_BEEP } from './chat/audioConstants';
-import { VirtualMessageWrapper } from './chat/VirtualMessageWrapper';
+
 
 const ChatSearchContainer = styled.div<{ $active: boolean; $isClosing?: boolean }>`
   display: flex;
@@ -428,7 +428,6 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   // changes scrollHeight before we can restore the correct position.
   const suppressOlderMessageLoadRef = useRef(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
-  const messageHeightsRef = useRef<{ [id: string]: number }>({});
   const scrollAtSelectModeRef = useRef<number | null>(null);
   const scrollAtReactionPickerRef = useRef<number | null>(null);
 
@@ -834,7 +833,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   useEffect(() => {
     if (!isSoundToggleAnimating) return;
     const timer = window.setTimeout(() => setIsSoundToggleAnimating(false), 700);
-    return () => window.clearTimeout(timer);
+    return () => window.removeEventListener('keydown', handleDesktopGifTyping, true);
   }, [isSoundToggleAnimating]);
 
   useEffect(() => {
@@ -1538,7 +1537,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     // Defined inside the effect so the handlers always close over the
     // latest userContext.profile and the setState functions.
     const connect = () => {
-      // Already open or in the middle of connecting — nothing to do.
+      // Already open or in the middle of connecting —  nothing to do.
       if (
         ws.current &&
         (ws.current.readyState === WebSocket.OPEN ||
@@ -1592,7 +1591,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       // Mobile connections drop far more often than desktop WiFi (network
       // switching, carrier proxy timeouts, screen-off power saving).  Without
       // this, a single dropped socket means no more messages until the user
-      // manually refreshes — the most common symptom reported on mobile data.
+      // manually refreshes —  the most common symptom reported on mobile data.
       ws.current.onclose = () => {
         setIsConnected(false);
         if (isNativeFilePickerOpenRef.current) {
@@ -1604,7 +1603,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
         }
         typingCooldownRef.current = false;
         presenceActivityRef.current = null;
-        console.log('WebSocket disconnected — scheduling reconnect');
+        console.log('WebSocket disconnected —  scheduling reconnect');
         if (shouldReconnect) {
           reconnectTimerRef.current = setTimeout(() => {
             // Double the wait on each consecutive failure: 2 s → 4 s → 8 s → … → 30 s max.
@@ -1640,7 +1639,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
           return;
         }
         if (messageData.type === 'force_logout') {
-          // Admin forced this user out — store message and log out
+          // Admin forced this user out —  store message and log out
           sessionStorage.setItem('authError', messageData.message || 'You have been logged out by an administrator.');
           if (overlayGuardPushed.current) {
             clearOverlayGuardHistoryEntry();
@@ -1721,7 +1720,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
           setIsSubmittingReport(false);
           setReportError(typeof messageData.message === 'string' ? messageData.message : 'Failed to submit report. Please try again.');
         } else if (messageData.type === 'chat_cleared') {
-          // Admin cleared all messages — wipe the local list immediately.
+          // Admin cleared all messages —  wipe the local list immediately.
           setMessages([]);
           setNewMessagesWhileScrolledUp(0);
           messageTailSnapshotRef.current = { length: 0, lastId: null };
@@ -1966,7 +1965,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
         if (emojiPickerRef.current && !emojiPickerRef.current.contains(target) && !emojiButtonRef.current?.contains(target)) {
           closeEmojiPicker(false);
         }
-        // Full emoji picker (reactions) is closed exclusively by its own backdrop — not here.
+        // Full emoji picker (reactions) is closed exclusively by its own backdrop —  not here.
       }, 0);
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -2935,7 +2934,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     function handleOutside(e: MouseEvent | TouchEvent) {
       const target = e.target as Element;
       // If the tap/click is on the button that opened the picker, let the
-      // button's own onClick toggle it — otherwise we'd close-then-reopen.
+      // button's own onClick toggle it —  otherwise we'd close-then-reopen.
       if (target.closest('.react-action-button')) return;
       if (reactionPickerRef.current && !reactionPickerRef.current.contains(target)) {
         setReactionPickerData(null);
@@ -2950,7 +2949,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   }, [reactionPickerData]);
 
   // When a reply preview appears, scroll the chat so the quoted message
-  // is fully visible just above the preview — same as WhatsApp behaviour.
+  // is fully visible just above the preview —  same as WhatsApp behaviour.
   useEffect(() => {
     if (!replyingTo) return;
     // Double rAF: first frame commits the DOM, second ensures layout is complete
@@ -2976,7 +2975,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     // Toggle off if the same menu is already open.
     setActiveDeleteMenu(prev => prev === messageId ? null : messageId);
     setTimeout(() => {
-      // If the menu just closed, deleteMenuRef.current will be null — no-op.
+      // If the menu just closed, deleteMenuRef.current will be null —  no-op.
       if (!deleteMenuRef.current || !chatContainerRef.current) return;
       const container = chatContainerRef.current.querySelector('[data-virtuoso-scroller]') as HTMLElement || chatContainerRef.current;
       const containerRect = container.getBoundingClientRect();
@@ -3024,7 +3023,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       x: Math.min(Math.max(x, -maxX), maxX),
       y: Math.min(Math.max(y, -maxY), maxY),
     };
-  }, [lightboxNaturalSize]);
+  }, [clampLightboxOffset]);
 
   const getLightboxRelativePoint = useCallback((clientX: number, clientY: number) => {
     const frame = lightboxFrameRef.current;
@@ -3391,7 +3390,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     setMessages(prev => prev.filter(m => !selectedMessages.includes(m.id)));
     // Replace the guard history entry in-place rather than calling back().
     // history.back() fires a popstate event that React Router v6 intercepts
-    // and treats as a route navigation — on desktop (mouse-click path through
+    // and treats as a route navigation —  on desktop (mouse-click path through
     // the three-dots portal) this causes React Router to land on a 404.
     // replaceState() silently overwrites the guard entry with no popstate,
     // so React Router never sees a navigation and the chat stays mounted.
@@ -3410,7 +3409,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
         ws.current.send(JSON.stringify({ type: 'delete_for_everyone', messageId: id, roomId }));
       }
     });
-    // Same fix as handleBulkDeleteForMe — use replaceState instead of back()
+    // Same fix as handleBulkDeleteForMe —  use replaceState instead of back()
     // to avoid the popstate→React Router→404 issue on desktop mouse-click path.
     if (overlayGuardPushed.current) {
       clearOverlayGuardHistoryEntry();
@@ -4094,7 +4093,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     setFullEmojiPickerPosition(rect);
     messageIdForFullEmojiPickerRef.current = messageId;
     setReactionPickerData(null);
-    // Don't clear select mode here — the select mode was already cleared
+    // Don't clear select mode here —  the select mode was already cleared
     // by handleCancelSelectMode in the MobileReactionPicker onClick,
     // or this was opened from the desktop reaction picker (no select mode).
     // Clearing here caused a race condition where the message ID was lost.
@@ -4151,7 +4150,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     if (e.key === 'Enter' && !e.shiftKey) {
       // On touchscreen devices (mobile/tablet) the on-screen keyboard's
       // Enter key is expected to insert a newline. Avoid intercepting it
-      // there — allow the native behavior (so Shift+Enter still works too).
+      // there —  allow the native behavior (so Shift+Enter still works too).
       if (isMobileView) {
         return;
       }
@@ -4821,27 +4820,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                   handleAtBottomStateChange(atBottom);
                 }}
               >
-                {historyLoaded && messages.length > 0 ? (() => {
-                let viewportTop = chatContainerRef.current?.scrollTop ?? 0;
-                if (scrollBeforeSearchRef.current !== null) {
-                    viewportTop = scrollBeforeSearchRef.current;
-                }
-                const viewportBottom = viewportTop + (chatContainerRef.current?.clientHeight ?? 800);
-                let currentY = 0;
-                const fastMountVisibility = new Set<string>();
-                const useFastMount = filteredMessages.length > 100;
-                
-                if (useFastMount) {
-                   filteredMessages.forEach(msg => {
-                       const h = messageHeightsRef.current[msg.id] ?? 100;
-                       if (currentY + h > viewportTop - 3000 && currentY < viewportBottom + 3000) {
-                           fastMountVisibility.add(msg.id);
-                       }
-                       currentY += h;
-                   });
-                }
-
-                return (
+                {historyLoaded && messages.length > 0 ? (
                   filteredMessages.map((msg, index, displayArr) => {
                     if (msg.type === 'system_notification') {
                       return (
@@ -4859,14 +4838,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                     const showDateSeparator = currentDateStr && currentDateStr !== prevDateStr;
 
                     return (
-                      <VirtualMessageWrapper
-                        key={msg.id || `msg-${index}`}
-                        id={msg.id}
-                        containerRef={chatContainerRef}
-                        messageHeightsRef={messageHeightsRef}
-                        initialIsVisible={useFastMount ? fastMountVisibility.has(msg.id) : true}
-                      >
-                        <React.Fragment>
+                      <div key={msg.id || `msg-${index}`} id={msg.id}>
                         {showDateSeparator && (
                           <div style={{ display: 'flex', justifyContent: 'center', margin: '1.5rem 0 1rem 0' }}>
                             <div style={{ 
@@ -4946,12 +4918,10 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                           handleCancelEdit={handleCancelEdit}
                           onVideoFullscreenEnter={handleVideoFullscreenEnter}
                         />
-                        </React.Fragment>
-                      </VirtualMessageWrapper>
+                        </div>
                     );
                   })
-                );
-                })() : null}
+                ) : null}
                 <div style={{ height: '12px', flexShrink: 0 }} />
               </MessagesContainer>
               <ScrollToBottomButton
