@@ -68,7 +68,6 @@ export const MessageItem = React.memo(({
     ? getQuotedPreviewThumbUrl(msg.replyingTo.type, msg.replyingTo.url)
     : '';
   const messageRowRef = useRef<HTMLDivElement>(null!);
-  const prevCurrentUserReaction = useRef<string | null>(null);
 
   const messageBubbleRef = useRef<HTMLDivElement>(null!);
   const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; right?: number; left?: number } | null>(null);
@@ -322,9 +321,11 @@ export const MessageItem = React.memo(({
     return null;
   }, [validReactions, currentUserId]);
 
+  const prevCurrentUserReaction = useRef<string | null>(currentUserReaction);
+
   useEffect(() => {
     if (currentUserReaction !== prevCurrentUserReaction.current) {
-      if (currentUserReaction) {
+      if (currentUserReaction && prevCurrentUserReaction.current !== undefined) {
         if (isLastMessage && scrollToBottom) {
           setTimeout(() => {
             scrollToBottom();

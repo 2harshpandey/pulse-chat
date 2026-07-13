@@ -32,39 +32,10 @@ import {
   sanitizeFilename, inferredContentLengthByUrlCache, getCurrentHistoryPath,
   readRouterHistoryState, readRouterUserState, buildOverlayGuardState,
   pushOverlayGuardHistoryEntry, clearOverlayGuardHistoryEntry,
-  getBlobUrl, revokeBlobUrl, getDeletedForMeIds, addDeletedForMeIds, estimateMessageHeight
+  getBlobUrl, revokeBlobUrl, getDeletedForMeIds, addDeletedForMeIds
 } from './chat/utils';
 import { NOTIFICATION_BEEP } from './chat/audioConstants';
 import { VirtualMessageWrapper } from './chat/VirtualMessageWrapper';
-
-declare global {
-  interface Window {
-    SCROLL_LOGS: string[];
-    downloadScrollLogs: () => void;
-  }
-}
-
-if (!window.SCROLL_LOGS) {
-  window.SCROLL_LOGS = [];
-  window.downloadScrollLogs = () => {
-    const text = window.SCROLL_LOGS.join('\n');
-    const blob = new Blob([text], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `pulse_scroll_logs_${Date.now()}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-}
-
-export const scrollDiag = (msg: string) => {
-  const t = new Date().toISOString().split('T')[1].slice(0, -1);
-  const log = `[${t}] ${msg}`;
-  window.SCROLL_LOGS.push(log);
-  if (window.SCROLL_LOGS.length > 5000) window.SCROLL_LOGS.shift();
-  console.log(`%c[SCROLL_DIAG]`, 'color: cyan', msg);
-};
 
 const ChatSearchContainer = styled.div<{ $active: boolean; $isClosing?: boolean }>`
   display: flex;
@@ -368,7 +339,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   const [isSearchLoading, setIsSearchLoading] = useState(false);
   const [showSearchNotFound, setShowSearchNotFound] = useState(false);
   const scrollBeforeSearchRef = useRef<number | null>(null);
-  const scrollTimeoutRef = useRef<number | null>(null);
+
   // Tracks whether the user was at the very bottom when they opened the search bar.
   // Used to reliably restore to bottom after search closes (can't rely on saved scrollTop
   // because the container resizes when data switches back to the full message list).
@@ -4832,7 +4803,6 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                 ref={chatContainerRef as any}
                 onScroll={(e) => {
                   const target = e.target as HTMLDivElement;
-                  scrollDiag(`onScroll: scrollTop=${Math.round(target.scrollTop)}, scrollHeight=${target.scrollHeight}, clientHeight=${target.clientHeight}`);
                   if (reactionPickerData && scrollAtReactionPickerRef.current !== null) {
                     if (Math.abs(target.scrollTop - scrollAtReactionPickerRef.current) > 20) {
                       setReactionPickerData(null);
@@ -4844,15 +4814,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                     }
                   }
                   if (target.scrollTop < 2500 && !isLoadingOlderRef.current && hasMoreOlderMessages && !suppressOlderMessageLoadRef.current) {
-                    if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
-                    scrollTimeoutRef.current = window.setTimeout(() => {
-                      if (!isLoadingOlderRef.current && hasMoreOlderMessages && !suppressOlderMessageLoadRef.current) {
-                        loadOlderMessages();
-                      }
-                    }, 150);
-                  } else if (scrollTimeoutRef.current) {
-                    clearTimeout(scrollTimeoutRef.current);
-                    scrollTimeoutRef.current = null;
+                    loadOlderMessages();
                   }
                   const distanceFromBottom = target.scrollHeight - (target.scrollTop + target.clientHeight);
                   const atBottom = distanceFromBottom <= 20;
@@ -4871,7 +4833,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                 
                 if (useFastMount) {
                    filteredMessages.forEach(msg => {
-                       const h = messageHeightsRef.current[msg.id] ?? estimateMessageHeight(msg);
+                       const h = messageHeightsRef.current[msg.id] ?? 100;
                        if (currentY + h > viewportTop - 3000 && currentY < viewportBottom + 3000) {
                            fastMountVisibility.add(msg.id);
                        }
@@ -4903,7 +4865,6 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                         containerRef={chatContainerRef}
                         messageHeightsRef={messageHeightsRef}
                         initialIsVisible={useFastMount ? fastMountVisibility.has(msg.id) : true}
-                        estimatedHeight={estimateMessageHeight(msg)}
                       >
                         <React.Fragment>
                         {showDateSeparator && (

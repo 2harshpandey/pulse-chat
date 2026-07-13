@@ -515,6 +515,7 @@ export const MessagesContainer = styled.div<{ $isScrollButtonVisible?: boolean; 
   overflow-anchor: auto;
   overscroll-behavior-y: none;
   padding: 0 1rem;
+  padding-right: ${props => !props.$isMobileView && props.$isScrollButtonVisible ? '64px' : '1rem'};
   transition: none;
   /* Virtuoso items need gap via item wrapper since Virtuoso manages its own scroll */
   & [data-virtuoso-scroller] {
