@@ -508,7 +508,7 @@ module.exports = (wss, broadcasts) => {
       let fallbackSiteName = null;
       let fallbackImage = null;
 
-      const isAmazon = hostnameFallback === 'amazon.com' || hostnameFallback.endsWith('.amazon.com') || /(?:^|\.)amazon\.[a-z]{2,3}(?:\.[a-z]{2})?$/.test(hostnameFallback);
+      const isAmazon = hostnameFallback === 'amazon.com' || hostnameFallback.endsWith('.amazon.com') || /(?:^|\.)amazon\.[a-z]{2,3}(?:\.[a-z]{2})?$/.test(hostnameFallback) || hostnameFallback === 'amzn.in' || hostnameFallback === 'amzn.to';
       if (isAmazon) {
         fallbackSiteName = 'Amazon';
         const pathParts = parsedUrlFallback.pathname.split('/');
@@ -709,7 +709,32 @@ module.exports = (wss, broadcasts) => {
           || getMetaBy('name', 'twitter:description')
           || getMetaBy('name', 'description');
         siteName = getMetaBy('property', 'og:site_name');
-        const rawImage = getMetaBy('property', 'og:image') || getMetaBy('name', 'twitter:image');
+        
+        let rawImage = getMetaBy('property', 'og:image') || getMetaBy('name', 'twitter:image');
+        
+        const finalHostname = finalParsedUrl ? finalParsedUrl.hostname.toLowerCase() : hostnameFallback;
+        const isFinalAmazon = finalHostname === 'amazon.com' || finalHostname.endsWith('.amazon.com') || /(?:^|\.)amazon\.[a-z]{2,3}(?:\.[a-z]{2})?$/.test(finalHostname) || finalHostname === 'amzn.in' || finalHostname === 'amzn.to';
+        
+        if (isFinalAmazon) {
+          const landingImageMatch = html.match(/<img[^>]+id=["'](?:landingImage|imgBlkFront|main-image|main-image-nonjs)["'][^>]*>/i);
+          if (landingImageMatch) {
+            const dataOldHiresMatch = landingImageMatch[0].match(/data-old-hires=["']([^"']+)["']/i);
+            const srcMatch = landingImageMatch[0].match(/src=["']([^"']+)["']/i);
+            const dataDynamic = landingImageMatch[0].match(/data-a-dynamic-image=["']([^"']+)["']/i);
+            
+            if (dataOldHiresMatch && dataOldHiresMatch[1]) {
+              rawImage = dataOldHiresMatch[1];
+            } else if (dataDynamic && dataDynamic[1]) {
+              try {
+                const parsedDynamic = JSON.parse(dataDynamic[1].replace(/&quot;/g, '"'));
+                rawImage = Object.keys(parsedDynamic)[0] || rawImage;
+              } catch (e) {}
+            } else if (srcMatch && srcMatch[1]) {
+              rawImage = srcMatch[1];
+            }
+          }
+        }
+
         image = rawImage ? (() => {
           try { return new URL(rawImage, finalParsedUrl).href; } catch { return null; }
         })() : null;
