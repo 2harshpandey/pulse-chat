@@ -4065,7 +4065,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     setNewMessagesWhileScrolledUp(0);
     clearQuoteJumpSuppression();
     quoteLog('scroll-to-bottom falling back to bottom anchor');
-    scrollToBottom('smooth', true);
+    scrollToBottom('auto', true);
     requestAnimationFrame(() => syncBottomStateFromScroller());
     window.setTimeout(() => syncBottomStateFromScroller(), 80);
     window.setTimeout(() => syncBottomStateFromScroller(), 220);
