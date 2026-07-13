@@ -1,4 +1,5 @@
 import React, { useState, useRef, useLayoutEffect, useEffect } from 'react';
+import { scrollDiag } from '../Chat';
 
 type VisibilityCallback = (isVisible: boolean) => void;
 
@@ -64,6 +65,9 @@ export const VirtualMessageWrapper = React.memo(({ id, children, containerRef, m
     // Measure immediately on mount
     const initialHeight = wrapperRef.current.getBoundingClientRect().height;
     if (initialHeight > 0) {
+      if (messageHeightsRef.current[id] !== initialHeight) {
+        scrollDiag(`msg[${id}] mounted. height: ${initialHeight}`);
+      }
       messageHeightsRef.current[id] = initialHeight;
     }
 
@@ -71,7 +75,8 @@ export const VirtualMessageWrapper = React.memo(({ id, children, containerRef, m
       for (const entry of entries) {
         // borderBoxSize is more accurate but fallback to contentRect height if needed
         const newHeight = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
-        if (newHeight > 0) {
+        if (newHeight > 0 && messageHeightsRef.current[id] !== newHeight) {
+          scrollDiag(`msg[${id}] resized to: ${newHeight}`);
           messageHeightsRef.current[id] = newHeight;
         }
       }
@@ -95,6 +100,7 @@ export const VirtualMessageWrapper = React.memo(({ id, children, containerRef, m
         if (height > 0) {
           messageHeightsRef.current[id] = height;
         }
+        scrollDiag(`msg[${id}] unmounting. cachedHeight: ${height || estimatedHeight}`);
         setIsVisible(false);
       }
     };

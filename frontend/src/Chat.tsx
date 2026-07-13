@@ -37,6 +37,35 @@ import {
 import { NOTIFICATION_BEEP } from './chat/audioConstants';
 import { VirtualMessageWrapper } from './chat/VirtualMessageWrapper';
 
+declare global {
+  interface Window {
+    SCROLL_LOGS: string[];
+    downloadScrollLogs: () => void;
+  }
+}
+
+if (!window.SCROLL_LOGS) {
+  window.SCROLL_LOGS = [];
+  window.downloadScrollLogs = () => {
+    const text = window.SCROLL_LOGS.join('\n');
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pulse_scroll_logs_${Date.now()}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+}
+
+export const scrollDiag = (msg: string) => {
+  const t = new Date().toISOString().split('T')[1].slice(0, -1);
+  const log = `[${t}] ${msg}`;
+  window.SCROLL_LOGS.push(log);
+  if (window.SCROLL_LOGS.length > 5000) window.SCROLL_LOGS.shift();
+  console.log(`%c[SCROLL_DIAG]`, 'color: cyan', msg);
+};
+
 const ChatSearchContainer = styled.div<{ $active: boolean; $isClosing?: boolean }>`
   display: flex;
   align-items: center;
@@ -4803,6 +4832,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                 ref={chatContainerRef as any}
                 onScroll={(e) => {
                   const target = e.target as HTMLDivElement;
+                  scrollDiag(`onScroll: scrollTop=${Math.round(target.scrollTop)}, scrollHeight=${target.scrollHeight}, clientHeight=${target.clientHeight}`);
                   if (reactionPickerData && scrollAtReactionPickerRef.current !== null) {
                     if (Math.abs(target.scrollTop - scrollAtReactionPickerRef.current) > 20) {
                       setReactionPickerData(null);
