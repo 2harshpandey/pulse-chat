@@ -833,7 +833,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   useEffect(() => {
     if (!isSoundToggleAnimating) return;
     const timer = window.setTimeout(() => setIsSoundToggleAnimating(false), 700);
-    return () => window.removeEventListener('keydown', handleDesktopGifTyping, true);
+    return () => window.clearTimeout(timer);
   }, [isSoundToggleAnimating]);
 
   useEffect(() => {
@@ -3023,7 +3023,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       x: Math.min(Math.max(x, -maxX), maxX),
       y: Math.min(Math.max(y, -maxY), maxY),
     };
-  }, [clampLightboxOffset]);
+  }, [lightboxNaturalSize]);
 
   const getLightboxRelativePoint = useCallback((clientX: number, clientY: number) => {
     const frame = lightboxFrameRef.current;
