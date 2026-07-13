@@ -55,16 +55,31 @@ export const VirtualMessageWrapper = React.memo(({ id, children, containerRef, m
   const [isVisible, setIsVisible] = useState(initialIsVisible);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  // Measure and cache height if visible
+  // Continuously measure and cache height while visible using ResizeObserver.
+  // This is critical because messages can change height asynchronously AFTER mount
+  // (e.g., images loading natively, link previews fetching metadata).
   useLayoutEffect(() => {
-    if (isVisible && wrapperRef.current) {
-      // Use getBoundingClientRect for sub-pixel precision if needed, but offsetHeight is usually fine
-      const height = wrapperRef.current.getBoundingClientRect().height;
-      if (height > 0) {
-        messageHeightsRef.current[id] = height;
-      }
+    if (!isVisible || !wrapperRef.current) return;
+    
+    // Measure immediately on mount
+    const initialHeight = wrapperRef.current.getBoundingClientRect().height;
+    if (initialHeight > 0) {
+      messageHeightsRef.current[id] = initialHeight;
     }
-  });
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        // borderBoxSize is more accurate but fallback to contentRect height if needed
+        const newHeight = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
+        if (newHeight > 0) {
+          messageHeightsRef.current[id] = newHeight;
+        }
+      }
+    });
+
+    observer.observe(wrapperRef.current);
+    return () => observer.disconnect();
+  }, [isVisible, id, messageHeightsRef]);
 
   useLayoutEffect(() => {
     const el = wrapperRef.current;
