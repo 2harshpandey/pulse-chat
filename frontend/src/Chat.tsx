@@ -2952,21 +2952,29 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   // is fully visible just above the preview —  same as WhatsApp behaviour.
   useEffect(() => {
     if (!replyingTo) return;
-    // Double rAF: first frame commits the DOM, second ensures layout is complete
-    // (footer has grown to include the reply preview, container has shrunk).
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        const msgElement = findMessageElement(replyingTo.id);
-        const container = chatContainerRef.current?.querySelector('[data-virtuoso-scroller]') as HTMLElement || chatContainerRef.current;
-        if (!msgElement || !container) return;
-        const containerRect = container.getBoundingClientRect();
-        const msgRect = msgElement.getBoundingClientRect();
-        const margin = 8;
-        if (msgRect.bottom > containerRect.bottom - margin) {
-          container.scrollBy({ top: msgRect.bottom - containerRect.bottom + margin, behavior: 'smooth' });
-        }
-      });
-    });
+
+    const alignQuotedMessage = () => {
+      const msgElement = findMessageElement(replyingTo.id);
+      const container = chatContainerRef.current?.querySelector('[data-virtuoso-scroller]') as HTMLElement || chatContainerRef.current;
+      if (!msgElement || !container) return;
+      
+      const containerRect = container.getBoundingClientRect();
+      const msgRect = msgElement.getBoundingClientRect();
+      const margin = 20; // Enough margin to sit comfortably above the preview
+      
+      if (msgRect.bottom > containerRect.bottom - margin) {
+        container.scrollBy({ top: msgRect.bottom - containerRect.bottom + margin, behavior: 'auto' });
+      } else if (msgRect.top < containerRect.top + margin) {
+        container.scrollBy({ top: msgRect.top - containerRect.top - margin, behavior: 'auto' });
+      }
+    };
+
+    // The reply preview bar has a 300ms slide-in animation which progressively shrinks the container.
+    // We track the layout reflow at staggered intervals to ensure the message stays pinned above it.
+    const delays = [10, 50, 150, 320];
+    const timers = delays.map(delay => setTimeout(alignQuotedMessage, delay));
+    
+    return () => timers.forEach(clearTimeout);
   }, [replyingTo]);
 
   // When the message-actions menu opens, scroll the chat so the bottom of
