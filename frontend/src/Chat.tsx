@@ -998,7 +998,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     if (currentLength > prevSnapshot.length && prevSnapshot.length > 0) {
       if (isAtBottomRef.current) {
         // Auto-scroll to bottom if the user is already there
-        requestAnimationFrame(() => scrollToBottom('smooth', true));
+        forceScrollToBottomAsync(true);
       } else {
 
         let appendedStart = -1;
@@ -2767,7 +2767,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       };
       setMessages(prev => [...prev, message]);
       // Ensure the view scrolls to show the newly added message
-      requestAnimationFrame(() => scrollToBottom());
+      forceScrollToBottomAsync(true);
 
       transferManager.startUpload(tempId, stagedFile, roomId, resolveApiBaseUrl(), userIdRef.current, message)
         .then(uploadedFileData => {
@@ -2804,7 +2804,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     } else if (stagedGif) {
       const gifMessage: Message = { id: Date.now().toString(), userId: userIdRef.current, username: userContext?.profile?.username || '', type: 'image', url: stagedGif.url, text: inputMessage, timestamp: new Date().toISOString(), replyingTo: replyContext };
       setMessages(prev => [...prev, gifMessage]);
-      requestAnimationFrame(() => scrollToBottom());
+      forceScrollToBottomAsync(true);
       ws.current?.send(JSON.stringify({ ...gifMessage, roomId }));
       const hadReply = !!replyingTo;
       resetInput();
@@ -2814,7 +2814,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     } else {
       const textMessage: Message = { id: Date.now().toString(), userId: userIdRef.current, username: userContext?.profile?.username || '', type: 'text', text: inputMessage, timestamp: new Date().toISOString(), replyingTo: replyContext };
       setMessages(prev => [...prev, textMessage]);
-      requestAnimationFrame(() => scrollToBottom());
+      forceScrollToBottomAsync(true);
       ws.current?.send(JSON.stringify({ ...textMessage, roomId }));
       const hadReply = !!replyingTo;
       resetInput();
@@ -4291,7 +4291,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
         isUploading: true,
       };
       setMessages(prev => [...prev, message]);
-      requestAnimationFrame(() => scrollToBottom());
+      forceScrollToBottomAsync(true);
 
       transferManager.startUpload(tempId, file, roomId, resolveApiBaseUrl(), userIdRef.current, message)
         .then(uploadedFileData => {
