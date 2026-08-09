@@ -996,8 +996,13 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     }
 
     if (currentLength > prevSnapshot.length && prevSnapshot.length > 0) {
-      if (isAtBottomRef.current) {
-        // Auto-scroll to bottom if the user is already there
+      // Also treat a pending bottom-scroll timer as "effectively at bottom":
+      // when messages arrive in rapid bursts, a layout reflow after the first
+      // message can briefly flip isAtBottomRef to false before the next
+      // message's effect runs, even though the user never scrolled up.
+      const hasPendingBottomScroll = pendingBottomScrollTimeoutsRef.current.length > 0;
+      if (isAtBottomRef.current || hasPendingBottomScroll) {
+        // Auto-scroll to bottom if the user is already there (or a scroll is in flight)
         forceScrollToBottomAsync(true);
       } else {
 
@@ -4065,11 +4070,6 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       return;
     }
 
-    // Explicitly blur any active input so that the mobile virtual keyboard closes 
-    // when programmatically scrolling to bottom, fixing the issue where it snaps open again.
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
     setNewMessagesWhileScrolledUp(0);
     clearQuoteJumpSuppression();
     quoteLog('scroll-to-bottom falling back to bottom anchor');
