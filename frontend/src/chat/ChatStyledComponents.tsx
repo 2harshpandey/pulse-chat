@@ -1994,6 +1994,84 @@ export const LogoutButton = styled.button`
   &:hover svg { transform: translateX(3px); }
 `;
 
+export const PremiumCopyButton = styled.button<{ $copied?: boolean }>`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 14px 16px 10px;
+  margin-top: 1rem;
+  background: ${p => p.$copied
+    ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+    : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)'};
+  color: ${p => p.$copied ? '#fff' : 'var(--text-primary)'};
+  border: 1px solid ${p => p.$copied ? 'rgba(16,185,129,0.35)' : 'rgba(148,163,184,0.18)'};
+  border-radius: 12px;
+  cursor: pointer;
+  box-shadow: ${p => p.$copied
+    ? '0 4px 18px rgba(16,185,129,0.3)'
+    : '0 2px 10px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.06)'};
+  transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  position: relative;
+  overflow: hidden;
+  letter-spacing: 0;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 12px;
+    background: radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.07) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  &:hover {
+    transform: translateY(-2px);
+    border-color: ${p => p.$copied ? 'rgba(16,185,129,0.5)' : 'rgba(148,163,184,0.35)'};
+    box-shadow: ${p => p.$copied
+      ? '0 8px 24px rgba(16,185,129,0.4)'
+      : '0 6px 20px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.09)'};
+  }
+
+  &:active {
+    transform: translateY(1px) scale(0.98);
+  }
+`;
+
+export const PremiumCopyNumber = styled.span`
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+`;
+
+export const PremiumCopyLabel = styled.span<{ $copied?: boolean }>`
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.68rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-top: 2px;
+  color: ${p => p.$copied ? 'rgba(255,255,255,0.9)' : 'var(--text-muted)'};
+  transition: color 0.3s ease;
+
+  svg {
+    width: 12px;
+    height: 12px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    flex-shrink: 0;
+  }
+`;
+
 const bounce = keyframes`
   0%, 80%, 100% { transform: scale(0); }
   40% { transform: scale(1.0); }
