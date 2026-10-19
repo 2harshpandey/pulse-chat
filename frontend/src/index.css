@@ -7,7 +7,10 @@
 }
 
 html, body, #root {
-  height: 100dvh;
+  height: 100svh;
+  height: var(--app-height, 100svh);
+  max-height: 100svh;
+  max-height: var(--app-height, 100svh);
   width: 100%;
   overflow: hidden;
   position: fixed;

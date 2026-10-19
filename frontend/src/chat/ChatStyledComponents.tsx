@@ -4,7 +4,7 @@ import styled, { createGlobalStyle, keyframes, css } from 'styled-components';
 // --- STYLED COMPONENTS ---
 export const GlobalStyle = createGlobalStyle`
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body, #root { height: 100dvh; width: 100%; overflow: hidden; overscroll-behavior: none; position: fixed; inset: 0; background-color: var(--bg-primary); }
+  html, body, #root { height: 100svh; height: var(--app-height, 100svh); max-height: 100svh; max-height: var(--app-height, 100svh); width: 100%; overflow: hidden; overscroll-behavior: none; position: fixed; inset: 0; background-color: var(--bg-primary); }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: var(--bg-primary); color: var(--text-primary); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; transition: background-color 0.3s ease, color 0.3s ease; }
   * { -webkit-tap-highlight-color: transparent; }
   ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -276,11 +276,15 @@ export const DragDropSubtitle = styled.p`
 export const AppContainer = styled.div`
   display: flex;
   flex-direction: column;
-  height: var(--app-height, 100dvh);
+  height: 100svh;
+  height: var(--app-height, 100svh);
+  max-height: 100svh;
+  max-height: var(--app-height, 100svh);
   width: 100%;
   position: absolute;
   top: var(--app-offset-top, 0px);
   left: 0;
+  right: 0;
   overflow: hidden;
 `;
 export const Header = styled.header`
@@ -834,6 +838,7 @@ export const Footer = styled.footer`
   border-top: 1px solid var(--border-primary);
   flex-shrink: 0;
   z-index: 10;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   transition: background-color 0.3s ease, border-color 0.3s ease;
   animation: ${subtleSlideUp} 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 `;

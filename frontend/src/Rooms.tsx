@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import styled, { keyframes, createGlobalStyle } from 'styled-components';
 import { useNavigate } from 'react-router-dom';
 
-import { resolveApiBaseUrl } from './chat/utils';
+import { resolveApiBaseUrl, copyTextToClipboard } from './chat/utils';
 import { useTheme } from './ThemeContext';
 
 const apiBase = resolveApiBaseUrl();
@@ -529,12 +529,14 @@ const Rooms: React.FC = () => {
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const handleCopyId = (e: React.MouseEvent, id: string) => {
+  const handleCopyId = async (e: React.MouseEvent, id: string) => {
     e.preventDefault();
     e.stopPropagation();
-    navigator.clipboard.writeText(id);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+    const ok = await copyTextToClipboard(id);
+    if (ok) {
+      setCopiedId(id);
+      setTimeout(() => setCopiedId(null), 2000);
+    }
   };
 
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);

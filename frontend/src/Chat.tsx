@@ -33,7 +33,8 @@ import {
   sanitizeFilename, inferredContentLengthByUrlCache, getCurrentHistoryPath,
   readRouterHistoryState, readRouterUserState, buildOverlayGuardState,
   pushOverlayGuardHistoryEntry, clearOverlayGuardHistoryEntry,
-  getBlobUrl, revokeBlobUrl, getDeletedForMeIds, addDeletedForMeIds
+  getBlobUrl, revokeBlobUrl, getDeletedForMeIds, addDeletedForMeIds,
+  copyTextToClipboard
 } from './chat/utils';
 import { NOTIFICATION_BEEP } from './chat/audioConstants';
 
@@ -149,7 +150,39 @@ const SearchNotFoundToast = styled.div<{ $visible: boolean }>`
   border: 1px solid rgba(255, 255, 255, 0.1);
   
   @media (max-width: 768px) {
-    bottom: 100px;
+    bottom: 80px;
+    padding: 8px 18px;
+    font-size: 0.88rem;
+  }
+`;
+
+const CopiedToast = styled.div<{ $visible: boolean }>`
+  position: absolute;
+  bottom: 90px;
+  left: 50%;
+  transform: translateX(-50%) translateY(${p => p.$visible ? '0' : '20px'}) scale(${p => p.$visible ? 1 : 0.95});
+  opacity: ${p => p.$visible ? 1 : 0};
+  pointer-events: none;
+  background: rgba(22, 27, 34, 0.96);
+  color: #f0f6fc;
+  padding: 9px 22px;
+  border-radius: 30px;
+  font-size: 0.92rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 10002;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+
+  @media (max-width: 768px) {
+    bottom: 80px;
+    padding: 8px 18px;
+    font-size: 0.86rem;
   }
 `;
 
@@ -272,9 +305,11 @@ const compressImage = (file: File): Promise<File> => {
 function CopyIdButton() {
   const [isCopied, setIsCopied] = React.useState(false);
   const handleCopy = () => {
-    navigator.clipboard.writeText('97652945978254').then(() => {
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2500);
+    void copyTextToClipboard('97652945978254').then((ok) => {
+      if (ok) {
+        setIsCopied(true);
+        setTimeout(() => setIsCopied(false), 2500);
+      }
     });
   };
   return (
@@ -544,6 +579,14 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   const [searchResults, setSearchResults] = useState<Message[] | null>(null);
   const [isSearchLoading, setIsSearchLoading] = useState(false);
   const [showSearchNotFound, setShowSearchNotFound] = useState(false);
+  const [showCopiedToast, setShowCopiedToast] = useState(false);
+  const copiedToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const triggerCopiedToast = useCallback(() => {
+    if (copiedToastTimerRef.current) clearTimeout(copiedToastTimerRef.current);
+    setShowCopiedToast(true);
+    copiedToastTimerRef.current = setTimeout(() => setShowCopiedToast(false), 2000);
+  }, []);
   const scrollBeforeSearchRef = useRef<number | null>(null);
 
   // Tracks whether the user was at the very bottom when they opened the search bar.
@@ -1421,19 +1464,20 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   useEffect(() => {
     if (!isSearchActive) return;
     const handlePointerDown = (e: PointerEvent) => {
+      // Do NOT dismiss search if the user has an active search query or is viewing search results!
+      // In chat apps, search results remain on screen while the user interacts with them
+      // (scrolling, clicking, double-clicking on side to reply, swiping on touch devices, copying, reacting, etc.).
+      if (activeSearchQuery.trim() || chatSearchQuery.trim() || searchResults !== null) {
+        return;
+      }
       const target = e.target as HTMLElement;
       if (!target.closest('#chat-search-container')) {
-        // Bug fix: also clear the query & filter so messages aren't stuck filtered
-        // when the search bar is dismissed by clicking outside (without pressing X)
         setIsSearchActive(false);
-        setChatSearchQuery('');
-        setActiveSearchQuery('');
       }
     };
-    // Capture phase so it runs before any stopPropagation
-    document.addEventListener('pointerdown', handlePointerDown, { capture: true });
-    return () => document.removeEventListener('pointerdown', handlePointerDown, { capture: true });
-  }, [isSearchActive, isMobileView]);
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
+  }, [isSearchActive, activeSearchQuery, chatSearchQuery, searchResults]);
   // Tracks whether we currently have a guard entry in the history stack.
   // Using a ref (not window.history.state) avoids stale-state issues when
   // overlays are closed programmatically rather than via the back button.
@@ -1492,7 +1536,8 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       showGifPicker ||
       !!emojiPickerPosition ||
       !!fullEmojiPickerPosition ||
-      isPlusMenuOpen;
+      isPlusMenuOpen ||
+      isSearchActive;
     if (anyOpen && !overlayGuardPushed.current) {
       pushOverlayGuardHistoryEntry();
       overlayGuardPushed.current = true;
@@ -1512,6 +1557,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     emojiPickerPosition,
     fullEmojiPickerPosition,
     isPlusMenuOpen,
+    isSearchActive,
     userContext?.profile,
   ]);
 
@@ -1595,33 +1641,24 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     };
 
     const getVisibleViewportHeight = () => {
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.userAgent.includes("Mac") && "ontouchend" in document);
+      // Force layout measurement so Chromium resolves pending bottom/top toolbar insets
+      void document.documentElement.offsetHeight;
       const vvHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
       const layoutHeight = window.innerHeight;
-      
-      if (isIOS) {
-        if (layoutHeight - vvHeight > 150) {
-          return Math.min(layoutHeight, vvHeight);
-        }
-        return null;
-      }
-      
-      return layoutHeight;
+      const clamped = Math.min(layoutHeight, vvHeight);
+      return Number.isFinite(clamped) && clamped > 0 ? clamped : layoutHeight;
     };
 
     const updateStableViewportBaseline = () => {
       stableViewportWidthRef.current = window.innerWidth;
       const newHeight = getVisibleViewportHeight();
-      stableViewportHeightRef.current = newHeight !== null ? newHeight : window.innerHeight;
+      stableViewportHeightRef.current = newHeight;
       applyAppHeight(newHeight);
     };
 
     const handleViewportResize = () => {
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.userAgent.includes("Mac") && "ontouchend" in document);
-      
-      const vvHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-      const layoutHeight = window.innerHeight;
-      const visibleHeight = isIOS ? Math.min(layoutHeight, vvHeight) : layoutHeight;
+      const visibleHeight = getVisibleViewportHeight();
       
       const widthDelta = Math.abs(window.innerWidth - stableViewportWidthRef.current);
       if (widthDelta > 40) {
@@ -1648,33 +1685,86 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     };
 
     const handleViewportScroll = () => {
-      // Continuously prevent the layout from scrolling up, and keep offset synced
-      const vvOffsetTop = window.visualViewport ? window.visualViewport.offsetTop : 0;
-      document.documentElement.style.setProperty('--app-offset-top', `${vvOffsetTop}px`);
+      // Continuously prevent the layout from scrolling up, and keep offset synced for iOS
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.userAgent.includes("Mac") && "ontouchend" in document);
+      if (isIOS) {
+        const vvOffsetTop = window.visualViewport ? window.visualViewport.offsetTop : 0;
+        document.documentElement.style.setProperty('--app-offset-top', `${vvOffsetTop}px`);
+      }
 
       if (window.scrollY > 0) {
         window.scrollTo(0, 0);
       }
     };
 
-
-
     updateStableViewportBaseline();
     handleViewportResize();
+
+    // High-frequency polling on initial mount:
+    // Mobile Chromium browsers (like Brave with a bottom navigation bar or Chrome with dynamic controls)
+    // asynchronously deliver window insets several hundred milliseconds after Activity creation, or
+    // after native browser toolbar slide animations complete. Polling every 150ms for 3.5 seconds
+    // guarantees the layout locks into the true visible height automatically on initial page open
+    // without requiring user tap or interaction.
+    const pollInterval = window.setInterval(handleViewportResize, 150);
+    const pollStopTimer = window.setTimeout(() => {
+      window.clearInterval(pollInterval);
+    }, 3500);
+
+    const rafId = requestAnimationFrame(handleViewportResize);
+    const timer1 = setTimeout(handleViewportResize, 100);
+    const timer2 = setTimeout(handleViewportResize, 350);
+    const timer3 = setTimeout(handleViewportResize, 800);
+    const timer4 = setTimeout(handleViewportResize, 1600);
+
+    // Touch and pointer listeners:
+    // Any screen touch (scrolling messages, tapping) prompts Chromium on Android to finalize insets.
+    // Capturing touchstart, touchmove, and pointerdown guarantees instant recalibration on the very first touch.
+    window.addEventListener('touchstart', handleViewportResize, { passive: true });
+    window.addEventListener('touchmove', handleViewportResize, { passive: true });
+    window.addEventListener('touchend', handleViewportResize, { passive: true });
+    window.addEventListener('pointerdown', handleViewportResize, { passive: true });
+
     window.visualViewport?.addEventListener('resize', handleViewportResize);
     window.visualViewport?.addEventListener('scroll', handleViewportScroll);
     window.addEventListener('scroll', handleViewportScroll, { passive: false });
     window.addEventListener('resize', handleViewportResize);
     window.addEventListener('orientationchange', handleViewportResize);
     window.addEventListener('focus', handleViewportResize);
+    document.addEventListener('visibilitychange', handleViewportResize);
+
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      try {
+        resizeObserver = new ResizeObserver(() => {
+          handleViewportResize();
+        });
+        resizeObserver.observe(document.documentElement);
+      } catch { /* ignore */ }
+    }
 
     return () => {
+      cancelAnimationFrame(rafId);
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearTimeout(timer3);
+      clearTimeout(timer4);
+      window.clearInterval(pollInterval);
+      window.clearTimeout(pollStopTimer);
+      resizeObserver?.disconnect();
+      document.documentElement.style.removeProperty('--app-height');
+      document.documentElement.style.removeProperty('--app-offset-top');
+      window.removeEventListener('touchstart', handleViewportResize);
+      window.removeEventListener('touchmove', handleViewportResize);
+      window.removeEventListener('touchend', handleViewportResize);
+      window.removeEventListener('pointerdown', handleViewportResize);
       window.visualViewport?.removeEventListener('resize', handleViewportResize);
       window.visualViewport?.removeEventListener('scroll', handleViewportScroll);
       window.removeEventListener('scroll', handleViewportScroll);
       window.removeEventListener('resize', handleViewportResize);
       window.removeEventListener('orientationchange', handleViewportResize);
       window.removeEventListener('focus', handleViewportResize);
+      document.removeEventListener('visibilitychange', handleViewportResize);
     };
   }, []);
 
@@ -1725,6 +1815,10 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
         setLightboxUrl(null);
       } else if (isUserListVisible) {
         setIsUserListVisible(false);
+      } else if (isSearchActive) {
+        setChatSearchQuery('');
+        setActiveSearchQuery('');
+        handleCloseSearch();
       } else if (replyingTo) {
         setReplyingTo(null);
       }
@@ -1961,15 +2055,16 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
           setFirstItemIndex(INITIAL_FIRST_ITEM_INDEX);
         } else if (messageData.type === 'update') {
           const normalizedUpdate = normalizeMessage(messageData.data);
-          setMessages(prev =>
-            prev.map(m => {
+          const updateMsgInList = (list: Message[]) =>
+            list.map(m => {
               if (m.id === normalizedUpdate.id) return { ...m, ...normalizedUpdate };
               if (normalizedUpdate.isDeleted && m.replyingTo && m.replyingTo.id === normalizedUpdate.id) {
                 return { ...m, replyingTo: { ...m.replyingTo, isDeleted: true } };
               }
               return m;
-            })
-          );
+            });
+          setMessages(prev => updateMsgInList(prev));
+          setSearchResults(prev => prev ? updateMsgInList(prev) : null);
           // If the currently quoted message (reply preview in footer) was updated, reflect changes.
           setReplyingTo(prev => {
             if (prev && prev.id === normalizedUpdate.id) {
@@ -1982,8 +2077,8 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
           const updatedIds = new Set(updatedMessages.map((m: any) => m.id));
           const updatedMap = new Map<string, Message>(updatedMessages.map((m: any) => [m.id, m]));
           
-          setMessages(prev =>
-            prev.map(m => {
+          const applyBulkUpdate = (list: Message[]) =>
+            list.map(m => {
               if (updatedMap.has(m.id)) return { ...m, ...(updatedMap.get(m.id) as Message) };
               if (m.replyingTo && updatedIds.has(m.replyingTo.id)) {
                 const updatedTarget = updatedMap.get(m.replyingTo.id);
@@ -1992,8 +2087,9 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                 }
               }
               return m;
-            })
-          );
+            });
+          setMessages(prev => applyBulkUpdate(prev));
+          setSearchResults(prev => prev ? applyBulkUpdate(prev) : null);
           
           setReplyingTo(prev => {
             if (prev && updatedIds.has(prev.id)) {
@@ -2006,6 +2102,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
         } else if (messageData.type === 'bulk_delete') {
           const deletedIds = new Set(messageData.messageIds);
           setMessages(prev => prev.filter(m => !deletedIds.has(m.id)));
+          setSearchResults(prev => prev ? prev.filter(m => !deletedIds.has(m.id)) : null);
           
           setReplyingTo(prev => {
             if (prev && deletedIds.has(prev.id)) return null;
@@ -3140,6 +3237,12 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       await jumpToLatestMessagesRef.current();
     }
 
+    if (activeSearchQuery || chatSearchQuery || isSearchActive) {
+      setActiveSearchQuery('');
+      setChatSearchQuery('');
+      setIsSearchActive(false);
+    }
+
     const tempId = Date.now().toString();
     let replyContext: ReplyContext | undefined = undefined;
     if (replyingTo) {
@@ -3287,7 +3390,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     // Apply the reaction change immediately in local state so the UI
     // feels instant. The server will broadcast the authoritative state
     // shortly after, which will reconcile any difference.
-    setMessages(prev => prev.map(m => {
+    const applyReactionUpdate = (prevList: Message[]) => prevList.map(m => {
       if (m.id !== messageId) return m;
       const reactions: Record<string, { userId: string; username: string }[]> = filterValidReactions(m.reactions);
       // Remove any existing reaction by this user
@@ -3309,7 +3412,10 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
         reactions[canonicalEmoji].push({ userId, username });
       }
       return { ...m, reactions };
-    }));
+    });
+
+    setMessages(prev => applyReactionUpdate(prev));
+    setSearchResults(prev => prev ? applyReactionUpdate(prev) : null);
 
     // Send to server
     try {
@@ -3318,11 +3424,12 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       console.error('Failed to send reaction:', e);
     }
     setReactionPickerData(null);
-  }, [userContext?.profile]);
+  }, [userContext?.profile, roomId]);
 
   const deleteForMe = useCallback((messageId: string) => {
     addDeletedForMeIds(userIdRef.current, [messageId]);
     setMessages(prev => prev.filter(m => m.id !== messageId));
+    setSearchResults(prev => prev ? prev.filter(m => m.id !== messageId) : null);
   }, []);
 
   const deleteForEveryone = useCallback((messageId: string) => {
@@ -3746,7 +3853,8 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   }, []);
 
   const handleInitiateDelete = () => {
-    const selectedMessageObjects = messages.filter(msg => selectedMessages.includes(msg.id));
+    const allAvailable = searchResults && searchResults.length > 0 ? [...searchResults, ...messages] : messages;
+    const selectedMessageObjects = allAvailable.filter(msg => selectedMessages.includes(msg.id));
     const allMessagesAreMine = selectedMessageObjects.every(msg => msg.userId === userIdRef.current);
 
     if (!allMessagesAreMine) {
@@ -3807,6 +3915,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   const handleBulkDeleteForMe = () => {
     addDeletedForMeIds(userIdRef.current, selectedMessages);
     setMessages(prev => prev.filter(m => !selectedMessages.includes(m.id)));
+    setSearchResults(prev => prev ? prev.filter(m => !selectedMessages.includes(m.id)) : null);
     // Replace the guard history entry in-place rather than calling back().
     // history.back() fires a popstate event that React Router v6 intercepts
     // and treats as a route navigation —  on desktop (mouse-click path through
@@ -3842,53 +3951,61 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   const handleCopy = useCallback(async (message: Message) => {
     try {
       if (message.type === 'image' && message.url) {
-        // Copy the actual image to the clipboard.
-        // The ClipboardItem constructor accepts a *Promise* for the blob value,
-        // so clipboard.write() itself stays synchronous within the user-gesture
-        // frame (critical for iOS/Android) while the fetch happens in the background.
+        // Copy the actual image to the clipboard if supported and in a secure context.
         const url = sanitizeMediaUrl(message.url);
-        if (url && navigator.clipboard.write) {
-          const blobPromise = fetch(url)
-            .then(res => res.blob())
-            .then(blob => {
-              // Clipboard API requires image/png on most browsers.
-              // If the source is already PNG, use it directly.
-              if (blob.type === 'image/png') return blob;
-              // Otherwise convert via an offscreen canvas.
-              return new Promise<Blob>((resolve, reject) => {
-                const img = new Image();
-                img.crossOrigin = 'anonymous';
-                img.onload = () => {
-                  const canvas = document.createElement('canvas');
-                  canvas.width = img.naturalWidth;
-                  canvas.height = img.naturalHeight;
-                  canvas.getContext('2d')!.drawImage(img, 0, 0);
-                  canvas.toBlob(b => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png');
-                  URL.revokeObjectURL(img.src);
-                };
-                img.onerror = () => reject(new Error('Image load failed'));
-                img.src = URL.createObjectURL(blob);
+        if (url && typeof navigator !== 'undefined' && navigator.clipboard?.write && window.isSecureContext) {
+          try {
+            const blobPromise = fetch(url)
+              .then(res => res.blob())
+              .then(blob => {
+                // Clipboard API requires image/png on most browsers.
+                if (blob.type === 'image/png') return blob;
+                // Otherwise convert via an offscreen canvas.
+                return new Promise<Blob>((resolve, reject) => {
+                  const img = new Image();
+                  img.crossOrigin = 'anonymous';
+                  img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.naturalWidth;
+                    canvas.height = img.naturalHeight;
+                    canvas.getContext('2d')!.drawImage(img, 0, 0);
+                    canvas.toBlob(b => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png');
+                    URL.revokeObjectURL(img.src);
+                  };
+                  img.onerror = () => reject(new Error('Image load failed'));
+                  img.src = URL.createObjectURL(blob);
+                });
               });
-            });
-          const item = new ClipboardItem({ 'image/png': blobPromise });
-          await navigator.clipboard.write([item]);
-          return;
+            const item = new ClipboardItem({ 'image/png': blobPromise });
+            await navigator.clipboard.write([item]);
+            triggerCopiedToast();
+            return;
+          } catch (imgErr) {
+            console.warn('Image blob clipboard copy failed, falling back to text/URL:', imgErr);
+          }
         }
       }
-      // Fallback: copy text content (for text messages, or if image copy isn't supported).
+
+      // Universal text copy fallback (handles text messages, image URLs, insecure HTTP contexts & mobile devices)
       const textToCopy = message.text || message.url || '';
       if (textToCopy) {
-        await navigator.clipboard.writeText(textToCopy);
+        const success = await copyTextToClipboard(textToCopy);
+        if (success) {
+          triggerCopiedToast();
+        }
       }
     } catch (err) {
       console.error('Failed to copy: ', err);
-      // Last-resort fallback: try copying as text.
+      // Last-resort fallback: try copying text using universal execCommand.
       try {
         const fallbackText = message.text || message.url || '';
-        if (fallbackText) await navigator.clipboard.writeText(fallbackText);
+        if (fallbackText) {
+          const success = await copyTextToClipboard(fallbackText);
+          if (success) triggerCopiedToast();
+        }
       } catch { /* silently fail */ }
     }
-  }, []);
+  }, [triggerCopiedToast]);
 
   const handleStartEdit = useCallback((message: Message) => {
     const draft = inputMessageRef.current;
@@ -4306,6 +4423,12 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     const targetId = resolveReplyNavigationTargetId(messageId, sourceMessageId, replyingToPayload);
     const sourceId = normalizeMessageId(sourceMessageId);
 
+    if (activeSearchQuery) {
+      setActiveSearchQuery('');
+      setChatSearchQuery('');
+      setIsSearchActive(false);
+    }
+
     quoteLog('scrollToMessage requested', {
       messageId,
       resolvedTargetId: targetId,
@@ -4450,7 +4573,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
         });
       })();
     });
-  }, [apiBase, fetchAndPrependOlderMessages, filterVisibleMessages, getMessageCursor, historyLoaded, markDeletedReplyTargets, normalizeMessage, resolveReplyNavigationTargetId, roomId, scrollToLoadedMessage, setFirstItemIndex]);
+  }, [activeSearchQuery, apiBase, fetchAndPrependOlderMessages, filterVisibleMessages, getMessageCursor, historyLoaded, markDeletedReplyTargets, normalizeMessage, resolveReplyNavigationTargetId, roomId, scrollToLoadedMessage, setFirstItemIndex]);
 
   const scrollToBottom = useCallback((behavior: 'auto' | 'smooth' = 'auto', force = false) => {
     if (!force && shouldSuppressProgrammaticScroll()) return;
@@ -4691,7 +4814,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   // --- RENDER ---
   if (!userContext?.profile) { return <Auth onAuthSuccess={userContext?.login ?? (() => { })} tempToken={tempToken || null} roomId={roomId} />; }
 
-  const selectedMessage = messages.find(msg => msg.id === selectedMessages[0]);
+  const selectedMessage = (filteredMessages.find(msg => msg.id === selectedMessages[0])) || messages.find(msg => msg.id === selectedMessages[0]);
   const canEditSelectedMessage = selectedMessages.length === 1 && selectedMessage && selectedMessage.userId === userIdRef.current && selectedMessage.text && (new Date().getTime() - new Date(selectedMessage.timestamp).getTime()) < 15 * 60 * 1000;
   const hasNewMessagesIndicator = newMessagesWhileScrolledUp > 0;
   const canZoomOutLightbox = lightboxTransform.scale > PHOTO_LIGHTBOX_MIN_SCALE + 0.001;
@@ -5246,15 +5369,14 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
               />
                 <ChatSearchButton onClick={(e) => {
                   e.stopPropagation();
-                  if (chatSearchQuery || activeSearchQuery) {
-                    setChatSearchQuery('');
-                    setActiveSearchQuery('');
-                  } else {
-                    handleCloseSearch();
-                  }
+                  setChatSearchQuery('');
+                  setActiveSearchQuery('');
+                  handleCloseSearch();
                 }}
                 tabIndex={isSearchActive ? 0 : -1}
                 aria-hidden={!isSearchActive}
+                title="Close search"
+                aria-label="Close search"
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '18px', height: '18px' }}>
                     <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -5284,6 +5406,11 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
               <PinnedBannerContainer onClick={async () => {
                 if (isJumpingToPinned) return;
                 setNewMessagesWhileScrolledUp(0);
+                if (activeSearchQuery) {
+                  setActiveSearchQuery('');
+                  setChatSearchQuery('');
+                  setIsSearchActive(false);
+                }
                 const currentMsg = pinnedMessages[currentPinnedIndex];
                 if (currentMsg) {
                   setIsJumpingToPinned(true);
@@ -5457,6 +5584,12 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
               </svg>
               Not found
             </SearchNotFoundToast>
+            <CopiedToast $visible={showCopiedToast}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: '18px', height: '18px' }}>
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              Copied to clipboard
+            </CopiedToast>
             <TypingIndicator onlineUsers={onlineUsers} currentUserId={userIdRef.current} />
             <Footer>
               {isSelectModeActive && (

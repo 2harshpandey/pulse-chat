@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useTheme } from './ThemeContext';
-import { resolveApiBaseUrl } from './chat/utils';
+import { resolveApiBaseUrl, copyTextToClipboard } from './chat/utils';
 import {
   AdminContainer, Title, LoginFormContainer, LoginBox, AdminOrb,
   AdminLoginBrand, AdminBrandLogo, AdminBrandWordmark, AdminHeartbeatSvg,
@@ -600,12 +600,13 @@ const Admin = () => {
     }
   };
 
-  const handleCopyLink = (token: string, id: string) => {
+  const handleCopyLink = async (token: string, id: string) => {
     const link = `${window.location.origin}/join/${token}`;
-    navigator.clipboard.writeText(link).then(() => {
+    const ok = await copyTextToClipboard(link);
+    if (ok) {
       setCopiedLinkId(id);
       setTimeout(() => setCopiedLinkId(null), 2000);
-    });
+    }
   };
 
   // --- User Actions ---
