@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import styled, { keyframes, createGlobalStyle } from 'styled-components';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from './ThemeContext';
+import { resolveApiBaseUrl } from './chat/utils';
 
 const GlobalHomeStyle = createGlobalStyle`
   html, body, #root {
@@ -513,7 +514,7 @@ const Home: React.FC = () => {
     setAdminError('');
 
     try {
-      const apiBase = import.meta.env.REACT_APP_API_URL || '';
+      const apiBase = resolveApiBaseUrl();
       const roomId = adminRoomId.trim();
       const trimmedPassword = adminPassword.trim();
       const passwordAttempts = (trimmedPassword && trimmedPassword !== adminPassword)

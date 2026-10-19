@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useTheme } from './ThemeContext';
+import { resolveApiBaseUrl } from './chat/utils';
 import {
   AdminContainer, Title, LoginFormContainer, LoginBox, AdminOrb,
   AdminLoginBrand, AdminBrandLogo, AdminBrandWordmark, AdminHeartbeatSvg,
@@ -226,7 +227,7 @@ const Admin = () => {
     const currentRoomId = roomIdRef.current;
     console.log('[Admin WS] Connecting admin WebSocket for room:', currentRoomId);
 
-    const wsUrl = `${import.meta.env.REACT_APP_API_URL?.replace('http', 'ws') || 'ws://localhost:8080'}?admin=true`;
+    const wsUrl = `${resolveApiBaseUrl().replace(/^http/, 'ws')}?admin=true`;
     ws.current = new WebSocket(wsUrl);
     ws.current.onopen = () => {
       console.log('[Admin WS] WebSocket open, sending admin_auth for room:', currentRoomId);
@@ -340,7 +341,7 @@ const Admin = () => {
     'x-room-id': roomId,
     'Content-Type': 'application/json',
   }), [roomId]);
-  const apiUrl = import.meta.env.REACT_APP_API_URL || '';
+  const apiUrl = resolveApiBaseUrl();
 
   // --- Auth ---
   const handleLogin = async (providedPassword?: string) => {
@@ -930,7 +931,7 @@ const Admin = () => {
   const handleBulkActionSubmit = async () => {
     if (selectedMessages.size === 0) return;
     try {
-      const res = await fetch(`${import.meta.env.REACT_APP_API_URL || 'http://localhost:8080'}/api/admin/messages/bulk-action`, {
+      const res = await fetch(`${apiUrl}/api/admin/messages/bulk-action`, {
         method: 'POST',
         headers: apiHeaders(),
         body: JSON.stringify({

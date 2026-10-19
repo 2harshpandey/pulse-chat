@@ -3,6 +3,7 @@ import styled, { keyframes } from 'styled-components';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { UserProfile } from './UserContext';
 import { useTheme } from './ThemeContext';
+import { resolveApiBaseUrl } from './chat/utils';
 
 // --- UTILITY ---
 const getUserId = (): string => {
@@ -548,7 +549,7 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken, roomId = 'me' }) 
     } else if (roomId === 'global') {
       setRequiresPassword(false);
     } else if (roomId && roomId !== 'me') {
-      const apiBase = (import.meta.env.REACT_APP_API_URL || '').replace(/\/$/, '');
+      const apiBase = resolveApiBaseUrl();
       fetch(`${apiBase}/api/rooms/${roomId}/meta`)
         .then(res => res.json())
         .then(data => {
@@ -589,7 +590,7 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken, roomId = 'me' }) 
     setIsLoading(true);
     setError('');
     try {
-      const apiBase = (import.meta.env.REACT_APP_API_URL || '').replace(/\/$/, '');
+      const apiBase = resolveApiBaseUrl();
       const fingerprint = collectFingerprint();
 
       if (isTempLink) {

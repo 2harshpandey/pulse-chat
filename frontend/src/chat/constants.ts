@@ -16,6 +16,22 @@ export const INITIAL_HISTORY_BATCH_SIZE = 80;
 export const HISTORY_PAGE_SIZE = 50;
 
 /**
+ * Maximum number of messages kept in React state at any time.
+ * When prepending older messages pushes the array above this cap,
+ * messages are evicted from the tail (newest end) of the window.
+ * Symmetric eviction from the head happens on forward (newer) loads.
+ * 200 gives ~10 viewport-heights of buffer on both sides.
+ */
+export const MAX_MESSAGES_WINDOW = 200;
+
+/**
+ * Pixels from the BOTTOM of the scroller at which we start loading
+ * newer messages (when the user has scrolled back down after going up).
+ * Kept intentionally large so the restore feels instant.
+ */
+export const NEWER_LOAD_TRIGGER_PX = 2500;
+
+/**
  * Minimum ms between two consecutive startReached triggers.
  * Virtuoso fires startReached on EVERY scroll frame when the user is near the
  * top. Without a cooldown we can repeatedly prepend near the threshold, which

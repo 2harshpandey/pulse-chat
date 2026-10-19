@@ -12,7 +12,8 @@ import { transferManager } from './chat/TransferManager';
 import type { Message, Gif, ReplyContext, RouterHistoryState, DownloadProgressCallback, LinkPreviewData, MessageItemProps, TypingIndicatorProps } from './chat/types';
 import {
   MAX_MESSAGE_LENGTH, GIF_FETCH_LIMIT, getInputDraftKey, isDesktopInteractionDevice,
-  INITIAL_HISTORY_BATCH_SIZE, HISTORY_PAGE_SIZE, START_REACHED_COOLDOWN_MS, INITIAL_FIRST_ITEM_INDEX,
+  INITIAL_HISTORY_BATCH_SIZE, HISTORY_PAGE_SIZE, MAX_MESSAGES_WINDOW, NEWER_LOAD_TRIGGER_PX,
+  START_REACHED_COOLDOWN_MS, INITIAL_FIRST_ITEM_INDEX,
   scrollLog, quoteLog, quoteWarn, MAX_LINK_PREVIEW_CACHE_ENTRIES,
   MAX_NEW_MESSAGE_INDICATOR_COUNT, MAX_LOADED_MEDIA_TRACKING, MAX_QUOTE_JUMP_STACK_DEPTH,
   MAX_QUOTE_AUTO_LOAD_PAGES, QUOTE_JUMP_TARGET_TOP_RATIO, FULLSCREEN_RESTORE_VISIBILITY_MARGIN,
@@ -408,9 +409,22 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   const groupStartMessageIdsRef = useRef<Set<string>>(new Set());
   const [hasMoreOlderMessages, setHasMoreOlderMessages] = useState(true);
   const [oldestLoadedAt, setOldestLoadedAt] = useState<string | null>(null);
+  // --- Sliding-window: forward (newer) direction ---
+  // When the user scrolls back toward the bottom after scrolling far up,
+  // the tail that was evicted needs to be re-fetched from the server.
+  const [hasMoreNewerMessages, setHasMoreNewerMessages] = useState(false);
+  const hasMoreNewerMessagesRef = useRef(false);
+  const [newestLoadedAt, setNewestLoadedAt] = useState<string | null>(null);
+  const newestLoadedAtRef = useRef<string | null>(null);
+  const isLoadingNewerRef = useRef(false);
+  // Cooldown timestamp for the newer direction (mirrors lastStartReachedAtRef).
+  const lastEndReachedAtRef = useRef<number>(0);
   const prependScrollLockRef = useRef<number>(0);
   const pendingPrependMessagesRef = useRef<Message[] | null>(null);
   const pendingFirstItemIndexRef = useRef<number | null>(null);
+  const scrollAnchorRef = useRef<{ id: string; top: number } | null>(null);
+  const appendMessageToWindowRef = useRef<(msg: Message) => void>(() => {});
+  const jumpToLatestMessagesRef = useRef<() => Promise<void>>(async () => {});
   const initialTopMostItemIndexRef = useRef<number | null>(null);
   if (historyLoaded && initialTopMostItemIndexRef.current === null) {
     initialTopMostItemIndexRef.current = INITIAL_FIRST_ITEM_INDEX + (messages.length > 0 ? messages.length - 1 : 0);
@@ -971,6 +985,10 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     oldestLoadedAtRef.current = null;
     setHasMoreOlderMessages(true);
     hasMoreOlderMessagesRef.current = true;
+    setHasMoreNewerMessages(false);
+    hasMoreNewerMessagesRef.current = false;
+    setNewestLoadedAt(null);
+    newestLoadedAtRef.current = null;
   }, [userContext?.profile]);
 
   useEffect(() => {
@@ -1595,9 +1613,13 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       //  • Page on http://  → use ws:// (local dev only)
       //  • No env var       → fall back to the page's own host/protocol
       const wsUrlBase = (() => {
+        const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const hostname = window.location.hostname;
+        if (hostname === 'localhost' || hostname === '127.0.0.1' || /^192\.168\./.test(hostname) || /^10\./.test(hostname)) {
+          return `${proto}://${hostname}:8080`;
+        }
         const base = import.meta.env.REACT_APP_API_URL;
         if (!base) {
-          const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
           return `${proto}://${window.location.host}`;
         }
         return base.replace(
@@ -1729,6 +1751,13 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
             : processed.length >= INITIAL_HISTORY_BATCH_SIZE;
           setHasMoreOlderMessages(nextHasMore);
           hasMoreOlderMessagesRef.current = nextHasMore;
+          // On fresh history load we are at the newest end — no need to load forward.
+          // Record the newest cursor so tail eviction knows where to fetch from later.
+          const newestCursor = getMessageCursor(processed[processed.length - 1]) || null;
+          newestLoadedAtRef.current = newestCursor;
+          setNewestLoadedAt(newestCursor);
+          setHasMoreNewerMessages(false);
+          hasMoreNewerMessagesRef.current = false;
           // Mark history as loaded so the Virtuoso component renders
           // for the first time already at the bottom —  no visible scroll.
           setHistoryLoaded(true);
@@ -1838,21 +1867,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
           if (isJoinNotification || isIncomingMessage) {
             void playNotificationSound(isJoinNotification ? 'join' : 'message');
           }
-          setMessages(prev => {
-            // Deduplicate: system_notification messages (join/leave) can arrive
-            // via broadcast while a reconnect also triggers a fresh history load.
-            // If a message with the same id already exists, skip it.
-            if (normalized.id && prev.some(m => m.id === normalized.id)) return prev;
-            // Skip messages the user has deleted for themselves.
-            if (normalized.id && getDeletedForMeIds(userIdRef.current).has(normalized.id)) return prev;
-
-            const prevMsg = prev.length > 0 ? prev[prev.length - 1] : null;
-            if (!prevMsg || prevMsg.type === 'system_notification' || prevMsg.userId !== normalized.userId) {
-              groupStartMessageIdsRef.current.add(normalized.id);
-            }
-
-            return [...prev, normalized];
-          });
+          appendMessageToWindowRef.current(normalized);
         }
       };
     };
@@ -2415,16 +2430,29 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   }, [messages.length]);
 
   useLayoutEffect(() => {
-    if (previousScrollMetricsRef.current && chatContainerRef.current) {
+    if (chatContainerRef.current) {
       const scroller = chatContainerRef.current;
-      const metrics = previousScrollMetricsRef.current;
-      previousScrollMetricsRef.current = null;
+      if (scrollAnchorRef.current) {
+        const { id, top: beforeTop } = scrollAnchorRef.current;
+        scrollAnchorRef.current = null;
+        const el = document.getElementById(id);
+        if (el) {
+          const afterTop = el.getBoundingClientRect().top;
+          const diff = afterTop - beforeTop;
+          if (diff !== 0) {
+            scroller.scrollTop += diff;
+          }
+          return;
+        }
+      }
 
-      const newScrollHeight = scroller.scrollHeight;
-      const heightDiff = newScrollHeight - metrics.height;
-
-      if (heightDiff > 0) {
-        scroller.scrollTop = metrics.top + heightDiff;
+      if (previousScrollMetricsRef.current) {
+        const metrics = previousScrollMetricsRef.current;
+        previousScrollMetricsRef.current = null;
+        const heightDiff = scroller.scrollHeight - metrics.height;
+        if (heightDiff > 0) {
+          scroller.scrollTop = metrics.top + heightDiff;
+        }
       }
     }
   }, [messages]);
@@ -2502,6 +2530,64 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     const deletedIds = new Set(filtered.filter(m => m.isDeleted).map(m => m.id));
     return markDeletedReplyTargets(filtered, deletedIds);
   }, [markDeletedReplyTargets]);
+
+  // Sliding window: append live incoming or outgoing message to window,
+  // capping React state & DOM at MAX_MESSAGES_WINDOW.
+  const appendMessageToWindow = useCallback((msg: Message) => {
+    // If scrolled back in history and tail is evicted, do not append to this historical window.
+    if (hasMoreNewerMessagesRef.current) {
+      if (msg.type !== 'system_notification' && msg.userId !== userIdRef.current) {
+        setNewMessagesWhileScrolledUp(prev => Math.min(prev + 1, MAX_NEW_MESSAGE_INDICATOR_COUNT));
+      }
+      return;
+    }
+
+    const current = messagesRef.current;
+    if (msg.id && current.some((m) => m.id === msg.id)) return;
+    if (msg.id && getDeletedForMeIds(userIdRef.current).has(msg.id)) return;
+
+    const prevMsg = current.length > 0 ? current[current.length - 1] : null;
+    if (!prevMsg || prevMsg.type === 'system_notification' || prevMsg.userId !== msg.userId) {
+      groupStartMessageIdsRef.current.add(msg.id);
+    }
+
+    const newCursor = getMessageCursor(msg) || msg.createdAt || msg.timestamp || null;
+    if (newCursor) {
+      newestLoadedAtRef.current = newCursor;
+      setNewestLoadedAt(newCursor);
+    }
+
+    let nextMessages = [...current, msg];
+    if (nextMessages.length > MAX_MESSAGES_WINDOW) {
+      const evictCount = nextMessages.length - MAX_MESSAGES_WINDOW;
+      const firstKept = nextMessages[evictCount];
+      const newOldestCursor = getMessageCursor(firstKept) || oldestLoadedAtRef.current;
+      oldestLoadedAtRef.current = newOldestCursor;
+      setOldestLoadedAt(newOldestCursor);
+      setHasMoreOlderMessages(true);
+      hasMoreOlderMessagesRef.current = true;
+      const nextIdx = firstItemIndexRef.current + evictCount;
+      firstItemIndexRef.current = nextIdx;
+      setFirstItemIndexState(nextIdx);
+
+      // Scroll anchoring: if user is scrolled up reading, anchor on firstKept so position doesn't shift
+      if (!isAtBottomRef.current && firstKept?.id) {
+        const anchorEl = document.getElementById(firstKept.id);
+        if (anchorEl) {
+          scrollAnchorRef.current = { id: firstKept.id, top: anchorEl.getBoundingClientRect().top };
+        }
+      }
+
+      nextMessages = nextMessages.slice(evictCount);
+    }
+
+    messagesRef.current = nextMessages;
+    setMessages(nextMessages);
+  }, [getMessageCursor]);
+
+  useEffect(() => {
+    appendMessageToWindowRef.current = appendMessageToWindow;
+  }, [appendMessageToWindow]);
 
   // Bug fix #1: Full-history search via backend API.
   // Previously the frontend only searched the locally loaded ~50 messages.
@@ -2602,10 +2688,34 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       const actualPrependedCount = patchedOlder.length;
       if (actualPrependedCount > 0) {
         const nextIdx = firstItemIndexRef.current - actualPrependedCount;
-        const nextMessages = [...patchedOlder, ...patchedPrev];
+        let nextMessages = [...patchedOlder, ...patchedPrev];
+
+        // --- Sliding Window: evict tail if the window exceeds the cap ---
+        // When prepending old messages we trim the newest end so the array
+        // stays bounded. The evicted messages are available on the server
+        // and will be re-fetched by loadNewerMessages when the user scrolls
+        // back down toward the bottom.
+        if (nextMessages.length > MAX_MESSAGES_WINDOW) {
+          const evictCount = nextMessages.length - MAX_MESSAGES_WINDOW;
+          // Record the cursor of the last kept message (newest remaining),
+          // so we know where to fetch forward from.
+          const lastKept = nextMessages[MAX_MESSAGES_WINDOW - 1];
+          const newNewestCursor = getMessageCursor(lastKept) || newestLoadedAtRef.current;
+          newestLoadedAtRef.current = newNewestCursor;
+          setNewestLoadedAt(newNewestCursor);
+          // Flag that there are newer messages beyond the window.
+          setHasMoreNewerMessages(true);
+          hasMoreNewerMessagesRef.current = true;
+          nextMessages = nextMessages.slice(0, MAX_MESSAGES_WINDOW);
+          scrollLog('sliding-window: evicted', evictCount, 'tail messages → hasMoreNewer=true');
+        }
 
         const scroller = chatContainerRef.current;
-        if (scroller) {
+        const anchorId = prev[0]?.id;
+        const anchorEl = anchorId ? document.getElementById(anchorId) : null;
+        if (anchorEl) {
+          scrollAnchorRef.current = { id: anchorId, top: anchorEl.getBoundingClientRect().top };
+        } else if (scroller) {
           previousScrollMetricsRef.current = { height: scroller.scrollHeight, top: scroller.scrollTop };
         }
 
@@ -2652,6 +2762,99 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       isLoadingOlderRef.current = false;
     }
   }, [fetchAndPrependOlderMessages, historyLoaded]);
+
+  // --- Forward (newer) message loader ---
+  // Fetches the next page of messages in the NEWER direction using the `after`
+  // cursor. Appends to the tail and evicts from the head to keep the window bounded.
+  const fetchAndAppendNewerMessages = useCallback(async (afterCursor: string, limitOverride?: number) => {
+    const after = encodeURIComponent(afterCursor);
+    const limit = limitOverride || HISTORY_PAGE_SIZE;
+    const res = await fetch(`${apiBase}/api/messages?after=${after}&limit=${limit}`, {
+      headers: { 'x-room-id': roomId }
+    });
+    if (!res.ok) throw new Error('Failed to fetch newer messages');
+
+    const payload = await res.json();
+    const rawBatch: any[] = Array.isArray(payload)
+      ? payload
+      : (Array.isArray(payload.messages) ? payload.messages : []);
+    const serverHasMore: boolean = Array.isArray(payload)
+      ? rawBatch.length >= limit
+      : Boolean(payload.hasMore);
+
+    if (rawBatch.length === 0) {
+      setHasMoreNewerMessages(false);
+      hasMoreNewerMessagesRef.current = false;
+      return;
+    }
+
+    const normalizedBatch = rawBatch.map(normalizeMessage);
+    const filteredBatch = filterVisibleMessages(normalizedBatch);
+
+    // Update the newest cursor to the last message in the new batch.
+    const newNewestCursor = getMessageCursor(normalizedBatch[normalizedBatch.length - 1]) || afterCursor;
+    newestLoadedAtRef.current = newNewestCursor;
+    setNewestLoadedAt(newNewestCursor);
+
+    const currentMessages = messagesRef.current;
+    const existingIds = new Set(currentMessages.map((m) => m.id));
+    const uniqueNewer = filteredBatch.filter((m) => !existingIds.has(m.id));
+
+    if (uniqueNewer.length > 0) {
+      const combinedDeletedIds = new Set(
+        [...currentMessages, ...uniqueNewer].filter((m) => m.isDeleted).map((m) => m.id)
+      );
+      const patchedNewer = markDeletedReplyTargets(uniqueNewer, combinedDeletedIds);
+      const patchedCurrent = markDeletedReplyTargets(currentMessages, combinedDeletedIds);
+
+      let nextMessages = [...patchedCurrent, ...patchedNewer];
+
+      // Evict from the HEAD to maintain MAX_MESSAGES_WINDOW.
+      if (nextMessages.length > MAX_MESSAGES_WINDOW) {
+        const evictCount = nextMessages.length - MAX_MESSAGES_WINDOW;
+        // The new oldest is the first kept message.
+        const firstKept = nextMessages[evictCount];
+        const anchorEl = firstKept?.id ? document.getElementById(firstKept.id) : null;
+        if (anchorEl) {
+          scrollAnchorRef.current = { id: firstKept.id, top: anchorEl.getBoundingClientRect().top };
+        }
+        const newOldestCursor = getMessageCursor(firstKept) || oldestLoadedAtRef.current;
+        oldestLoadedAtRef.current = newOldestCursor;
+        setOldestLoadedAt(newOldestCursor);
+        // There are now older messages before the window.
+        setHasMoreOlderMessages(true);
+        hasMoreOlderMessagesRef.current = true;
+        // Adjust firstItemIndex to match the eviction (visual anchoring).
+        const nextIdx = firstItemIndexRef.current + evictCount;
+        firstItemIndexRef.current = nextIdx;
+        setFirstItemIndexState(nextIdx);
+        nextMessages = nextMessages.slice(evictCount);
+        scrollLog('sliding-window: evicted', evictCount, 'head messages on newer load');
+      }
+
+      messagesRef.current = nextMessages;
+      setMessages(nextMessages);
+    }
+
+    setHasMoreNewerMessages(serverHasMore);
+    hasMoreNewerMessagesRef.current = serverHasMore;
+  }, [apiBase, filterVisibleMessages, getMessageCursor, markDeletedReplyTargets, normalizeMessage, roomId]);
+
+  const loadNewerMessages = useCallback(async () => {
+    if (!historyLoaded || isLoadingNewerRef.current || !hasMoreNewerMessagesRef.current || !newestLoadedAtRef.current) return;
+    const now = performance.now();
+    if (now - lastEndReachedAtRef.current < START_REACHED_COOLDOWN_MS) return;
+    lastEndReachedAtRef.current = now;
+
+    isLoadingNewerRef.current = true;
+    try {
+      await fetchAndAppendNewerMessages(newestLoadedAtRef.current);
+    } catch (err) {
+      console.error('Failed to load newer messages:', err);
+    } finally {
+      isLoadingNewerRef.current = false;
+    }
+  }, [fetchAndAppendNewerMessages, historyLoaded]);
 
   const handleVirtuosoIsScrolling = useCallback((isScrolling: boolean) => {
     isVirtuosoScrollingRef.current = isScrolling;
@@ -2764,6 +2967,10 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN || !userContext?.profile) return;
     if (Date.now() - lastPingAtRef.current > 25000) return; // Prevent sending on dead connection
 
+    if (hasMoreNewerMessagesRef.current) {
+      await jumpToLatestMessagesRef.current();
+    }
+
     const tempId = Date.now().toString();
     let replyContext: ReplyContext | undefined = undefined;
     if (replyingTo) {
@@ -2800,7 +3007,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
         replyingTo: replyContext,
         isUploading: true,
       };
-      setMessages(prev => [...prev, message]);
+      appendMessageToWindow(message);
       // Ensure the view scrolls to show the newly added message
       forceScrollToBottomAsync(true);
 
@@ -2838,7 +3045,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
 
     } else if (stagedGif) {
       const gifMessage: Message = { id: Date.now().toString(), userId: userIdRef.current, username: userContext?.profile?.username || '', type: 'image', url: stagedGif.url, text: inputMessage, timestamp: new Date().toISOString(), replyingTo: replyContext };
-      setMessages(prev => [...prev, gifMessage]);
+      appendMessageToWindow(gifMessage);
       forceScrollToBottomAsync(true);
       ws.current?.send(JSON.stringify({ ...gifMessage, roomId }));
       const hadReply = !!replyingTo;
@@ -2848,7 +3055,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       if (hadReply) forceScrollToBottomAsync();
     } else {
       const textMessage: Message = { id: Date.now().toString(), userId: userIdRef.current, username: userContext?.profile?.username || '', type: 'text', text: inputMessage, timestamp: new Date().toISOString(), replyingTo: replyContext };
-      setMessages(prev => [...prev, textMessage]);
+      appendMessageToWindow(textMessage);
       forceScrollToBottomAsync(true);
       ws.current?.send(JSON.stringify({ ...textMessage, roomId }));
       const hadReply = !!replyingTo;
@@ -3951,6 +4158,58 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       }
 
       void (async () => {
+        // Fast path: fetch target message and surrounding 50-message context directly in ONE request
+        try {
+          const res = await fetch(`${apiBase}/api/messages?around=${encodeURIComponent(targetId)}&limit=50`, {
+            headers: { 'x-room-id': roomId }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const rawBatch = Array.isArray(data.messages) ? data.messages : [];
+            if (rawBatch.length > 0 && rawBatch.some((m: any) => normalizeMessageId(m.id) === targetId || normalizeMessageId(m._id) === targetId)) {
+              const normalized = filterVisibleMessages(rawBatch.map(normalizeMessage));
+              const deletedIds = new Set(normalized.filter((m) => m.isDeleted).map((m) => m.id));
+              const patched = markDeletedReplyTargets(normalized, deletedIds);
+
+              groupStartMessageIdsRef.current.clear();
+              for (let i = 0; i < patched.length; i++) {
+                const current = patched[i];
+                const prev = i > 0 ? patched[i - 1] : null;
+                if (!prev || prev.type === 'system_notification' || prev.userId !== current.userId) {
+                  groupStartMessageIdsRef.current.add(current.id);
+                }
+              }
+
+              setFirstItemIndex(INITIAL_FIRST_ITEM_INDEX);
+              firstItemIndexRef.current = INITIAL_FIRST_ITEM_INDEX;
+              messagesRef.current = patched;
+              setMessages(patched);
+
+              const oldest = patched.length > 0 ? (data.oldestCreatedAt || getMessageCursor(patched[0])) : null;
+              oldestLoadedAtRef.current = oldest;
+              setOldestLoadedAt(oldest);
+
+              const newest = patched.length > 0 ? (data.newestCreatedAt || getMessageCursor(patched[patched.length - 1])) : null;
+              newestLoadedAtRef.current = newest;
+              setNewestLoadedAt(newest);
+
+              setHasMoreOlderMessages(Boolean(data.hasMoreOlder));
+              hasMoreOlderMessagesRef.current = Boolean(data.hasMoreOlder);
+
+              setHasMoreNewerMessages(Boolean(data.hasMoreNewer));
+              hasMoreNewerMessagesRef.current = Boolean(data.hasMoreNewer);
+
+              requestAnimationFrame(() => {
+                scrollToLoadedMessage(targetId, behavior, force);
+                resolve();
+              });
+              return;
+            }
+          }
+        } catch (err) {
+          quoteWarn('Fast jump-around failed, falling back to sequential loader', err);
+        }
+
         let cursor = oldestLoadedAtRef.current;
         let hasMore = hasMoreOlderMessagesRef.current;
         let fetchedPages = 0;
@@ -3993,7 +4252,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
         });
       })();
     });
-  }, [fetchAndPrependOlderMessages, historyLoaded, resolveReplyNavigationTargetId, scrollToLoadedMessage]);
+  }, [apiBase, fetchAndPrependOlderMessages, filterVisibleMessages, getMessageCursor, historyLoaded, markDeletedReplyTargets, normalizeMessage, resolveReplyNavigationTargetId, roomId, scrollToLoadedMessage, setFirstItemIndex]);
 
   const scrollToBottom = useCallback((behavior: 'auto' | 'smooth' = 'auto', force = false) => {
     if (!force && shouldSuppressProgrammaticScroll()) return;
@@ -4073,6 +4332,63 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     };
   }, [clearPendingBottomScrollTimers]);
 
+  // --- Sliding-window: Jump to latest history ---
+  // When user clicks the bottom button or sends a message while scrolled up,
+  // fetch the latest page in ONE roundtrip and restore the live bottom window.
+  const jumpToLatestMessages = useCallback(async () => {
+    try {
+      const res = await fetch(`${apiBase}/api/messages?limit=${INITIAL_HISTORY_BATCH_SIZE}`, {
+        headers: { 'x-room-id': roomId }
+      });
+      if (!res.ok) return;
+      const payload = await res.json();
+      const rawBatch: any[] = Array.isArray(payload)
+        ? payload
+        : (Array.isArray(payload.messages) ? payload.messages : []);
+      const serverHasMore: boolean = Boolean(payload.hasMore);
+      const normalized = filterVisibleMessages(rawBatch.map(normalizeMessage));
+      const deletedIds = new Set(normalized.filter((m) => m.isDeleted).map((m) => m.id));
+      const patched = markDeletedReplyTargets(normalized, deletedIds);
+
+      groupStartMessageIdsRef.current.clear();
+      for (let i = 0; i < patched.length; i++) {
+        const current = patched[i];
+        const prev = i > 0 ? patched[i - 1] : null;
+        if (!prev || prev.type === 'system_notification' || prev.userId !== current.userId) {
+          groupStartMessageIdsRef.current.add(current.id);
+        }
+      }
+
+      setFirstItemIndex(INITIAL_FIRST_ITEM_INDEX);
+      firstItemIndexRef.current = INITIAL_FIRST_ITEM_INDEX;
+      messagesRef.current = patched;
+      setMessages(patched);
+
+      const oldest = patched.length > 0 ? (payload.oldestCreatedAt || getMessageCursor(patched[0])) : null;
+      oldestLoadedAtRef.current = oldest;
+      setOldestLoadedAt(oldest);
+
+      const newest = patched.length > 0 ? getMessageCursor(patched[patched.length - 1]) : null;
+      newestLoadedAtRef.current = newest;
+      setNewestLoadedAt(newest);
+
+      setHasMoreOlderMessages(serverHasMore);
+      hasMoreOlderMessagesRef.current = serverHasMore;
+      setHasMoreNewerMessages(false);
+      hasMoreNewerMessagesRef.current = false;
+      setNewMessagesWhileScrolledUp(0);
+
+      scrollToBottom('auto', true);
+      requestAnimationFrame(() => syncBottomStateFromScroller());
+    } catch (err) {
+      console.error('Failed to jump to latest messages:', err);
+    }
+  }, [apiBase, filterVisibleMessages, getMessageCursor, markDeletedReplyTargets, normalizeMessage, roomId, scrollToBottom, setFirstItemIndex, syncBottomStateFromScroller]);
+
+  useEffect(() => {
+    jumpToLatestMessagesRef.current = jumpToLatestMessages;
+  }, [jumpToLatestMessages]);
+
   const handleScrollToBottomButtonClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
@@ -4102,13 +4418,21 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
 
     setNewMessagesWhileScrolledUp(0);
     clearQuoteJumpSuppression();
+
+    // --- Sliding window: if the tail has been evicted, restore it first ---
+    if (hasMoreNewerMessagesRef.current) {
+      quoteLog('scroll-to-bottom: tail evicted — jumping to latest window');
+      jumpToLatestMessages();
+      return;
+    }
+
     quoteLog('scroll-to-bottom falling back to bottom anchor');
     scrollToBottom('auto', true);
     requestAnimationFrame(() => syncBottomStateFromScroller());
     window.setTimeout(() => syncBottomStateFromScroller(), 80);
     window.setTimeout(() => syncBottomStateFromScroller(), 220);
     window.setTimeout(() => syncBottomStateFromScroller(), 500);
-  }, [clearQuoteJumpSuppression, scrollToBottom, isMobileView, scrollToLoadedMessage, syncBottomStateFromScroller]);
+  }, [clearQuoteJumpSuppression, jumpToLatestMessages, scrollToBottom, isMobileView, scrollToLoadedMessage, syncBottomStateFromScroller]);
 
   const handleEmojiClick = (emojiData: EmojiClickData) => { setInputMessage(prev => prev + emojiData.emoji); };
   const handleOpenEmojiPicker = useCallback((rect: DOMRect) => {
@@ -4295,6 +4619,10 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     if (stagedFiles.length === 0) return;
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN || !userContext?.profile) return;
 
+    if (hasMoreNewerMessagesRef.current) {
+      await jumpToLatestMessagesRef.current();
+    }
+
     let replyContext: ReplyContext | undefined = undefined;
     if (replyingTo) {
       const { type } = replyingTo;
@@ -4328,7 +4656,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
         replyingTo: i === 0 ? replyContext : undefined,
         isUploading: true,
       };
-      setMessages(prev => [...prev, message]);
+      appendMessageToWindow(message);
       forceScrollToBottomAsync(true);
 
       transferManager.startUpload(tempId, file, roomId, resolveApiBaseUrl(), userIdRef.current, message)
@@ -4854,6 +5182,10 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                     loadOlderMessages();
                   }
                   const distanceFromBottom = target.scrollHeight - (target.scrollTop + target.clientHeight);
+                  // --- Sliding window: load newer messages when near the bottom ---
+                  if (distanceFromBottom < NEWER_LOAD_TRIGGER_PX && !isLoadingNewerRef.current && hasMoreNewerMessagesRef.current) {
+                    loadNewerMessages();
+                  }
                   const atBottom = distanceFromBottom <= 20;
                   handleAtBottomStateChange(atBottom);
                 }}

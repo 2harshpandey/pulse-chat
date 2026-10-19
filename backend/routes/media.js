@@ -12,6 +12,7 @@ const crypto = require('crypto');
 const axios = require('axios');
 const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
+const mongoose = require('mongoose');
 const logger = require('../logger');
 const Message = require('../models/message');
 const MessageEvent = require('../models/messageEvent');
@@ -925,14 +926,92 @@ module.exports = (wss, broadcasts) => {
         ? Math.min(Math.max(Math.floor(requestedLimit), 1), MAX_HISTORY_PAGE_SIZE)
         : DEFAULT_HISTORY_PAGE_SIZE;
 
-      const { before } = req.query; // 'before' is the createdAt timestamp of the oldest client-side message
+      const { before, after, around } = req.query;
 
+      // --- 'around' cursor: load messages centered around a specific target message (pinned message jump, search jump, quote jump) ---
+      if (typeof around === 'string' && around.trim()) {
+        const targetId = around.trim();
+        const orConditions = [{ id: targetId }];
+        if (mongoose.isValidObjectId(targetId)) {
+          orConditions.push({ _id: targetId });
+        }
+        const targetMsg = await Message.findOne({
+          roomId,
+          vanished: { $ne: true },
+          $or: orConditions
+        }).lean();
+
+        if (targetMsg) {
+          const targetDate = targetMsg.createdAt;
+          const halfSize = Math.floor(pageSize / 2);
+          const frontendHiddenBefore = getRoomState(roomId).frontendHiddenBefore;
+
+          const olderQuery = { roomId, vanished: { $ne: true }, createdAt: { $lt: targetDate } };
+          if (frontendHiddenBefore instanceof Date && !Number.isNaN(frontendHiddenBefore.getTime())) {
+            olderQuery.createdAt.$gt = frontendHiddenBefore;
+          }
+
+          const [olderRows, newerRows] = await Promise.all([
+            Message.find(olderQuery).sort({ createdAt: -1 }).limit(halfSize + 1).lean(),
+            Message.find({ roomId, vanished: { $ne: true }, createdAt: { $gt: targetDate } }).sort({ createdAt: 1 }).limit(halfSize + 1).lean()
+          ]);
+
+          const hasMoreOlder = olderRows.length > halfSize;
+          const hasMoreNewer = newerRows.length > halfSize;
+
+          const pageOlder = hasMoreOlder ? olderRows.slice(0, halfSize) : olderRows;
+          const pageNewer = hasMoreNewer ? newerRows.slice(0, halfSize) : newerRows;
+
+          const allRows = [...pageOlder.reverse(), targetMsg, ...pageNewer];
+          const messages = allRows.map(toClientMessage);
+          const oldestCreatedAt = messages.length > 0 ? messages[0].createdAt : null;
+          const newestCreatedAt = messages.length > 0 ? messages[messages.length - 1].createdAt : null;
+
+          return res.json({
+            messages,
+            hasMoreOlder,
+            hasMoreNewer,
+            oldestCreatedAt,
+            newestCreatedAt,
+            targetId: targetMsg.id
+          });
+        }
+      }
+
+      // --- 'before' cursor: load older messages (existing behaviour) ---
       let beforeDate = null;
       if (typeof before === 'string' && before.trim()) {
         const parsed = new Date(before);
         if (!Number.isNaN(parsed.getTime())) {
           beforeDate = parsed;
         }
+      }
+
+      // --- 'after' cursor: load NEWER messages for sliding-window restore ---
+      let afterDate = null;
+      if (typeof after === 'string' && after.trim()) {
+        const parsed = new Date(after);
+        if (!Number.isNaN(parsed.getTime())) {
+          afterDate = parsed;
+        }
+      }
+
+      if (afterDate) {
+        // Forward pagination: fetch messages AFTER the given timestamp (ascending).
+        const frontendHiddenBefore = getRoomState(roomId).frontendHiddenBefore;
+        const query = { roomId, vanished: { $ne: true }, createdAt: { $gt: afterDate } };
+        if (frontendHiddenBefore instanceof Date && !Number.isNaN(frontendHiddenBefore.getTime())) {
+          query.createdAt.$gt = new Date(Math.max(afterDate.getTime(), frontendHiddenBefore.getTime()));
+        }
+        const rows = await Message.find(query)
+          .sort({ createdAt: 1 })
+          .limit(pageSize + 1)
+          .lean();
+        const hasMore = rows.length > pageSize;
+        const pageRows = hasMore ? rows.slice(0, pageSize) : rows;
+        const messages = pageRows.map(toClientMessage);
+        const newestCreatedAt = messages.length > 0 ? messages[messages.length - 1].createdAt : null;
+        return res.json({ messages, hasMore, newestCreatedAt });
       }
 
       const query = getVisibleMessagesQuery(beforeDate, getRoomState(roomId).frontendHiddenBefore);

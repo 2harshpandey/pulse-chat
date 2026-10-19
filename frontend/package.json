@@ -63,7 +63,7 @@
     "@tootallnate/once": ">=3.0.1",
     "svgo": ">=2.8.1",
     "picomatch": ">=4.0.4",
-    "@babel/core": ">=7.29.6",
+    "@babel/core": ">=7.26.0 <8.0.0",
     "braces": "3.0.3"
   }
 }

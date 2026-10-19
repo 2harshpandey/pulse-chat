@@ -87,6 +87,12 @@ export const resolveReplyTargetId = (replyingTo: any, sourceMessageId?: string):
 export const ALLOWED_DOWNLOAD_HOSTS = ['res.cloudinary.com', 'giphy.com'];
 
 export const resolveApiBaseUrl = (): string => {
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || /^192\.168\./.test(hostname) || /^10\./.test(hostname)) {
+      return `${window.location.protocol}//${hostname}:8080`;
+    }
+  }
   const base = (import.meta.env.REACT_APP_API_URL || '').trim().replace(/\/$/, '');
   if (!base) return '';
   const useHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
