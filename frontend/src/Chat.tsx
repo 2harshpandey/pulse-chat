@@ -298,6 +298,177 @@ function CopyIdButton() {
 }
 // TEMP_COPY_BUTTON_COMPONENT_END
 
+interface MessagesListProps {
+  historyLoaded: boolean;
+  messages: Message[];
+  pinnedMessages: any[];
+  currentUserId: string;
+  handleSetReply: (message: Message) => void;
+  handleReact: (messageId: string, emoji: string) => void;
+  handleOpenDeleteMenu: (messageId: string) => void;
+  openLightbox: (url: string) => void;
+  loadedMediaMessageSet: Set<string>;
+  onRequestMediaLoad: (messageId: string, mediaUrl?: string) => void;
+  mediaLoadProgressById: Record<string, number>;
+  loadedMediaSrcById: Record<string, string>;
+  onRequestDownload: (messageId: string, mediaUrl: string, filename: string) => void;
+  handleResumeUpload: (messageId: string) => void;
+  handleCancelUpload: (messageId: string) => void;
+  activeDeleteMenu: string | null;
+  deleteMenuRef: React.RefObject<HTMLDivElement>;
+  deleteForMe: (messageId: string) => void;
+  deleteForEveryone: (messageId: string) => void;
+  scrollToMessage: (messageId: string, sourceMessageId?: string, behavior?: 'auto' | 'smooth', force?: boolean, replyingToPayload?: any) => Promise<void> | void;
+  isSelectModeActive: boolean;
+  selectedMessageIds: Set<string>;
+  handleToggleSelectMessage: (messageId: string) => void;
+  setActiveDeleteMenu: React.Dispatch<React.SetStateAction<string | null>>;
+  handleCopy: (message: Message) => Promise<void>;
+  handleOpenReport: (message: Message) => void;
+  handleStartEdit: (message: Message) => void;
+  handleCancelSelectMode: () => void;
+  isMobileView: boolean;
+  selectedMessages: string[];
+  onOpenReactionPicker: (messageId: string, rect: DOMRect, sender: 'me' | 'other') => void;
+  setReactionsPopup: (data: any) => void;
+  handleOpenFullEmojiPicker: (rect: DOMRect, messageId: string) => void;
+  reactionPickerData: { messageId: string; rect: DOMRect; sender: 'me' | 'other' } | null;
+  editingMessageId: string | null;
+  handleSetEditingMessageId: (id: string | null) => void;
+  handleCancelEdit: () => void;
+  onVideoFullscreenEnter: (messageId: string) => void;
+}
+
+const MessagesList = React.memo(function MessagesList({
+  historyLoaded,
+  messages,
+  pinnedMessages,
+  currentUserId,
+  handleSetReply,
+  handleReact,
+  handleOpenDeleteMenu,
+  openLightbox,
+  loadedMediaMessageSet,
+  onRequestMediaLoad,
+  mediaLoadProgressById,
+  loadedMediaSrcById,
+  onRequestDownload,
+  handleResumeUpload,
+  handleCancelUpload,
+  activeDeleteMenu,
+  deleteMenuRef,
+  deleteForMe,
+  deleteForEveryone,
+  scrollToMessage,
+  isSelectModeActive,
+  selectedMessageIds,
+  handleToggleSelectMessage,
+  setActiveDeleteMenu,
+  handleCopy,
+  handleOpenReport,
+  handleStartEdit,
+  handleCancelSelectMode,
+  isMobileView,
+  selectedMessages,
+  onOpenReactionPicker,
+  setReactionsPopup,
+  handleOpenFullEmojiPicker,
+  reactionPickerData,
+  editingMessageId,
+  handleSetEditingMessageId,
+  handleCancelEdit,
+  onVideoFullscreenEnter,
+}: MessagesListProps) {
+  const pinnedMessageIdSet = useMemo(() => new Set(pinnedMessages.map(p => p.id || p._id || p.messageId)), [pinnedMessages]);
+
+  if (!historyLoaded || messages.length === 0) return null;
+
+  return (
+    <>
+      {messages.map((msg, index, displayArr) => {
+        if (msg.type === 'system_notification') {
+          return (
+            <div key={msg.id || index} style={{ display: 'flex', justifyContent: 'center', padding: '0.4rem 0' }}>
+              <SystemMessage>{msg.text}</SystemMessage>
+            </div>
+          );
+        }
+        const dataIndex = index;
+        const prevMsg = dataIndex > 0 ? displayArr[dataIndex - 1] : null;
+        const showUsername = !prevMsg || prevMsg.type === 'system_notification' || prevMsg.userId !== msg.userId;
+
+        const currentDateStr = msg.timestamp ? new Date(msg.timestamp).toDateString() : null;
+        const prevDateStr = prevMsg?.timestamp ? new Date(prevMsg.timestamp).toDateString() : null;
+        const showDateSeparator = currentDateStr && currentDateStr !== prevDateStr;
+
+        return (
+          <div key={msg.id || `msg-${index}`} id={msg.id}>
+            {showDateSeparator && (
+              <div style={{ display: 'flex', justifyContent: 'center', margin: '1.5rem 0 1rem 0' }}>
+                <div style={{ 
+                  background: 'var(--bg-elevated)', 
+                  color: 'var(--text-secondary)', 
+                  padding: '0.25rem 0.8rem', 
+                  borderRadius: '16px', 
+                  fontSize: '0.75rem', 
+                  fontWeight: 600,
+                  boxShadow: 'var(--shadow-sm)',
+                  border: '1px solid var(--border-primary)',
+                  zIndex: 1,
+                }}>
+                  {getDateSeparatorText(msg.timestamp)}
+                </div>
+              </div>
+            )}
+            <MessageItem
+              msg={msg}
+              isPinned={pinnedMessageIdSet.has(msg.id)}
+              showUsername={showUsername}
+              currentUserId={currentUserId}
+              handleSetReply={handleSetReply}
+              handleReact={handleReact}
+              openDeleteMenu={handleOpenDeleteMenu}
+              openLightbox={openLightbox}
+              isMediaLoaded={loadedMediaMessageSet.has(msg.id)}
+              onRequestMediaLoad={onRequestMediaLoad}
+              isMediaLoadInProgress={Object.prototype.hasOwnProperty.call(mediaLoadProgressById, msg.id)}
+              mediaLoadProgress={mediaLoadProgressById[msg.id] ?? 0}
+              loadedMediaSrc={loadedMediaSrcById[msg.id]}
+              onRequestDownload={onRequestDownload}
+              onResumeUpload={handleResumeUpload}
+              onCancelUpload={handleCancelUpload}
+              activeDeleteMenu={activeDeleteMenu}
+              deleteMenuRef={deleteMenuRef}
+              deleteForMe={deleteForMe}
+              deleteForEveryone={deleteForEveryone}
+              scrollToMessage={scrollToMessage}
+              isSelectModeActive={isSelectModeActive}
+              isSelected={selectedMessageIds.has(msg.id)}
+              handleToggleSelectMessage={handleToggleSelectMessage}
+              setActiveDeleteMenu={setActiveDeleteMenu}
+              handleCopy={handleCopy}
+              handleOpenReport={handleOpenReport}
+              handleStartEdit={handleStartEdit}
+              handleCancelSelectMode={handleCancelSelectMode}
+              isMobileView={isMobileView}
+              selectedMessages={selectedMessages}
+              onOpenReactionPicker={onOpenReactionPicker}
+              setReactionsPopup={setReactionsPopup}
+              handleOpenFullEmojiPicker={handleOpenFullEmojiPicker}
+              reactionPickerData={reactionPickerData}
+              editingMessageId={editingMessageId}
+              handleSetEditingMessageId={handleSetEditingMessageId}
+              handleCancelEdit={handleCancelEdit}
+              onVideoFullscreenEnter={onVideoFullscreenEnter}
+            />
+          </div>
+        );
+      })}
+      <div style={{ height: '12px', flexShrink: 0 }} />
+    </>
+  );
+});
+
 function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {}) {
   const userContext = useContext(UserContext);
   const { token: tempToken, roomId: urlRoomId } = useParams<{ token?: string; roomId?: string }>();
@@ -329,6 +500,10 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   const [loadedMediaSrcById, setLoadedMediaSrcById] = useState<Record<string, string>>({});
   const [downloadProgressById, setDownloadProgressById] = useState<Record<string, number>>({});
   const [inputMessage, setInputMessage] = useState('');
+  const inputMessageRef = useRef(inputMessage);
+  useEffect(() => {
+    inputMessageRef.current = inputMessage;
+  }, [inputMessage]);
   const [preMediaDraft, setPreMediaDraft] = useState('');
   const normalizedOverlayMessage = useMemo(() => normalizeOverlayText(inputMessage), [inputMessage]);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
@@ -1052,34 +1227,6 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       if (isAtBottomRef.current || hasPendingBottomScroll) {
         // Auto-scroll to bottom if the user is already there (or a scroll is in flight)
         forceScrollToBottomAsync(true);
-      } else if (!hasMoreNewerMessagesRef.current) {
-
-        let appendedStart = -1;
-
-        if (messages[prevSnapshot.length - 1]?.id === prevSnapshot.lastId) {
-          appendedStart = prevSnapshot.length;
-        } else if (prevSnapshot.lastId) {
-          const previousLastIndex = messages.findIndex((m) => m.id === prevSnapshot.lastId);
-          if (previousLastIndex >= 0 && previousLastIndex < currentLength - 1) {
-            appendedStart = previousLastIndex + 1;
-          }
-        }
-
-        if (appendedStart >= 0) {
-          const incomingCount = messages
-            .slice(appendedStart)
-            .reduce((count, msg) => {
-              if (msg.type === 'system_notification') return count;
-              if (msg.userId === userIdRef.current) return count;
-              return count + 1;
-            }, 0);
-
-          if (incomingCount > 0) {
-            setNewMessagesWhileScrolledUp((prev) =>
-              Math.min(prev + incomingCount, MAX_NEW_MESSAGE_INDICATOR_COUNT)
-            );
-          }
-        }
       }
     }
 
@@ -1174,6 +1321,14 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     const overlay = inputOverlayRef.current;
     const nextValue = value ?? textarea.value;
     const isShrinking = nextValue.length < lastInputValueLengthRef.current;
+
+    // Fast-path: if text is short single line without newlines and already at minimum height,
+    // skip layout reflow completely (avoids expensive height = 'auto' on every backspace stroke)
+    const isShortSingleLine = !nextValue.includes('\n') && nextValue.length < 50;
+    if (isShortSingleLine && lastInputHeightRef.current > 0 && lastInputHeightRef.current <= 48) {
+      lastInputValueLengthRef.current = nextValue.length;
+      return;
+    }
 
     cancelAnimationFrame(resizeRafRef.current);
     const wasAtBottom = isAtBottomRef.current;
@@ -2290,13 +2445,16 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
 
   useEffect(() => {
     if (!userContext?.profile) return;
-    try {
-      const draftKey = getInputDraftKey(userIdRef.current);
-      if (inputMessage) localStorage.setItem(draftKey, inputMessage);
-      else localStorage.removeItem(draftKey);
-    } catch (_) {
-      // Ignore unavailable storage.
-    }
+    const timer = setTimeout(() => {
+      try {
+        const draftKey = getInputDraftKey(userIdRef.current);
+        if (inputMessage) localStorage.setItem(draftKey, inputMessage);
+        else localStorage.removeItem(draftKey);
+      } catch (_) {
+        // Ignore unavailable storage.
+      }
+    }, 400);
+    return () => clearTimeout(timer);
   }, [inputMessage, userContext?.profile]);
 
   useEffect(() => {
@@ -2540,6 +2698,13 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
         setNewMessagesWhileScrolledUp(prev => Math.min(prev + 1, MAX_NEW_MESSAGE_INDICATOR_COUNT));
       }
       return;
+    }
+
+    // If user is scrolled up reading (not at bottom), increment unread indicator for live incoming message
+    if (!isAtBottomRef.current) {
+      if (msg.type !== 'system_notification' && msg.userId !== userIdRef.current) {
+        setNewMessagesWhileScrolledUp(prev => Math.min(prev + 1, MAX_NEW_MESSAGE_INDICATOR_COUNT));
+      }
     }
 
     const current = messagesRef.current;
@@ -3726,7 +3891,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
   }, []);
 
   const handleStartEdit = useCallback((message: Message) => {
-    const draft = inputMessage;
+    const draft = inputMessageRef.current;
     setPriorDraftBeforeEdit(draft);
     setEditingMessageOriginalText(message.text || '');
     setEditingMessageId(message.id);
@@ -3742,8 +3907,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
         syncInputLayerLayout(ta, message.text || '', true);
       }
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inputMessage]);
+  }, []);
 
   const handleOpenReport = useCallback((message: Message) => {
     if (!message || message.userId === userIdRef.current || message.isDeleted || message.type === 'system_notification') {
@@ -3954,6 +4118,31 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
     } else {
       void transferManager.startDownload(messageId, mediaUrl, filename);
     }
+  }, []);
+
+  const handleResumeUpload = useCallback((messageId: string) => {
+    transferManager.resumeUpload(messageId, roomId, resolveApiBaseUrl(), userIdRef.current)?.catch(error => {
+      if (error.message === 'Aborted') return;
+      setMessages(prev => prev.map(m => m.id === messageId ? { ...m, uploadError: true, text: error.message || 'Upload failed' } : m));
+    }).then(uploadedFileData => {
+      if (!uploadedFileData) return;
+      setMessages(prev => prev.map(m => {
+        if (m.id !== messageId) return m;
+        const finalMessage = {
+          ...m,
+          ...uploadedFileData,
+          originalName: chooseReadableFilename(uploadedFileData.originalName, m.originalName),
+          isUploading: false,
+          id: uploadedFileData.id,
+        };
+        ws.current?.send(JSON.stringify(finalMessage));
+        return finalMessage;
+      }));
+    });
+  }, [roomId]);
+
+  const handleCancelUpload = useCallback((messageId: string) => {
+    transferManager.pauseTransfer(messageId);
   }, []);
 
   // Clicking on empty space in the chat area focuses the input (WhatsApp-style).
@@ -5204,109 +5393,46 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
                   handleAtBottomStateChange(atBottom);
                 }}
               >
-                {historyLoaded && messages.length > 0 ? (
-                  filteredMessages.map((msg, index, displayArr) => {
-                    if (msg.type === 'system_notification') {
-                      return (
-                        <div key={msg.id || index} style={{ display: 'flex', justifyContent: 'center', padding: '0.4rem 0' }}>
-                          <SystemMessage>{msg.text}</SystemMessage>
-                        </div>
-                      );
-                    }
-                    const dataIndex = index;
-                    const prevMsg = dataIndex > 0 ? displayArr[dataIndex - 1] : null;
-                    const showUsername = !prevMsg || prevMsg.type === 'system_notification' || prevMsg.userId !== msg.userId;
-
-                    const currentDateStr = msg.timestamp ? new Date(msg.timestamp).toDateString() : null;
-                    const prevDateStr = prevMsg?.timestamp ? new Date(prevMsg.timestamp).toDateString() : null;
-                    const showDateSeparator = currentDateStr && currentDateStr !== prevDateStr;
-
-                    return (
-                      <div key={msg.id || `msg-${index}`} id={msg.id}>
-                        {showDateSeparator && (
-                          <div style={{ display: 'flex', justifyContent: 'center', margin: '1.5rem 0 1rem 0' }}>
-                            <div style={{ 
-                              background: 'var(--bg-elevated)', 
-                              color: 'var(--text-secondary)', 
-                              padding: '0.25rem 0.8rem', 
-                              borderRadius: '16px', 
-                              fontSize: '0.75rem', 
-                              fontWeight: 600,
-                              boxShadow: 'var(--shadow-sm)',
-                              border: '1px solid var(--border-primary)',
-                              zIndex: 1,
-                            }}>
-                              {getDateSeparatorText(msg.timestamp)}
-                            </div>
-                          </div>
-                        )}
-                        <MessageItem
-                          msg={msg}
-                          isPinned={pinnedMessages.some(p => p.id === msg.id)}
-                          showUsername={showUsername}
-                          currentUserId={userIdRef.current}
-                          handleSetReply={handleSetReply}
-                          handleReact={handleReact}
-                          openDeleteMenu={handleOpenDeleteMenu}
-                          openLightbox={openLightbox}
-                          isMediaLoaded={loadedMediaMessageSet.has(msg.id)}
-                          onRequestMediaLoad={handleRequestMediaLoad}
-                          isMediaLoadInProgress={Object.prototype.hasOwnProperty.call(mediaLoadProgressById, msg.id)}
-                          mediaLoadProgress={mediaLoadProgressById[msg.id] ?? 0}
-                          loadedMediaSrc={loadedMediaSrcById[msg.id]}
-                          onRequestDownload={handleRequestDownload}
-                          onResumeUpload={() => {
-                            transferManager.resumeUpload(msg.id, roomId, resolveApiBaseUrl(), userIdRef.current)?.catch(error => {
-                              if (error.message === 'Aborted') return;
-                              setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, uploadError: true, text: error.message || 'Upload failed' } : m));
-                            }).then(uploadedFileData => {
-                              if (!uploadedFileData) return;
-                              setMessages(prev => prev.map(m => {
-                                if (m.id !== msg.id) return m;
-                                const finalMessage = {
-                                  ...m,
-                                  ...uploadedFileData,
-                                  originalName: chooseReadableFilename(uploadedFileData.originalName, m.originalName),
-                                  isUploading: false,
-                                  id: uploadedFileData.id,
-                                };
-                                ws.current?.send(JSON.stringify(finalMessage));
-                                return finalMessage;
-                              }));
-                            });
-                          }}
-                          onCancelUpload={() => {
-                            transferManager.pauseTransfer(msg.id);
-                          }}
-                          activeDeleteMenu={activeDeleteMenu}
-                          deleteMenuRef={deleteMenuRef}
-                          deleteForMe={deleteForMe}
-                          deleteForEveryone={deleteForEveryone}
-                          scrollToMessage={scrollToMessage}
-                          isSelectModeActive={isSelectModeActive}
-                          isSelected={selectedMessageIds.has(msg.id)}
-                          handleToggleSelectMessage={handleToggleSelectMessage}
-                          setActiveDeleteMenu={setActiveDeleteMenu}
-                          handleCopy={handleCopy}
-                          handleOpenReport={handleOpenReport}
-                          handleStartEdit={handleStartEdit}
-                          handleCancelSelectMode={handleCancelSelectMode}
-                          isMobileView={isMobileView}
-                          selectedMessages={selectedMessages}
-                          onOpenReactionPicker={handleOpenReactionPicker}
-                          setReactionsPopup={setReactionsPopup}
-                          handleOpenFullEmojiPicker={handleOpenFullEmojiPicker}
-                          reactionPickerData={reactionPickerData}
-                          editingMessageId={editingMessageId}
-                          handleSetEditingMessageId={setEditingMessageId}
-                          handleCancelEdit={handleCancelEdit}
-                          onVideoFullscreenEnter={handleVideoFullscreenEnter}
-                        />
-                        </div>
-                    );
-                  })
-                ) : null}
-                <div style={{ height: '12px', flexShrink: 0 }} />
+                <MessagesList
+                  historyLoaded={historyLoaded}
+                  messages={filteredMessages}
+                  pinnedMessages={pinnedMessages}
+                  currentUserId={userIdRef.current}
+                  handleSetReply={handleSetReply}
+                  handleReact={handleReact}
+                  handleOpenDeleteMenu={handleOpenDeleteMenu}
+                  openLightbox={openLightbox}
+                  loadedMediaMessageSet={loadedMediaMessageSet}
+                  onRequestMediaLoad={handleRequestMediaLoad}
+                  mediaLoadProgressById={mediaLoadProgressById}
+                  loadedMediaSrcById={loadedMediaSrcById}
+                  onRequestDownload={handleRequestDownload}
+                  handleResumeUpload={handleResumeUpload}
+                  handleCancelUpload={handleCancelUpload}
+                  activeDeleteMenu={activeDeleteMenu}
+                  deleteMenuRef={deleteMenuRef}
+                  deleteForMe={deleteForMe}
+                  deleteForEveryone={deleteForEveryone}
+                  scrollToMessage={scrollToMessage}
+                  isSelectModeActive={isSelectModeActive}
+                  selectedMessageIds={selectedMessageIds}
+                  handleToggleSelectMessage={handleToggleSelectMessage}
+                  setActiveDeleteMenu={setActiveDeleteMenu}
+                  handleCopy={handleCopy}
+                  handleOpenReport={handleOpenReport}
+                  handleStartEdit={handleStartEdit}
+                  handleCancelSelectMode={handleCancelSelectMode}
+                  isMobileView={isMobileView}
+                  selectedMessages={selectedMessages}
+                  onOpenReactionPicker={handleOpenReactionPicker}
+                  setReactionsPopup={setReactionsPopup}
+                  handleOpenFullEmojiPicker={handleOpenFullEmojiPicker}
+                  reactionPickerData={reactionPickerData}
+                  editingMessageId={editingMessageId}
+                  handleSetEditingMessageId={setEditingMessageId}
+                  handleCancelEdit={handleCancelEdit}
+                  onVideoFullscreenEnter={handleVideoFullscreenEnter}
+                />
               </MessagesContainer>
               <ScrollToBottomButton
                 $isVisible={isScrollToBottomVisible}

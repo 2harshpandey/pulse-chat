@@ -929,7 +929,8 @@ export const MessageInput = styled.textarea<{ $hasUrl?: boolean }>`
   padding: 0.75rem;
   border: 1px solid var(--border-secondary);
   border-radius: 0.75rem;
-  transition: all 0.2s;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+  field-sizing: content;
   font-family: inherit;
   font-size: 1rem;
   line-height: 24px;
@@ -946,7 +947,7 @@ export const MessageInput = styled.textarea<{ $hasUrl?: boolean }>`
   max-height: 120px;
   overflow-y: hidden;
   scrollbar-gutter: stable;
-  touch-action: auto;
+  touch-action: manipulation;
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) transparent;
   background: ${p => p.$hasUrl ? 'transparent' : 'var(--bg-input)'};
