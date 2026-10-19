@@ -1052,7 +1052,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       if (isAtBottomRef.current || hasPendingBottomScroll) {
         // Auto-scroll to bottom if the user is already there (or a scroll is in flight)
         forceScrollToBottomAsync(true);
-      } else {
+      } else if (!hasMoreNewerMessagesRef.current) {
 
         let appendedStart = -1;
 
@@ -2834,6 +2834,10 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
 
       messagesRef.current = nextMessages;
       setMessages(nextMessages);
+      messageTailSnapshotRef.current = {
+        length: nextMessages.length,
+        lastId: nextMessages.length > 0 ? nextMessages[nextMessages.length - 1].id : null,
+      };
     }
 
     setHasMoreNewerMessages(serverHasMore);
@@ -4184,6 +4188,11 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
               firstItemIndexRef.current = INITIAL_FIRST_ITEM_INDEX;
               messagesRef.current = patched;
               setMessages(patched);
+              setNewMessagesWhileScrolledUp(0);
+              messageTailSnapshotRef.current = {
+                length: patched.length,
+                lastId: patched.length > 0 ? patched[patched.length - 1].id : null,
+              };
 
               const oldest = patched.length > 0 ? (data.oldestCreatedAt || getMessageCursor(patched[0])) : null;
               oldestLoadedAtRef.current = oldest;
@@ -4377,6 +4386,10 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
       setHasMoreNewerMessages(false);
       hasMoreNewerMessagesRef.current = false;
       setNewMessagesWhileScrolledUp(0);
+      messageTailSnapshotRef.current = {
+        length: patched.length,
+        lastId: patched.length > 0 ? patched[patched.length - 1].id : null,
+      };
 
       scrollToBottom('auto', true);
       requestAnimationFrame(() => syncBottomStateFromScroller());
@@ -5081,6 +5094,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
             {pinnedMessages.length > 0 && (
               <PinnedBannerContainer onClick={async () => {
                 if (isJumpingToPinned) return;
+                setNewMessagesWhileScrolledUp(0);
                 const currentMsg = pinnedMessages[currentPinnedIndex];
                 if (currentMsg) {
                   setIsJumpingToPinned(true);
