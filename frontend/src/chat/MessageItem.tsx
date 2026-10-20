@@ -10,15 +10,18 @@ import {
 } from './utils';
 import {
   MessageRow, MessageBubble, Username, FooterContainer, Timestamp,
-  MessageActions, ActionButton,
-  SelectCheckboxContainer, Checkbox, MobileReactionPicker, ReactionEmoji,
-  ReactionsContainer,
-  MessageText, ReactionEmojiSpan, ReactionCountSpan, MessagePinIconWrapper
+  SelectCheckboxContainer, Checkbox,
+  MessageText, MessagePinIconWrapper
 } from './ChatStyledComponents';
 import { renderMessageContent, detectFirstUrl } from './renderMessage';
 import { LinkPreview } from './LinkPreview';
 import { transferManager, TransferInfo } from './TransferManager';
-import { MessageQuotedPreview, MessageActionMenuPortal } from './components/message';
+import {
+  MessageQuotedPreview,
+  MessageActionMenuPortal,
+  MessageReactions,
+  MessageDesktopActions
+} from './components/message';
 
 export const MessageItem = React.memo(({
   msg,
@@ -155,7 +158,6 @@ export const MessageItem = React.memo(({
 
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const swipeTransitionResetTimerRef = useRef<number | null>(null);
-  const reactButtonRef = useRef<HTMLButtonElement>(null!);
   const wasLongPressed = useRef(false);
   const lastSelectModeExitTimeRef = useRef(0);
   const isSelectModeActiveRef = useRef(isSelectModeActive);
@@ -557,28 +559,13 @@ export const MessageItem = React.memo(({
                   {msg.deletedBy === 'admin' ? 'This message has been deleted by an admin.' : (msg.deletedBy === currentUserId ? 'You deleted this message.' : 'This message has been deleted.')}
                 </MessageText>
                 {!isMobileView && (
-                  <MessageActions>
-                    <ActionButton
-                      onClick={(e) => {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        const isNearBottom = rect.bottom + 100 > window.innerHeight;
-                        const menuWidth = 168;
-                        const wouldClipLeft = rect.right - menuWidth < 8;
-                        const hPos = wouldClipLeft
-                          ? { left: Math.max(8, rect.left) }
-                          : { right: window.innerWidth - rect.right };
-                        setMenuPos(isNearBottom
-                          ? { bottom: window.innerHeight - rect.top + 4, ...hPos }
-                          : { top: rect.bottom + 4, ...hPos }
-                        );
-                        openDeleteMenu(msg.id);
-                      }}
-                      title="More"
-                      aria-label="More actions"
-                      className="more-action-button"
-                      style={{ fontSize: '20px', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                    >&#8942;</ActionButton>
-                  </MessageActions>
+                  <MessageDesktopActions
+                    msgId={msg.id}
+                    sender={sender}
+                    isDeleted={true}
+                    openDeleteMenu={openDeleteMenu}
+                    setMenuPos={setMenuPos}
+                  />
                 )}
                 <FooterContainer $sender={sender}>
                   <Timestamp $sender={sender}>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Timestamp>
@@ -586,69 +573,15 @@ export const MessageItem = React.memo(({
               </>
             ) : (
               <>
-                {selectedMessages[0] === msg.id && selectedMessages.length === 1 && (
-                  <MobileReactionPicker
-                    $sender={sender}
-                    className="mobile-reaction-picker"
-                  >
-                    {QUICK_REACTIONS.map(emoji => (
-                      <ReactionEmoji key={emoji} onClick={(e) => {
-                        e.stopPropagation();
-                        handleReact(msg.id, emoji);
-                        handleCancelSelectMode();
-                      }}>{emoji}</ReactionEmoji>
-                    ))}
-                    {currentUserReaction ? (
-                      <ReactionEmoji onClick={(e) => {
-                        e.stopPropagation();
-                        handleReact(msg.id, currentUserReaction);
-                        handleCancelSelectMode();
-                      }}>{currentUserReaction}</ReactionEmoji>
-                    ) : (
-                      <ReactionEmoji $isPlusIcon={true} data-is-plus-icon="true" onPointerDown={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        // Capture rect & msgId synchronously (e.currentTarget becomes null
-                        // after the event returns). Do NOT call handleCancelSelectMode here
-                        // - keeping select mode active means the MobileReactionPicker stays
-                        // mounted, so target.closest('.mobile-reaction-picker') reliably
-                        // catches the useDrag tap that fires when the finger lifts.
-                        // Select mode is cancelled in the emoji panel's onEmojiClick instead.
-                        const msgId = msg.id;
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        handleOpenFullEmojiPicker(rect, msgId);
-                      }}>+</ReactionEmoji>
-                    )}
-                  </MobileReactionPicker>
-                )}
                 {!isMobileView && (
-                  <MessageActions>
-                    <ActionButton ref={reactButtonRef} className="react-action-button" onClick={() => onOpenReactionPicker(msg.id, reactButtonRef.current!.getBoundingClientRect(), sender)} title="React" aria-label="Add reaction">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
-                    </ActionButton>
-                    <ActionButton
-                      onClick={(e) => {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        const isNearBottom = rect.bottom + 190 > window.innerHeight;
-                        // Approximate menu width. If anchoring from the right would push
-                        // the menu off the left edge of the screen, anchor from left instead.
-                        const menuWidth = 168;
-                        const wouldClipLeft = rect.right - menuWidth < 8;
-                        const hPos = wouldClipLeft
-                          ? { left: Math.max(8, rect.left) }
-                          : { right: window.innerWidth - rect.right };
-                        setMenuPos(isNearBottom
-                          ? { bottom: window.innerHeight - rect.top + 4, ...hPos }
-                          : { top: rect.bottom + 4, ...hPos }
-                        );
-                        openDeleteMenu(msg.id);
-                      }}
-                      title="More"
-                      aria-label="More actions"
-                      className="more-action-button"
-                      style={{ fontSize: '20px' }}
-                    >&#8942;</ActionButton>
-                  </MessageActions>
+                  <MessageDesktopActions
+                    msgId={msg.id}
+                    sender={sender}
+                    isDeleted={false}
+                    onOpenReactionPicker={onOpenReactionPicker}
+                    openDeleteMenu={openDeleteMenu}
+                    setMenuPos={setMenuPos}
+                  />
                 )}
                 {/* DeleteMenu rendered as fixed portal - see block after </MessageRow> */}
                 {msg.type === 'text' && !msg.url && msg.text && (() => { const _u = detectFirstUrl(msg.text); return _u ? <LinkPreview url={_u} sender={sender} /> : null; })()}
@@ -677,16 +610,18 @@ export const MessageItem = React.memo(({
                 </FooterContainer>
               </>
             )}
-            {Object.keys(validReactions).length > 0 && (() => {
-              const totalReactions = Object.values(validReactions).flat().length;
-              const uniqueEmojis = Object.keys(validReactions);
-              return (
-                <ReactionsContainer $sender={sender} onClick={(e) => setReactionsPopup({ messageId: msg.id, reactions: validReactions, rect: e.currentTarget.getBoundingClientRect() })}>
-                  {uniqueEmojis.slice(0, 3).map(emoji => <ReactionEmojiSpan key={emoji}>{emoji}</ReactionEmojiSpan>)}
-                  <ReactionCountSpan>{totalReactions}</ReactionCountSpan>
-                </ReactionsContainer>
-              );
-            })()}
+            <MessageReactions
+              msg={msg}
+              sender={sender}
+              isDeleted={isDeleted}
+              selectedMessages={selectedMessages}
+              validReactions={validReactions}
+              currentUserReaction={currentUserReaction}
+              handleReact={handleReact}
+              handleCancelSelectMode={handleCancelSelectMode}
+              handleOpenFullEmojiPicker={handleOpenFullEmojiPicker}
+              setReactionsPopup={setReactionsPopup}
+            />
           </MessageBubble>
         </div>
       </MessageRow>
