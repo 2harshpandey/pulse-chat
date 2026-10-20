@@ -198,6 +198,7 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
 
   // WebSocket Hook
   const socket = useChatWebSocket({
+    ws,
     userId: userIdRef.current,
     roomId,
     tempToken,

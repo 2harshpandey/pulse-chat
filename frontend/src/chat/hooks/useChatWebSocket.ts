@@ -6,6 +6,7 @@ import { transferManager } from '../TransferManager';
 import { INITIAL_HISTORY_BATCH_SIZE, INITIAL_FIRST_ITEM_INDEX } from '../constants';
 
 interface UseChatWebSocketProps {
+  ws?: React.MutableRefObject<WebSocket | null>;
   userId: string;
   roomId: string;
   tempToken?: string;
@@ -50,6 +51,7 @@ interface UseChatWebSocketProps {
 }
 
 export function useChatWebSocket({
+  ws: externalWs,
   userId,
   roomId,
   tempToken,
@@ -91,7 +93,8 @@ export function useChatWebSocket({
   setIsReportModalVisible,
   isNativeFilePickerOpenRef,
 }: UseChatWebSocketProps) {
-  const ws = useRef<WebSocket | null>(null);
+  const internalWs = useRef<WebSocket | null>(null);
+  const ws = externalWs || internalWs;
   const [isConnected, setIsConnected] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<UserProfile[]>([]);
   const lastPingAtRef = useRef<number>(Date.now());

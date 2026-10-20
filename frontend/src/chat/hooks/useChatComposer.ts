@@ -346,8 +346,21 @@ export function useChatComposer({
 
   // Send from preview modal
   const handleSendFromPreview = async () => {
-    if (stagedFiles.length === 0) return;
-    if (!ws.current || ws.current.readyState !== WebSocket.OPEN || !userProfile) return;
+    if (stagedFiles.length === 0) {
+      console.warn('[Composer] handleSendFromPreview aborted: no staged files');
+      return;
+    }
+    if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
+      console.warn('[Composer] handleSendFromPreview aborted: WebSocket not connected/open', {
+        wsExists: Boolean(ws.current),
+        readyState: ws.current?.readyState,
+      });
+      return;
+    }
+    if (!userProfile) {
+      console.warn('[Composer] handleSendFromPreview aborted: missing userProfile');
+      return;
+    }
 
     if (hasMoreNewerMessagesRef.current) {
       await jumpToLatestMessages();
@@ -439,7 +452,7 @@ export function useChatComposer({
       return;
     }
 
-    if (showFilePreview && stagedFiles.length > 0) {
+    if (stagedFiles.length > 0) {
       handleSendFromPreview();
       return;
     }
