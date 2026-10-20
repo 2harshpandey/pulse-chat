@@ -267,6 +267,9 @@ Pulse Chat uses a hybrid communication model:
 | Cloudinary | Media upload storage, delivery, and transformation-backed previews. |
 | Giphy API | GIF search and discovery. |
 
+- **Low-Latency Handshake & Dispatch**: Early browser preconnect/DNS-prefetching, socket `TCP_NODELAY` frame dispatch, single-pass compound indexed block verification, and concurrent initial history and pin resolution.
+- **Resilient Reconnection**: Exponential backoff with sub-second initial retry (`600ms`), tab visibility recovery, and automatic heartbeat ping/pong keepalive.
+
 ---
 
 ## System Architecture

@@ -101,7 +101,7 @@ export function useChatWebSocket({
   const lastHiddenTimeRef = useRef<number>(Date.now());
 
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const reconnectDelayRef = useRef<number>(2000);
+  const reconnectDelayRef = useRef<number>(600);
 
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingCooldownRef = useRef(false);
@@ -174,7 +174,7 @@ export function useChatWebSocket({
 
       ws.current.onopen = () => {
         setIsConnected(true);
-        reconnectDelayRef.current = 2000;
+        reconnectDelayRef.current = 600;
         presenceActivityRef.current = null;
         ws.current?.send(
           JSON.stringify({ type: 'user_join', ...(userProfile || {}), userId, roomId })
@@ -195,7 +195,7 @@ export function useChatWebSocket({
         console.log('WebSocket disconnected — scheduling reconnect');
         if (shouldReconnect) {
           reconnectTimerRef.current = setTimeout(() => {
-            reconnectDelayRef.current = Math.min(reconnectDelayRef.current * 2, 30000);
+            reconnectDelayRef.current = Math.min(reconnectDelayRef.current * 1.5, 10000);
             connect();
           }, reconnectDelayRef.current);
         }
@@ -415,7 +415,7 @@ export function useChatWebSocket({
           clearTimeout(reconnectTimerRef.current);
           reconnectTimerRef.current = null;
         }
-        reconnectDelayRef.current = 1000;
+        reconnectDelayRef.current = 600;
         connect();
       }
     };

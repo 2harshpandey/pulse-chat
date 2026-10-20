@@ -195,28 +195,42 @@ const generateDeviceHash = (components) => {
 
 // --- Block / Lockdown Checks ---
 
-// Check if a user is blocked by any fingerprint match
+// Check if a user is blocked by any fingerprint match (single indexed query)
 const isUserBlocked = async (roomId, userId, ip, userAgent, deviceFingerprint) => {
   if (!roomId) roomId = 'me';
   roomId = String(roomId);
   // Type-guard: reject non-string values to prevent NoSQL injection via query objects
   if (typeof userId !== 'string') return { blocked: false };
 
-  // Check by userId first (fastest) — use $eq to prevent NoSQL injection
-  const blockedByUserId = await BlockedUser.findOne({ roomId, userId: { $eq: userId }, isBlocked: true });
-  if (blockedByUserId) return { blocked: true, reason: 'User ID is blocked', blockedUser: blockedByUserId };
+  const conditions = [{ userId: { $eq: userId } }];
 
-  // Check by IP
   if (ip && ip !== 'unknown' && typeof ip === 'string') {
-    const blockedByIp = await BlockedUser.findOne({ roomId, 'fingerprints.ips': { $eq: ip }, isBlocked: true });
-    if (blockedByIp) return { blocked: true, reason: 'IP address is blocked', blockedUser: blockedByIp };
+    conditions.push({ 'fingerprints.ips': { $eq: ip } });
   }
 
-  // Check by device hash
   if (deviceFingerprint) {
     const hash = generateDeviceHash({ ...deviceFingerprint, userAgent });
-    const blockedByHash = await BlockedUser.findOne({ roomId, 'fingerprints.deviceHashes': { $eq: hash }, isBlocked: true });
-    if (blockedByHash) return { blocked: true, reason: 'Device is blocked', blockedUser: blockedByHash };
+    if (hash) {
+      conditions.push({ 'fingerprints.deviceHashes': { $eq: hash } });
+    }
+  }
+
+  const blockedUser = await BlockedUser.findOne({
+    roomId,
+    isBlocked: true,
+    $or: conditions,
+  }).lean();
+
+  if (blockedUser) {
+    let reason = 'User is blocked';
+    if (blockedUser.userId === userId) {
+      reason = 'User ID is blocked';
+    } else if (ip && blockedUser.fingerprints?.ips?.includes(ip)) {
+      reason = 'IP address is blocked';
+    } else {
+      reason = 'Device is blocked';
+    }
+    return { blocked: true, reason, blockedUser };
   }
 
   return { blocked: false };

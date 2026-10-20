@@ -6,9 +6,29 @@ import { UserProvider } from './UserContext';
 import { ThemeProvider } from './ThemeContext';
 import reportWebVitals from './reportWebVitals';
 import { BrowserRouter } from 'react-router-dom';
+import { resolveApiBaseUrl } from './chat/utils';
 
 if ('scrollRestoration' in window.history) {
   window.history.scrollRestoration = 'manual';
+}
+
+if (typeof window !== 'undefined') {
+  try {
+    const apiBase = resolveApiBaseUrl();
+    if (apiBase && !apiBase.includes(window.location.host)) {
+      const origin = new URL(apiBase).origin;
+      const preconnect = document.createElement('link');
+      preconnect.rel = 'preconnect';
+      preconnect.href = origin;
+      preconnect.crossOrigin = 'anonymous';
+      document.head.appendChild(preconnect);
+
+      const dnsPrefetch = document.createElement('link');
+      dnsPrefetch.rel = 'dns-prefetch';
+      dnsPrefetch.href = origin;
+      document.head.appendChild(dnsPrefetch);
+    }
+  } catch (_) {}
 }
 
 const root = ReactDOM.createRoot(

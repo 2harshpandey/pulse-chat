@@ -83,6 +83,9 @@ const initWebSocket = (wss) => {
 
   // --- WebSocket Connection Logic ---
   wss.on('connection', (ws, req) => {
+    if (req.socket && typeof req.socket.setNoDelay === 'function') {
+      req.socket.setNoDelay(true);
+    }
     ws.isAlive = true;
     ws.on('pong', () => {
       ws.isAlive = true;

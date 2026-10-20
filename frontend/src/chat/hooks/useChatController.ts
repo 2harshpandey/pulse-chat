@@ -418,7 +418,7 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
       if (viewport.suppressInitialBottomPinRef.current) return;
       const scroller = chatContainerRef.current;
       if (scroller) scroller.scrollTop = scroller.scrollHeight;
-    }, 300);
+    }, 120);
 
     return () => clearTimeout(timer);
   }, [

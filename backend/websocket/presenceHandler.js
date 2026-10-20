@@ -137,8 +137,11 @@ const handleUserJoin = async ({
   broadcastToAdmins(roomId, 'logged_in_users', Array.from(loggedInUsers.values()));
   _broadcastOnlineUsers(roomId);
 
-  Message.find({ roomId, ..._getVisibleMessagesQuery(roomId) }).sort({ createdAt: -1 }).limit(INITIAL_HISTORY_BATCH_SIZE + 1).lean()
-    .then(async messagesDesc => {
+  Promise.all([
+    Message.find({ roomId, ..._getVisibleMessagesQuery(roomId) }).sort({ createdAt: -1 }).limit(INITIAL_HISTORY_BATCH_SIZE + 1).lean(),
+    loadPinnedMessages(roomId),
+  ])
+    .then(([messagesDesc]) => {
       const hasMoreHistory = messagesDesc.length > INITIAL_HISTORY_BATCH_SIZE;
       const windowDesc = hasMoreHistory
         ? messagesDesc.slice(0, INITIAL_HISTORY_BATCH_SIZE)
@@ -152,7 +155,6 @@ const handleUserJoin = async ({
         oldestCreatedAt,
       }));
 
-      await loadPinnedMessages(roomId);
       ws.send(JSON.stringify({
         type: 'pinned_messages_update',
         data: getRoomState(roomId).pinnedMessages
