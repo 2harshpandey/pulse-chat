@@ -21,7 +21,13 @@ const logger = winston.createLogger({
     // - Write all logs with importance level of `error` or less to `error.log`
     // - Write all logs with importance level of `info` or less to `combined.log`
     //
-    new winston.transports.File({ filename: 'pulse-activity.log', level: 'info' }),
+    new winston.transports.File({
+      filename: 'pulse-activity.log',
+      level: 'info',
+      maxsize: 5 * 1024 * 1024, // 5MB
+      maxFiles: 3,
+      tailable: true
+    }),
     new winston.transports.Console({
       format: winston.format.combine(
         winston.format.colorize(),

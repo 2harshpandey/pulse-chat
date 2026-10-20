@@ -13,12 +13,30 @@ module.exports = (wss, broadcasts) => {
   // --- Server Activity Log ---
   router.get('/api/admin/server-logs', adminLimiter, adminAuth, (req, res) => {
     const logFilePath = path.join(__dirname, '..', '..', 'pulse-activity.log');
-    fs.readFile(logFilePath, 'utf8', (err, data) => {
-      if (err) {
-        logger.error('Failed to read log file:', err);
+    if (!fs.existsSync(logFilePath)) {
+      return res.type('text/plain').send('');
+    }
+    fs.stat(logFilePath, (statErr, stats) => {
+      if (statErr || !stats) {
         return res.status(500).send('Could not read server logs.');
       }
-      const lines = data.split('\n').slice(-200).join('\n');
+      const bufferSize = Math.min(stats.size, 65536);
+      if (bufferSize === 0) {
+        return res.type('text/plain').send('');
+      }
+      const buffer = Buffer.alloc(bufferSize);
+      let fd;
+      try {
+        fd = fs.openSync(logFilePath, 'r');
+        fs.readSync(fd, buffer, 0, bufferSize, stats.size - bufferSize);
+      } catch (readErr) {
+        logger.error('Failed to read log file:', readErr);
+        return res.status(500).send('Could not read server logs.');
+      } finally {
+        if (fd) fs.closeSync(fd);
+      }
+      const rawText = buffer.toString('utf8');
+      const lines = rawText.split('\n').slice(-200).join('\n');
       res.type('text/plain').send(lines);
     });
   });

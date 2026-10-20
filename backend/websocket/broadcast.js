@@ -9,16 +9,23 @@ const { getRoomState } = require('../state');
 /**
  * Send a typed message to every authenticated admin WebSocket client in a room.
  */
+/**
+ * Send a typed message to every authenticated admin WebSocket client in a room.
+ */
 const broadcastToAdmins = (roomId, type, data) => {
   const { adminClients } = getRoomState(roomId);
   if (!adminClients || adminClients.size === 0) return;
 
-  const message = JSON.stringify({ type, data });
-  adminClients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(message);
-    }
-  });
+  try {
+    const message = JSON.stringify({ type, data });
+    adminClients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
+  } catch (err) {
+    logger.error('Error in broadcastToAdmins stringify:', err.message);
+  }
 };
 
 /**
@@ -35,28 +42,36 @@ const broadcastOnlineUsers = (wss, roomId) => {
       activity,
     };
   });
-  const message = JSON.stringify({ type: 'online_users', data: users });
-  wss.clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN && client.roomId === roomId) {
-      client.send(message);
-    }
-  });
+  try {
+    const message = JSON.stringify({ type: 'online_users', data: users });
+    wss.clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN && client.roomId === roomId) {
+        client.send(message);
+      }
+    });
+  } catch (err) {
+    logger.error('Error in broadcastOnlineUsers stringify:', err.message);
+  }
 };
 
 /**
  * Broadcast a raw message object to every connected client in a room.
  */
 const broadcast = (wss, roomId, message) => {
-  const data = JSON.stringify(message);
-  wss.clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN && client.roomId === roomId) {
-      client.send(data);
-    }
-  });
+  try {
+    const data = JSON.stringify(message);
+    wss.clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN && client.roomId === roomId) {
+        client.send(data);
+      }
+    });
+  } catch (err) {
+    logger.error('Error in broadcast stringify:', err.message);
+  }
 };
 
 /**
- * Log-file watcher — tails pulse-activity.log and broadcasts new lines to admins.
+ * Log-file watcher — safely reads the last ~32KB of pulse-activity.log and broadcasts to admins.
  * Debounced and only runs if at least one admin client is actively connected.
  */
 let logDebounceTimer = null;
@@ -85,12 +100,29 @@ const startLogWatcher = () => {
           }
           if (!hasAdmins) return;
 
-          fs.readFile(logFilePath, 'utf8', (err, data) => {
-            if (err) return;
-            const lines = data.split('\n').slice(-200).join('\n');
-            const payload = { type: 'server_logs', data: lines };
-            for (const roomId of roomStates.keys()) {
-              broadcastToAdmins(roomId, payload.type, payload.data);
+          // Read only the last 32KB of the file instead of loading the entire file into memory
+          fs.stat(logFilePath, (statErr, stats) => {
+            if (statErr || !stats) return;
+            const bufferSize = Math.min(stats.size, 32768);
+            if (bufferSize === 0) return;
+
+            const buffer = Buffer.alloc(bufferSize);
+            let fd;
+            try {
+              fd = fs.openSync(logFilePath, 'r');
+              fs.readSync(fd, buffer, 0, bufferSize, stats.size - bufferSize);
+              const rawText = buffer.toString('utf8');
+              const lines = rawText.split('\n').slice(-100).join('\n');
+              const payload = { type: 'server_logs', data: lines };
+              for (const roomId of roomStates.keys()) {
+                broadcastToAdmins(roomId, payload.type, payload.data);
+              }
+            } catch (readErr) {
+              // Ignore or log error without throwing
+            } finally {
+              if (fd) {
+                try { fs.closeSync(fd); } catch (_) {}
+              }
             }
           });
         }, 3000);
