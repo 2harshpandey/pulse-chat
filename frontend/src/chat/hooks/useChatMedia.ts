@@ -274,22 +274,38 @@ export function useChatMedia({
     };
   }, [showGifPicker, gifSearchTerm, gifFetchKey, apiBase]);
 
+  const setPresenceActivityRef = useRef(setPresenceActivity);
+  useEffect(() => {
+    setPresenceActivityRef.current = setPresenceActivity;
+  }, [setPresenceActivity]);
+
+  const prevShowGifPickerRef = useRef(showGifPicker);
+
   useEffect(() => {
     if (showGifPicker) {
-      setPresenceActivity('gif_selecting');
-      return;
+      setPresenceActivityRef.current('gif_selecting');
+    } else if (prevShowGifPickerRef.current) {
+      setGifSearchTerm('');
+      setGifResults((prev) => (prev.length > 0 ? [] : prev));
+      setGifError('');
+      setGifFetchKey(0);
+      setIsLoadingGifs(false);
+      setPresenceActivityRef.current(null);
+      if (keyboardWasOpenBeforeGifRef.current) {
+        messageInputRef.current?.focus();
+        keyboardWasOpenBeforeGifRef.current = false;
+      }
     }
-    setGifSearchTerm('');
-    setGifResults([]);
-    setGifError('');
-    setGifFetchKey(0);
-    setIsLoadingGifs(false);
-    setPresenceActivity(null);
-    if (keyboardWasOpenBeforeGifRef.current) {
-      messageInputRef.current?.focus();
-      keyboardWasOpenBeforeGifRef.current = false;
-    }
-  }, [showGifPicker, setPresenceActivity, messageInputRef]);
+    prevShowGifPickerRef.current = showGifPicker;
+  }, [showGifPicker, messageInputRef]);
+
+  useEffect(() => {
+    return () => {
+      if (prevShowGifPickerRef.current) {
+        setPresenceActivityRef.current(null);
+      }
+    };
+  }, []);
 
   const openGifPicker = useCallback(() => {
     setGifSearchTerm('');

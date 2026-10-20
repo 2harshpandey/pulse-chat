@@ -228,11 +228,12 @@ router.get('/api/link-preview', apiLimiter, async (req, res) => {
       const decode = (str) => {
         if (!str) return str;
         return str
-          .replace(/&amp;/g, '&')
           .replace(/&quot;/g, '"')
           .replace(/&#39;/g, "'")
+          .replace(/&apos;/g, "'")
           .replace(/&lt;/g, '<')
           .replace(/&gt;/g, '>')
+          .replace(/&amp;/g, '&')
           .trim();
       };
 

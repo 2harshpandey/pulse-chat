@@ -179,6 +179,11 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     fetchAndPrependOlderMessages: msgs.fetchAndPrependOlderMessages,
   });
 
+  const setPresenceActivityRef = useRef<(act: 'typing' | 'gif_selecting' | null) => void>(() => {});
+  const handlePresenceActivity = useCallback((act: 'typing' | 'gif_selecting' | null) => {
+    setPresenceActivityRef.current(act);
+  }, []);
+
   // Media Hook
   const media = useChatMedia({
     messages: msgs.messages,
@@ -192,7 +197,7 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     setInputMessage,
     resetInputLayerHeight: viewport.resetInputLayerHeight,
     ws,
-    setPresenceActivity: () => {},
+    setPresenceActivity: handlePresenceActivity,
     messageInputRef,
   });
 
@@ -241,6 +246,8 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     setIsReportModalVisible: selection.setIsReportModalVisible,
     isNativeFilePickerOpenRef: media.isNativeFilePickerOpenRef,
   });
+
+  setPresenceActivityRef.current = socket.setPresenceActivity;
 
   // Composer Hook
   const composer = useChatComposer({
