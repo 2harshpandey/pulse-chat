@@ -572,6 +572,9 @@ export function useChatMedia({
     handleLightboxPointerUp: lightbox.handleLightboxPointerUp,
     handleLightboxPointerCancel: lightbox.handleLightboxPointerCancel,
     handleLightboxImageLoad: lightbox.handleLightboxImageLoad,
+    mediaGallery: lightbox.mediaGallery,
+    openMediaGallery: lightbox.openMediaGallery,
+    closeMediaGallery: lightbox.closeMediaGallery,
     // Media loading and transfers
     loadedMediaMessageIds,
     setLoadedMediaMessageIds,

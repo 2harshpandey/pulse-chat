@@ -732,3 +732,388 @@ export const CancelPreviewButton = styled.button`
   &:hover { background-color: var(--border-primary); transform: scale(1.1) rotate(90deg); }
   &:active { transform: scale(0.9); }
 `;
+
+/* ══════════════════════════════════════════
+   WhatsApp / Telegram Media Group (Album) Grid
+   ══════════════════════════════════════════ */
+export const MediaGroupGrid = styled.div<{ $count: number }>`
+  display: grid;
+  gap: 3px;
+  width: clamp(230px, 68vw, 320px);
+  border-radius: 0.75rem;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.08);
+  user-select: none;
+
+  ${props => {
+    if (props.$count === 2) {
+      return css`
+        grid-template-columns: 1fr 1fr;
+        aspect-ratio: 16 / 10;
+      `;
+    }
+    if (props.$count === 3) {
+      return css`
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: 1fr 1fr;
+        aspect-ratio: 1 / 1;
+        & > :first-child {
+          grid-row: span 2;
+        }
+      `;
+    }
+    // 4 or more
+    return css`
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
+      aspect-ratio: 1 / 1;
+    `;
+  }}
+
+  @media (max-width: 768px) {
+    width: clamp(210px, 72vw, 280px);
+  }
+
+  @media (max-width: 420px) {
+    width: clamp(190px, 75vw, 250px);
+  }
+`;
+
+export const MediaGroupTile = styled.div`
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.15);
+
+  img, video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  &:hover img, &:hover video {
+    transform: scale(1.04);
+  }
+`;
+
+export const MediaGroupOverflowOverlay = styled.div`
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.58);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  transition: background 0.2s ease;
+  z-index: 2;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.68);
+  }
+`;
+
+export const MediaPlayBadge = styled.div`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+  z-index: 1;
+
+  svg {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+    margin-left: 2px;
+  }
+`;
+
+export const MediaVideoCornerTag = styled.div`
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #ffffff;
+  pointer-events: none;
+  z-index: 1;
+
+  svg {
+    width: 11px;
+    height: 11px;
+    fill: currentColor;
+  }
+`;
+
+/* ══════════════════════════════════════════
+   Fullscreen Media Gallery Modal
+   ══════════════════════════════════════════ */
+export const MediaGalleryOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.95);
+  backdrop-filter: blur(16px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: ${fadeInScale} 0.22s ease-out forwards;
+  user-select: none;
+`;
+
+export const MediaGalleryHeader = styled.div`
+  height: 56px;
+  padding: 0 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  z-index: 10;
+  background: linear-gradient(180deg, rgba(0,0,0,0.6) 0%, transparent 100%);
+`;
+
+export const MediaGalleryInfo = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #ffffff;
+`;
+
+export const MediaGalleryCounter = styled.span`
+  background: rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(8px);
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.825rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+`;
+
+export const MediaGalleryMeta = styled.span`
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.8);
+  font-weight: 500;
+  @media (max-width: 480px) {
+    display: none;
+  }
+`;
+
+export const MediaGalleryActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+export const MediaGalleryActionBtn = styled.button`
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.24);
+    transform: scale(1.06);
+  }
+  &:active {
+    transform: scale(0.95);
+  }
+
+  svg {
+    width: 18px;
+    height: 18px;
+    stroke: currentColor;
+    stroke-width: 2.2;
+    fill: none;
+  }
+`;
+
+export const MediaGalleryViewport = styled.div`
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  overflow: hidden;
+  padding: 0 1rem;
+`;
+
+export const MediaGalleryNavBtn = styled.button<{ $direction: 'left' | 'right' }>`
+  position: absolute;
+  top: 50%;
+  ${props => props.$direction === 'left' ? 'left: 20px;' : 'right: 20px;'}
+  transform: translateY(-50%);
+  z-index: 10;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.28);
+    transform: translateY(-50%) scale(1.1);
+  }
+  &:active {
+    transform: translateY(-50%) scale(0.95);
+  }
+
+  svg {
+    width: 22px;
+    height: 22px;
+    stroke: currentColor;
+    stroke-width: 2.4;
+    fill: none;
+  }
+
+  /* User requirement: "on non touch devices only those buttons should show" */
+  @media (hover: none) and (pointer: coarse) {
+    display: none;
+  }
+`;
+
+export const MediaGallerySlide = styled.div`
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: pan-y;
+
+  img {
+    max-width: 90vw;
+    max-height: 72vh;
+    object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+    outline: none;
+  }
+
+  @media (max-width: 768px) {
+    img {
+      max-width: 96vw;
+      max-height: 70vh;
+    }
+  }
+`;
+
+export const MediaGalleryVideoWrapper = styled.div`
+  position: relative;
+  width: min(90vw, 1000px);
+  height: min(72vh, 600px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+  background: #000;
+
+  @media (max-width: 768px) {
+    width: 96vw;
+    height: min(70vh, 520px);
+  }
+`;
+
+export const MediaGalleryBottom = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 1rem 16px;
+  background: linear-gradient(0deg, rgba(0,0,0,0.7) 0%, transparent 100%);
+  flex-shrink: 0;
+  z-index: 10;
+`;
+
+export const MediaGalleryCaption = styled.div`
+  max-width: 640px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 0.9rem;
+  line-height: 1.4;
+  padding: 4px 14px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  word-break: break-word;
+`;
+
+export const MediaGalleryThumbsRow = styled.div`
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  max-width: 92vw;
+  padding: 4px;
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+`;
+
+export const MediaGalleryThumb = styled.div<{ $active: boolean }>`
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  flex-shrink: 0;
+  position: relative;
+  transition: all 0.2s ease;
+  border: 2px solid ${props => props.$active ? '#3b82f6' : 'transparent'};
+  opacity: ${props => props.$active ? 1 : 0.5};
+  transform: ${props => props.$active ? 'scale(1.08)' : 'scale(1)'};
+  box-shadow: ${props => props.$active ? '0 0 12px rgba(59, 130, 246, 0.6)' : 'none'};
+
+  &:hover {
+    opacity: 0.9;
+  }
+
+  img, video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+`;

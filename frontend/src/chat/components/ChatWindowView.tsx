@@ -74,6 +74,7 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
             handleReact={reactions.handleReact}
             handleOpenDeleteMenu={selection.handleOpenDeleteMenu}
             openLightbox={media.openLightbox}
+            openMediaGallery={media.openMediaGallery}
             loadedMediaMessageSet={loadedMediaMessageSet}
             onRequestMediaLoad={media.handleRequestMediaLoad}
             mediaLoadProgressById={media.mediaLoadProgressById}

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import type { Message } from '../types';
 import {
   PHOTO_LIGHTBOX_MIN_SCALE,
   PHOTO_LIGHTBOX_MAX_SCALE,
@@ -8,6 +9,18 @@ import {
 
 export function useChatLightbox() {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [mediaGallery, setMediaGallery] = useState<{
+    items: Message[];
+    initialIndex: number;
+  } | null>(null);
+
+  const openMediaGallery = useCallback((items: Message[], initialIndex: number = 0) => {
+    setMediaGallery({ items, initialIndex });
+  }, []);
+
+  const closeMediaGallery = useCallback(() => {
+    setMediaGallery(null);
+  }, []);
   const [lightboxTransform, setLightboxTransform] = useState<{ scale: number; x: number; y: number }>({
     scale: PHOTO_LIGHTBOX_MIN_SCALE,
     x: 0,
@@ -226,5 +239,8 @@ export function useChatLightbox() {
     handleLightboxPointerUp,
     handleLightboxPointerCancel: handleLightboxPointerUp,
     handleLightboxImageLoad,
+    mediaGallery,
+    openMediaGallery,
+    closeMediaGallery,
   };
 }

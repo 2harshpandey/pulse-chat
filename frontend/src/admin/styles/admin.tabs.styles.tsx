@@ -146,57 +146,84 @@ export const MessageFilterCollapse = styled.div<{ $open: boolean }>`
 `;
 
 export const PremiumExportButton = styled.button`
-  position: relative;
-  padding: 0.75rem 1.5rem;
-  font-size: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1.25rem;
+  font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
-  color: white;
-  background: linear-gradient(135deg, #4f46e5, #7c3aed, #9333ea);
-  background-size: 200% 200%;
-  border: none;
   border-radius: 8px;
-  box-shadow: 0 4px 15px rgba(124, 58, 237, 0.4);
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
   white-space: nowrap;
-  overflow: hidden;
-  animation: bgShift 4s ease infinite;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  letter-spacing: -0.01em;
 
-  @keyframes bgShift {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-  }
-
-  &::before {
-    content: '';
-    position: absolute;
-    top: 0; left: -100%; width: 50%; height: 100%;
-    background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.3), transparent);
-    transform: skewX(-20deg);
-    transition: all 0.5s ease;
-  }
+  /* Light mode (default): High-contrast enterprise cobalt blue */
+  background-color: #2563eb;
+  color: #ffffff;
+  border: 1px solid #1d4ed8;
+  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.18);
 
   &:hover {
-    transform: translateY(-2px) scale(1.02);
-    box-shadow: 0 8px 25px rgba(124, 58, 237, 0.6);
-  }
-
-  &:hover::before {
-    left: 150%;
+    background-color: #1d4ed8;
+    border-color: #1e40af;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.28);
+    transform: translateY(-1px);
   }
 
   &:active {
-    transform: translateY(1px) scale(0.98);
-    box-shadow: 0 2px 10px rgba(124, 58, 237, 0.4);
+    background-color: #1e40af;
+    transform: translateY(0);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+
+  /* Dark mode: Deep royal sapphire with crisp accent border */
+  [data-theme='dark'] & {
+    background-color: #1e40af;
+    color: #ffffff;
+    border: 1px solid #3b82f6;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+
+    &:hover {
+      background-color: #2563eb;
+      border-color: #60a5fa;
+      box-shadow: 0 4px 14px rgba(59, 130, 246, 0.3);
+      transform: translateY(-1px);
+    }
+
+    &:active {
+      background-color: #1d4ed8;
+      transform: translateY(0);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    }
   }
 
   &:disabled {
-    background: #9ca3af;
+    background-color: #94a3af;
+    border-color: #94a3af;
+    color: #f1f5f9;
     cursor: not-allowed;
     transform: none;
     box-shadow: none;
-    animation: none;
+    opacity: 0.6;
+  }
+
+  svg {
+    width: 15px;
+    height: 15px;
+    stroke-width: 2.2;
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
+  }
+
+  &:hover svg {
+    transform: translateY(1px);
+  }
+
+  @media (max-width: 600px) {
+    padding: 0.55rem 0.95rem;
+    font-size: 0.825rem;
   }
 `;
 

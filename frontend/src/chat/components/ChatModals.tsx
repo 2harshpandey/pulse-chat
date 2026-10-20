@@ -7,6 +7,7 @@ import {
   DiscardConfirmModal,
   ReportModal,
   LightboxModal,
+  MediaGalleryModal,
   GifPickerModal,
 } from './index';
 
@@ -124,6 +125,15 @@ export const ChatModals: React.FC<ChatModalsProps> = ({
         onImageLoad={media.handleLightboxImageLoad}
         frameRef={media.lightboxFrameRef as any}
         imageRef={media.lightboxImageRef as any}
+      />
+
+      <MediaGalleryModal
+        isOpen={Boolean(media.mediaGallery)}
+        items={media.mediaGallery?.items || []}
+        initialIndex={media.mediaGallery?.initialIndex || 0}
+        onClose={media.closeMediaGallery}
+        onRequestDownload={media.handleRequestDownload}
+        loadedMediaSrcById={media.loadedMediaSrcById}
       />
 
       <GifPickerModal

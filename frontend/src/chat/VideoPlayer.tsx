@@ -15,7 +15,27 @@ const formatTime = (s: number): string => {
   return `${m}:${sec.toString().padStart(2, '0')}`;
 };
 
-export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter, isUploading, onLoadedData, isSelectModeActive }: { src: string; onPointerDown?: () => void; onFullscreenEnter?: () => void; isUploading?: boolean; onLoadedData?: () => void; isSelectModeActive?: boolean }) => {
+export interface VideoPlayerProps {
+  src: string;
+  onPointerDown?: () => void;
+  onFullscreenEnter?: () => void;
+  isUploading?: boolean;
+  onLoadedData?: () => void;
+  isSelectModeActive?: boolean;
+  autoPlay?: boolean;
+  isGalleryMode?: boolean;
+}
+
+export const VideoPlayer = ({
+  src,
+  onPointerDown,
+  onFullscreenEnter,
+  isUploading,
+  onLoadedData,
+  isSelectModeActive,
+  autoPlay = false,
+  isGalleryMode = false,
+}: VideoPlayerProps) => {
   const containerRef = useRef<HTMLDivElement>(null!);
   const videoRef = useRef<HTMLVideoElement>(null!);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -67,7 +87,12 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter, isUploading
       setDuration(video.duration);
       setHasError(false);
       retryCountRef.current = 0;
-      video.currentTime = 0.01;
+      if (autoPlay) {
+        const p = video.play();
+        if (p) p.catch(() => {});
+      } else {
+        video.currentTime = 0.01;
+      }
     };
     const onPlay = () => { setIsPlaying(true); resetControlsTimer(); };
     const onPause = () => { setIsPlaying(false); setShowControls(true); if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current); };
@@ -145,8 +170,9 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter, isUploading
     };
   }, [onFullscreenEnter]);
 
-  // Auto-pause video when scrolled off-screen (unless in PiP mode)
+  // Auto-pause video when scrolled off-screen (unless in PiP mode or gallery modal)
   useEffect(() => {
+    if (isGalleryMode) return;
     const video = videoRef.current;
     if (!video) return;
 
@@ -171,7 +197,18 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter, isUploading
       observer.unobserve(video);
       observer.disconnect();
     };
-  }, []);
+  }, [isGalleryMode]);
+
+  // Handle autoPlay on mount or src change
+  useEffect(() => {
+    if (autoPlay && videoRef.current) {
+      const v = videoRef.current;
+      const playPromise = v.play();
+      if (playPromise !== undefined) {
+        playPromise.catch(() => {});
+      }
+    }
+  }, [autoPlay, src]);
 
   useEffect(() => { return () => { if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current); }; }, []);
   useEffect(() => { resetControlsTimer(); }, [isPlaying, resetControlsTimer]);
@@ -356,6 +393,7 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter, isUploading
         onClick={handleContainerTap}
         onMouseMove={resetControlsTimer}
         data-cvp
+        $isGalleryMode={isGalleryMode}
       >
         <video
           ref={videoRef}
@@ -495,8 +533,8 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter, isUploading
             {/* Spacer */}
             <div style={{ flex: 1 }} />
 
-            {/* Loop (fullscreen only) */}
-            {isFullscreen && (
+            {/* Loop (fullscreen or gallery mode) */}
+            {(isFullscreen || isGalleryMode) && (
               <CVPIconBtn
                 $active={isLooping}
                 onClick={toggleLoop}
@@ -512,8 +550,8 @@ export const VideoPlayer = ({ src, onPointerDown, onFullscreenEnter, isUploading
               </CVPIconBtn>
             )}
 
-            {/* Picture in Picture (fullscreen only) */}
-            {isFullscreen && (
+            {/* Picture in Picture (fullscreen or gallery mode) */}
+            {(isFullscreen || isGalleryMode) && (
               <CVPIconBtn
                 className="cvp-pip-btn"
                 onClick={togglePiP}

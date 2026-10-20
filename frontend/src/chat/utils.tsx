@@ -92,6 +92,10 @@ export const findMessageElement = (rawId: any): HTMLElement | null => {
   const byId = document.getElementById(getMessageElementId(normalized)) as HTMLElement | null;
   if (byId) return byId;
 
+  // Fallback to grouped media message row if target is part of a media album
+  const byGroup = document.querySelector(`[data-grouped-ids~="${normalized}"]`) as HTMLElement | null;
+  if (byGroup) return byGroup;
+
   // Fallback to VirtualMessageWrapper if the message is off-screen (unmounted)
   const byVirtualId = document.querySelector(`[data-virtual-id="${normalized}"]`) as HTMLElement | null;
   if (byVirtualId) return byVirtualId;

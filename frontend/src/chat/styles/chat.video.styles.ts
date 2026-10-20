@@ -22,7 +22,7 @@ export const VideoPlayerWrapper = styled.div`
   }
 `;
 
-export const CVPContainer = styled.div`
+export const CVPContainer = styled.div<{ $isGalleryMode?: boolean }>`
   --cvp-controls-padding: 4px 8px 6px;
   --cvp-row-gap: 2px;
   --cvp-icon-size: 16px;
@@ -50,6 +50,23 @@ export const CVPContainer = styled.div`
   justify-content: center;
   user-select: none;
   -webkit-user-select: none;
+
+  ${props => props.$isGalleryMode ? `
+    --cvp-controls-padding: 9px 12px 11px;
+    --cvp-row-gap: 4px;
+    --cvp-icon-size: 18px;
+    --cvp-icon-pad: 5px;
+    --cvp-time-size: 0.74rem;
+    --cvp-speed-font-size: 0.66rem;
+    --cvp-speed-width: 42px;
+    --cvp-speed-pad-y: 3px;
+    --cvp-speed-pad-x: 6px;
+    --cvp-timeline-height: 28px;
+    --cvp-timeline-padding: 10px 0;
+    --cvp-track-height: 4px;
+    --cvp-thumb-size: 13px;
+    --cvp-edge-pad-right: 2px;
+  ` : ''}
 
   /* Fullscreen: fill viewport, letterbox with object-fit: contain */
   &:fullscreen, &:-webkit-full-screen {
