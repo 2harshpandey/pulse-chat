@@ -1,46 +1,68 @@
-# Getting Started with Create React App
+# Pulse Chat — Frontend Client
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+The frontend client for **Pulse Chat**, engineered with React 18, TypeScript, Vite, Styled Components, and Progressive Web App (PWA) capabilities.
+
+---
+
+## Tech Stack
+
+- **Framework**: React 18 with TypeScript
+- **Bundler & Dev Server**: [Vite](https://vitejs.dev/) (`vite.config.mts`)
+- **Styling**: Styled Components (with full light/dark theme design token architecture)
+- **Routing**: React Router v7
+- **Virtualization**: `react-virtuoso` with sliding window memory management
+- **PWA**: `vite-plugin-pwa` with service worker caching & offline support
+- **Gestures**: `@use-gesture/react` for touch & swipe-to-reply interactions
+- **Testing**: Vitest (`npm test`)
+
+---
 
 ## Available Scripts
 
-In the project directory, you can run:
+In the `frontend` directory, you can run:
 
 ### `npm start`
-
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
-
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
-
-### `npm test`
-
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+Starts the Vite local development server with hot module replacement (HMR) and network hosting enabled:
+```bash
+npm start
+```
+Access the application at `http://localhost:3000`.
 
 ### `npm run build`
+Compiles and bundles the production app into the `build/` directory with code-splitting, tree-shaking, and PWA service worker asset generation:
+```bash
+npm run build
+```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+### `npm test`
+Runs the Vitest unit test suite in interactive watch mode:
+```bash
+npm test
+```
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### `npm run test:run`
+Executes all unit tests once and exits (ideal for CI/CD pipelines):
+```bash
+npm run test:run
+```
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+---
 
-### `npm run eject`
+## Environment Variables
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+Configure these in `frontend/.env` (or via deployment environment settings):
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+| Variable | Description |
+| --- | --- |
+| `REACT_APP_API_URL` | Base URL of the backend API (HTTP/WebSocket) |
+| `REACT_APP_ADMIN_SECRET` | Secret token used to authenticate frontend admin dashboard routes |
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+---
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+## Architectural Highlights
 
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
+- **Domain-Modular Structure**: Decomposed into focused domains: `/chat`, `/admin`, `/rooms`, `/auth`, `/home`, and `/errors`.
+- **Sliding Window Virtualization**: Handles tens of thousands of messages smoothly without memory bloat or UI stutter.
+- **Zero Layout Shift (CLS)**: Uses `ResizeObserver` on media bubbles and link previews to maintain stable scroll anchoring.
+- **Cross-Theme Parity**: Complete visual parity across light and dark modes with dedicated design tokens in `index.css`.
+- **Progressive Web App**: Fully installable standalone app on Android, iOS, Windows, and macOS.

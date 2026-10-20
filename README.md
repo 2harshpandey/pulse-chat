@@ -3,8 +3,10 @@
 > **A production-grade, real-time, scalable web messaging application engineered for high-fidelity conversations, dynamic multi-room routing, rich media exchange, secure moderation, and a premium responsive user experience.**
 
 [![Live Site](https://img.shields.io/badge/Live-pulsechat.tech-2563eb?style=for-the-badge)](https://pulsechat.tech)
+[![Version](https://img.shields.io/badge/Version-v2.0.0-f59e0b?style=for-the-badge)](#overview)
 [![Frontend](https://img.shields.io/badge/Frontend-React%2018%20%2B%20TypeScript-61dafb?style=for-the-badge)](#technology-stack)
 [![Backend](https://img.shields.io/badge/Backend-Node.js%20%2B%20Express-111827?style=for-the-badge)](#technology-stack)
+[![PWA](https://img.shields.io/badge/PWA-Installable-purple?style=for-the-badge)](#user-experience-and-visual-design)
 [![Realtime](https://img.shields.io/badge/Realtime-WebSocket-7c3aed?style=for-the-badge)](#realtime-architecture)
 [![Database](https://img.shields.io/badge/Database-MongoDB-10b981?style=for-the-badge)](#technology-stack)
 
@@ -69,9 +71,9 @@ Pulse Chat includes a complete real-time messaging foundation suitable for high-
 - Server-side user tracking with join history, last-seen metadata, and moderation context.
 - Initial chat history delivery on connection with paginated infinite scrolling for deeper history.
 - Chronological message ordering with oldest-first delivery and safe prepend behavior during history loads.
-- Virtualized message rendering for smooth performance across large message histories.
+- **Sliding Window Virtualization**: Powered by `react-virtuoso` with high-performance windowing, rendering tens of thousands of messages without UI freezes or memory bloat.
 - Adaptive overscan and viewport tuning for desktop and mobile scrolling performance.
-- Quote-jump navigation with automatic loading and highlight animation for referenced messages.
+- **Instant Quote & Pin Navigation**: High-speed jump navigation that bulk loads message pages to eliminate timeouts when navigating to deeply historical messages.
 
 ---
 
@@ -80,7 +82,7 @@ Pulse Chat includes a complete real-time messaging foundation suitable for high-
 Pulse Chat supports distinct, securely isolated rooms, allowing vast communities to thrive in parallel.
 
 - **Dynamic Room Creation**: Users can spin up custom rooms instantly with custom names, descriptions, and privacy settings.
-- **Aliases & Namespaces**: Support for human-readable aliases (e.g., `/my-cool-room`). Also features the protected `/me` namespace for the global default chat and personal isolation.
+- **Aliases & Namespaces**: Support for human-readable aliases (e.g., `/my-cool-room`). Features the protected `/me` namespace for global default chat and personal isolation with an adaptive light & dark mode ID copy widget.
 - **Public Room Discovery**: A rich dashboard allowing users to search, browse, and filter active public rooms with live telemetry (e.g., active user counts).
 - **Private Rooms**: Securely locked behind dynamic "Join Passwords". Adding a password to a public room implicitly transitions it to a private room.
 - **Room-specific Moderation**: Admin credentials and dashboards are sandboxed per room, allowing distributed community moderation.
@@ -160,6 +162,7 @@ Pulse Chat includes a purpose-built video playback interface with:
 - Mute and volume controls.
 - Double-tap seek shortcuts.
 - Auto-hiding controls.
+- Automatic off-screen pause when scrolled out of view unless Picture-in-Picture is active.
 
 ### Download and caching controls
 
@@ -240,7 +243,8 @@ Pulse Chat includes a dedicated administrative control plane for live moderation
 The interface is designed to feel premium, responsive, and stable under heavy interaction.
 
 - **Lock-Solid Scrolling**: Highly optimized scrolling mechanics, eliminating "nested scrollbar" bugs and utilizing `overflow-x: clip`. Native `scrollRestoration` is handled manually to prevent layout shifting on load.
-- Theme toggle with persisted preference and system-theme default.
+- **Full Progressive Web App (PWA)**: Completely installable on desktop and mobile platforms with offline caching, custom install prompts, standalone window experience, and service worker updates via Vite PWA.
+- **Light & Dark Theme Parity**: Carefully crafted tokens and responsive styled components delivering perfect contrast, accessibility, and visual hierarchy across light and dark modes (including modals, forms, and room ID widgets).
 - Contextual notification sound system providing audio cues for new messages and user joins. To prevent audio fatigue, it intelligently gates sounds to play only when the chat tab is backgrounded or the device is locked. Users can control this behavior via an animated toggle that persists their preferences locally.
 - Animated UI layers including glow, shimmer, floating orbs, and smooth transitions, alongside premium informational callout boxes.
 - Adaptive mobile layouts with touch-optimized controls.
@@ -305,12 +309,12 @@ flowchart TB
 
 | Layer | Technologies |
 | --- | --- |
-| Frontend | React 18, TypeScript, Vite, Styled Components, React Router, React Virtuoso, Emoji Picker, `@use-gesture/react` |
+| Frontend | React 18, TypeScript, Vite, Styled Components, React Router v7, React Virtuoso, Emoji Picker React, `@use-gesture/react`, Vite PWA |
 | Backend | Node.js, Express, WebSocket `ws`, MongoDB, Mongoose, Multer, Axios, Winston |
 | Media | Cloudinary |
 | GIF Search | Giphy API |
 | Storage | MongoDB, IndexedDB media cache |
-| Tooling | Vite, TypeScript, npm |
+| Tooling | Vite, TypeScript, Vitest, npm |
 
 ---
 
@@ -385,19 +389,45 @@ The optimized output is generated in the frontend build directory.
 │   ├── index.js
 │   ├── db.js
 │   ├── logger.js
-│   └── models/
+│   ├── middleware.js
+│   ├── security.js
+│   ├── state.js
+│   ├── models/
+│   ├── routes/
+│   │   ├── admin/
+│   │   ├── auth.js
+│   │   ├── download.js
+│   │   ├── gifs.js
+│   │   ├── linkPreview.js
+│   │   ├── media.js
+│   │   ├── messages.js
+│   │   └── rooms.js
+│   └── websocket/
+│       ├── messageHandler.js
+│       ├── presenceHandler.js
+│       ├── broadcast.js
+│       ├── pinnedManager.js
+│       └── adminHandler.js
 ├── frontend/
 │   ├── public/
 │   ├── src/
+│   │   ├── admin/               # Modular tabs, modals, subhooks, styles
+│   │   ├── auth/                # Modular auth forms, card, controller, styles
+│   │   ├── chat/                # Modular chat hooks, components, styles, types
+│   │   ├── errors/              # Modular error pages & icons
+│   │   ├── home/                # Modular landing components & controller
+│   │   ├── rooms/               # Modular room explorer & controller
 │   │   ├── App.tsx
-│   │   ├── Auth.tsx
 │   │   ├── Chat.tsx
 │   │   ├── Admin.tsx
+│   │   ├── Rooms.tsx
+│   │   ├── Auth.tsx
+│   │   ├── Home.tsx
 │   │   ├── AboutDeveloper.tsx
-│   │   ├── developerData.ts
-│   │   └── ThemeContext.tsx
+│   │   ├── ThemeContext.tsx
+│   │   └── PwaUpdatePrompt.tsx
 │   ├── index.html
-│   └── vite.config.ts
+│   └── vite.config.mts
 ├── README.md
 └── netlify.toml
 ```
@@ -407,8 +437,10 @@ The optimized output is generated in the frontend build directory.
 ## Operational Notes
 
 - WebSocket connections use heartbeat behavior to detect stale sessions.
-- Chat history is loaded initially and then extended through pagination.
-- Large message lists are virtualized to maintain smooth UI performance.
+- Chat history is loaded initially and then extended through pagination with sliding window virtualization to preserve memory.
+- Large message lists are virtualized via `react-virtuoso` with ResizeObserver tracking to eliminate layout shift (CLS).
+- Off-screen video auto-pause conserves system resources and network bandwidth.
+- Hardened security verified by GitHub CodeQL: SSRF protections, URL sanitization, and query injection prevention.
 - Media download and preview logic intentionally restricts unsafe URLs and hosts.
 - Admin workflows are protected and designed for live operational control.
 - The About Developer page includes semantic HTML, dynamic metadata, Open Graph tags, and JSON-LD `Person` structured data for search indexing.
