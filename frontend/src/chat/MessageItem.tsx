@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
-import { useDrag } from '@use-gesture/react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { Message, MessageItemProps } from './types';
-import { LONG_PRESS_CANCEL_MOVE_PX, QUICK_REACTIONS, filterValidReactions } from './constants';
+import { filterValidReactions } from './constants';
 import {
   getMessageElementId, getQuotedPreviewThumbUrl,
   sanitizeMediaUrl,
@@ -20,7 +19,8 @@ import {
   MessageQuotedPreview,
   MessageActionMenuPortal,
   MessageReactions,
-  MessageDesktopActions
+  MessageDesktopActions,
+  useMessageGestures
 } from './components/message';
 
 export const MessageItem = React.memo(({
@@ -69,8 +69,6 @@ export const MessageItem = React.memo(({
   const quotedPreviewThumbUrl = msg.replyingTo && !msg.replyingTo.isDeleted && (msg.replyingTo.type === 'image' || msg.replyingTo.type === 'video')
     ? getQuotedPreviewThumbUrl(msg.replyingTo.type, msg.replyingTo.url)
     : '';
-  const messageRowRef = useRef<HTMLDivElement>(null!);
-
   const messageBubbleRef = useRef<HTMLDivElement>(null!);
   const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; right?: number; left?: number } | null>(null);
   
@@ -156,159 +154,19 @@ export const MessageItem = React.memo(({
     return () => document.removeEventListener('scroll', close, true);
   }, [activeDeleteMenu, msg.id, menuPos, setActiveDeleteMenu]);
 
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const swipeTransitionResetTimerRef = useRef<number | null>(null);
-  const wasLongPressed = useRef(false);
-  const lastSelectModeExitTimeRef = useRef(0);
-  const isSelectModeActiveRef = useRef(isSelectModeActive);
-
-  useEffect(() => {
-    if (!isSelectModeActive && isSelectModeActiveRef.current) {
-        lastSelectModeExitTimeRef.current = Date.now();
-    }
-    isSelectModeActiveRef.current = isSelectModeActive;
-  }, [isSelectModeActive]);
-  const touchStartPointRef = useRef<{ x: number; y: number } | null>(null);
-  const suppressTapSelectionRef = useRef(false);
-  const ignoreSwipeGestureRef = useRef(false);
-  const swipeOffsetRef = useRef(0);
-
-  const resetSwipePosition = useCallback((animate: boolean) => {
-    if (!messageRowRef.current) return;
-    swipeOffsetRef.current = 0;
-    if (swipeTransitionResetTimerRef.current !== null) {
-      window.clearTimeout(swipeTransitionResetTimerRef.current);
-      swipeTransitionResetTimerRef.current = null;
-    }
-
-    messageRowRef.current.style.transform = 'translateX(0px)';
-    messageRowRef.current.style.transition = animate ? 'transform 0.2s ease-out' : 'none';
-
-    if (animate) {
-      swipeTransitionResetTimerRef.current = window.setTimeout(() => {
-        if (!messageRowRef.current) return;
-        messageRowRef.current.style.transition = 'none';
-        swipeTransitionResetTimerRef.current = null;
-      }, 220);
-    }
-  }, []);
-
-  const isSwipeQuoteIgnoredTarget = useCallback((target: HTMLElement) => {
-    if (target.closest('[data-allow-quote-swipe]')) return false;
-    return Boolean(
-      target.closest('[data-quote-swipe-ignore]') ||
-      target.closest('button, a, input, textarea, [contenteditable="true"]')
-    );
-  }, []);
-
-  useDrag(({ active, movement: [mx, my], last, tap, first, event }) => {
-    const target = event.target as HTMLElement;
-
-    if (first) {
-      ignoreSwipeGestureRef.current = isSwipeQuoteIgnoredTarget(target);
-    }
-
-    if (ignoreSwipeGestureRef.current) {
-      if (last) {
-        ignoreSwipeGestureRef.current = false;
-        if (swipeOffsetRef.current > 0) {
-          resetSwipePosition(true);
-        }
-      }
-      return;
-    }
-
-    // If a drag gesture is active (i.e., user is scrolling), cancel the long-press timer.
-    if (active && longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-      suppressTapSelectionRef.current = true;
-    }
-
-    if (tap) {
-      // If the tap was on the MobileReactionPicker, ignore it completely.
-      // The picker stays mounted while the full emoji panel is open, so
-      // target.closest reliably catches taps on any of its buttons.
-      if (target.closest('.mobile-reaction-picker')) {
-        return;
-      }
-
-      // Ignore synthetic tap events that are actually part of a scroll gesture.
-      if (suppressTapSelectionRef.current) {
-        suppressTapSelectionRef.current = false;
-        return;
-      }
-
-      // If this 'tap' is the end of a long press, reset the flag and do nothing.
-      if (wasLongPressed.current) {
-        wasLongPressed.current = false;
-        return;
-      }
-      // Otherwise, if it's a genuine tap in select mode, toggle the selection.
-      if (isSelectModeActive) {
-        // If the tap landed on the checkbox, let the checkbox's own handler
-        // deal with it - don't also toggle from the useDrag tap.
-        if (target.closest('[data-checkbox]')) {
-          return;
-        }
-        handleToggleSelectMessage(msg.id);
-        return;
-      }
-    }
-
-    // When a gesture ends as a drag (not a tap), clean up refs so the
-    // next tap always starts from a known-good state.
-    if (last && !tap) {
-      wasLongPressed.current = false;
-      suppressTapSelectionRef.current = false;
-      ignoreSwipeGestureRef.current = false;
-    }
-
-    // Always restore the row position at the end of any gesture. This prevents
-    // partially shifted bubbles when a horizontal swipe drifts vertically.
-    if (last && swipeOffsetRef.current > 0) {
-      resetSwipePosition(true);
-    }
-
-    if (!isMobileView || isSelectModeActive || !messageRowRef.current) {
-      return;
-    }
-
-    const isHorizontalGesture = Math.abs(mx) > Math.abs(my);
-
-    if (last) {
-      // If the drag ended as a rightward horizontal swipe, trigger reply.
-      if (isHorizontalGesture && mx > 70) {
-        handleSetReply(msg);
-      }
-      return;
-    }
-
-    if (!active) {
-      return;
-    }
-
-    // While scrolling vertically (or dragging left), keep the row anchored.
-    if (!isHorizontalGesture || mx <= 0) {
-      if (swipeOffsetRef.current > 0) {
-        resetSwipePosition(false);
-      }
-      return;
-    }
-
-    // During a valid horizontal drag, update position with sane bounds.
-    const newX = Math.min(Math.max(mx, 0), 80);
-    if (newX === swipeOffsetRef.current) {
-      return;
-    }
-    swipeOffsetRef.current = newX;
-    messageRowRef.current.style.transform = `translateX(${newX}px)`;
-    messageRowRef.current.style.transition = 'none';
-  }, {
-    filterTaps: true,
-    eventOptions: { passive: true },
-    target: messageRowRef,
-    drag: { threshold: 10, axis: 'x' }
+  const {
+    messageRowRef,
+    lastSelectModeExitTimeRef,
+    handleLongPressStart,
+    handleLongPressMove,
+    handleLongPressEnd,
+    handleLongPressCancel,
+  } = useMessageGestures({
+    msg,
+    isMobileView,
+    isSelectModeActive,
+    handleSetReply,
+    handleToggleSelectMessage,
   });
 
   const validReactions = useMemo(() => filterValidReactions(msg.reactions), [msg.reactions]);
@@ -343,45 +201,6 @@ export const MessageItem = React.memo(({
     }
   }, [currentUserReaction, isLastMessage, scrollToBottom]);
 
-  // Reset gesture refs when Virtuoso recycles this component for a different message
-  const prevMsgIdRef = useRef(msg.id);
-  useLayoutEffect(() => {
-    if (prevMsgIdRef.current !== msg.id) {
-      prevMsgIdRef.current = msg.id;
-      wasLongPressed.current = false;
-      suppressTapSelectionRef.current = false;
-      ignoreSwipeGestureRef.current = false;
-      touchStartPointRef.current = null;
-      if (longPressTimerRef.current) {
-        clearTimeout(longPressTimerRef.current);
-        longPressTimerRef.current = null;
-      }
-      resetSwipePosition(false);
-    }
-  }, [msg.id, resetSwipePosition]);
-
-  useEffect(() => {
-    return () => {
-      if (swipeTransitionResetTimerRef.current !== null) {
-        window.clearTimeout(swipeTransitionResetTimerRef.current);
-        swipeTransitionResetTimerRef.current = null;
-      }
-    };
-  }, []);
-
-  // Reset wasLongPressed only when select mode is DEACTIVATED.
-  // We must NOT reset it when select mode is activated - the long-press
-  // timer sets it just before the re-render that activates select mode,
-  // and the tap handler needs it to avoid immediately deselecting the
-  // message when the touch ends.
-  useEffect(() => {
-    if (!isSelectModeActive) {
-      wasLongPressed.current = false;
-      suppressTapSelectionRef.current = false;
-      ignoreSwipeGestureRef.current = false;
-    }
-  }, [isSelectModeActive]);
-
   const sender = msg.userId === currentUserId ? 'me' : 'other';
 
   const messageTime = new Date(msg.timestamp).getTime();
@@ -391,85 +210,6 @@ export const MessageItem = React.memo(({
   const handleVideoFullscreenEnterForMessage = useCallback(() => {
     onVideoFullscreenEnter?.(msg.id);
   }, [onVideoFullscreenEnter, msg.id]);
-
-  const isLongPressIgnoredTarget = useCallback((target: HTMLElement) => {
-    return Boolean(
-      target.closest('.mobile-reaction-picker') ||
-      target.closest('[data-quote-swipe-ignore]') ||
-      target.closest('button, a, input, textarea, [contenteditable="true"]')
-    );
-  }, []);
-
-  const handleLongPressStart = (e: React.TouchEvent | React.MouseEvent) => {
-    if (!isMobileView || !('touches' in e)) {
-      return;
-    }
-
-    // Don't start a long-press timer when the touch/click lands on the
-    // MobileReactionPicker - otherwise the 500 ms timer fires, toggles
-    // selection (deselecting the message), and unmounts the picker before
-    // the user's onClick can fire on the emoji button.
-    const target = e.target as HTMLElement;
-    if (isLongPressIgnoredTarget(target)) {
-      return;
-    }
-
-    if (e.touches.length !== 1) {
-      return;
-    }
-
-    const touch = e.touches[0];
-    touchStartPointRef.current = { x: touch.clientX, y: touch.clientY };
-    suppressTapSelectionRef.current = false;
-
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-
-    longPressTimerRef.current = setTimeout(() => {
-      if (!suppressTapSelectionRef.current) {
-        handleToggleSelectMessage(msg.id);
-        wasLongPressed.current = true;
-      }
-    }, 500);
-  };
-
-  const handleLongPressMove = (e: React.TouchEvent) => {
-    if (!touchStartPointRef.current || e.touches.length === 0) {
-      return;
-    }
-
-    const touch = e.touches[0];
-    const dx = Math.abs(touch.clientX - touchStartPointRef.current.x);
-    const dy = Math.abs(touch.clientY - touchStartPointRef.current.y);
-
-    if (dx > LONG_PRESS_CANCEL_MOVE_PX || dy > LONG_PRESS_CANCEL_MOVE_PX) {
-      suppressTapSelectionRef.current = true;
-      if (longPressTimerRef.current) {
-        clearTimeout(longPressTimerRef.current);
-        longPressTimerRef.current = null;
-      }
-    }
-  };
-
-  const handleLongPressEnd = () => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-    touchStartPointRef.current = null;
-  };
-
-  const handleLongPressCancel = () => {
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-    }
-    touchStartPointRef.current = null;
-    suppressTapSelectionRef.current = true;
-    resetSwipePosition(true);
-  };
 
   return (
     <React.Fragment>
