@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
-import type { EmojiClickData } from 'emoji-picker-react';
 import type { Message, Gif, ReplyContext } from '../types';
 import type { UserProfile } from '../../UserContext';
-import { MAX_MESSAGE_LENGTH, getInputDraftKey, INITIAL_FIRST_ITEM_INDEX } from '../constants';
+import { MAX_MESSAGE_LENGTH, INITIAL_FIRST_ITEM_INDEX } from '../constants';
 import {
   isGiphyUrl,
   chooseReadableFilename,
@@ -12,6 +11,8 @@ import {
   revokeBlobUrl,
 } from '../utils';
 import { transferManager } from '../TransferManager';
+import { useChatDrafts } from './useChatDrafts';
+import { useChatEmojiPicker } from './useChatEmojiPicker';
 
 interface UseChatComposerProps {
   inputMessage: string;
@@ -158,63 +159,26 @@ export function useChatComposer({
   const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
   const plusMenuRef = useRef<HTMLDivElement>(null!);
   const plusButtonRef = useRef<HTMLButtonElement>(null!);
-  const emojiButtonRef = useRef<HTMLButtonElement>(null!);
-  const emojiPickerRef = useRef<HTMLDivElement>(null!);
-  const [emojiPickerPosition, setEmojiPickerPosition] = useState<DOMRect | null>(null);
+  const {
+    emojiPickerPosition,
+    setEmojiPickerPosition,
+    emojiPickerRef,
+    emojiButtonRef,
+    keyboardWasOpenBeforeEmojiRef,
+    closeEmojiPicker,
+    handleOpenEmojiPicker,
+    handleEmojiClick,
+  } = useChatEmojiPicker({
+    setInputMessage,
+    messageInputRef,
+  });
 
-  const keyboardWasOpenBeforeEmojiRef = useRef<boolean>(false);
-  const restoreKeyboardAfterEmojiCloseRef = useRef<boolean>(false);
-
-  const closeEmojiPicker = useCallback((restoreKeyboard: boolean = false) => {
-    setEmojiPickerPosition((prev) => {
-      if (!prev) return prev;
-      restoreKeyboardAfterEmojiCloseRef.current = restoreKeyboard && keyboardWasOpenBeforeEmojiRef.current;
-      if (!restoreKeyboardAfterEmojiCloseRef.current) {
-        keyboardWasOpenBeforeEmojiRef.current = false;
-      }
-      return null;
-    });
-  }, []);
-
-  const handleOpenEmojiPicker = useCallback((rect: DOMRect) => {
-    setEmojiPickerPosition((prev) => {
-      if (prev) {
-        restoreKeyboardAfterEmojiCloseRef.current = false;
-        keyboardWasOpenBeforeEmojiRef.current = false;
-        return null;
-      }
-      return rect;
-    });
-  }, []);
-
-  const handleEmojiClick = useCallback((emojiData: EmojiClickData) => {
-    setInputMessage((prev) => prev + emojiData.emoji);
-  }, []);
-
-  // Draft persistence
-  useEffect(() => {
-    const draftKey = getInputDraftKey(userId);
-    if (!userProfile) {
-      setInputMessage('');
-      return;
-    }
-    try {
-      const savedDraft = localStorage.getItem(draftKey);
-      if (savedDraft) setInputMessage(savedDraft.slice(0, MAX_MESSAGE_LENGTH));
-    } catch (_) {}
-  }, [userId, userProfile]);
-
-  useEffect(() => {
-    if (!userProfile) return;
-    const timer = setTimeout(() => {
-      try {
-        const draftKey = getInputDraftKey(userId);
-        if (inputMessage) localStorage.setItem(draftKey, inputMessage);
-        else localStorage.removeItem(draftKey);
-      } catch (_) {}
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [inputMessage, userId, userProfile]);
+  useChatDrafts({
+    userId,
+    userProfile,
+    inputMessage,
+    setInputMessage,
+  });
 
   // Input layout sync on value change
   useLayoutEffect(() => {
@@ -228,20 +192,6 @@ export function useChatComposer({
       resetInputLayerHeight();
     }
   }, [inputMessage, messageInputRef, resetInputLayerHeight, skipNextInputLayoutSyncRef, syncInputLayerLayout]);
-
-  // Emoji restore keyboard effect
-  useEffect(() => {
-    if (emojiPickerPosition) return;
-    if (restoreKeyboardAfterEmojiCloseRef.current) {
-      restoreKeyboardAfterEmojiCloseRef.current = false;
-      requestAnimationFrame(() => {
-        messageInputRef.current?.focus();
-        keyboardWasOpenBeforeEmojiRef.current = false;
-      });
-      return;
-    }
-    keyboardWasOpenBeforeEmojiRef.current = false;
-  }, [emojiPickerPosition, messageInputRef]);
 
   // Click outside to close menus and pickers
   useEffect(() => {

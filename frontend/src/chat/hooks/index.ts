@@ -8,6 +8,8 @@ export * from './useChatMessages';
 export * from './useChatWebSocket';
 export * from './useChatOverlayGuard';
 export * from './useChatComposer';
+export * from './useChatDrafts';
+export * from './useChatEmojiPicker';
 export * from './useChatReactions';
 export * from './useChatSelection';
 export * from './useChatMessageNavigation';
