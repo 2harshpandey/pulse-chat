@@ -1,10 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import type { Message, Gif } from '../types';
+import type { Message } from '../types';
 import {
-  PHOTO_LIGHTBOX_MIN_SCALE,
-  PHOTO_LIGHTBOX_MAX_SCALE,
-  PHOTO_LIGHTBOX_STEP,
-  PHOTO_LIGHTBOX_WHEEL_SENSITIVITY,
   MAX_LOADED_MEDIA_TRACKING,
   getInputDraftKey,
 } from '../constants';
@@ -12,12 +8,12 @@ import {
   sanitizeMediaUrl,
   fetchBlobWithProgress,
   chooseReadableFilename,
-  sanitizeFilename,
   getMediaCacheLookupKey,
-  revokeBlobUrl,
 } from '../utils';
 import { getCachedMediaBlob, setCachedMediaBlob } from '../../mediaCache';
 import { transferManager } from '../TransferManager';
+import { useChatLightbox } from './useChatLightbox';
+import { useChatGifPicker } from './useChatGifPicker';
 
 export const compressImage = (file: File): Promise<File> => {
   return new Promise((resolve) => {
@@ -99,53 +95,24 @@ export function useChatMedia({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const addFileInputRef = useRef<HTMLInputElement>(null);
   const previewCaptionInputRef = useRef<HTMLInputElement>(null);
-
-  // Drag and Drop
   const dragCounterRef = useRef(0);
   const [isDragging, setIsDragging] = useState(false);
 
-  // GIF Picker
-  const [stagedGif, setStagedGif] = useState<Gif | null>(null);
-  const [showGifPicker, setShowGifPicker] = useState(false);
-  const [gifResults, setGifResults] = useState<Gif[]>([]);
-  const [gifSearchTerm, setGifSearchTerm] = useState('');
-  const [gifError, setGifError] = useState('');
-  const [gifFetchKey, setGifFetchKey] = useState(0);
-  const [isLoadingGifs, setIsLoadingGifs] = useState(false);
-
-  const gifPickerRef = useRef<HTMLDivElement>(null!);
-  const gifSearchInputRef = useRef<HTMLInputElement>(null);
-  const gifPickerOpenedAtRef = useRef<number>(0);
-  const keyboardWasOpenBeforeGifRef = useRef<boolean>(false);
-
-  // Lightbox
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
-  const [lightboxTransform, setLightboxTransform] = useState<{ scale: number; x: number; y: number }>({
-    scale: PHOTO_LIGHTBOX_MIN_SCALE,
-    x: 0,
-    y: 0,
+  // Sub-hook: GIF Picker
+  const gifPicker = useChatGifPicker({
+    apiBase,
+    setPresenceActivity,
+    messageInputRef,
+    isDesktopInteraction,
+    onGifSelectCallback: () => {
+      setStagedFile(null);
+      setStagedFiles([]);
+      setShowFilePreview(false);
+    },
   });
-  const [lightboxNaturalSize, setLightboxNaturalSize] = useState<{ width: number; height: number } | null>(null);
-  const [isLightboxInteracting, setIsLightboxInteracting] = useState(false);
 
-  const lightboxFrameRef = useRef<HTMLDivElement>(null);
-  const lightboxImageRef = useRef<HTMLImageElement>(null);
-  const lightboxTransformRef = useRef(lightboxTransform);
-  const lightboxPointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
-  const lightboxDragRef = useRef<{
-    pointerId: number;
-    startX: number;
-    startY: number;
-    startOffsetX: number;
-    startOffsetY: number;
-  } | null>(null);
-  const lightboxPinchRef = useRef<{
-    startDistance: number;
-    startScale: number;
-    focalImageX: number;
-    focalImageY: number;
-  } | null>(null);
-  const lastLightboxTapRef = useRef<number>(0);
+  // Sub-hook: Lightbox
+  const lightbox = useChatLightbox();
 
   // Media Loading & Hydration
   const [loadedMediaMessageIds, setLoadedMediaMessageIds] = useState<string[]>([]);
@@ -156,8 +123,6 @@ export function useChatMedia({
   const mediaLoadInFlightRef = useRef<Set<string>>(new Set());
   const mediaBlobUrlMapRef = useRef<Map<string, string>>(new Map());
   const mediaCacheHydrationInFlightRef = useRef<Set<string>>(new Set());
-  const downloadInFlightRef = useRef<Set<string>>(new Set());
-  const downloadAbortControllersRef = useRef(new Map<string, AbortController>());
   const mediaLoadAbortControllersRef = useRef(new Map<string, AbortController>());
   const isNativeFilePickerOpenRef = useRef(false);
 
@@ -199,32 +164,41 @@ export function useChatMedia({
   }, [markNativeFilePickerClosed]);
 
   // Stage files helper
-  const stageFilesForPreview = useCallback(async (files: File[]) => {
-    if (files.length === 0) return;
-    const carriedCaption = inputMessage;
-    setPreMediaDraft(carriedCaption);
+  const stageFilesForPreview = useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) return;
+      const carriedCaption = inputMessage;
+      setPreMediaDraft(carriedCaption);
 
-    const compressedFiles = await Promise.all(files.map(compressImage));
-    setStagedFiles(compressedFiles);
-    setPreviewActiveIndex(0);
-    setPreviewCaption(carriedCaption);
-    if (carriedCaption) {
-      setInputMessage('');
-      localStorage.removeItem(getInputDraftKey(userId));
-      resetInputLayerHeight();
-    }
-    setShowFilePreview(true);
-    setStagedGif(null);
-  }, [inputMessage, resetInputLayerHeight, setInputMessage, userId]);
+      const compressedFiles = await Promise.all(files.map(compressImage));
+      setStagedFiles(compressedFiles);
+      setPreviewActiveIndex(0);
+      setPreviewCaption(carriedCaption);
+      if (carriedCaption) {
+        setInputMessage('');
+        localStorage.removeItem(getInputDraftKey(userId));
+        resetInputLayerHeight();
+      }
+      setShowFilePreview(true);
+      gifPicker.setStagedGif(null);
+    },
+    [inputMessage, resetInputLayerHeight, setInputMessage, userId, gifPicker]
+  );
 
   const closeFilePreviewAndRestoreDraft = useCallback(() => {
     setShowFilePreview(false);
     setStagedFiles([]);
-    setPreviewCaption('');
+    setStagedFile(null);
     setPreviewActiveIndex(0);
-    setInputMessage(preMediaDraft);
-    setPreMediaDraft('');
-  }, [preMediaDraft, setInputMessage]);
+    setIsDiscardConfirmationVisible(false);
+
+    if (preMediaDraft) {
+      setInputMessage(preMediaDraft);
+      localStorage.setItem(getInputDraftKey(userId), preMediaDraft);
+      setPreMediaDraft('');
+    }
+    setPreviewCaption('');
+  }, [preMediaDraft, setInputMessage, userId]);
 
   const handleRequestCloseFilePreview = useCallback(() => {
     if (stagedFiles.length > 0 || previewCaption) {
@@ -233,102 +207,6 @@ export function useChatMedia({
       closeFilePreviewAndRestoreDraft();
     }
   }, [stagedFiles.length, previewCaption, closeFilePreviewAndRestoreDraft]);
-
-  // GIF Picker effects
-  useEffect(() => {
-    if (!showGifPicker) return;
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-
-    const doFetch = async () => {
-      setIsLoadingGifs(true);
-      setGifError('');
-      try {
-        const q = gifSearchTerm.trim();
-        const url = q
-          ? `${apiBase}/api/gifs/search?q=${encodeURIComponent(q)}`
-          : `${apiBase}/api/gifs/trending`;
-
-        const res = await fetch(url);
-        if (!res.ok) {
-          const errBody = await res.json().catch(() => ({}));
-          throw new Error(errBody?.error || `Failed to fetch GIFs (HTTP ${res.status})`);
-        }
-        const data = await res.json();
-        if (cancelled) return;
-        setGifResults(data || []);
-      } catch (err: any) {
-        if (cancelled) return;
-        console.error('GIF fetch error', err);
-        setGifError(err.message || 'Failed to load GIFs');
-        setGifResults([]);
-      } finally {
-        if (!cancelled) setIsLoadingGifs(false);
-      }
-    };
-
-    timer = setTimeout(doFetch, gifSearchTerm.trim() ? 300 : 0);
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
-  }, [showGifPicker, gifSearchTerm, gifFetchKey, apiBase]);
-
-  const setPresenceActivityRef = useRef(setPresenceActivity);
-  useEffect(() => {
-    setPresenceActivityRef.current = setPresenceActivity;
-  }, [setPresenceActivity]);
-
-  const prevShowGifPickerRef = useRef(showGifPicker);
-
-  useEffect(() => {
-    if (showGifPicker) {
-      setPresenceActivityRef.current('gif_selecting');
-    } else if (prevShowGifPickerRef.current) {
-      setGifSearchTerm('');
-      setGifResults((prev) => (prev.length > 0 ? [] : prev));
-      setGifError('');
-      setGifFetchKey(0);
-      setIsLoadingGifs(false);
-      setPresenceActivityRef.current(null);
-      if (keyboardWasOpenBeforeGifRef.current) {
-        messageInputRef.current?.focus();
-        keyboardWasOpenBeforeGifRef.current = false;
-      }
-    }
-    prevShowGifPickerRef.current = showGifPicker;
-  }, [showGifPicker, messageInputRef]);
-
-  useEffect(() => {
-    return () => {
-      if (prevShowGifPickerRef.current) {
-        setPresenceActivityRef.current(null);
-      }
-    };
-  }, []);
-
-  const openGifPicker = useCallback(() => {
-    setGifSearchTerm('');
-    setGifResults([]);
-    setGifError('');
-    setShowGifPicker(true);
-  }, []);
-
-  const closeGifPicker = useCallback(() => {
-    setShowGifPicker(false);
-    setGifSearchTerm('');
-    setGifResults([]);
-    setGifError('');
-    setIsLoadingGifs(false);
-  }, []);
-
-  const handleGifSelect = useCallback((gif: Gif) => {
-    setStagedGif(gif);
-    setStagedFile(null);
-    setStagedFiles([]);
-    setShowFilePreview(false);
-    closeGifPicker();
-  }, [closeGifPicker]);
 
   // Drag and drop overlay
   useEffect(() => {
@@ -376,7 +254,7 @@ export function useChatMedia({
     };
   }, [stageFilesForPreview]);
 
-  // Desktop typing inside preview caption or GIF search
+  // Desktop typing inside preview caption
   useEffect(() => {
     if (!showFilePreview || stagedFiles.length === 0 || !isDesktopInteraction) return;
     requestAnimationFrame(() => {
@@ -387,191 +265,6 @@ export function useChatMedia({
       input.setSelectionRange(end, end);
     });
   }, [isDesktopInteraction, showFilePreview, stagedFiles.length]);
-
-  useEffect(() => {
-    if (!showGifPicker || !isDesktopInteraction) return;
-    requestAnimationFrame(() => {
-      const input = gifSearchInputRef.current;
-      if (!input) return;
-      input.focus();
-      const end = input.value.length;
-      input.setSelectionRange(end, end);
-    });
-  }, [isDesktopInteraction, showGifPicker]);
-
-  // Lightbox transforms & gestures
-  useEffect(() => {
-    lightboxTransformRef.current = lightboxTransform;
-  }, [lightboxTransform]);
-
-  const clampLightboxOffset = useCallback(
-    (scale: number, x: number, y: number) => {
-      const frame = lightboxFrameRef.current;
-      const natural = lightboxNaturalSize;
-      if (!frame || !natural || natural.width <= 0 || natural.height <= 0) {
-        return { x, y };
-      }
-      const frameWidth = frame.clientWidth;
-      const frameHeight = frame.clientHeight;
-      if (!frameWidth || !frameHeight) return { x, y };
-
-      const fitScale = Math.min(frameWidth / natural.width, frameHeight / natural.height);
-      if (!Number.isFinite(fitScale) || fitScale <= 0) return { x, y };
-
-      const displayedWidth = natural.width * fitScale * scale;
-      const displayedHeight = natural.height * fitScale * scale;
-      const maxX = Math.max(0, (displayedWidth - frameWidth) / 2);
-      const maxY = Math.max(0, (displayedHeight - frameHeight) / 2);
-
-      return {
-        x: Math.min(maxX, Math.max(-maxX, x)),
-        y: Math.min(maxY, Math.max(-maxY, y)),
-      };
-    },
-    [lightboxNaturalSize]
-  );
-
-  const openLightbox = useCallback((url: string) => {
-    setLightboxTransform({ scale: PHOTO_LIGHTBOX_MIN_SCALE, x: 0, y: 0 });
-    setLightboxUrl(url);
-  }, []);
-
-  const closeLightbox = useCallback(() => {
-    setLightboxUrl(null);
-  }, []);
-
-  const canZoomOutLightbox = lightboxTransform.scale > PHOTO_LIGHTBOX_MIN_SCALE + 0.001;
-  const canZoomInLightbox = lightboxTransform.scale < PHOTO_LIGHTBOX_MAX_SCALE - 0.001;
-
-  const handleLightboxZoomIn = useCallback(
-    (e: React.MouseEvent<HTMLButtonElement>) => {
-      e.stopPropagation();
-      setLightboxTransform((prev) => {
-        const nextScale = Math.min(PHOTO_LIGHTBOX_MAX_SCALE, prev.scale + PHOTO_LIGHTBOX_STEP);
-        const nextOffset = clampLightboxOffset(nextScale, prev.x, prev.y);
-        return { scale: nextScale, ...nextOffset };
-      });
-    },
-    [clampLightboxOffset]
-  );
-
-  const handleLightboxZoomOut = useCallback(
-    (e: React.MouseEvent<HTMLButtonElement>) => {
-      e.stopPropagation();
-      setLightboxTransform((prev) => {
-        const nextScale = Math.max(PHOTO_LIGHTBOX_MIN_SCALE, prev.scale - PHOTO_LIGHTBOX_STEP);
-        const nextOffset = clampLightboxOffset(nextScale, prev.x, prev.y);
-        return { scale: nextScale, ...nextOffset };
-      });
-    },
-    [clampLightboxOffset]
-  );
-
-  const handleLightboxWheel = useCallback(
-    (e: React.WheelEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const delta = -e.deltaY * PHOTO_LIGHTBOX_WHEEL_SENSITIVITY;
-      setLightboxTransform((prev) => {
-        const nextScale = Math.min(
-          PHOTO_LIGHTBOX_MAX_SCALE,
-          Math.max(PHOTO_LIGHTBOX_MIN_SCALE, prev.scale + delta)
-        );
-        const nextOffset = clampLightboxOffset(nextScale, prev.x, prev.y);
-        return { scale: nextScale, ...nextOffset };
-      });
-    },
-    [clampLightboxOffset]
-  );
-
-  const handleLightboxPointerDown = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      lightboxPointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      setIsLightboxInteracting(true);
-
-      const pointers = Array.from(lightboxPointersRef.current.values());
-      if (pointers.length === 2) {
-        const [p1, p2] = pointers;
-        const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-        lightboxPinchRef.current = {
-          startDistance: dist,
-          startScale: lightboxTransformRef.current.scale,
-          focalImageX: (p1.x + p2.x) / 2,
-          focalImageY: (p1.y + p2.y) / 2,
-        };
-        lightboxDragRef.current = null;
-      } else if (pointers.length === 1) {
-        lightboxDragRef.current = {
-          pointerId: e.pointerId,
-          startX: e.clientX,
-          startY: e.clientY,
-          startOffsetX: lightboxTransformRef.current.x,
-          startOffsetY: lightboxTransformRef.current.y,
-        };
-      }
-    },
-    []
-  );
-
-  const handleLightboxPointerMove = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (!lightboxPointersRef.current.has(e.pointerId)) return;
-      lightboxPointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-
-      const pointers = Array.from(lightboxPointersRef.current.values());
-      if (pointers.length === 2 && lightboxPinchRef.current) {
-        const [p1, p2] = pointers;
-        const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-        const pinch = lightboxPinchRef.current;
-        const scaleFactor = dist / pinch.startDistance;
-        const nextScale = Math.min(
-          PHOTO_LIGHTBOX_MAX_SCALE,
-          Math.max(PHOTO_LIGHTBOX_MIN_SCALE, pinch.startScale * scaleFactor)
-        );
-        const offset = clampLightboxOffset(
-          nextScale,
-          lightboxTransformRef.current.x,
-          lightboxTransformRef.current.y
-        );
-        setLightboxTransform({ scale: nextScale, ...offset });
-      } else if (pointers.length === 1 && lightboxDragRef.current) {
-        const drag = lightboxDragRef.current;
-        const dx = e.clientX - drag.startX;
-        const dy = e.clientY - drag.startY;
-        const offset = clampLightboxOffset(
-          lightboxTransformRef.current.scale,
-          drag.startOffsetX + dx,
-          drag.startOffsetY + dy
-        );
-        setLightboxTransform((prev) => ({ ...prev, ...offset }));
-      }
-    },
-    [clampLightboxOffset]
-  );
-
-  const handleLightboxPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    lightboxPointersRef.current.delete(e.pointerId);
-    if (lightboxPointersRef.current.size === 0) {
-      setIsLightboxInteracting(false);
-      lightboxDragRef.current = null;
-      lightboxPinchRef.current = null;
-    } else if (lightboxPointersRef.current.size === 1) {
-      const [remainingId, point] = Array.from(lightboxPointersRef.current.entries())[0];
-      lightboxDragRef.current = {
-        pointerId: remainingId,
-        startX: point.x,
-        startY: point.y,
-        startOffsetX: lightboxTransformRef.current.x,
-        startOffsetY: lightboxTransformRef.current.y,
-      };
-      lightboxPinchRef.current = null;
-    }
-  }, []);
-
-  const handleLightboxImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
-    const img = e.currentTarget;
-    setLightboxNaturalSize({ width: img.naturalWidth, height: img.naturalHeight });
-  }, []);
 
   // Sync loaded media src and cleanup
   useEffect(() => {
@@ -841,29 +534,45 @@ export function useChatMedia({
     addFileInputRef,
     previewCaptionInputRef,
     isDragging,
-    stagedGif,
-    setStagedGif,
-    showGifPicker,
-    setShowGifPicker,
-    gifResults,
-    gifSearchTerm,
-    setGifSearchTerm,
-    gifError,
-    setGifError,
-    setGifFetchKey,
-    isLoadingGifs,
-    gifPickerRef,
-    gifSearchInputRef,
-    gifPickerOpenedAtRef,
-    keyboardWasOpenBeforeGifRef,
-    lightboxUrl,
-    setLightboxUrl,
-    lightboxTransform,
-    isLightboxInteracting,
-    canZoomInLightbox,
-    canZoomOutLightbox,
-    lightboxFrameRef,
-    lightboxImageRef,
+    // GIF Picker delegation
+    stagedGif: gifPicker.stagedGif,
+    setStagedGif: gifPicker.setStagedGif,
+    showGifPicker: gifPicker.showGifPicker,
+    setShowGifPicker: gifPicker.setShowGifPicker,
+    gifResults: gifPicker.gifResults,
+    gifSearchTerm: gifPicker.gifSearchTerm,
+    setGifSearchTerm: gifPicker.setGifSearchTerm,
+    gifError: gifPicker.gifError,
+    setGifError: gifPicker.setGifError,
+    setGifFetchKey: gifPicker.setGifFetchKey,
+    isLoadingGifs: gifPicker.isLoadingGifs,
+    gifPickerRef: gifPicker.gifPickerRef,
+    gifSearchInputRef: gifPicker.gifSearchInputRef,
+    gifPickerOpenedAtRef: gifPicker.gifPickerOpenedAtRef,
+    keyboardWasOpenBeforeGifRef: gifPicker.keyboardWasOpenBeforeGifRef,
+    openGifPicker: gifPicker.openGifPicker,
+    closeGifPicker: gifPicker.closeGifPicker,
+    handleGifSelect: gifPicker.handleGifSelect,
+    // Lightbox delegation
+    lightboxUrl: lightbox.lightboxUrl,
+    setLightboxUrl: lightbox.setLightboxUrl,
+    lightboxTransform: lightbox.lightboxTransform,
+    isLightboxInteracting: lightbox.isLightboxInteracting,
+    canZoomInLightbox: lightbox.canZoomInLightbox,
+    canZoomOutLightbox: lightbox.canZoomOutLightbox,
+    lightboxFrameRef: lightbox.lightboxFrameRef,
+    lightboxImageRef: lightbox.lightboxImageRef,
+    openLightbox: lightbox.openLightbox,
+    closeLightbox: lightbox.closeLightbox,
+    handleLightboxZoomIn: lightbox.handleLightboxZoomIn,
+    handleLightboxZoomOut: lightbox.handleLightboxZoomOut,
+    handleLightboxWheel: lightbox.handleLightboxWheel,
+    handleLightboxPointerDown: lightbox.handleLightboxPointerDown,
+    handleLightboxPointerMove: lightbox.handleLightboxPointerMove,
+    handleLightboxPointerUp: lightbox.handleLightboxPointerUp,
+    handleLightboxPointerCancel: lightbox.handleLightboxPointerCancel,
+    handleLightboxImageLoad: lightbox.handleLightboxImageLoad,
+    // Media loading and transfers
     loadedMediaMessageIds,
     setLoadedMediaMessageIds,
     mediaLoadProgressById,
@@ -875,19 +584,6 @@ export function useChatMedia({
     stageFilesForPreview,
     closeFilePreviewAndRestoreDraft,
     handleRequestCloseFilePreview,
-    openGifPicker,
-    closeGifPicker,
-    handleGifSelect,
-    openLightbox,
-    closeLightbox,
-    handleLightboxZoomIn,
-    handleLightboxZoomOut,
-    handleLightboxWheel,
-    handleLightboxPointerDown,
-    handleLightboxPointerMove,
-    handleLightboxPointerUp,
-    handleLightboxPointerCancel: handleLightboxPointerUp,
-    handleLightboxImageLoad,
     handleRequestMediaLoad,
     handleRequestDownload,
     handleResumeUpload,

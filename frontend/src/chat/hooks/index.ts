@@ -2,6 +2,8 @@ export * from './useChatAudio';
 export * from './useChatSearch';
 export * from './useChatViewport';
 export * from './useChatMedia';
+export * from './useChatLightbox';
+export * from './useChatGifPicker';
 export * from './useChatMessages';
 export * from './useChatWebSocket';
 export * from './useChatOverlayGuard';
