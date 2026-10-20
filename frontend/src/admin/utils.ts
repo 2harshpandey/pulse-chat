@@ -24,6 +24,67 @@ export const isGiphyUrl = (url: string | undefined | null): boolean => {
   }
 };
 
+export const isGifLog = (log: any): boolean => {
+  if (!log || log.type !== 'create') return false;
+  const url = log.message?.url || '';
+  const text = log.message?.text || '';
+  const originalName = log.message?.originalName || '';
+  return (
+    isGiphyUrl(url) ||
+    text === '[GIF]' ||
+    originalName.toLowerCase().endsWith('.gif') ||
+    log.message?.type === 'gif'
+  );
+};
+
+export const isPhotoLog = (log: any): boolean => {
+  if (!log || log.type !== 'create' || isGifLog(log)) return false;
+  const msgType = log.message?.type;
+  const url = log.message?.url || '';
+  const mime = log.message?.mimeType || '';
+  const originalName = log.message?.originalName || '';
+  const text = log.message?.text || '';
+  return (
+    msgType === 'image' ||
+    mime.startsWith('image/') ||
+    /\.(jpg|jpeg|png|webp|avif|heic|bmp)($|\?)/i.test(url) ||
+    /\.(jpg|jpeg|png|webp|avif|heic|bmp)$/i.test(originalName) ||
+    /\[.*?\.(jpg|jpeg|png|webp|avif|heic|bmp)\]/i.test(text)
+  );
+};
+
+export const isVideoLog = (log: any): boolean => {
+  if (!log || log.type !== 'create') return false;
+  const msgType = log.message?.type;
+  const url = log.message?.url || '';
+  const mime = log.message?.mimeType || '';
+  const originalName = log.message?.originalName || '';
+  const text = log.message?.text || '';
+  return (
+    msgType === 'video' ||
+    mime.startsWith('video/') ||
+    /\.(mp4|webm|mov|mkv|avi)($|\?)/i.test(url) ||
+    /\.(mp4|webm|mov|mkv|avi)$/i.test(originalName) ||
+    /\[.*?\.(mp4|webm|mov|mkv|avi)\]/i.test(text)
+  );
+};
+
+export const isDocumentLog = (log: any): boolean => {
+  if (!log || log.type !== 'create' || isGifLog(log) || isPhotoLog(log) || isVideoLog(log)) return false;
+  const msgType = log.message?.type;
+  const url = log.message?.url || '';
+  const mime = log.message?.mimeType || '';
+  const originalName = log.message?.originalName || '';
+  const text = log.message?.text || '';
+  return (
+    msgType === 'file' ||
+    msgType === 'document' ||
+    Boolean(url && msgType !== 'text') ||
+    Boolean(originalName && !mime.startsWith('image/') && !mime.startsWith('video/')) ||
+    /\[.*?\.(pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|txt|html|csv)\]/i.test(text)
+  );
+};
+
 // Sanitize a server-issued ID before interpolating it into a URL path segment.
 // Our userIds are base-36 alphanumeric; MongoDB ObjectIds are 24 hex chars.
 // Stripping anything outside [a-zA-Z0-9_-] + percent-encoding prevents path traversal.

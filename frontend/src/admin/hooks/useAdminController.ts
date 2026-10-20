@@ -209,13 +209,24 @@ export function useAdminController() {
 
       // Fetch history independently
       setIsHistoryLoading(true);
-      fetch(`${apiUrl}/api/admin/history`, { headers })
+      fetch(`${apiUrl}/api/admin/history?limit=100`, { headers })
         .then((res) => (res.ok ? res.json() : []))
         .then((data) => {
-          if (Array.isArray(data)) {
+          const rawEvents = Array.isArray(data) ? data : data.events || [];
+          const hasMore = Array.isArray(data) ? data.length >= 100 : Boolean(data.hasMore);
+          const oldestCursor = Array.isArray(data)
+            ? rawEvents.length > 0
+              ? rawEvents[rawEvents.length - 1].createdAt
+              : null
+            : data.oldestCreatedAt;
+
+          if (messagesHook.filterEventType === 'All') {
             messagesHook.setHistoryLogs(
-              data.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+              rawEvents.sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
             );
+            messagesHook.setHasMoreLogs(hasMore);
+            messagesHook.setOldestLogCursor(oldestCursor);
+            messagesHook.setDisplayedLogsCount(50);
           }
         })
         .catch(() => {})
@@ -385,6 +396,9 @@ export function useAdminController() {
     setBulkDeleteVanish: messagesHook.setBulkDeleteVanish,
     displayedLogsCount: messagesHook.displayedLogsCount,
     setDisplayedLogsCount: messagesHook.setDisplayedLogsCount,
+    hasMoreLogs: messagesHook.hasMoreLogs,
+    isLoadingMoreLogs: messagesHook.isLoadingMoreLogs,
+    loadMoreLogs: messagesHook.loadMoreLogs,
     pinTargetId: messagesHook.pinTargetId,
     showPinModal: messagesHook.showPinModal,
     setShowPinModal: messagesHook.setShowPinModal,

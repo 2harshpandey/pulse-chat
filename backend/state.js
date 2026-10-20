@@ -12,6 +12,7 @@ class RoomState {
     this.adminClients = new Set();      // Set<WebSocket>
     this.pendingDisconnects = new Map(); // Map<userId, timerId>
     this.filePickerPresenceGrace = new Map(); // Map<userId, expiresAtMs>
+    this.filePickerPresenceByUsername = new Map(); // Map<usernameLower, { userId, ip, expiresAt }>
     this.loggedInUsers = new Map();     // Map<userId, { userId, username, loginTime, ip, userAgent, viaTempLink? }>
     this.pinnedMessages = [];           // Array of pinned message objects
     this.pinnedMessagesLoaded = false;  // Boolean
@@ -49,6 +50,13 @@ const pruneStaleState = () => {
     for (const [userId, expiresAt] of state.filePickerPresenceGrace.entries()) {
       if (expiresAt < now) {
         state.filePickerPresenceGrace.delete(userId);
+      }
+    }
+    if (state.filePickerPresenceByUsername) {
+      for (const [usernameKey, info] of state.filePickerPresenceByUsername.entries()) {
+        if (!info || info.expiresAt < now) {
+          state.filePickerPresenceByUsername.delete(usernameKey);
+        }
       }
     }
 

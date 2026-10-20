@@ -33,7 +33,7 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
   const ip = extractIp(req);
   const userAgent = req.headers['user-agent'] || '';
 
-  const { onlineUsers, loggedInUsers } = getRoomState(roomId);
+  const { onlineUsers, loggedInUsers, pendingDisconnects, filePickerPresenceByUsername } = getRoomState(roomId);
 
   // Check if user is blocked
   const blockCheck = await isUserBlocked(roomId, userId, ip, userAgent, fingerprint);
@@ -79,12 +79,28 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
     // If the client sends a username, verify it is not already in use.
     if (username) {
       const normalised = username.trim().toLowerCase();
-      const taken = Array.from(onlineUsers.values()).some(
-        u => u.username.trim().toLowerCase() === normalised && u.userId !== userId
+      const takenUser = Array.from(onlineUsers.values()).find(
+        u => u.username && u.username.trim().toLowerCase() === normalised && u.userId !== userId
       );
-      if (taken) {
-        await AuditLog.create({ roomId, type: 'join_failed_username_taken', details: { userId, username }, ip, userAgent });
-        return res.status(409).json({ success: false, error: 'That username is already in use. Please choose a different one.' });
+      if (takenUser) {
+        const isPending = pendingDisconnects?.has(takenUser.userId);
+        const hasPickerGrace =
+          filePickerPresenceByUsername?.has(normalised) &&
+          filePickerPresenceByUsername.get(normalised).expiresAt > Date.now();
+        const existingFp = userFingerprints.get(takenUser.userId);
+        const sameIp = existingFp && existingFp.ips && existingFp.ips.has(ip);
+
+        if (isPending || hasPickerGrace || sameIp) {
+          logger.info(`Allowing re-auth for '${username}' (migrating userId from ${takenUser.userId} to ${userId})`);
+          if (isPending) {
+            clearTimeout(pendingDisconnects.get(takenUser.userId));
+            pendingDisconnects.delete(takenUser.userId);
+          }
+          onlineUsers.delete(takenUser.userId);
+        } else {
+          await AuditLog.create({ roomId, type: 'join_failed_username_taken', details: { userId, username }, ip, userAgent });
+          return res.status(409).json({ success: false, error: 'That username is already in use. Please choose a different one.' });
+        }
       }
     }
 
@@ -138,7 +154,7 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
   }
 
   const roomId = tempLink.roomId;
-  const { onlineUsers, loggedInUsers } = getRoomState(roomId);
+  const { onlineUsers, loggedInUsers, pendingDisconnects, filePickerPresenceByUsername } = getRoomState(roomId);
 
   // Check if user is blocked
   const blockCheck = await isUserBlocked(roomId, userId, ip, userAgent, fingerprint);
@@ -164,11 +180,27 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
 
   // Check username availability
   const normalised = username.trim().toLowerCase();
-  const taken = Array.from(onlineUsers.values()).some(
-    u => u.username.trim().toLowerCase() === normalised && u.userId !== userId
+  const takenUser = Array.from(onlineUsers.values()).find(
+    u => u.username && u.username.trim().toLowerCase() === normalised && u.userId !== userId
   );
-  if (taken) {
-    return res.status(409).json({ success: false, error: 'That username is already in use. Please choose a different one.' });
+  if (takenUser) {
+    const isPending = pendingDisconnects?.has(takenUser.userId);
+    const hasPickerGrace =
+      filePickerPresenceByUsername?.has(normalised) &&
+      filePickerPresenceByUsername.get(normalised).expiresAt > Date.now();
+    const existingFp = userFingerprints.get(takenUser.userId);
+    const sameIp = existingFp && existingFp.ips && existingFp.ips.has(ip);
+
+    if (isPending || hasPickerGrace || sameIp) {
+      logger.info(`Allowing temp-link re-auth for '${username}' (migrating userId from ${takenUser.userId} to ${userId})`);
+      if (isPending) {
+        clearTimeout(pendingDisconnects.get(takenUser.userId));
+        pendingDisconnects.delete(takenUser.userId);
+      }
+      onlineUsers.delete(takenUser.userId);
+    } else {
+      return res.status(409).json({ success: false, error: 'That username is already in use. Please choose a different one.' });
+    }
   }
 
   // Store fingerprint data

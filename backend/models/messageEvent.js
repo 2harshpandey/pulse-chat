@@ -9,7 +9,7 @@ const messageEventSchema = new mongoose.Schema({
   type: {
     type: String,
     required: true,
-    enum: ['create', 'edit', 'delete_everyone', 'upload'],
+    enum: ['create', 'edit', 'delete_everyone', 'delete', 'upload'],
   },
   messageId: { type: String },
   deletedContent: { type: mongoose.Schema.Types.Mixed },

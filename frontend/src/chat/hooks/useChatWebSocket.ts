@@ -214,16 +214,24 @@ export function useChatWebSocket({
           lastPingAtRef.current = Date.now();
           return;
         }
-        if (messageData.type === 'username_taken' || messageData.type === 'force_logout') {
-          sessionStorage.setItem(
-            'authError',
-            messageData.message || (messageData.type === 'username_taken' ? 'That username is already in use.' : 'You have been logged out.')
-          );
+        if (messageData.type === 'force_logout') {
+          sessionStorage.setItem('authError', messageData.message || 'You have been logged out.');
           if (overlayGuardPushed.current) {
             clearOverlayGuardHistoryEntry();
             overlayGuardPushed.current = false;
           }
           logout();
+          return;
+        }
+        if (messageData.type === 'username_taken') {
+          console.warn('Username collision during reconnect — retrying session in 2.5s');
+          if (ws.current) {
+            ws.current.close();
+          }
+          if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+          reconnectTimerRef.current = setTimeout(() => {
+            connect();
+          }, 2500);
           return;
         }
         if (messageData.type === 'pinned_messages_update') {
@@ -416,7 +424,9 @@ export function useChatWebSocket({
           reconnectTimerRef.current = null;
         }
         reconnectDelayRef.current = 600;
-        connect();
+        reconnectTimerRef.current = setTimeout(() => {
+          connect();
+        }, 200);
       }
     };
 

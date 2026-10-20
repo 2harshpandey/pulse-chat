@@ -354,6 +354,7 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
 
                 <PlusMenuItem
                   onClick={() => {
+                    onTogglePlusMenu();
                     onNotifyNativeFilePickerOpen();
                     fileInputRef?.current?.click();
                   }}

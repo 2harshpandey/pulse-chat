@@ -280,6 +280,10 @@ const handlePinMessage = async ({ ws, parsedMessage, broadcastPinnedMessages, lo
     if (state.pinnedMessages.length >= 4 && replaceOldest) {
       const oldestMsg = state.pinnedMessages[0];
       await Message.updateOne({ id: oldestMsg.id }, { $set: { pinned: null } });
+      await MessageEvent.updateMany(
+        { roomId, $or: [{ messageId: oldestMsg.id }, { 'message.id': oldestMsg.id }] },
+        { $set: { 'message.pinned': null } }
+      );
       state.pinnedMessages.shift();
     }
 
@@ -288,6 +292,10 @@ const handlePinMessage = async ({ ws, parsedMessage, broadcastPinnedMessages, lo
     const pinnedObj = { pinnedAt, expiresAt };
 
     await Message.updateOne({ id: messageId }, { $set: { pinned: pinnedObj } });
+    await MessageEvent.updateMany(
+      { roomId, $or: [{ messageId }, { 'message.id': messageId }, { messageId: targetMsgId }, { 'message.id': targetMsgId }] },
+      { $set: { 'message.pinned': pinnedObj } }
+    );
     
     const updatedMsg = { ...msg, pinned: pinnedObj };
     state.pinnedMessages.push(toClientMessage(updatedMsg));
@@ -319,6 +327,10 @@ const handleUnpinMessage = async ({ ws, parsedMessage, broadcastPinnedMessages }
     await Message.updateOne(
       { $or: [{ id: targetMsgId }, ...(mongoose.Types.ObjectId.isValid(targetMsgId) ? [{ _id: targetMsgId }] : [])] },
       { $set: { pinned: null } }
+    );
+    await MessageEvent.updateMany(
+      { roomId, $or: [{ messageId: targetMsgId }, { 'message.id': targetMsgId }, { messageId }, { 'message.id': messageId }] },
+      { $set: { 'message.pinned': null } }
     );
     const state = getRoomState(roomId);
     state.pinnedMessages = state.pinnedMessages.filter(m => m.id !== targetMsgId && m.id !== messageId);
@@ -357,17 +369,34 @@ const handleDeleteForEveryone = async ({ ws, parsedMessage, wss, broadcastToAdmi
       { new: true }
     );
 
-    User.findOne({ roomId, userId: ws.userId }).then(user => {
+    User.findOne({ roomId, userId: ws.userId }).then(async (user) => {
       const username = user ? user.username : 'Unknown';
       const event = new MessageEvent({
         roomId,
-        type: 'delete',
+        type: 'delete_everyone',
         messageId,
+        deletedContent: {
+          text: originalMessage.text,
+          url: originalMessage.url,
+          originalName: originalMessage.originalName,
+          type: originalMessage.type,
+        },
         userId: ws.userId,
         username,
-        timestamp: new Date().toISOString(),
+        timestamp: new Date(),
       });
-      event.save().catch(e => logger.error('Failed to save delete event:', e));
+      await event.save().catch(e => logger.error('Failed to save delete event:', e));
+
+      await MessageEvent.updateMany(
+        { roomId, $or: [{ messageId }, { 'message.id': messageId }] },
+        {
+          $set: {
+            'message.isDeleted': true,
+            'message.deletedBy': ws.userId,
+          }
+        }
+      ).catch(e => logger.error('Failed to update MessageEvent on delete:', e));
+
       broadcastToAdmins(roomId, 'history', event);
       broadcastToAdmins(roomId, 'activity', `Message (ID: ${messageId}) deleted by '${username}'.`);
     }).catch(e => logger.error('Failed to find user for delete event:', e));

@@ -71,18 +71,38 @@ const handleUserJoin = async ({
     return;
   }
 
-  // Duplicate username guard
+  // Duplicate username guard & session takeover
   const trimmedLower = username.trim().toLowerCase();
-  const usernameTaken = Array.from(wss.clients).some(
+  const roomState = getRoomState(roomId);
+  const existingPickerGrace = roomState.filePickerPresenceByUsername?.get(trimmedLower);
+  const isWithinPickerGrace = existingPickerGrace && existingPickerGrace.expiresAt > Date.now();
+
+  const conflictingClients = Array.from(wss.clients).filter(
     client =>
       client !== ws &&
       client.readyState === WebSocket.OPEN &&
       !client.isAdmin &&
       client.username &&
       client.roomId === roomId &&
-      client.username.trim().toLowerCase() === trimmedLower &&
-      client.userId !== userId   // same userId = reconnect/refresh, allow it
+      client.username.trim().toLowerCase() === trimmedLower
   );
+
+  let usernameTaken = false;
+  if (conflictingClients.length > 0) {
+    for (const client of conflictingClients) {
+      if (client.userId === userId) {
+        // Exact same user reconnecting/refreshing. Terminate older hanging socket to avoid duplicates.
+        logger.info(`Terminating older hanging socket for reconnecting user '${username}' (${userId}).`);
+        client.terminate();
+      } else if (isWithinPickerGrace || (client.clientIp === wsIp && client.isAlive === false)) {
+        // User opened native file picker on mobile, tab was killed/evicted by OS, or un-alive zombie.
+        logger.info(`Recovering file picker session for '${username}' (old userId: ${client.userId}, new userId: ${userId}).`);
+        client.terminate();
+      } else {
+        usernameTaken = true;
+      }
+    }
+  }
 
   if (usernameTaken) {
     logger.warn(`Username '${username}' rejected — already in use.`);
@@ -94,10 +114,30 @@ const handleUserJoin = async ({
     return;
   }
 
+  let reconnectedFromPending = false;
   if (pendingDisconnects.has(userId)) {
     clearTimeout(pendingDisconnects.get(userId));
     pendingDisconnects.delete(userId);
-    logger.info(`User '${username}' rejoined room ${roomId} (refresh).`);
+    reconnectedFromPending = true;
+  } else {
+    for (const [pUserId, timerId] of pendingDisconnects.entries()) {
+      const pUser = onlineUsers.get(pUserId);
+      if (pUser && pUser.username && pUser.username.trim().toLowerCase() === trimmedLower) {
+        clearTimeout(timerId);
+        pendingDisconnects.delete(pUserId);
+        onlineUsers.delete(pUserId);
+        reconnectedFromPending = true;
+        break;
+      }
+    }
+  }
+
+  if (isWithinPickerGrace) {
+    roomState.filePickerPresenceByUsername?.delete(trimmedLower);
+  }
+
+  if (reconnectedFromPending) {
+    logger.info(`User '${username}' rejoined room ${roomId} (reconnect / refresh).`);
   } else {
     logger.info(`User '${username}' joined room ${roomId}.`);
     _broadcast(roomId, {
@@ -202,12 +242,27 @@ const handleUserLogout = ({ ws, parsedMessage, broadcastToAdmins, _broadcast, _b
 const handleFilePickerOpen = ({ ws, parsedMessage }) => {
   if (ws.userId && ws.roomId) {
     const ttlMs = Math.max(10000, Math.min(Number(parsedMessage.ttlMs) || 120000, 180000));
-    getRoomState(ws.roomId).filePickerPresenceGrace.set(ws.userId, Date.now() + ttlMs);
+    const expiresAt = Date.now() + ttlMs;
+    const roomState = getRoomState(ws.roomId);
+    roomState.filePickerPresenceGrace.set(ws.userId, expiresAt);
+    if (ws.username && roomState.filePickerPresenceByUsername) {
+      roomState.filePickerPresenceByUsername.set(ws.username.trim().toLowerCase(), {
+        userId: ws.userId,
+        ip: ws.clientIp,
+        expiresAt,
+      });
+    }
   }
 };
 
 const handleFilePickerClose = ({ ws }) => {
-  if (ws.userId && ws.roomId) getRoomState(ws.roomId).filePickerPresenceGrace.delete(ws.userId);
+  if (ws.userId && ws.roomId) {
+    const roomState = getRoomState(ws.roomId);
+    roomState.filePickerPresenceGrace.delete(ws.userId);
+    if (ws.username && roomState.filePickerPresenceByUsername) {
+      roomState.filePickerPresenceByUsername.delete(ws.username.trim().toLowerCase());
+    }
+  }
 };
 
 /**

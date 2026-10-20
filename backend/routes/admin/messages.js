@@ -4,6 +4,7 @@ const Message = require('../../models/message');
 const MessageEvent = require('../../models/messageEvent');
 const AuditLog = require('../../models/auditLog');
 const Room = require('../../models/room');
+const { getRoomState } = require('../../state');
 const { adminLimiter, adminAuth } = require('../../middleware');
 
 module.exports = (wss, broadcasts) => {
@@ -68,10 +69,306 @@ module.exports = (wss, broadcasts) => {
     res.send(JSON.stringify(messages, null, 2));
   });
 
+  const syncedRooms = new Set();
+
+  const syncLegacyMessages = async (roomId) => {
+    if (syncedRooms.has(roomId)) return;
+    try {
+      const messageCount = await Message.countDocuments({ roomId });
+      if (messageCount === 0) {
+        syncedRooms.add(roomId);
+        return;
+      }
+
+      const eventCount = await MessageEvent.countDocuments({ roomId, type: 'create' });
+      if (eventCount < messageCount) {
+        const existingEvents = await MessageEvent.find({ roomId, type: 'create' }, { 'message.id': 1, messageId: 1 }).lean();
+        const existingIdSet = new Set(
+          existingEvents.map(e => e.messageId || e.message?.id).filter(Boolean)
+        );
+
+        const allMessages = await Message.find({ roomId }).lean();
+        const missingMessages = allMessages.filter(m => !existingIdSet.has(m.id));
+
+        if (missingMessages.length > 0) {
+          const docsToInsert = missingMessages.map(m => ({
+            roomId,
+            type: 'create',
+            messageId: m.id,
+            message: m,
+            userId: m.userId || m.sender || 'unknown',
+            username: m.username || 'Unknown',
+            timestamp: m.createdAt || m.timestamp || new Date(),
+            createdAt: m.createdAt || m.timestamp || new Date(),
+          }));
+          await MessageEvent.insertMany(docsToInsert, { ordered: false });
+          logger.info(`Synced ${docsToInsert.length} legacy messages into MessageEvent for room ${roomId}`);
+        }
+      }
+
+      // Synchronize any deleted messages so MessageEvent accurately reflects user deletion
+      const deletedMessages = await Message.find({ roomId, isDeleted: true }).lean();
+      if (deletedMessages.length > 0) {
+        for (const delMsg of deletedMessages) {
+          await MessageEvent.updateMany(
+            { roomId, $or: [{ messageId: delMsg.id }, { 'message.id': delMsg.id }] },
+            { $set: { 'message.isDeleted': true, 'message.deletedBy': delMsg.deletedBy || 'user' } }
+          );
+
+          const hasDelEvent = await MessageEvent.findOne({
+            roomId,
+            type: { $in: ['delete_everyone', 'delete'] },
+            $or: [{ messageId: delMsg.id }, { 'message.id': delMsg.id }]
+          }).lean();
+
+          if (!hasDelEvent) {
+            const existingCreateEvent = await MessageEvent.findOne({
+              roomId,
+              type: 'create',
+              $or: [{ messageId: delMsg.id }, { 'message.id': delMsg.id }]
+            }).lean();
+
+            await MessageEvent.create({
+              roomId,
+              type: 'delete_everyone',
+              messageId: delMsg.id,
+              userId: delMsg.deletedBy || delMsg.userId || delMsg.sender || 'unknown',
+              username: delMsg.username || delMsg.sender || 'Unknown',
+              deletedContent: {
+                text: existingCreateEvent?.message?.text || delMsg.text || 'Message deleted by user',
+                url: existingCreateEvent?.message?.url || delMsg.url,
+                originalName: existingCreateEvent?.message?.originalName || delMsg.originalName,
+                type: existingCreateEvent?.message?.type || delMsg.type,
+              },
+              timestamp: delMsg.updatedAt || delMsg.createdAt || new Date(),
+              createdAt: delMsg.updatedAt || delMsg.createdAt || new Date(),
+            });
+          }
+        }
+      }
+      syncedRooms.add(roomId);
+    } catch (err) {
+      logger.error('Error syncing legacy messages to MessageEvent:', err);
+    }
+  };
+
   router.get('/api/admin/history', adminLimiter, adminAuth, async (req, res) => {
     const roomId = req.roomId;
-    const events = await MessageEvent.find({ roomId }).sort({ createdAt: -1 }).limit(500);
-    res.json(events);
+
+    if (!req.query.before) {
+      await syncLegacyMessages(roomId);
+    }
+
+    const query = { roomId };
+    if (req.query.before) {
+      const beforeDate = new Date(req.query.before);
+      if (!Number.isNaN(beforeDate.getTime())) {
+        query.createdAt = { $lt: beforeDate };
+      }
+    }
+
+    const { type, messageId, user, content } = req.query;
+
+    if (type) {
+      const typeLower = String(type).toLowerCase().trim();
+      if (typeLower === 'photo') {
+        query.type = 'create';
+        query.$or = [
+          { 'message.type': 'image' },
+          { 'message.mimeType': /^image\//i },
+          { 'message.url': /\.(jpg|jpeg|png|webp|avif|heic|bmp)($|\?)/i },
+          { 'message.originalName': /\.(jpg|jpeg|png|webp|avif|heic|bmp)$/i },
+          { 'message.text': /\[.*?\.(jpg|jpeg|png|webp|avif|heic|bmp)\]/i },
+        ];
+      } else if (typeLower === 'video') {
+        query.type = 'create';
+        query.$or = [
+          { 'message.type': 'video' },
+          { 'message.mimeType': /^video\//i },
+          { 'message.url': /\.(mp4|webm|mov|mkv|avi)($|\?)/i },
+          { 'message.originalName': /\.(mp4|webm|mov|mkv|avi)$/i },
+          { 'message.text': /\[.*?\.(mp4|webm|mov|mkv|avi)\]/i },
+        ];
+      } else if (typeLower === 'gif') {
+        query.type = 'create';
+        query.$or = [
+          { 'message.type': 'gif' },
+          { 'message.url': /giphy\.com/i },
+          { 'message.text': '[GIF]' },
+          { 'message.originalName': /\.gif$/i },
+        ];
+      } else if (typeLower === 'document') {
+        query.type = 'create';
+        query.$or = [
+          { 'message.type': { $in: ['file', 'document'] } },
+          { 'message.url': /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|txt|html|csv)($|\?)/i },
+          { 'message.originalName': /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|txt|html|csv)$/i },
+          { 'message.text': /\[.*?\.(pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|txt|html|csv)\]/i },
+        ];
+      } else if (typeLower === 'pinned') {
+        const roomState = getRoomState(roomId);
+        const statePins = (roomState && Array.isArray(roomState.pinnedMessages)) ? roomState.pinnedMessages : [];
+
+        const dbPinned = await Message.find({
+          roomId,
+          'pinned.pinnedAt': { $ne: null }
+        }).sort({ 'pinned.pinnedAt': -1 }).lean();
+
+        const allPinnedMap = new Map();
+        for (const msg of dbPinned) {
+          if (msg && msg.id) {
+            allPinnedMap.set(msg.id, msg);
+          }
+        }
+        for (const msg of statePins) {
+          if (msg && msg.id && !allPinnedMap.has(msg.id)) {
+            allPinnedMap.set(msg.id, msg);
+          }
+        }
+
+        const pinnedIds = Array.from(allPinnedMap.keys());
+        if (pinnedIds.length === 0) {
+          return res.json({
+            events: [],
+            hasMore: false,
+            oldestCreatedAt: null,
+          });
+        }
+
+        const existingEvents = await MessageEvent.find({
+          roomId,
+          type: 'create',
+          $or: [
+            { messageId: { $in: pinnedIds } },
+            { 'message.id': { $in: pinnedIds } }
+          ]
+        }).sort({ createdAt: -1 }).lean();
+
+        const foundEventMsgIds = new Set(
+          existingEvents.map(e => e.messageId || e.message?.id).filter(Boolean)
+        );
+
+        const combinedEvents = [...existingEvents];
+        for (const [id, msg] of allPinnedMap.entries()) {
+          if (!foundEventMsgIds.has(id)) {
+            combinedEvents.push({
+              _id: msg._id || id,
+              roomId: msg.roomId || roomId,
+              type: 'create',
+              messageId: msg.id || id,
+              message: msg,
+              userId: msg.userId || msg.sender || 'unknown',
+              username: msg.username || 'Unknown',
+              timestamp: msg.createdAt || msg.timestamp || new Date(),
+              createdAt: msg.createdAt || msg.timestamp || new Date(),
+            });
+          }
+        }
+
+        combinedEvents.forEach(evt => {
+          const pinData = allPinnedMap.get(evt.messageId || evt.message?.id);
+          if (pinData && pinData.pinned) {
+            if (!evt.message) evt.message = {};
+            evt.message.pinned = pinData.pinned;
+          }
+        });
+
+        let finalEvents = combinedEvents;
+        if (messageId) {
+          const mIdLower = String(messageId).toLowerCase().trim();
+          finalEvents = finalEvents.filter(e => (e.messageId || e.message?.id || '').toLowerCase().includes(mIdLower));
+        }
+        if (user) {
+          const uLower = String(user).toLowerCase().trim();
+          finalEvents = finalEvents.filter(e => (e.username || '').toLowerCase().includes(uLower) || (e.userId || '').toLowerCase().includes(uLower));
+        }
+        if (content) {
+          const cLower = String(content).toLowerCase().trim();
+          finalEvents = finalEvents.filter(e => (e.message?.text || '').toLowerCase().includes(cLower));
+        }
+
+        finalEvents.sort((a, b) => new Date(b.timestamp || b.createdAt).getTime() - new Date(a.timestamp || a.createdAt).getTime());
+
+        return res.json({
+          events: finalEvents,
+          hasMore: false,
+          oldestCreatedAt: null,
+        });
+      } else if (typeLower === 'deleted_by_admin') {
+        query.$or = [
+          { 'message.deletedBy': 'admin' },
+          { 'message.vanished': true },
+        ];
+      } else if (['create', 'edit', 'upload', 'delete_everyone'].includes(typeLower)) {
+        if (typeLower === 'delete_everyone') {
+          query.type = { $in: ['delete_everyone', 'delete'] };
+        } else {
+          query.type = typeLower;
+        }
+      }
+    }
+
+    if (messageId) {
+      const escaped = String(messageId).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (escaped) {
+        query.messageId = { $regex: escaped, $options: 'i' };
+      }
+    }
+
+    if (user) {
+      const escaped = String(user).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (escaped) {
+        const userOr = [
+          { username: { $regex: escaped, $options: 'i' } },
+          { userId: { $regex: escaped, $options: 'i' } },
+        ];
+        if (query.$and) {
+          query.$and.push({ $or: userOr });
+        } else if (query.$or) {
+          query.$and = [{ $or: query.$or }, { $or: userOr }];
+          delete query.$or;
+        } else {
+          query.$or = userOr;
+        }
+      }
+    }
+
+    if (content) {
+      const escaped = String(content).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (escaped) {
+        const contentOr = [
+          { 'message.text': { $regex: escaped, $options: 'i' } },
+          { oldText: { $regex: escaped, $options: 'i' } },
+          { newText: { $regex: escaped, $options: 'i' } },
+          { 'deletedContent.text': { $regex: escaped, $options: 'i' } },
+          { 'file.originalname': { $regex: escaped, $options: 'i' } },
+        ];
+        if (query.$and) {
+          query.$and.push({ $or: contentOr });
+        } else if (query.$or) {
+          query.$and = [{ $or: query.$or }, { $or: contentOr }];
+          delete query.$or;
+        } else {
+          query.$or = contentOr;
+        }
+      }
+    }
+
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 200);
+    const events = await MessageEvent.find(query)
+      .sort({ createdAt: -1 })
+      .limit(limit + 1)
+      .lean();
+
+    const hasMore = events.length > limit;
+    const batch = hasMore ? events.slice(0, limit) : events;
+    const oldestCreatedAt = batch.length > 0 ? batch[batch.length - 1].createdAt : null;
+
+    res.json({
+      events: batch,
+      hasMore,
+      oldestCreatedAt,
+    });
   });
 
   // --- Bulk Message Actions ---

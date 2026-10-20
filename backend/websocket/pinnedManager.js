@@ -1,6 +1,7 @@
 'use strict';
 
 const Message = require('../models/message');
+const MessageEvent = require('../models/messageEvent');
 const logger = require('../logger');
 const { getRoomState, roomStates } = require('../state');
 const { toClientMessage } = require('../middleware');
@@ -39,6 +40,7 @@ const loadPinnedMessages = async (roomId) => {
     for (const pin of pins) {
       if (pin.pinned.expiresAt && new Date(pin.pinned.expiresAt) <= now) {
         await Message.updateOne({ id: pin.id }, { $set: { pinned: null } });
+        await MessageEvent.updateMany({ roomId, $or: [{ messageId: pin.id }, { 'message.id': pin.id }] }, { $set: { 'message.pinned': null } });
       } else {
         validPins.push(toClientMessage(pin));
       }
@@ -65,6 +67,7 @@ const startPinExpirationWatcher = (wss) => {
           expired = true;
           try {
             await Message.updateOne({ id: msg.id }, { $set: { pinned: null } });
+            await MessageEvent.updateMany({ roomId, $or: [{ messageId: msg.id }, { 'message.id': msg.id }] }, { $set: { 'message.pinned': null } });
           } catch (e) {
             logger.error('Failed to unpin expired message:', e);
           }

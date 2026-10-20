@@ -60,6 +60,9 @@ export function MessagesTab({ admin }: MessagesTabProps) {
     pinnedMessages,
     handleUnpin,
     handleInitiatePin,
+    hasMoreLogs,
+    isLoadingMoreLogs,
+    loadMoreLogs,
   } = admin;
 
   const renderEventType = (logType: string) => {
@@ -71,6 +74,7 @@ export function MessagesTab({ admin }: MessagesTabProps) {
       case 'upload':
         return 'Upload';
       case 'delete_everyone':
+      case 'delete':
         return 'Delete (Everyone)';
       default:
         return logType;
@@ -110,7 +114,8 @@ export function MessagesTab({ admin }: MessagesTabProps) {
           </>
         );
       case 'delete_everyone':
-        return <>Deleted: {formatMedia(log.deletedContent)}</>;
+      case 'delete':
+        return <>Deleted: {formatMedia(log.deletedContent || log.message)}</>;
       case 'upload':
         return `File: '${log.file.originalname}' (${(log.file.size / 1024).toFixed(2)} KB)`;
       default:
@@ -230,6 +235,11 @@ export function MessagesTab({ admin }: MessagesTabProps) {
               <option value="Upload">Upload</option>
               <option value="Delete (Everyone)">Delete (Everyone)</option>
               <option value="Deleted by admin">Deleted by admin</option>
+              <option value="Photo">Photo</option>
+              <option value="Video">Video</option>
+              <option value="GIF">GIF</option>
+              <option value="Document">Document</option>
+              <option value="Pinned Messages">Pinned Messages</option>
             </Select>
           </SelectWrapper>
           <Input
@@ -265,109 +275,126 @@ export function MessagesTab({ admin }: MessagesTabProps) {
               </tr>
             </thead>
             <tbody>
-              {filteredHistoryLogs.slice(0, displayedLogsCount).map((log, index) => {
-                const msgId = extractMessageId(log);
-                const isSelectable = !!msgId;
-                return (
-                  <tr key={index}>
-                    <NoWrapTd style={{ textAlign: 'center' }}>
-                      {isSelectable && (
-                        <input
-                          type="checkbox"
-                          checked={selectedMessages.has(msgId)}
-                          onChange={(e) => handleSelectMessage(msgId, e.target.checked)}
-                        />
-                      )}
-                    </NoWrapTd>
-                    <NoWrapTd>{formatDate(log.timestamp)}</NoWrapTd>
-                    <NoWrapTd>{formatTime(log.timestamp)}</NoWrapTd>
-                    <NoWrapTd>{renderEventType(log.type)}</NoWrapTd>
-                    <Td>
-                      {log.username} ({log.userId})
-                    </Td>
-                    <Td
-                      style={{
-                        fontFamily: 'monospace',
-                        fontSize: '0.8rem',
-                        color: '#64748b',
-                        minWidth: '180px',
-                        maxWidth: '250px',
-                        wordBreak: 'break-all',
-                      }}
-                    >
-                      {log.messageId || log.message?.id || log.message?._id || log._id || 'N/A'}
-                    </Td>
-                    <Td style={{ textAlign: 'center' }}>
-                      {log.message?.deletedBy === 'admin' || log.message?.vanished ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
-                          <Badge $color="red" style={{ whiteSpace: 'nowrap' }}>
-                            <StatusDot $color="red" /> Deleted by Admin
-                          </Badge>
-                          {log.message?.vanished ? (
-                            <Badge $color="gray" style={{ fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
-                              <StatusDot $color="gray" /> Vanished (No Bubble)
+              {filteredHistoryLogs.length === 0 ? (
+                <tr>
+                  <Td colSpan={9} style={{ textAlign: 'center', padding: '2.5rem', color: '#64748b' }}>
+                    {isLoadingMoreLogs ? 'Loading messages...' : 'No messages found.'}
+                  </Td>
+                </tr>
+              ) : (
+                filteredHistoryLogs.slice(0, displayedLogsCount).map((log, index) => {
+                  const msgId = extractMessageId(log);
+                  const isSelectable = !!msgId;
+                  return (
+                    <tr key={index}>
+                      <NoWrapTd style={{ textAlign: 'center' }}>
+                        {isSelectable && (
+                          <input
+                            type="checkbox"
+                            checked={selectedMessages.has(msgId)}
+                            onChange={(e) => handleSelectMessage(msgId, e.target.checked)}
+                          />
+                        )}
+                      </NoWrapTd>
+                      <NoWrapTd>{formatDate(log.timestamp)}</NoWrapTd>
+                      <NoWrapTd>{formatTime(log.timestamp)}</NoWrapTd>
+                      <NoWrapTd>{renderEventType(log.type)}</NoWrapTd>
+                      <Td>
+                        {log.username} ({log.userId})
+                      </Td>
+                      <Td
+                        style={{
+                          fontFamily: 'monospace',
+                          fontSize: '0.8rem',
+                          color: '#64748b',
+                          minWidth: '180px',
+                          maxWidth: '250px',
+                          wordBreak: 'break-all',
+                        }}
+                      >
+                        {log.messageId || log.message?.id || log.message?._id || log._id || 'N/A'}
+                      </Td>
+                      <Td style={{ textAlign: 'center' }}>
+                        {log.message?.deletedBy === 'admin' || log.message?.vanished ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+                            <Badge $color="red" style={{ whiteSpace: 'nowrap' }}>
+                              <StatusDot $color="red" /> Deleted by Admin
                             </Badge>
-                          ) : (
+                            {log.message?.vanished ? (
+                              <Badge $color="gray" style={{ fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
+                                <StatusDot $color="gray" /> Vanished (No Bubble)
+                              </Badge>
+                            ) : (
+                              <Badge $color="yellow" style={{ fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
+                                <StatusDot $color="yellow" /> Bubble Showing
+                              </Badge>
+                            )}
+                          </div>
+                        ) : (log.type === 'delete_everyone' || log.type === 'delete') ? (
+                          <div style={{ display: 'flex', justifyContent: 'center' }}>
+                            <Badge $color="yellow" style={{ whiteSpace: 'nowrap' }}>
+                              Deleted by User
+                            </Badge>
+                          </div>
+                        ) : log.type === 'create' && (laterDeletedByUserIds.has(extractMessageId(log)) || (log.message?.isDeleted && log.message?.deletedBy !== 'admin')) ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+                            <Badge $color="green" style={{ whiteSpace: 'nowrap' }}>
+                              Sent
+                            </Badge>
                             <Badge $color="yellow" style={{ fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
-                              <StatusDot $color="yellow" /> Bubble Showing
+                              ↳ Deleted by User
                             </Badge>
-                          )}
-                        </div>
-                      ) : log.type === 'delete_everyone' ? (
-                        <div style={{ display: 'flex', justifyContent: 'center' }}>
-                          <Badge $color="yellow" style={{ whiteSpace: 'nowrap' }}>
-                            Deleted by User
-                          </Badge>
-                        </div>
-                      ) : log.type === 'create' && laterDeletedByUserIds.has(extractMessageId(log)) ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
-                          <Badge $color="green" style={{ whiteSpace: 'nowrap' }}>
-                            Sent
-                          </Badge>
-                          <Badge $color="yellow" style={{ fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
-                            ↳ Deleted by User
-                          </Badge>
-                        </div>
-                      ) : (
-                        <div style={{ display: 'flex', justifyContent: 'center' }}>
-                          <Badge $color="green" style={{ whiteSpace: 'nowrap' }}>
-                            Active
-                          </Badge>
-                        </div>
-                      )}
-                    </Td>
-                    <ExpandTd>{renderMessageDetails(log)}</ExpandTd>
-                    <NoWrapTd>
-                      {log.type === 'create' &&
-                        (log.messageId || log.message?.id || log.message?._id || log._id) &&
-                        (pinnedMessages.some(
-                          (p) => p.id === (log.messageId || log.message?.id || log.message?._id || log._id)
-                        ) ? (
-                          <SmallDangerButton
-                            onClick={() =>
-                              handleUnpin(log.messageId || log.message?.id || log.message?._id || log._id)
-                            }
-                          >
-                            Unpin
-                          </SmallDangerButton>
+                          </div>
                         ) : (
-                          <SmallSuccessButton
-                            onClick={() =>
-                              handleInitiatePin(log.messageId || log.message?.id || log.message?._id || log._id)
-                            }
-                          >
-                            Pin
-                          </SmallSuccessButton>
-                        ))}
-                    </NoWrapTd>
-                  </tr>
-                );
-              })}
+                          <div style={{ display: 'flex', justifyContent: 'center' }}>
+                            <Badge $color="green" style={{ whiteSpace: 'nowrap' }}>
+                              Active
+                            </Badge>
+                          </div>
+                        )}
+                      </Td>
+                      <ExpandTd>{renderMessageDetails(log)}</ExpandTd>
+                      <NoWrapTd>
+                        {log.type === 'create' &&
+                          (log.messageId || log.message?.id || log.message?._id || log._id) &&
+                          (pinnedMessages.some(
+                            (p) => p.id === (log.messageId || log.message?.id || log.message?._id || log._id)
+                          ) ? (
+                            <SmallDangerButton
+                              onClick={() =>
+                                handleUnpin(log.messageId || log.message?.id || log.message?._id || log._id)
+                              }
+                            >
+                              Unpin
+                            </SmallDangerButton>
+                          ) : (
+                            <SmallSuccessButton
+                              onClick={() =>
+                                handleInitiatePin(log.messageId || log.message?.id || log.message?._id || log._id)
+                              }
+                            >
+                              Pin
+                            </SmallSuccessButton>
+                          ))}
+                      </NoWrapTd>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </MessageLogTable>
-          {displayedLogsCount < filteredHistoryLogs.length && (
+          {filteredHistoryLogs.length > 0 &&
+            (displayedLogsCount < filteredHistoryLogs.length || (filterEventType !== 'Pinned Messages' && hasMoreLogs)) && (
             <div style={{ display: 'flex', justifyContent: 'center', padding: '1rem' }}>
-              <Button onClick={() => setDisplayedLogsCount((prev) => prev + 50)}>Load More Messages</Button>
+              <Button onClick={loadMoreLogs} disabled={isLoadingMoreLogs}>
+                {isLoadingMoreLogs ? 'Loading More Messages...' : 'Load More Messages'}
+              </Button>
+            </div>
+          )}
+          {filteredHistoryLogs.length > 0 &&
+            !(displayedLogsCount < filteredHistoryLogs.length || (filterEventType !== 'Pinned Messages' && hasMoreLogs)) && (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '1rem', color: '#64748b', fontSize: '0.875rem' }}>
+              All messages loaded ({filteredHistoryLogs.length} total)
             </div>
           )}
         </MessageLogTableWrapper>

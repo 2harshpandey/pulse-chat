@@ -1,5 +1,6 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import type { UserProfile } from '../types';
+import { isGifLog, isPhotoLog, isVideoLog, isDocumentLog } from '../utils';
 
 interface UseAdminMessagesOptions {
   apiUrl: string;
@@ -16,6 +17,9 @@ export function useAdminMessages({ apiUrl, apiHeaders, users, ws }: UseAdminMess
   const [bulkDeleteAction, setBulkDeleteAction] = useState<'hide' | 'delete'>('hide');
   const [bulkDeleteVanish, setBulkDeleteVanish] = useState(false);
   const [displayedLogsCount, setDisplayedLogsCount] = useState(50);
+  const [hasMoreLogs, setHasMoreLogs] = useState(false);
+  const [oldestLogCursor, setOldestLogCursor] = useState<string | null>(null);
+  const [isLoadingMoreLogs, setIsLoadingMoreLogs] = useState(false);
 
   const [pinTargetId, setPinTargetId] = useState<string | null>(null);
   const [showPinModal, setShowPinModal] = useState(false);
@@ -95,12 +99,38 @@ export function useAdminMessages({ apiUrl, apiHeaders, users, ws }: UseAdminMess
         ? (log.messageId || log.message?.id)?.toLowerCase().includes(filterMessageId.toLowerCase())
         : true;
       const userMatch = filterUser ? (log.username || '').toLowerCase().includes(filterUser.toLowerCase()) : true;
-      const eventTypeMatch =
-        filterEventType === 'All'
-          ? true
-          : filterEventType === 'Deleted by admin'
-          ? log.message?.deletedBy === 'admin' || log.message?.vanished === true
-          : log.type === filterEventType.toLowerCase().replace(' (everyone)', '_everyone');
+      let eventTypeMatch = true;
+      if (filterEventType === 'All') {
+        eventTypeMatch = true;
+      } else if (filterEventType === 'Deleted by admin') {
+        eventTypeMatch = log.message?.deletedBy === 'admin' || log.message?.vanished === true;
+      } else if (filterEventType === 'Create') {
+        eventTypeMatch = log.type === 'create';
+      } else if (filterEventType === 'Edit') {
+        eventTypeMatch = log.type === 'edit';
+      } else if (filterEventType === 'Upload') {
+        eventTypeMatch = log.type === 'upload';
+      } else if (filterEventType === 'Delete (Everyone)') {
+        eventTypeMatch = log.type === 'delete_everyone' || log.type === 'delete';
+      } else if (filterEventType === 'Photo') {
+        eventTypeMatch = log.type === 'create' && isPhotoLog(log);
+      } else if (filterEventType === 'Video') {
+        eventTypeMatch = log.type === 'create' && isVideoLog(log);
+      } else if (filterEventType === 'GIF') {
+        eventTypeMatch = log.type === 'create' && isGifLog(log);
+      } else if (filterEventType === 'Document') {
+        eventTypeMatch = log.type === 'create' && isDocumentLog(log);
+      } else if (filterEventType === 'Pinned Messages') {
+        const id = extractMessageId(log);
+        const isCurrentlyPinned = Boolean(
+          id && pinnedMessages.some((p: any) => p.id === id || p._id === id || (p.messageId && p.messageId === id))
+        );
+        const hasPinnedField = Boolean(log.message?.pinned?.pinnedAt || log.pinned?.pinnedAt);
+        eventTypeMatch = isCurrentlyPinned || (pinnedMessages.length === 0 && hasPinnedField);
+      } else {
+        eventTypeMatch = log.type === filterEventType.toLowerCase().replace(' (everyone)', '_everyone');
+      }
+
       const contentMatch = !filterContent
         ? true
         : (() => {
@@ -108,7 +138,7 @@ export function useAdminMessages({ apiUrl, apiHeaders, users, ws }: UseAdminMess
             if (log.type === 'create' && log.message?.text) return log.message.text.toLowerCase().includes(lc);
             if (log.type === 'edit')
               return log.oldText?.toLowerCase().includes(lc) || log.newText?.toLowerCase().includes(lc);
-            if (log.type === 'delete_everyone' && log.deletedContent?.text)
+            if ((log.type === 'delete_everyone' || log.type === 'delete') && log.deletedContent?.text)
               return log.deletedContent.text.toLowerCase().includes(lc);
             if (log.type === 'upload' && log.file?.originalname)
               return log.file.originalname.toLowerCase().includes(lc);
@@ -116,12 +146,16 @@ export function useAdminMessages({ apiUrl, apiHeaders, users, ws }: UseAdminMess
           })();
       return messageIdMatch && userMatch && eventTypeMatch && contentMatch;
     });
-  }, [enrichedHistoryLogs, filterMessageId, filterUser, filterEventType, filterContent]);
+  }, [enrichedHistoryLogs, filterMessageId, filterUser, filterEventType, filterContent, pinnedMessages]);
 
   const laterDeletedByUserIds = useMemo(() => {
     const ids = new Set<string>();
     enrichedHistoryLogs.forEach((log) => {
-      if (log.type === 'delete_everyone') {
+      if (log.type === 'delete_everyone' || log.type === 'delete') {
+        const id = extractMessageId(log);
+        if (id) ids.add(id);
+      }
+      if (log.message?.isDeleted && log.message?.deletedBy && log.message.deletedBy !== 'admin') {
         const id = extractMessageId(log);
         if (id) ids.add(id);
       }
@@ -184,6 +218,175 @@ export function useAdminMessages({ apiUrl, apiHeaders, users, ws }: UseAdminMess
     }
   };
 
+  const getBackendFilterType = (filter: string): string => {
+    switch (filter) {
+      case 'Photo': return 'photo';
+      case 'Video': return 'video';
+      case 'GIF': return 'gif';
+      case 'Document': return 'document';
+      case 'Pinned Messages': return 'pinned';
+      case 'Deleted by admin': return 'deleted_by_admin';
+      case 'Create': return 'create';
+      case 'Edit': return 'edit';
+      case 'Upload': return 'upload';
+      case 'Delete (Everyone)': return 'delete_everyone';
+      default: return '';
+    }
+  };
+
+  // Re-fetch from server when dropdown filter changes so the server query is exact
+  const isFirstMountRef = React.useRef(true);
+  useEffect(() => {
+    if (isFirstMountRef.current) {
+      isFirstMountRef.current = false;
+      return;
+    }
+
+    let isCancelled = false;
+    setIsLoadingMoreLogs(true);
+    setDisplayedLogsCount(50);
+
+    const typeParam = getBackendFilterType(filterEventType);
+    let url = `${apiUrl}/api/admin/history?limit=100`;
+    if (typeParam) {
+      url += `&type=${encodeURIComponent(typeParam)}`;
+    }
+    if (filterMessageId) url += `&messageId=${encodeURIComponent(filterMessageId)}`;
+    if (filterUser) url += `&user=${encodeURIComponent(filterUser)}`;
+    if (filterContent) url += `&content=${encodeURIComponent(filterContent)}`;
+
+    fetch(url, { headers: apiHeaders() })
+      .then((res) => (res.ok ? res.json() : { events: [], hasMore: false }))
+      .then((data) => {
+        if (isCancelled) return;
+        const incoming = Array.isArray(data) ? data : data.events || [];
+        const nextHasMore = Array.isArray(data) ? data.length >= 100 : Boolean(data.hasMore);
+        const nextOldestCursor = Array.isArray(data)
+          ? incoming.length > 0
+            ? incoming[incoming.length - 1].createdAt
+            : null
+          : data.oldestCreatedAt;
+
+        let finalIncoming = incoming;
+        if (filterEventType === 'Pinned Messages' && pinnedMessages.length > 0) {
+          const existingIds = new Set(incoming.map((i: any) => extractMessageId(i)));
+          const missingPins = pinnedMessages.filter((p: any) => !existingIds.has(p.id));
+          if (missingPins.length > 0) {
+            const syntheticEvents = missingPins.map((p: any) => ({
+              _id: p._id || p.id,
+              roomId: p.roomId || 'me',
+              type: 'create',
+              messageId: p.id,
+              message: p,
+              userId: p.userId || 'unknown',
+              username: p.username || p.sender || 'Unknown',
+              timestamp: p.timestamp || p.createdAt || new Date(),
+              createdAt: p.createdAt || p.timestamp || new Date(),
+            }));
+            finalIncoming = [...incoming, ...syntheticEvents];
+          }
+        }
+
+        setHistoryLogs(finalIncoming);
+        setHasMoreLogs(filterEventType === 'Pinned Messages' ? false : nextHasMore);
+        setOldestLogCursor(filterEventType === 'Pinned Messages' ? null : nextOldestCursor);
+      })
+      .catch((err) => {
+        console.error('Failed to fetch filtered logs:', err);
+      })
+      .finally(() => {
+        if (!isCancelled) setIsLoadingMoreLogs(false);
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [filterEventType, filterMessageId, filterUser, filterContent, apiUrl, apiHeaders, pinnedMessages]);
+
+  const loadMoreLogs = useCallback(async () => {
+    // If we already have more filtered logs in memory than currently displayed, reveal 50 more
+    if (displayedLogsCount < filteredHistoryLogs.length) {
+      setDisplayedLogsCount((prev) => prev + 50);
+      return;
+    }
+
+    // Pinned messages are loaded all at once; no pagination exists for pinned messages
+    if (filterEventType === 'Pinned Messages') {
+      setHasMoreLogs(false);
+      return;
+    }
+
+    // Otherwise, if the server has more older logs, fetch the next batch from the server
+    if (!hasMoreLogs || !oldestLogCursor || isLoadingMoreLogs) return;
+
+    setIsLoadingMoreLogs(true);
+    let cursor = oldestLogCursor;
+    let scans = 0;
+    const maxScans = 10;
+    const typeParam = getBackendFilterType(filterEventType);
+
+    try {
+      while (cursor && scans < maxScans) {
+        scans++;
+        let url = `${apiUrl}/api/admin/history?limit=100&before=${encodeURIComponent(cursor)}`;
+        if (typeParam) {
+          url += `&type=${encodeURIComponent(typeParam)}`;
+        }
+        if (filterMessageId) url += `&messageId=${encodeURIComponent(filterMessageId)}`;
+        if (filterUser) url += `&user=${encodeURIComponent(filterUser)}`;
+        if (filterContent) url += `&content=${encodeURIComponent(filterContent)}`;
+
+        const res = await fetch(url, { headers: apiHeaders() });
+        if (!res.ok) break;
+
+        const data = await res.json();
+        const incoming = Array.isArray(data) ? data : data.events || [];
+        const nextHasMore = Array.isArray(data) ? data.length >= 100 : Boolean(data.hasMore);
+        const nextOldestCursor = Array.isArray(data)
+          ? incoming.length > 0
+            ? incoming[incoming.length - 1].createdAt
+            : null
+          : data.oldestCreatedAt;
+
+        let addedCount = 0;
+        setHistoryLogs((prev) => {
+          const existingIds = new Set(prev.map((item) => item._id || extractMessageId(item)));
+          const uniqueIncoming = incoming.filter(
+            (item: any) => !existingIds.has(item._id || extractMessageId(item))
+          );
+          addedCount = uniqueIncoming.length;
+          return [...prev, ...uniqueIncoming];
+        });
+
+        cursor = nextOldestCursor;
+        setHasMoreLogs(nextHasMore);
+        setOldestLogCursor(nextOldestCursor);
+        setDisplayedLogsCount((prev) => prev + 50);
+
+        // Stop scanning if matching items were added, or if there are no more logs on the server
+        if (addedCount > 0 || !nextHasMore || !nextOldestCursor) {
+          break;
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load older logs:', err);
+    } finally {
+      setIsLoadingMoreLogs(false);
+    }
+  }, [
+    displayedLogsCount,
+    filteredHistoryLogs.length,
+    hasMoreLogs,
+    oldestLogCursor,
+    isLoadingMoreLogs,
+    filterEventType,
+    filterMessageId,
+    filterUser,
+    filterContent,
+    apiUrl,
+    apiHeaders,
+  ]);
+
   return {
     historyLogs,
     setHistoryLogs,
@@ -203,6 +406,12 @@ export function useAdminMessages({ apiUrl, apiHeaders, users, ws }: UseAdminMess
     setBulkDeleteVanish,
     displayedLogsCount,
     setDisplayedLogsCount,
+    hasMoreLogs,
+    setHasMoreLogs,
+    oldestLogCursor,
+    setOldestLogCursor,
+    isLoadingMoreLogs,
+    loadMoreLogs,
     pinTargetId,
     setPinTargetId,
     showPinModal,
