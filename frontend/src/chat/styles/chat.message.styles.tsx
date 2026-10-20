@@ -306,13 +306,40 @@ export const PremiumCopyButton = styled.button<{ $copied?: boolean }>`
   &:active {
     transform: translateY(1px) scale(0.98);
   }
+
+  [data-theme='light'] & {
+    background: ${p => p.$copied
+      ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+      : 'linear-gradient(135deg, #ffffff 0%, #f1f5f9 100%)'};
+    color: ${p => p.$copied ? '#ffffff' : 'var(--text-primary)'};
+    border-color: ${p => p.$copied ? 'rgba(16,185,129,0.35)' : 'var(--border-secondary)'};
+    box-shadow: ${p => p.$copied
+      ? '0 4px 18px rgba(16,185,129,0.25)'
+      : '0 2px 8px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.8)'};
+
+    &::after {
+      background: ${p => p.$copied
+        ? 'radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.2) 0%, transparent 70%)'
+        : 'radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.8) 0%, transparent 70%)'};
+    }
+
+    &:hover {
+      background: ${p => p.$copied
+        ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+        : 'linear-gradient(135deg, #ffffff 0%, #e2e8f0 100%)'};
+      border-color: ${p => p.$copied ? 'rgba(16,185,129,0.5)' : 'rgba(59, 130, 246, 0.4)'};
+      box-shadow: ${p => p.$copied
+        ? '0 8px 24px rgba(16,185,129,0.35)'
+        : '0 6px 18px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 1)'};
+    }
+  }
 `;
 
 export const PremiumCopyNumber = styled.span`
   font-size: 1rem;
   font-weight: 600;
   letter-spacing: 0.12em;
-  color: var(--text-primary);
+  color: inherit;
   font-variant-numeric: tabular-nums;
   line-height: 1.4;
 `;
@@ -328,6 +355,10 @@ export const PremiumCopyLabel = styled.span<{ $copied?: boolean }>`
   margin-top: 2px;
   color: ${p => p.$copied ? 'rgba(255,255,255,0.9)' : 'var(--text-muted)'};
   transition: color 0.3s ease;
+
+  [data-theme='light'] & {
+    color: ${p => p.$copied ? 'rgba(255,255,255,0.95)' : 'var(--text-secondary)'};
+  }
 
   svg {
     width: 12px;
