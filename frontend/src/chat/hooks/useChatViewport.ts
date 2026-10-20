@@ -94,7 +94,6 @@ export function useChatViewport({
     };
 
     const getVisibleViewportHeight = () => {
-      void document.documentElement.offsetHeight;
       const vvHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
       const layoutHeight = window.innerHeight;
       const clamped = Math.min(layoutHeight, vvHeight);
@@ -161,7 +160,6 @@ export function useChatViewport({
     const timer4 = setTimeout(handleViewportResize, 1600);
 
     window.addEventListener('touchstart', handleViewportResize, { passive: true });
-    window.addEventListener('touchmove', handleViewportResize, { passive: true });
     window.addEventListener('touchend', handleViewportResize, { passive: true });
     window.addEventListener('pointerdown', handleViewportResize, { passive: true });
 
@@ -197,7 +195,6 @@ export function useChatViewport({
       document.documentElement.style.removeProperty('--app-height');
       document.documentElement.style.removeProperty('--app-offset-top');
       window.removeEventListener('touchstart', handleViewportResize);
-      window.removeEventListener('touchmove', handleViewportResize);
       window.removeEventListener('touchend', handleViewportResize);
       window.removeEventListener('pointerdown', handleViewportResize);
       window.visualViewport?.removeEventListener('resize', handleViewportResize);

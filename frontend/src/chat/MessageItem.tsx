@@ -72,13 +72,15 @@ export const MessageItem = React.memo(({
   const messageBubbleRef = useRef<HTMLDivElement>(null!);
   const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; right?: number; left?: number } | null>(null);
   
-  const [transferInfo, setTransferInfo] = useState<TransferInfo | undefined>(() => transferManager.getTransfer(msg.id));
+  const isMediaOrTransfer = msg.type !== 'text' || Boolean(msg.url) || Boolean(transferManager.getTransfer(msg.id));
+  const [transferInfo, setTransferInfo] = useState<TransferInfo | undefined>(() => (isMediaOrTransfer ? transferManager.getTransfer(msg.id) : undefined));
   useEffect(() => {
+    if (!isMediaOrTransfer) return;
     const unsubscribe = transferManager.subscribe((transfers) => {
       setTransferInfo(transfers.get(msg.id));
     });
     return () => { unsubscribe(); };
-  }, [msg.id]);
+  }, [msg.id, isMediaOrTransfer]);
   const [resolvedContentSize, setResolvedContentSize] = useState<number | undefined>(() => {
     if (typeof msg.size === 'number' && msg.size > 0) return msg.size;
     const safeUrl = sanitizeMediaUrl(msg.url);

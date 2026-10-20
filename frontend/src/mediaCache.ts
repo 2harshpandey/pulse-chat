@@ -2,6 +2,7 @@ const MEDIA_CACHE_DB_NAME = 'pulseMediaCache';
 const MEDIA_CACHE_DB_VERSION = 1;
 const MEDIA_CACHE_STORE = 'entries';
 const MEDIA_CACHE_USER_INDEX = 'by_user';
+const MAX_CACHED_MEDIA_ITEMS = 100;
 
 type MediaCacheRecord = {
   key: string;
@@ -119,7 +120,27 @@ export const setCachedMediaBlob = async (
 
   await new Promise<void>((resolve) => {
     const tx = db.transaction(MEDIA_CACHE_STORE, 'readwrite');
-    tx.objectStore(MEDIA_CACHE_STORE).put(record);
+    const store = tx.objectStore(MEDIA_CACHE_STORE);
+    store.put(record);
+
+    // Evict oldest entries if total items exceed maximum limit (100 items)
+    const countReq = store.count();
+    countReq.onsuccess = () => {
+      const count = countReq.result;
+      if (count > MAX_CACHED_MEDIA_ITEMS) {
+        let toDelete = count - MAX_CACHED_MEDIA_ITEMS;
+        const cursorReq = store.openCursor();
+        cursorReq.onsuccess = () => {
+          const cursor = cursorReq.result;
+          if (cursor && toDelete > 0) {
+            cursor.delete();
+            toDelete--;
+            cursor.continue();
+          }
+        };
+      }
+    };
+
     tx.oncomplete = () => resolve();
     tx.onerror = () => resolve();
     tx.onabort = () => resolve();

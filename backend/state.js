@@ -30,6 +30,44 @@ const getRoomState = (roomId) => {
 // Global level states (not per room)
 const userFingerprints = new Map();  // Map<userId, { ips: Set, userAgents: Set, deviceHashes: Set, ... }>
 
+// Periodic in-memory state hygiene (runs hourly) to prevent memory creep
+const pruneStaleState = () => {
+  const now = Date.now();
+  const maxAgeMs = 48 * 60 * 60 * 1000; // 48 hours
+
+  // Cap global fingerprints to prevent unbounded heap growth
+  if (userFingerprints.size > 1000) {
+    const keysToDelete = Array.from(userFingerprints.keys()).slice(0, userFingerprints.size - 500);
+    for (const key of keysToDelete) {
+      userFingerprints.delete(key);
+    }
+  }
+
+  // Prune per-room states
+  for (const state of roomStates.values()) {
+    // Prune expired file picker grace tokens
+    for (const [userId, expiresAt] of state.filePickerPresenceGrace.entries()) {
+      if (expiresAt < now) {
+        state.filePickerPresenceGrace.delete(userId);
+      }
+    }
+
+    // Prune inactive logged-in users who aren't online and logged in >48h ago
+    for (const [userId, info] of state.loggedInUsers.entries()) {
+      if (!state.onlineUsers.has(userId) && info.loginTime) {
+        const age = now - new Date(info.loginTime).getTime();
+        if (age > maxAgeMs) {
+          state.loggedInUsers.delete(userId);
+        }
+      }
+    }
+  }
+};
+
+if (typeof setInterval !== 'undefined') {
+  setInterval(pruneStaleState, 60 * 60 * 1000).unref();
+}
+
 // --- Tuning Constants ---
 const INITIAL_HISTORY_BATCH_SIZE = 80;
 const DEFAULT_HISTORY_PAGE_SIZE = 50;

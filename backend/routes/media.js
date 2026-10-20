@@ -130,6 +130,48 @@ const uploadBufferToCloudinary = (file, originalName) => new Promise((resolve, r
   Readable.from(file.buffer).pipe(uploadStream).on('error', reject);
 });
 
+const uploadFileStreamToCloudinary = (filePath, mimetype, originalName) => new Promise((resolve, reject) => {
+  const parsedName = path.parse(originalName || 'file');
+  const safeBase = sanitizeDownloadFilename(parsedName.name || 'file', 'file')
+    .replace(/\.[^.]+$/, '')
+    .replace(/\s+/g, '_')
+    .slice(0, 80);
+  const ext = parsedName.ext ? parsedName.ext.replace(/^\./, '') : '';
+  const resourceType = getUploadResourceType(mimetype || '');
+  const publicId = `pulse-chat/${safeBase}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
+
+  const isVideo = resourceType === 'video';
+  const uploadOptions = {
+    resource_type: resourceType,
+    public_id: resourceType === 'raw' && ext ? `${publicId}.${ext}` : publicId,
+    chunk_size: 6 * 1024 * 1024,
+    use_filename: false,
+    unique_filename: false,
+    overwrite: false,
+    filename_override: originalName,
+    ...(isVideo ? { async: true } : {}),
+    timeout: 8 * 60 * 1000,
+  };
+
+  const uploadStream = cloudinary.uploader.upload_chunked_stream(uploadOptions, (error, result) => {
+    if (error) return reject(error);
+    if (!result?.secure_url && result?.public_id) {
+      result.secure_url = cloudinary.url(result.public_id, { 
+        resource_type: result.resource_type || (isVideo ? 'video' : 'image'), 
+        format: result.format || ext || (isVideo ? 'mp4' : undefined),
+        secure: true 
+      });
+    }
+    if (!result?.secure_url) {
+      return reject(new Error('Cloudinary upload did not return or generate a secure URL.'));
+    }
+    return resolve(result);
+  });
+
+  const fileStream = fs.createReadStream(filePath);
+  fileStream.pipe(uploadStream).on('error', reject);
+});
+
 // --- Helper: build query that respects frontendHiddenBefore ---
 const getVisibleMessagesQuery = (beforeTimestamp, frontendHiddenBefore) => {
   const createdAt = {};
@@ -280,16 +322,11 @@ module.exports = (wss, broadcasts) => {
         const total = parseInt(totalChunks, 10);
 
         if (currentChunk === total - 1) {
-          // Upload complete, send to Cloudinary
-          const finalBuffer = fs.readFileSync(tmpPath);
-          
-          // Mock a file object for uploadBufferToCloudinary
-          const fileObj = {
-            buffer: finalBuffer,
-            originalname: originalname || 'file',
-            mimetype: mimetype || 'application/octet-stream',
-            size: finalBuffer.length
-          };
+          // Upload complete, stream directly from disk to Cloudinary
+          const stats = fs.statSync(tmpPath);
+          const safeName = sanitizeUploadFilename(originalname || 'file');
+          const fileMime = mimetype || 'application/octet-stream';
+          const fileSize = stats.size;
 
           const { onlineUsers } = getRoomState(roomId);
           let username = onlineUsers.get(userId)?.username;
@@ -298,9 +335,7 @@ module.exports = (wss, broadcasts) => {
             username = user?.username || 'Unknown';
           }
 
-          const safeName = sanitizeUploadFilename(fileObj.originalname);
-          
-          const uploaded = await uploadBufferToCloudinary(fileObj, safeName);
+          const uploaded = await uploadFileStreamToCloudinary(tmpPath, fileMime, safeName);
 
           // Create a MessageEvent for the upload
           const event = new MessageEvent({
@@ -308,8 +343,8 @@ module.exports = (wss, broadcasts) => {
             type: 'upload',
             file: {
               originalname: safeName,
-              mimetype: fileObj.mimetype,
-              size: fileObj.size,
+              mimetype: fileMime,
+              size: fileSize,
             },
             userId,
             username,
@@ -327,10 +362,10 @@ module.exports = (wss, broadcasts) => {
 
           return res.status(200).json({
             id: uploaded.public_id,
-            type: getMessageFileType(fileObj.mimetype || ''),
+            type: getMessageFileType(fileMime),
             url: uploaded.secure_url,
             originalName: safeName,
-            size: fileObj.size,
+            size: fileSize,
             text: text,
           });
         }
