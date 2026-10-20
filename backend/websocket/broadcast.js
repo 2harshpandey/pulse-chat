@@ -10,14 +10,13 @@ const { getRoomState } = require('../state');
  * Send a typed message to every authenticated admin WebSocket client in a room.
  */
 const broadcastToAdmins = (roomId, type, data) => {
-  const message = JSON.stringify({ type, data });
   const { adminClients } = getRoomState(roomId);
-  logger.info(`Broadcasting to ${adminClients.size} admin client(s) in room ${roomId}: ${message}`);
+  if (!adminClients || adminClients.size === 0) return;
+
+  const message = JSON.stringify({ type, data });
   adminClients.forEach(client => {
     if (client.readyState === WebSocket.OPEN) {
       client.send(message);
-    } else {
-      logger.info(`Admin client not open. State: ${client.readyState}`);
     }
   });
 };
@@ -58,29 +57,48 @@ const broadcast = (wss, roomId, message) => {
 
 /**
  * Log-file watcher — tails pulse-activity.log and broadcasts new lines to admins.
+ * Debounced and only runs if at least one admin client is actively connected.
  */
+let logDebounceTimer = null;
 const startLogWatcher = () => {
   const logFilePath = path.join(__dirname, '..', 'pulse-activity.log');
 
   if (!fs.existsSync(logFilePath)) {
-    fs.writeFileSync(logFilePath, '');
+    try {
+      fs.writeFileSync(logFilePath, '');
+    } catch (_) {}
   }
 
-  fs.watch(logFilePath, (eventType) => {
-    if (eventType === 'change') {
-      fs.readFile(logFilePath, 'utf8', (err, data) => {
-        if (err) return;
-        const lines = data.split('\n').slice(-200).join('\n');
-        const payload = { type: 'server_logs', data: lines };
-        
-        // Broadcast to admins in all rooms for server logs
-        const { roomStates } = require('../state');
-        for (const roomId of roomStates.keys()) {
-          broadcastToAdmins(roomId, payload.type, payload.data);
-        }
-      });
-    }
-  });
+  try {
+    fs.watch(logFilePath, (eventType) => {
+      if (eventType === 'change') {
+        if (logDebounceTimer) return;
+        logDebounceTimer = setTimeout(() => {
+          logDebounceTimer = null;
+          const { roomStates } = require('../state');
+          let hasAdmins = false;
+          for (const state of roomStates.values()) {
+            if (state.adminClients && state.adminClients.size > 0) {
+              hasAdmins = true;
+              break;
+            }
+          }
+          if (!hasAdmins) return;
+
+          fs.readFile(logFilePath, 'utf8', (err, data) => {
+            if (err) return;
+            const lines = data.split('\n').slice(-200).join('\n');
+            const payload = { type: 'server_logs', data: lines };
+            for (const roomId of roomStates.keys()) {
+              broadcastToAdmins(roomId, payload.type, payload.data);
+            }
+          });
+        }, 3000);
+      }
+    });
+  } catch (err) {
+    logger.warn('Could not start log watcher:', err.message);
+  }
 };
 
 module.exports = {

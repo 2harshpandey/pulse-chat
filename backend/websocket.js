@@ -93,7 +93,7 @@ const initWebSocket = (wss) => {
 
     async function handleClientMessage(message) {
       const parsedMessage = JSON.parse(message.toString());
-      if (parsedMessage.type !== 'admin_auth') {
+      if (parsedMessage.type !== 'admin_auth' && parsedMessage.type !== 'ping' && parsedMessage.type !== 'pong' && parsedMessage.type !== 'start_typing' && parsedMessage.type !== 'stop_typing') {
         logger.info('Received message:', parsedMessage);
       }
 

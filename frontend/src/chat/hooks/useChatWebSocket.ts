@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Message } from '../types';
 import type { UserProfile } from '../../UserContext';
-import { clearOverlayGuardHistoryEntry } from '../utils';
+import { clearOverlayGuardHistoryEntry, resolveApiBaseUrl } from '../utils';
 import { transferManager } from '../TransferManager';
 import { INITIAL_HISTORY_BATCH_SIZE, INITIAL_FIRST_ITEM_INDEX } from '../constants';
 
@@ -161,23 +161,10 @@ export function useChatWebSocket({
         return;
       }
 
-      const wsUrlBase = (() => {
-        const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
-        const hostname = window.location.hostname;
-        if (
-          hostname === 'localhost' ||
-          hostname === '127.0.0.1' ||
-          /^192\.168\./.test(hostname) ||
-          /^10\./.test(hostname)
-        ) {
-          return `${proto}://${hostname}:8080`;
-        }
-        const base = (import.meta as any).env.REACT_APP_API_URL;
-        if (!base) {
-          return `${proto}://${window.location.host}`;
-        }
-        return base.replace(/^https?:\/\//, window.location.protocol === 'https:' ? 'wss://' : 'ws://');
-      })();
+      const apiBase = resolveApiBaseUrl();
+      const wsUrlBase = apiBase
+        ? apiBase.replace(/^http/, 'ws')
+        : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
 
       let wsUrl = `${wsUrlBase}?userId=${userId}`;
       if (tempToken) wsUrl += `&token=${tempToken}`;
