@@ -21,12 +21,8 @@ lerna-debug.log*
 # Build output
 /frontend/build/
 
-# Archived notes (should not be tracked)
-/frontend/old_chats/
-
 # Misc
 .DS_Store
 .vscode/
 npm-debug.log
 yarn-error.log
-997e1175-ba2e-40bc-96f0-a745f05a92e1/
