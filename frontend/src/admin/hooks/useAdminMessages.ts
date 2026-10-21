@@ -242,6 +242,11 @@ export function useAdminMessages({ apiUrl, apiHeaders, users, ws }: UseAdminMess
       return;
     }
 
+    const headers = apiHeaders();
+    if (!headers['x-admin-password']) {
+      return;
+    }
+
     let isCancelled = false;
     setIsLoadingMoreLogs(true);
     setDisplayedLogsCount(50);
@@ -255,7 +260,7 @@ export function useAdminMessages({ apiUrl, apiHeaders, users, ws }: UseAdminMess
     if (filterUser) url += `&user=${encodeURIComponent(filterUser)}`;
     if (filterContent) url += `&content=${encodeURIComponent(filterContent)}`;
 
-    fetch(url, { headers: apiHeaders() })
+    fetch(url, { headers })
       .then((res) => (res.ok ? res.json() : { events: [], hasMore: false }))
       .then((data) => {
         if (isCancelled) return;
@@ -319,6 +324,9 @@ export function useAdminMessages({ apiUrl, apiHeaders, users, ws }: UseAdminMess
     // Otherwise, if the server has more older logs, fetch the next batch from the server
     if (!hasMoreLogs || !oldestLogCursor || isLoadingMoreLogs) return;
 
+    const headers = apiHeaders();
+    if (!headers['x-admin-password']) return;
+
     setIsLoadingMoreLogs(true);
     let cursor = oldestLogCursor;
     let scans = 0;
@@ -336,7 +344,7 @@ export function useAdminMessages({ apiUrl, apiHeaders, users, ws }: UseAdminMess
         if (filterUser) url += `&user=${encodeURIComponent(filterUser)}`;
         if (filterContent) url += `&content=${encodeURIComponent(filterContent)}`;
 
-        const res = await fetch(url, { headers: apiHeaders() });
+        const res = await fetch(url, { headers });
         if (!res.ok) break;
 
         const data = await res.json();
