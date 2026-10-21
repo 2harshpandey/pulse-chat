@@ -117,7 +117,11 @@ export const useAuthController = ({
           onAuthSuccess({ userId: getUserId(), username: username.trim(), roomId: data.roomId });
         } else {
           const d = await resp.json().catch(() => ({}));
-          setError(d.error || 'This link is invalid or has expired.');
+          if (resp.status === 429) {
+            setError(d.error || 'Too many attempts. Please wait a moment before trying again.');
+          } else {
+            setError(d.error || 'This link is invalid or has expired.');
+          }
         }
       } else {
         const resp = await fetch(`${apiBase}/api/auth/verify`, {
@@ -134,9 +138,17 @@ export const useAuthController = ({
           onAuthSuccess({ userId: getUserId(), username: username.trim() });
         } else {
           const d = await resp.json().catch(() => ({}));
-          if (resp.status === 409) setError(d.error || 'That username is already in use.');
-          else if (resp.status === 403) setError(d.error || 'Access denied.');
-          else setError('Incorrect password.');
+          if (resp.status === 409) {
+            setError(d.error || 'That username is already in use.');
+          } else if (resp.status === 403) {
+            setError(d.error || 'Access denied.');
+          } else if (resp.status === 429) {
+            setError(d.error || 'Too many attempts. Please wait a moment before trying again.');
+          } else if (resp.status === 401) {
+            setError(d.error || 'Incorrect password.');
+          } else {
+            setError(d.error || 'Authentication failed. Please try again.');
+          }
         }
       }
     } catch {

@@ -40,11 +40,12 @@ const extractIp = (req) => {
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20,                  // max 20 attempts per window
+  max: 100,                 // 100 attempts per window (avoids locking out shared NAT / office IPs)
+  skipSuccessfulRequests: true, // Successful logins & room entries do not consume rate limit quota
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: getClientIp,
-  message: { error: 'Too many requests, please try again later.' },
+  message: { error: 'Too many login attempts. Please wait a few minutes before trying again.' },
 });
 
 const uploadLimiter = rateLimit({
@@ -116,11 +117,16 @@ const checkPasswordRateLimit = (req, res, next) => {
 };
 
 const recordFailedPasswordAttempt = (key) => {
-  let record = passwordAttemptLocks.get(key) || { count: 0, lockUntil: 0 };
+  const now = Date.now();
+  let record = passwordAttemptLocks.get(key) || { count: 0, lockUntil: 0, lastAttempt: 0 };
+  if (record.lastAttempt && (now - record.lastAttempt > 10 * 60 * 1000)) {
+    record.count = 0;
+  }
   record.count += 1;
-  if (record.count >= 3) {
-    record.lockUntil = Date.now() + 60 * 1000; // 1 minute lockdown
-    record.count = 0; // Reset count after lockdown starts so they get 3 tries later
+  record.lastAttempt = now;
+  if (record.count >= 5) {
+    record.lockUntil = now + 60 * 1000; // 1 minute lockdown after 5 consecutive failures
+    record.count = 0; // Reset count after lockdown starts so they get fresh tries later
   }
   passwordAttemptLocks.set(key, record);
 };
