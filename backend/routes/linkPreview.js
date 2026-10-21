@@ -58,6 +58,8 @@ router.get('/api/link-preview', apiLimiter, async (req, res) => {
             title: oembedRes.data.title,
             description: oembedRes.data.author_name ? `By ${oembedRes.data.author_name}` : null,
             image: oembedRes.data.thumbnail_url,
+            favicon: 'https://www.youtube.com/favicon.ico',
+            hostname: hostnameFallback,
             siteName: 'YouTube',
             url: url
           });

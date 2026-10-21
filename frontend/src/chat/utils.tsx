@@ -384,7 +384,15 @@ export const getQuotedPreviewThumbUrl = (mediaType: 'image' | 'video', mediaUrl?
   if (mediaType === 'video') {
     return withCloudinaryTransform(safeUrl, 'so_0,f_jpg,q_20,w_96,h_96,c_fill') || '';
   }
-  return withCloudinaryTransform(safeUrl, 'f_auto,q_20,w_96,h_96,c_fill') || safeUrl;
+  const cloudThumb = withCloudinaryTransform(safeUrl, 'f_auto,q_20,w_96,h_96,c_fill');
+  if (cloudThumb) return cloudThumb;
+  if (isGiphyUrl(safeUrl)) {
+    return safeUrl
+      .replace(/\/giphy\.gif(\?.*)?$/i, '/200w_s.gif$1')
+      .replace(/\/200\.gif(\?.*)?$/i, '/200w_s.gif$1')
+      .replace(/\/200w\.gif(\?.*)?$/i, '/200w_s.gif$1');
+  }
+  return safeUrl;
 };
 
 export const getMediaGatePreviewUrl = (mediaType: 'image' | 'video', mediaUrl?: string): string => {

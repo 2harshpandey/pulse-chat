@@ -164,11 +164,14 @@ describe('Media grouping logic (WhatsApp / Telegram style)', () => {
     });
 
     it('replaces heavy animated Giphy GIFs with lightweight static still frames', async () => {
-      const { getMediaGatePreviewUrl } = await import('./utils');
+      const { getMediaGatePreviewUrl, getQuotedPreviewThumbUrl } = await import('./utils');
       const giphyGif = 'https://media.giphy.com/media/abc123xyz/giphy.gif';
       const preview = getMediaGatePreviewUrl('image', giphyGif);
       expect(preview).toBe('https://media.giphy.com/media/abc123xyz/200w_s.gif');
       expect(preview).not.toBe(giphyGif);
+
+      const quotedThumb = getQuotedPreviewThumbUrl('image', giphyGif);
+      expect(quotedThumb).toBe('https://media.giphy.com/media/abc123xyz/200w_s.gif');
     });
 
     it('returns empty string for non-transformable URLs so browser never preloads heavy payload', async () => {
