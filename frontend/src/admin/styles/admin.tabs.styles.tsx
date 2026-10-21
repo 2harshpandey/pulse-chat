@@ -88,10 +88,12 @@ export const MessagesHeaderRow = styled.div`
   flex-wrap: wrap;
   gap: 0.75rem;
   margin-bottom: 0.75rem;
+  padding-top: 4px;
 
   @media (max-width: 600px) {
     gap: 0.5rem;
     margin-bottom: 0.5rem;
+    padding-top: 2px;
   }
 `;
 
@@ -137,10 +139,14 @@ export const MessagesToolbar = styled.div`
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
+  padding-top: 4px;
+  padding-bottom: 4px;
 
   @media (max-width: 600px) {
     width: 100%;
     gap: 0.4rem;
+    padding-top: 2px;
+    padding-bottom: 2px;
   }
 `;
 

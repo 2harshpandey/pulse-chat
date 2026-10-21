@@ -68,7 +68,7 @@ export const MessageLogScrollContainer = styled.div`
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
-  padding-right: 0;
+  padding: 6px 4px 0 2px;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -78,6 +78,7 @@ export const MessageLogScrollContainer = styled.div`
     min-height: auto;
     overflow: visible;
     gap: 0.5rem;
+    padding: 4px 2px 0 2px;
   }
 `;
 
