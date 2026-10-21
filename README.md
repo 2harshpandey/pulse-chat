@@ -148,6 +148,13 @@ The media layer supports rich file exchange while applying strict safety and per
 - Inline media rendering with consistent frame sizing and intelligent constraints to prevent scroll jitter or horizontal stretching.
 - Image lightbox with zoom controls, wheel scaling, and polished overlay behavior.
 
+### Consecutive media grouping & albums
+
+- **WhatsApp / Telegram Style Mosaic Albums**: Consecutive media messages (photos and videos) sent within close proximity by the same user automatically merge into clean responsive albums (1-tile, 2-tile, 3-tile, 4-tile layouts).
+- **Overflow Counter Badge**: Albums with more than 4 items render an interactive `+N` badge indicating remaining media.
+- **On-Demand Media Load Gating**: Grouped and individual media tiles feature on-demand "Tap to load" gating with size badges and lightweight blurred placeholder frames (~1 KB), preventing heavy background preloading and eliminating memory pressure during fast scrolling.
+- **Full-Screen Media Gallery Modal**: Tapping any photo/video opens a mobile-optimized gallery lightbox with touch swipe navigation, thumbnail carousel strip, download buttons, and automatic full-resolution loading.
+
 ### Custom video player
 
 Pulse Chat includes a purpose-built video playback interface with:
@@ -162,6 +169,7 @@ Pulse Chat includes a purpose-built video playback interface with:
 - Mute and volume controls.
 - Double-tap seek shortcuts.
 - Auto-hiding controls.
+- **Seamless Playback Position Preservation**: Captures video timestamp during background stream-to-blob transitions, eliminating mid-play rewind glitches.
 - Automatic off-screen pause when scrolled out of view unless Picture-in-Picture is active.
 
 ### Download and caching controls
@@ -178,13 +186,15 @@ Pulse Chat includes a purpose-built video playback interface with:
 
 Pulse Chat automatically enriches shared links while protecting the backend from unsafe network access.
 
-- Automatic link preview cards with site name, title, description, and image extraction.
-- Preview caching to reduce redundant metadata fetches.
-- Server-side metadata fetching with SSRF hardening, including:
+- **Multi-Level Subdomain & TLD Recognition**: Auto-detects and formats bare links (e.g., `web.whatsapp.com`, `maps.google.co.in`) without requiring `http://` or `www.`, supporting traditional and modern gTLDs (`.xyz`, `.top`, `.club`, `.chat`, etc.).
+- **Multi-Tier Favicon & Touch-Icon Resolution**: Extracts official high-res apple-touch-icons (~2.8 KB) from scraped pages, falling back to root-domain Google Favicons and DuckDuckGo icons without 404 image placeholder hijacking.
+- **Contained Preview Framing**: Renders icons and preview art cleanly with `object-fit: contain;` inside dedicated flexbox wrappers to prevent clipping.
+- **Preview Caching**: In-memory and stateful caching to eliminate redundant metadata network requests.
+- **Server-Side SSRF Hardening**:
   - DNS resolution checks.
-  - Private and internal IP blocking.
-  - Port restrictions.
-  - Redirect limits.
+  - Private and internal IP blocking (loopback, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, AWS metadata 169.254, IPv6 ULA/link-local).
+  - Port restrictions (HTTP 80 / HTTPS 443 only).
+  - Redirect hop limits.
   - Size-capped HTML reads.
 
 ---
@@ -195,6 +205,7 @@ Security is treated as a primary system requirement rather than an afterthought.
 
 ### Application safeguards
 
+- **CodeQL CWE-20 Incomplete URL Substring Sanitization Mitigation**: Completely eliminates loose string `.includes()` checks on URLs and hostnames. Hostnames are parsed via standard `URL` objects and validated against strict domain and subdomain boundaries (`.endsWith()`).
 - **Query Injection Prevention**: Complete immunization against NoSQL injections by strictly casting query parameters (e.g., `roomId`) and leveraging `$eq` MongoDB operators.
 - **ReDoS Prevention**: Escaped and sanitized regex workflows using strict `escapeRegExp` helpers, preventing Denial of Service attacks on search endpoints.
 - Multi-layer rate limiting for authentication, uploads, API endpoints, and admin routes.
