@@ -68,4 +68,29 @@ describe('renderMessage URL detection and normalization', () => {
     expect(getRootDomain('github.com')).toBe('github.com');
     expect(getRootDomain('www.google.com')).toBe('google.com');
   });
+
+  it('safely matches domains and prevents substring spoofing (CodeQL CWE-20)', async () => {
+    const { isDomainOrSubdomain, isAmazonHost, getHostnameFromUrl } = await import('./utils');
+
+    // YouTube safe checks
+    expect(isDomainOrSubdomain('youtube.com', 'youtube.com')).toBe(true);
+    expect(isDomainOrSubdomain('m.youtube.com', 'youtube.com')).toBe(true);
+    expect(isDomainOrSubdomain('evil-youtube.com', 'youtube.com')).toBe(false);
+    expect(isDomainOrSubdomain('youtube.com.attacker.com', 'youtube.com')).toBe(false);
+
+    // Amazon safe checks
+    expect(isAmazonHost('amazon.com')).toBe(true);
+    expect(isAmazonHost('www.amazon.co.uk')).toBe(true);
+    expect(isAmazonHost('smile.amazon.com')).toBe(true);
+    expect(isAmazonHost('amzn.to')).toBe(true);
+    expect(isAmazonHost('evil-amazon.com')).toBe(false);
+    expect(isAmazonHost('amazon.com.attacker.net')).toBe(false);
+
+    // Hostname extraction from image URLs
+    expect(getHostnameFromUrl('https://i.ytimg.com/vi/xyz/hqdefault.jpg')).toBe('i.ytimg.com');
+    expect(isDomainOrSubdomain(getHostnameFromUrl('https://i.ytimg.com/vi/xyz/hqdefault.jpg'), 'ytimg.com')).toBe(true);
+    expect(isDomainOrSubdomain(getHostnameFromUrl('https://evil.com/fake?x=ytimg.com'), 'ytimg.com')).toBe(false);
+    expect(isDomainOrSubdomain(getHostnameFromUrl('https://m.media-amazon.com/images/I/xyz.jpg'), 'media-amazon.com')).toBe(true);
+    expect(isDomainOrSubdomain(getHostnameFromUrl('https://evil-media-amazon.com/pic.jpg'), 'media-amazon.com')).toBe(false);
+  });
 });

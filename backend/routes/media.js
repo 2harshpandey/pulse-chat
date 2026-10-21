@@ -403,11 +403,18 @@ module.exports = (wss, broadcasts) => {
       // Find message to delete from DB
       const messageToDelete = await Message.findOne({ id: messageId, roomId });
 
-      if (messageToDelete && messageToDelete.url && messageToDelete.url.includes('cloudinary')) {
-        const publicId = messageToDelete.id;
-        if (publicId.includes('/')) {
-          await cloudinary.uploader.destroy(publicId, { resource_type: 'video', invalidate: true });
-          await cloudinary.uploader.destroy(publicId, { resource_type: 'image', invalidate: true });
+      if (messageToDelete && messageToDelete.url) {
+        let isCloudinary = false;
+        try {
+          const parsed = new URL(messageToDelete.url);
+          isCloudinary = parsed.hostname === 'res.cloudinary.com' || parsed.hostname.endsWith('.cloudinary.com');
+        } catch {}
+        if (isCloudinary) {
+          const publicId = messageToDelete.id;
+          if (publicId && typeof publicId === 'string' && publicId.includes('/')) {
+            await cloudinary.uploader.destroy(publicId, { resource_type: 'video', invalidate: true });
+            await cloudinary.uploader.destroy(publicId, { resource_type: 'image', invalidate: true });
+          }
         }
       }
 

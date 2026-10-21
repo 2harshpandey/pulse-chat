@@ -313,11 +313,19 @@ router.get('/api/link-preview', apiLimiter, async (req, res) => {
         }
       }
 
-      if (isFinalAmazon && rawImage && rawImage.includes('m.media-amazon.com/images/I/')) {
-        rawImage = rawImage
-          .replace(/\._[a-z0-9_]+_\.jpg$/i, '._SY250_.jpg')
-          .replace(/\.jpg$/i, '._SY250_.jpg')
-          .replace(/\._SY250_\._SY250_\.jpg/i, '._SY250_.jpg');
+      if (isFinalAmazon && rawImage) {
+        try {
+          const parsedRawImage = new URL(rawImage, finalParsedUrl);
+          if (
+            (parsedRawImage.hostname === 'm.media-amazon.com' || parsedRawImage.hostname.endsWith('.media-amazon.com')) &&
+            parsedRawImage.pathname.startsWith('/images/I/')
+          ) {
+            rawImage = rawImage
+              .replace(/\._[a-z0-9_]+_\.jpg$/i, '._SY250_.jpg')
+              .replace(/\.jpg$/i, '._SY250_.jpg')
+              .replace(/\._SY250_\._SY250_\.jpg/i, '._SY250_.jpg');
+          }
+        } catch {}
       }
 
       image = rawImage ? (() => {

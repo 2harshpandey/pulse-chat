@@ -4,7 +4,7 @@ import {
   LinkPreviewCard, LinkPreviewImageWrapper, LinkPreviewImage, LinkPreviewBody, LinkPreviewSiteName,
   LinkPreviewTitle, LinkPreviewDesc,
 } from './ChatStyledComponents';
-import { getRootDomain } from './utils';
+import { getRootDomain, isDomainOrSubdomain, isAmazonHost, getHostnameFromUrl } from './utils';
 
 import {
   linkPreviewCache,
@@ -55,13 +55,15 @@ export const LinkPreview: React.FC<{ url: string; sender: 'me' | 'other' }> = Re
   const host = data ? data.hostname.replace(/^www\./i, '').toLowerCase() : '';
 
   // Specific media/product previews (YouTube video thumbnail, Amazon product picture) should use data.image
-  const isSpecialMediaPreview = Boolean(
-    data?.image && (
-      host === 'youtube.com' || host === 'youtu.be' ||
-      host.includes('amazon.') || host.includes('amzn.') ||
-      data.image.includes('ytimg.com') || data.image.includes('media-amazon.com')
-    )
-  );
+  const isSpecialMediaPreview = useMemo(() => {
+    if (!data?.image) return false;
+    const isYouTubePage = isDomainOrSubdomain(host, 'youtube.com') || isDomainOrSubdomain(host, 'youtu.be');
+    const isAmazonPage = isAmazonHost(host);
+    const imgHost = getHostnameFromUrl(data.image);
+    const isYouTubeImg = isDomainOrSubdomain(imgHost, 'ytimg.com');
+    const isAmazonImg = isDomainOrSubdomain(imgHost, 'media-amazon.com') || isDomainOrSubdomain(imgHost, 'images-amazon.com');
+    return isYouTubePage || isAmazonPage || isYouTubeImg || isAmazonImg;
+  }, [data?.image, host]);
 
   const candidates = useMemo(() => {
     if (!data) return [];

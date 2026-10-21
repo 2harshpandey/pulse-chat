@@ -622,3 +622,32 @@ export const getRootDomain = (hostname: string): string => {
   return parts.slice(isSecondLevelCctld ? -3 : -2).join('.');
 };
 
+export const isDomainOrSubdomain = (targetHost: string, baseDomain: string): boolean => {
+  if (!targetHost || !baseDomain) return false;
+  const cleanTarget = targetHost.replace(/^www\./i, '').toLowerCase();
+  const cleanBase = baseDomain.toLowerCase();
+  return cleanTarget === cleanBase || cleanTarget.endsWith(`.${cleanBase}`);
+};
+
+export const isAmazonHost = (targetHost: string): boolean => {
+  if (!targetHost) return false;
+  const clean = targetHost.replace(/^www\./i, '').toLowerCase();
+  return (
+    clean === 'amazon.com' ||
+    clean.endsWith('.amazon.com') ||
+    clean === 'amzn.to' ||
+    clean.endsWith('.amzn.to') ||
+    clean === 'amzn.in' ||
+    clean.endsWith('.amzn.in') ||
+    /(?:^|\.)amazon\.[a-z]{2,3}(?:\.[a-z]{2})?$/i.test(clean)
+  );
+};
+
+export const getHostnameFromUrl = (urlStr: string): string => {
+  try {
+    return new URL(urlStr).hostname.replace(/^www\./i, '').toLowerCase();
+  } catch {
+    return '';
+  }
+};
+
