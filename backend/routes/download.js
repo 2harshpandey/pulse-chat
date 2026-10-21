@@ -121,6 +121,11 @@ router.all('/api/download', apiLimiter, async (req, res) => {
     }
     
     res.status(payloadResponse.status === 206 ? 206 : 200);
+    res.on('close', () => {
+      if (payloadResponse.data && !payloadResponse.data.destroyed) {
+        payloadResponse.data.destroy();
+      }
+    });
     return payloadResponse.data.pipe(res);
   } catch (error) {
     logger.error('Download proxy error:', {

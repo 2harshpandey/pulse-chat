@@ -188,17 +188,19 @@ const handleUserJoin = async ({
         : messagesDesc;
       const cleanMessages = windowDesc.reverse().map(toClientMessage);
       const oldestCreatedAt = cleanMessages.length > 0 ? cleanMessages[0].createdAt : null;
-      ws.send(JSON.stringify({
-        type: 'history',
-        data: cleanMessages,
-        hasMoreHistory,
-        oldestCreatedAt,
-      }));
+      if (ws.readyState === 1) {
+        ws.send(JSON.stringify({
+          type: 'history',
+          data: cleanMessages,
+          hasMoreHistory,
+          oldestCreatedAt,
+        }));
 
-      ws.send(JSON.stringify({
-        type: 'pinned_messages_update',
-        data: getRoomState(roomId).pinnedMessages
-      }));
+        ws.send(JSON.stringify({
+          type: 'pinned_messages_update',
+          data: getRoomState(roomId).pinnedMessages
+        }));
+      }
     })
     .catch(err => logger.error('Failed to send initial history:', err));
 };

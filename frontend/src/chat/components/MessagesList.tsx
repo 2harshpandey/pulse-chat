@@ -187,7 +187,18 @@ export const MessagesList = React.memo(function MessagesList({
   onVideoFullscreenEnter,
 }: MessagesListProps) {
   const pinnedMessageIdSet = useMemo(
-    () => new Set(pinnedMessages.map((p) => p.id || p._id || p.messageId)),
+    () =>
+      new Set(
+        pinnedMessages
+          .filter(
+            (p) =>
+              p &&
+              !p.isDeleted &&
+              !p.vanished &&
+              p.text !== 'This message has been deleted by an admin.'
+          )
+          .map((p) => p.id || p._id || p.messageId)
+      ),
     [pinnedMessages]
   );
 

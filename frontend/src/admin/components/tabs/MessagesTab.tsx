@@ -504,27 +504,32 @@ export function MessagesTab({ admin }: MessagesTabProps) {
                       </Td>
                       <ExpandTd>{renderMessageDetails(log)}</ExpandTd>
                       <NoWrapTd>
-                        {log.type === 'create' &&
-                          (log.messageId || log.message?.id || log.message?._id || log._id) &&
-                          (pinnedMessages.some(
-                            (p) => p.id === (log.messageId || log.message?.id || log.message?._id || log._id)
-                          ) ? (
-                            <SmallDangerButton
-                              onClick={() =>
-                                handleUnpin(log.messageId || log.message?.id || log.message?._id || log._id)
-                              }
-                            >
-                              Unpin
-                            </SmallDangerButton>
-                          ) : (
-                            <SmallSuccessButton
-                              onClick={() =>
-                                handleInitiatePin(log.messageId || log.message?.id || log.message?._id || log._id)
-                              }
-                            >
-                              Pin
-                            </SmallSuccessButton>
-                          ))}
+                        {(() => {
+                          const msgId = log.messageId || log.message?.id || log.message?._id || log._id;
+                          if (!msgId || log.type !== 'create') return null;
+                          const isPinned = pinnedMessages.some((p) => p.id === msgId);
+                          const isDeleted =
+                            log.message?.isDeleted ||
+                            log.message?.vanished ||
+                            laterDeletedByUserIds.has(extractMessageId(log)) ||
+                            log.message?.text === 'This message has been deleted by an admin.';
+
+                          if (isPinned) {
+                            return (
+                              <SmallDangerButton onClick={() => handleUnpin(msgId)}>
+                                Unpin
+                              </SmallDangerButton>
+                            );
+                          }
+                          if (!isDeleted) {
+                            return (
+                              <SmallSuccessButton onClick={() => handleInitiatePin(msgId)}>
+                                Pin
+                              </SmallSuccessButton>
+                            );
+                          }
+                          return null;
+                        })()}
                       </NoWrapTd>
                     </tr>
                   );

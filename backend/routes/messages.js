@@ -38,11 +38,15 @@ router.get('/api/messages/search', apiLimiter, async (req, res) => {
   if (!q || typeof q !== 'string') {
     return res.status(400).json({ error: 'Query parameter q is required' });
   }
+  const escaped = q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (!escaped) {
+    return res.json([]);
+  }
   try {
     const { frontendHiddenBefore } = getRoomState(roomId);
     const query = {
       roomId,
-      text: { $regex: q, $options: 'i' },
+      text: { $regex: escaped, $options: 'i' },
       isDeleted: { $ne: true },   // exclude "deleted for everyone" messages
       vanished: { $ne: true },    // exclude admin-vanished messages
     };

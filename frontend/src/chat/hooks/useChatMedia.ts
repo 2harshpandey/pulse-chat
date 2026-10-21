@@ -48,7 +48,10 @@ export const compressImage = (file: File): Promise<File> => {
         resolve(new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() }));
       }, 'image/jpeg', 0.8);
     };
-    img.onerror = () => resolve(file);
+    img.onerror = () => {
+      URL.revokeObjectURL(img.src);
+      resolve(file);
+    };
   });
 };
 
@@ -515,6 +518,20 @@ export function useChatMedia({
 
   const handleCancelUpload = useCallback((messageId: string) => {
     transferManager.pauseTransfer(messageId);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      mediaLoadAbortControllersRef.current.forEach((controller) => {
+        controller.abort();
+      });
+      mediaLoadAbortControllersRef.current.clear();
+
+      mediaBlobUrlMapRef.current.forEach((url) => {
+        URL.revokeObjectURL(url);
+      });
+      mediaBlobUrlMapRef.current.clear();
+    };
   }, []);
 
   return {

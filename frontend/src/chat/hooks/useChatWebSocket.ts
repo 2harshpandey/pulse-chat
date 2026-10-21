@@ -348,6 +348,13 @@ export function useChatWebSocket({
           setSearchResults(prev => (prev ? updateMsgInList(prev) : null));
           setReplyingTo(prev => {
             if (prev && prev.id === normalizedUpdate.id) {
+              if (
+                normalizedUpdate.isDeleted ||
+                normalizedUpdate.vanished ||
+                normalizedUpdate.text === 'This message has been deleted by an admin.'
+              ) {
+                return null;
+              }
               return { ...prev, ...normalizedUpdate };
             }
             return prev;
@@ -380,7 +387,16 @@ export function useChatWebSocket({
           setReplyingTo(prev => {
             if (prev && updatedIds.has(prev.id)) {
               const updatedTarget = updatedMap.get(prev.id);
-              if (updatedTarget) return { ...prev, ...updatedTarget };
+              if (updatedTarget) {
+                if (
+                  updatedTarget.isDeleted ||
+                  updatedTarget.vanished ||
+                  updatedTarget.text === 'This message has been deleted by an admin.'
+                ) {
+                  return null;
+                }
+                return { ...prev, ...updatedTarget };
+              }
             }
             return prev;
           });

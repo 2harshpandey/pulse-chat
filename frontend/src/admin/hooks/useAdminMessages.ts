@@ -96,7 +96,7 @@ export function useAdminMessages({ apiUrl, apiHeaders, users, ws }: UseAdminMess
   const filteredHistoryLogs = useMemo(() => {
     return enrichedHistoryLogs.filter((log) => {
       const messageIdMatch = filterMessageId
-        ? (log.messageId || log.message?.id)?.toLowerCase().includes(filterMessageId.toLowerCase())
+        ? String(log.messageId || log.message?.id || '').toLowerCase().includes(filterMessageId.toLowerCase())
         : true;
       const userMatch = filterUser ? (log.username || '').toLowerCase().includes(filterUser.toLowerCase()) : true;
       let eventTypeMatch = true;

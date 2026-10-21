@@ -225,7 +225,13 @@ export const VideoPlayer = ({
     }
   }, [autoPlay, src]);
 
-  useEffect(() => { return () => { if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current); }; }, []);
+  useEffect(() => {
+    return () => {
+      if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current);
+      if (doubleTapTimerRef.current) clearTimeout(doubleTapTimerRef.current);
+      if (centerPlayTimerRef.current) clearTimeout(centerPlayTimerRef.current);
+    };
+  }, []);
   useEffect(() => { resetControlsTimer(); }, [isPlaying, resetControlsTimer]);
 
   const togglePlay = () => {

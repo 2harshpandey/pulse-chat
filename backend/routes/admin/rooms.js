@@ -102,13 +102,16 @@ module.exports = (wss, broadcasts) => {
       ]);
 
       // Force logout all online users in the room
-      const state = getRoomState(roomId);
-      const onlineUserIds = Array.from(state.onlineUsers.keys());
-      onlineUserIds.forEach((uid) => {
-        broadcast(roomId, uid, 'admin_force_logout', { reason: 'Room deleted by admin.' });
+      wss.clients.forEach((client) => {
+        if (client.readyState === 1 && !client.isAdmin && client.roomId === roomId) {
+          client.send(JSON.stringify({ type: 'force_logout', message: 'Room has been deleted by an administrator.' }));
+          setTimeout(() => client.terminate(), 500);
+        }
       });
+      const state = getRoomState(roomId);
       state.onlineUsers.clear();
-      state.messages = [];
+      state.loggedInUsers.clear();
+      state.typingUsers.clear();
       state.pinnedMessages = [];
 
       res.json({ success: true });

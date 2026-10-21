@@ -99,7 +99,15 @@ const initWebSocket = (wss) => {
     const isAdminConnection = url.searchParams.get('admin') === 'true';
 
     async function handleClientMessage(message) {
-      const parsedMessage = JSON.parse(message.toString());
+      let parsedMessage;
+      try {
+        parsedMessage = JSON.parse(message.toString());
+      } catch (err) {
+        logger.warn('Failed to parse WebSocket message JSON:', { error: err.message });
+        return;
+      }
+      if (!parsedMessage || typeof parsedMessage !== 'object') return;
+
       if (parsedMessage.type !== 'admin_auth' && parsedMessage.type !== 'ping' && parsedMessage.type !== 'pong' && parsedMessage.type !== 'start_typing' && parsedMessage.type !== 'stop_typing') {
         logger.info('Received message:', parsedMessage);
       }
@@ -177,7 +185,11 @@ const initWebSocket = (wss) => {
     }
 
     logger.info('A new client connected!');
-    ws.on('message', handleClientMessage);
+    ws.on('message', (data) => {
+      handleClientMessage(data).catch((err) => {
+        logger.error('WebSocket client message error:', { message: err.message, stack: err.stack });
+      });
+    });
 
     ws.on('close', () => {
       handleSocketClose({ ws, wss, broadcastToAdmins, _broadcast, _broadcastOnlineUsers });

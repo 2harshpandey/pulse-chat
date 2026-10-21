@@ -482,7 +482,7 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     : 'Scroll to latest messages';
 
   const handleJumpToNextPinned = useCallback(async () => {
-    if (msgs.isJumpingToPinned) return;
+    if (msgs.isJumpingToPinned || msgs.pinnedMessages.length === 0) return;
     viewport.setNewMessagesWhileScrolledUp(0);
     if (search.activeSearchQuery) {
       search.resetSearch();
@@ -499,10 +499,16 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
         );
       } finally {
         msgs.setIsJumpingToPinned(false);
-        msgs.setCurrentPinnedIndex((prev) => (prev + 1) % msgs.pinnedMessages.length);
+        msgs.setCurrentPinnedIndex((prev) => {
+          if (msgs.pinnedMessages.length <= 1) return 0;
+          return (prev + 1) % msgs.pinnedMessages.length;
+        });
       }
     } else {
-      msgs.setCurrentPinnedIndex((prev) => (prev + 1) % msgs.pinnedMessages.length);
+      msgs.setCurrentPinnedIndex((prev) => {
+        if (msgs.pinnedMessages.length <= 1) return 0;
+        return (prev + 1) % msgs.pinnedMessages.length;
+      });
     }
   }, [msgs, nav, search, viewport]);
 

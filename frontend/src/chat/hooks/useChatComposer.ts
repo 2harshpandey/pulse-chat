@@ -420,7 +420,7 @@ export function useChatComposer({
       resetSearch();
     }
 
-    const tempId = Date.now().toString();
+    const tempId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     let replyContext: ReplyContext | undefined = undefined;
     if (replyingTo) {
       const { type } = replyingTo;
@@ -498,7 +498,7 @@ export function useChatComposer({
       if (hadReply) forceScrollToBottomAsync();
     } else if (stagedGif) {
       const gifMessage: Message = {
-        id: Date.now().toString(),
+        id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         userId,
         username: userProfile?.username || '',
         type: 'image',
@@ -515,7 +515,7 @@ export function useChatComposer({
       if (hadReply) forceScrollToBottomAsync();
     } else {
       const textMessage: Message = {
-        id: Date.now().toString(),
+        id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         userId,
         username: userProfile?.username || '',
         type: 'text',

@@ -16,18 +16,28 @@ const setupAdmin = (ws, roomId, adminClients, loggedInUsers, onlineUsers, broadc
   logger.info(`Online users snapshot for admin (room ${roomId}): ${onlineUsers.size} user(s)`);
   broadcastToAdmins(roomId, 'activity', `An admin client connected to admin channel.`);
   User.find({ roomId }).then(allDbUsers => {
-    ws.send(JSON.stringify({ type: 'users', data: allDbUsers }));
-  });
+    if (ws.readyState === 1) {
+      ws.send(JSON.stringify({ type: 'users', data: allDbUsers }));
+    }
+  }).catch((err) => logger.error('Failed to query users for admin:', err));
+
   loadPinnedMessages(roomId).then(() => {
-    ws.send(JSON.stringify({
-      type: 'pinned_messages_update',
-      data: getRoomState(roomId).pinnedMessages
-    }));
-  });
+    if (ws.readyState === 1) {
+      ws.send(JSON.stringify({
+        type: 'pinned_messages_update',
+        data: getRoomState(roomId).pinnedMessages
+      }));
+    }
+  }).catch((err) => logger.error('Failed to load pinned messages for admin:', err));
+
   // Send current logged-in users
-  ws.send(JSON.stringify({ type: 'logged_in_users', data: Array.from(loggedInUsers.values()) }));
+  if (ws.readyState === 1) {
+    ws.send(JSON.stringify({ type: 'logged_in_users', data: Array.from(loggedInUsers.values()) }));
+  }
   // Send current online users
-  ws.send(JSON.stringify({ type: 'online_users_admin', data: Array.from(onlineUsers.values()) }));
+  if (ws.readyState === 1) {
+    ws.send(JSON.stringify({ type: 'online_users_admin', data: Array.from(onlineUsers.values()) }));
+  }
   ws.on('close', () => {
     adminClients.delete(ws);
     logger.info(`An admin client disconnected from admin channel (room ${roomId}).`);
@@ -53,7 +63,9 @@ const handleAdminAuth = (ws, rawData, broadcastToAdmins, loadPinnedMessages, han
         Room.findOne({ id: roomId }).then(room => {
           if (room && room.adminPassword === data.password) {
             setupAdmin(ws, roomId, adminClients, loggedInUsers, onlineUsers, broadcastToAdmins, loadPinnedMessages);
-            ws.on('message', handleClientMessage);
+            ws.on('message', (msg) => {
+              handleClientMessage(msg).catch((err) => logger.error('Admin message error:', err));
+            });
           } else {
             logger.warn(`Admin auth failed for room ${roomId}: room found=${!!room}, password match=${room ? room.adminPassword === data.password : 'N/A'}`);
             ws.terminate();
@@ -67,7 +79,9 @@ const handleAdminAuth = (ws, rawData, broadcastToAdmins, loadPinnedMessages, han
       
       if (isValid) {
         setupAdmin(ws, roomId, adminClients, loggedInUsers, onlineUsers, broadcastToAdmins, loadPinnedMessages);
-        ws.on('message', handleClientMessage);
+        ws.on('message', (msg) => {
+          handleClientMessage(msg).catch((err) => logger.error('Admin message error:', err));
+        });
       }
     } else {
       logger.warn('Admin auth failed: missing data.', { type: data.type, hasRoomId: !!data.roomId });

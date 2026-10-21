@@ -88,8 +88,18 @@ const passwordAttemptLocks = new Map(); // key: { count, lockUntil }
 
 const checkPasswordRateLimit = (req, res, next) => {
   const ip = extractIp(req);
-  const roomId = req.body.roomId || req.body.id || req.headers['x-room-id'] || 'me';
+  const roomId = req.body?.roomId || req.body?.id || req.headers['x-room-id'] || 'me';
   const key = `${ip}_${roomId}`;
+
+  // Prune expired entries if map grows large to prevent memory leak
+  if (passwordAttemptLocks.size > 2000) {
+    const now = Date.now();
+    for (const [k, v] of passwordAttemptLocks.entries()) {
+      if (v.lockUntil <= now) {
+        passwordAttemptLocks.delete(k);
+      }
+    }
+  }
 
   const record = passwordAttemptLocks.get(key);
   if (record && record.lockUntil > Date.now()) {

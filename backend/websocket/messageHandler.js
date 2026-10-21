@@ -15,7 +15,7 @@ const {
   MAX_REPORT_REASON_LENGTH,
   MAX_REPORTED_JOIN_HISTORY,
 } = require('../state');
-const { unpinIfPinned } = require('./pinnedManager');
+const { unpinIfPinned, broadcastPinnedMessages } = require('./pinnedManager');
 
 /**
  * Handle reaction addition/toggle.
@@ -32,7 +32,7 @@ const handleReact = async ({ ws, parsedMessage, wss }) => {
 
   const messageDoc = await Message.findOne({ id: messageId });
 
-  if (messageDoc) {
+  if (messageDoc && !messageDoc.isDeleted && !messageDoc.vanished) {
     messageDoc.reactions = toReactionMap(messageDoc.reactions);
 
     let previousEmoji = null;
@@ -79,10 +79,24 @@ const handleEdit = async ({ ws, parsedMessage, wss, broadcastToAdmins }) => {
   const { messageId, newText, roomId = 'me' } = parsedMessage;
 
   const msg = await Message.findOne({ id: messageId });
-  if (!msg) return;
+  if (!msg || msg.isDeleted || msg.vanished) return;
   const oldText = msg.text;
 
   await Message.updateOne({ id: messageId }, { $set: { text: newText, edited: true } });
+
+  // If this message is pinned, keep the banner synchronized with the new text
+  const state = getRoomState(roomId);
+  let pinnedChanged = false;
+  state.pinnedMessages = state.pinnedMessages.map(p => {
+    if (p.id === messageId) {
+      pinnedChanged = true;
+      return { ...p, text: newText, edited: true };
+    }
+    return p;
+  });
+  if (pinnedChanged) {
+    broadcastPinnedMessages(wss, roomId);
+  }
 
   const updatedMsgForBroadcast = {
     ...msg.toObject(),
@@ -298,14 +312,19 @@ const handlePinMessage = async ({ ws, parsedMessage, broadcastPinnedMessages, lo
     const expiresAt = durationMs ? new Date(pinnedAt.getTime() + durationMs) : null;
     const pinnedObj = { pinnedAt, expiresAt };
 
-    await Message.updateOne({ id: messageId }, { $set: { pinned: pinnedObj } });
+    await Message.updateOne({ id: msg.id }, { $set: { pinned: pinnedObj } });
     await MessageEvent.updateMany(
       { roomId, $or: [{ messageId }, { 'message.id': messageId }, { messageId: targetMsgId }, { 'message.id': targetMsgId }] },
       { $set: { 'message.pinned': pinnedObj } }
     );
     
     const updatedMsg = { ...msg, pinned: pinnedObj };
-    state.pinnedMessages.push(toClientMessage(updatedMsg));
+    const existingIndex = state.pinnedMessages.findIndex(p => p.id === msg.id);
+    if (existingIndex >= 0) {
+      state.pinnedMessages[existingIndex] = toClientMessage(updatedMsg);
+    } else {
+      state.pinnedMessages.push(toClientMessage(updatedMsg));
+    }
     broadcastPinnedMessages(roomId);
   } catch (error) {
     logger.error('Failed to pin message:', error);

@@ -108,6 +108,12 @@ export function useChatMessages({
     copiedToastTimerRef.current = setTimeout(() => setShowCopiedToast(false), 2000);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (copiedToastTimerRef.current) clearTimeout(copiedToastTimerRef.current);
+    };
+  }, []);
+
   // Sync refs
   useEffect(() => {
     messagesRef.current = messages;

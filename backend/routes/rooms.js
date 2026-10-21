@@ -106,7 +106,7 @@ router.post('/', apiLimiter, async (req, res) => {
 // Check if a room ID is available
 router.get('/check-id', apiLimiter, async (req, res) => {
   const { id } = req.query;
-  if (!id) return res.status(400).json({ error: 'ID is required.' });
+  if (!id || typeof id !== 'string') return res.status(400).json({ error: 'ID is required.' });
   if (id.toLowerCase() === 'me' || id.toLowerCase() === 'global') {
     return res.json({ available: false });
   }
@@ -217,7 +217,7 @@ router.get('/', apiLimiter, async (req, res) => {
 // Search public rooms
 router.get('/search', apiLimiter, async (req, res) => {
   const { q } = req.query;
-  if (!q) {
+  if (!q || typeof q !== 'string') {
     return res.status(400).json({ error: 'Search query is required.' });
   }
 

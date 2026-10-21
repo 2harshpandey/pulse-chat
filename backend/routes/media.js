@@ -312,12 +312,17 @@ module.exports = (wss, broadcasts) => {
         const chunkStart = parseInt(req.body.chunkStart, 10) || 0;
         let fd;
         try {
-          fd = fs.openSync(tmpPath, 'r+');
-        } catch (e) {
-          fd = fs.openSync(tmpPath, 'w');
+          try {
+            fd = fs.openSync(tmpPath, 'r+');
+          } catch (e) {
+            fd = fs.openSync(tmpPath, 'w');
+          }
+          fs.writeSync(fd, req.file.buffer, 0, req.file.buffer.length, chunkStart);
+        } finally {
+          if (fd !== undefined) {
+            try { fs.closeSync(fd); } catch (_) {}
+          }
         }
-        fs.writeSync(fd, req.file.buffer, 0, req.file.buffer.length, chunkStart);
-        fs.closeSync(fd);
 
         const currentChunk = parseInt(chunkIndex, 10);
         const total = parseInt(totalChunks, 10);
@@ -446,7 +451,7 @@ module.exports = (wss, broadcasts) => {
       ]);
       await clearAllPins(wss, roomId);
 
-      broadcast(wss, roomId, { type: 'chat_cleared' });
+      broadcast(roomId, { type: 'chat_cleared' });
 
       logger.info(`All messages and events in room ${roomId} have been permanently deleted by an admin.`);
       broadcastToAdmins(roomId, 'activity', 'All messages and events have been permanently deleted.');
@@ -473,7 +478,7 @@ module.exports = (wss, broadcasts) => {
       getRoomState(roomId).frontendHiddenBefore = hiddenBefore;
       await clearAllPins(wss, roomId);
 
-      broadcast(wss, roomId, { type: 'chat_hidden_for_everyone', hiddenBefore: hiddenBefore.toISOString() });
+      broadcast(roomId, { type: 'chat_hidden_for_everyone', hiddenBefore: hiddenBefore.toISOString() });
 
       logger.info(`All existing chats in room ${roomId} have been hidden from frontend for everyone (DB preserved).`);
       broadcastToAdmins(roomId, 'activity', 'All existing chats have been hidden from frontend for everyone.');

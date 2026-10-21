@@ -344,13 +344,13 @@ class TransferManager {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      window.URL.revokeObjectURL(objectUrl);
+      setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1000);
 
       this.transfers.delete(messageId);
       this.notify();
       
       // Cleanup partial from IndexedDB
-      // Overwrite with empty to "delete" or just ignore
+      removeCachedMediaBlob(currentSessionId, messageId, 'download_partial').catch(() => {});
     } catch (err: any) {
       if (err.name === 'AbortError') {
         const currentInfo = this.transfers.get(messageId);
