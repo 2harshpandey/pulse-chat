@@ -61,6 +61,7 @@ module.exports = (wss, broadcasts) => {
       // Force logout everyone in that room
       const roomState = getRoomState(targetRoomId);
       if (roomState) {
+        roomState.pinnedMessages = [];
         for (const ws of roomState.adminClients) {
           try {
             ws.close(1008, 'Room deleted by Super Admin');
@@ -108,6 +109,7 @@ module.exports = (wss, broadcasts) => {
       });
       state.onlineUsers.clear();
       state.messages = [];
+      state.pinnedMessages = [];
 
       res.json({ success: true });
     } catch (error) {

@@ -15,6 +15,8 @@ const {
   broadcastPinnedMessages,
   loadPinnedMessages,
   startPinExpirationWatcher,
+  unpinIfPinned,
+  clearAllPins,
 } = require('./websocket/pinnedManager');
 
 const {
@@ -53,6 +55,8 @@ const initWebSocket = (wss) => {
   const _broadcastOnlineUsers = (roomId) => broadcastOnlineUsers(wss, roomId);
   const _broadcast = (roomId, message) => broadcast(wss, roomId, message);
   const _broadcastPinnedMessages = (roomId) => broadcastPinnedMessages(wss, roomId);
+  const _unpinIfPinned = (roomId, messageIds) => unpinIfPinned(wss, roomId, messageIds);
+  const _clearAllPins = (roomId) => clearAllPins(wss, roomId);
 
   // Build the curried getVisibleMessagesQuery using state's getter
   const _getVisibleMessagesQuery = (roomId) => {
@@ -152,7 +156,7 @@ const initWebSocket = (wss) => {
           break;
 
         case 'unpin_message':
-          await handleUnpinMessage({ ws, parsedMessage, broadcastPinnedMessages: _broadcastPinnedMessages });
+          await handleUnpinMessage({ ws, parsedMessage, wss, broadcastPinnedMessages: _broadcastPinnedMessages });
           break;
 
         case 'delete_for_everyone':
@@ -185,7 +189,14 @@ const initWebSocket = (wss) => {
   // Start the log file watcher
   startLogWatcher();
 
-  return { broadcastToAdmins, broadcastOnlineUsers: _broadcastOnlineUsers, broadcast: _broadcast };
+  return {
+    broadcastToAdmins,
+    broadcastOnlineUsers: _broadcastOnlineUsers,
+    broadcast: _broadcast,
+    broadcastPinnedMessages: _broadcastPinnedMessages,
+    unpinIfPinned: _unpinIfPinned,
+    clearAllPins: _clearAllPins,
+  };
 };
 
 module.exports = { initWebSocket };

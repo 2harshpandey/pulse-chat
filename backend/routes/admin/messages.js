@@ -6,6 +6,7 @@ const AuditLog = require('../../models/auditLog');
 const Room = require('../../models/room');
 const { getRoomState } = require('../../state');
 const { adminLimiter, adminAuth } = require('../../middleware');
+const { unpinIfPinned } = require('../../websocket/pinnedManager');
 
 module.exports = (wss, broadcasts) => {
   const { broadcastToAdmins, broadcast } = broadcasts;
@@ -391,16 +392,18 @@ module.exports = (wss, broadcasts) => {
     try {
       if (action === 'hide') {
         const updatePayload = vanish
-          ? { $set: { vanished: true, isDeleted: true, deletedBy: 'admin' } }
-          : { $set: { isDeleted: true, deletedBy: 'admin' } };
+          ? { $set: { vanished: true, isDeleted: true, deletedBy: 'admin', pinned: null } }
+          : { $set: { isDeleted: true, deletedBy: 'admin', pinned: null } };
 
         await Message.updateMany({ roomId, id: { $in: messageIds } }, updatePayload);
 
         const eventPayload = vanish
-          ? { $set: { 'message.vanished': true, 'message.isDeleted': true, 'message.deletedBy': 'admin' } }
-          : { $set: { 'message.isDeleted': true, 'message.deletedBy': 'admin' } };
+          ? { $set: { 'message.vanished': true, 'message.isDeleted': true, 'message.deletedBy': 'admin', 'message.pinned': null } }
+          : { $set: { 'message.isDeleted': true, 'message.deletedBy': 'admin', 'message.pinned': null } };
 
         await MessageEvent.updateMany({ roomId, 'message.id': { $in: messageIds } }, eventPayload);
+
+        await unpinIfPinned(wss, roomId, messageIds);
 
         if (vanish) {
           broadcast(roomId, { type: 'bulk_delete', messageIds });
@@ -431,6 +434,7 @@ module.exports = (wss, broadcasts) => {
 
         if (vanish) {
           await Message.deleteMany({ roomId, id: { $in: messageIds } });
+          await unpinIfPinned(wss, roomId, messageIds);
 
           broadcast(roomId, { type: 'bulk_delete', messageIds });
           await AuditLog.create({ roomId, type: 'messages_deleted_disappear', details: { count: messageIds.length, action: 'delete' } });
@@ -447,9 +451,11 @@ module.exports = (wss, broadcasts) => {
                 originalName: null,
                 size: null,
                 type: 'text',
+                pinned: null,
               },
             }
           );
+          await unpinIfPinned(wss, roomId, messageIds);
 
           const updatedMessages = await Message.find({ roomId, id: { $in: messageIds } }).lean();
           broadcast(roomId, { type: 'bulk_update', messages: updatedMessages });

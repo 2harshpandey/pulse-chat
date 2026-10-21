@@ -15,6 +15,7 @@ const {
   MAX_REPORT_REASON_LENGTH,
   MAX_REPORTED_JOIN_HISTORY,
 } = require('../state');
+const { unpinIfPinned } = require('./pinnedManager');
 
 /**
  * Handle reaction addition/toggle.
@@ -267,6 +268,12 @@ const handlePinMessage = async ({ ws, parsedMessage, broadcastPinnedMessages, lo
       ws.send(JSON.stringify({ type: 'error', message: 'Failed to pin: Message not found in database.' }));
       return;
     }
+
+    if (msg.isDeleted || msg.vanished || msg.text === 'This message has been deleted by an admin.') {
+      logger.warn(`Pin failed: cannot pin deleted message ${targetMsgId}`);
+      ws.send(JSON.stringify({ type: 'pin_error', message: 'Cannot pin a deleted message.' }));
+      return;
+    }
     logger.info(`Pinning message found in DB: ${msg.id}`);
 
     const state = getRoomState(roomId);
@@ -308,7 +315,7 @@ const handlePinMessage = async ({ ws, parsedMessage, broadcastPinnedMessages, lo
 /**
  * Handle unpin_message action (admins only).
  */
-const handleUnpinMessage = async ({ ws, parsedMessage, broadcastPinnedMessages }) => {
+const handleUnpinMessage = async ({ ws, parsedMessage, wss, broadcastPinnedMessages }) => {
   if (!ws.isAdmin) return;
   const { messageId } = parsedMessage;
   const roomId = ws.roomId || 'me';
@@ -324,17 +331,7 @@ const handleUnpinMessage = async ({ ws, parsedMessage, broadcastPinnedMessages }
       }
     }
 
-    await Message.updateOne(
-      { $or: [{ id: targetMsgId }, ...(mongoose.Types.ObjectId.isValid(targetMsgId) ? [{ _id: targetMsgId }] : [])] },
-      { $set: { pinned: null } }
-    );
-    await MessageEvent.updateMany(
-      { roomId, $or: [{ messageId: targetMsgId }, { 'message.id': targetMsgId }, { messageId }, { 'message.id': messageId }] },
-      { $set: { 'message.pinned': null } }
-    );
-    const state = getRoomState(roomId);
-    state.pinnedMessages = state.pinnedMessages.filter(m => m.id !== targetMsgId && m.id !== messageId);
-    broadcastPinnedMessages(roomId);
+    await unpinIfPinned(wss, roomId, [targetMsgId, messageId]);
   } catch (error) {
     logger.error('Failed to unpin message:', error);
   }
@@ -344,7 +341,8 @@ const handleUnpinMessage = async ({ ws, parsedMessage, broadcastPinnedMessages }
  * Handle delete_for_everyone.
  */
 const handleDeleteForEveryone = async ({ ws, parsedMessage, wss, broadcastToAdmins }) => {
-  const { messageId, roomId = 'me' } = parsedMessage;
+  const roomId = parsedMessage.roomId || ws.roomId || 'me';
+  const { messageId } = parsedMessage;
 
   try {
     const originalMessage = await Message.findOne({ id: messageId }).lean();
@@ -360,7 +358,8 @@ const handleDeleteForEveryone = async ({ ws, parsedMessage, wss, broadcastToAdmi
           size: undefined,
           reactions: undefined,
           isDeleted: true,
-          deletedBy: ws.userId
+          deletedBy: ws.userId,
+          pinned: null,
         },
         $unset: {
           replyingTo: ""
@@ -368,6 +367,9 @@ const handleDeleteForEveryone = async ({ ws, parsedMessage, wss, broadcastToAdmi
       },
       { new: true }
     );
+
+    // Unpin immediately if this message was pinned
+    await unpinIfPinned(wss, roomId, [messageId]);
 
     User.findOne({ roomId, userId: ws.userId }).then(async (user) => {
       const username = user ? user.username : 'Unknown';

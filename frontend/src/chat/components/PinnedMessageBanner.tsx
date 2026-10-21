@@ -23,7 +23,19 @@ export const PinnedMessageBanner: React.FC<PinnedMessageBannerProps> = ({
   isJumpingToPinned,
   onClick,
 }) => {
-  if (pinnedMessages.length === 0) return null;
+  const activePins = (pinnedMessages || []).filter(
+    (msg) =>
+      msg &&
+      !msg.isDeleted &&
+      !msg.vanished &&
+      msg.text !== 'This message has been deleted by an admin.'
+  );
+
+  if (activePins.length === 0) return null;
+
+  const safeIndex = currentPinnedIndex >= activePins.length ? 0 : currentPinnedIndex;
+  const msg = activePins[safeIndex];
+  if (!msg) return null;
 
   return (
     <PinnedBannerContainer onClick={onClick}>
@@ -50,10 +62,10 @@ export const PinnedMessageBanner: React.FC<PinnedMessageBannerProps> = ({
             <path d="M16 12V4H17V2H7V4H8V12L6 14V16H11V22H13V16H18V14L16 12Z" />
           </svg>
         )}
-        {pinnedMessages.length > 1 && !isJumpingToPinned && (
+        {activePins.length > 1 && !isJumpingToPinned && (
           <PinnedCycleIndicator>
-            {pinnedMessages.map((_, i) => (
-              <PinnedCycleSegment key={i} $active={i === currentPinnedIndex} />
+            {activePins.map((_, i) => (
+              <PinnedCycleSegment key={i} $active={i === safeIndex} />
             ))}
           </PinnedCycleIndicator>
         )}
@@ -62,7 +74,6 @@ export const PinnedMessageBanner: React.FC<PinnedMessageBannerProps> = ({
         <PinnedBannerLabel>Pinned Message</PinnedBannerLabel>
         <PinnedBannerText>
           {(() => {
-            const msg = pinnedMessages[currentPinnedIndex];
             if (!msg) return 'Attachment';
             const isGif =
               !!msg.url?.match(/^https?:\/\/(?:[a-z0-9-]+\.)*giphy\.com\//i) ||

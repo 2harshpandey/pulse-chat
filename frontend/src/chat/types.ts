@@ -27,7 +27,9 @@ export interface Message {
   edited?: boolean;
   replyingTo?: ReplyContext;
   isDeleted?: boolean;
+  vanished?: boolean;
   deletedBy?: string;
+  pinned?: { pinnedAt: string; expiresAt?: string | null } | null;
   isUploading?: boolean;
   uploadError?: boolean;
   cursor?: string;

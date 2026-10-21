@@ -235,10 +235,14 @@ export function useChatWebSocket({
           return;
         }
         if (messageData.type === 'pinned_messages_update') {
-          setPinnedMessages(messageData.data);
+          const rawPins = Array.isArray(messageData.data) ? messageData.data : [];
+          const validPins = rawPins.filter(
+            (m: any) => m && !m.isDeleted && !m.vanished && m.text !== 'This message has been deleted by an admin.'
+          );
+          setPinnedMessages(validPins);
           setCurrentPinnedIndex(prev => {
-            if (messageData.data.length === 0) return 0;
-            return prev >= messageData.data.length ? 0 : prev;
+            if (validPins.length === 0) return 0;
+            return prev >= validPins.length ? 0 : prev;
           });
           return;
         }
@@ -315,6 +319,8 @@ export function useChatWebSocket({
           );
         } else if (messageData.type === 'chat_cleared' || messageData.type === 'chat_hidden_for_everyone') {
           setMessages([]);
+          setPinnedMessages([]);
+          setCurrentPinnedIndex(0);
           setNewMessagesWhileScrolledUp(0);
           messageTailSnapshotRef.current = { length: 0, lastId: null };
           setHasMoreOlderMessages(false);
@@ -322,6 +328,12 @@ export function useChatWebSocket({
           setOldestLoadedAt(null);
           oldestLoadedAtRef.current = null;
           setFirstItemIndex(INITIAL_FIRST_ITEM_INDEX);
+        } else if (messageData.type === 'delete') {
+          const targetId = messageData.id;
+          setMessages(prev => prev.filter(m => m.id !== targetId));
+          setSearchResults(prev => (prev ? prev.filter(m => m.id !== targetId) : null));
+          setReplyingTo(prev => (prev && prev.id === targetId ? null : prev));
+          setPinnedMessages(prev => prev.filter(p => p.id !== targetId));
         } else if (messageData.type === 'update') {
           const normalizedUpdate = normalizeMessage(messageData.data);
           const updateMsgInList = (list: Message[]) =>
@@ -340,6 +352,13 @@ export function useChatWebSocket({
             }
             return prev;
           });
+          if (
+            normalizedUpdate.isDeleted ||
+            normalizedUpdate.vanished ||
+            normalizedUpdate.text === 'This message has been deleted by an admin.'
+          ) {
+            setPinnedMessages(prev => prev.filter(p => p.id !== normalizedUpdate.id));
+          }
         } else if (messageData.type === 'bulk_update') {
           const updatedMessages = messageData.messages.map(normalizeMessage);
           const updatedIds = new Set(updatedMessages.map((m: any) => m.id));
@@ -365,6 +384,19 @@ export function useChatWebSocket({
             }
             return prev;
           });
+          const deletedOrVanishedIds = new Set(
+            updatedMessages
+              .filter(
+                (m: any) =>
+                  m.isDeleted ||
+                  m.vanished ||
+                  m.text === 'This message has been deleted by an admin.'
+              )
+              .map((m: any) => m.id)
+          );
+          if (deletedOrVanishedIds.size > 0) {
+            setPinnedMessages(prev => prev.filter(p => !deletedOrVanishedIds.has(p.id)));
+          }
         } else if (messageData.type === 'bulk_delete') {
           const deletedIds = new Set(messageData.messageIds);
           setMessages(prev => prev.filter(m => !deletedIds.has(m.id)));
@@ -373,6 +405,7 @@ export function useChatWebSocket({
             if (prev && deletedIds.has(prev.id)) return null;
             return prev;
           });
+          setPinnedMessages(prev => prev.filter(p => !deletedIds.has(p.id)));
         } else {
           const normalized = normalizeMessage(messageData);
           const isJoinNotification =

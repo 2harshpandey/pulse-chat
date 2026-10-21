@@ -23,6 +23,7 @@ const {
   DEFAULT_HISTORY_PAGE_SIZE,
   MAX_HISTORY_PAGE_SIZE,
 } = require('../state');
+const { unpinIfPinned, clearAllPins } = require('../websocket/pinnedManager');
 const {
   uploadLimiter,
   chunkUploadLimiter,
@@ -419,6 +420,7 @@ module.exports = (wss, broadcasts) => {
       }
 
       await Message.deleteOne({ id: messageId, roomId });
+      await unpinIfPinned(wss, roomId, [messageId]);
 
       const deleteMessage = { type: 'delete', id: messageId };
       wss.clients.forEach(client => {
@@ -442,6 +444,7 @@ module.exports = (wss, broadcasts) => {
         Message.deleteMany({ roomId }),
         MessageEvent.deleteMany({ roomId })
       ]);
+      await clearAllPins(wss, roomId);
 
       broadcast(wss, roomId, { type: 'chat_cleared' });
 
@@ -468,6 +471,7 @@ module.exports = (wss, broadcasts) => {
       );
 
       getRoomState(roomId).frontendHiddenBefore = hiddenBefore;
+      await clearAllPins(wss, roomId);
 
       broadcast(wss, roomId, { type: 'chat_hidden_for_everyone', hiddenBefore: hiddenBefore.toISOString() });
 

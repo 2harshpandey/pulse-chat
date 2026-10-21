@@ -108,7 +108,15 @@ export function useAdminWebSocket({
           alert(`Error: ${message.message || 'Unknown error'}`);
           break;
         case 'pinned_messages_update':
-          setPinnedMessages(message.data);
+          setPinnedMessages(
+            (Array.isArray(message.data) ? message.data : []).filter(
+              (m: any) =>
+                m &&
+                !m.isDeleted &&
+                !m.vanished &&
+                m.text !== 'This message has been deleted by an admin.'
+            )
+          );
           break;
         case 'user_joined':
           setOnlineUsersList((prev) =>
