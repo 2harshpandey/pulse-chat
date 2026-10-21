@@ -145,4 +145,73 @@ describe('Media grouping logic (WhatsApp / Telegram style)', () => {
       }
     });
   });
+
+  describe('Media Gating & Preload Prevention (getMediaGatePreviewUrl)', () => {
+    // import dynamically or test directly
+    it('generates ultra-lightweight thumbnails for Cloudinary images', async () => {
+      const { getMediaGatePreviewUrl } = await import('./utils');
+      const cloudinaryUrl = 'https://res.cloudinary.com/demo/image/upload/v123456/sample.jpg';
+      const preview = getMediaGatePreviewUrl('image', cloudinaryUrl);
+      expect(preview).toContain('/upload/f_auto,q_25,w_120,c_scale/v123456/sample.jpg');
+      expect(preview).not.toBe(cloudinaryUrl);
+    });
+
+    it('generates tiny snapshot frame for Cloudinary videos without fetching video file', async () => {
+      const { getMediaGatePreviewUrl } = await import('./utils');
+      const cloudinaryUrl = 'https://res.cloudinary.com/demo/video/upload/v123456/sample.mp4';
+      const preview = getMediaGatePreviewUrl('video', cloudinaryUrl);
+      expect(preview).toContain('/upload/so_0,f_jpg,q_25,w_120,c_scale/v123456/sample.mp4');
+    });
+
+    it('replaces heavy animated Giphy GIFs with lightweight static still frames', async () => {
+      const { getMediaGatePreviewUrl } = await import('./utils');
+      const giphyGif = 'https://media.giphy.com/media/abc123xyz/giphy.gif';
+      const preview = getMediaGatePreviewUrl('image', giphyGif);
+      expect(preview).toBe('https://media.giphy.com/media/abc123xyz/200w_s.gif');
+      expect(preview).not.toBe(giphyGif);
+    });
+
+    it('returns empty string for non-transformable URLs so browser never preloads heavy payload', async () => {
+      const { getMediaGatePreviewUrl } = await import('./utils');
+      const rawUploadUrl = 'https://s3.amazonaws.com/my-bucket/very-large-10mb-photo.png';
+      const preview = getMediaGatePreviewUrl('image', rawUploadUrl);
+      expect(preview).toBe('');
+    });
+  });
+
+  describe('MediaGalleryModal React hook rules', () => {
+    it('opens from closed state without hook count mismatch errors', async () => {
+      const React = await import('react');
+      const { render } = await import('@testing-library/react');
+      const { MediaGalleryModal } = await import('./components/modals/MediaGalleryModal');
+
+      const items: Message[] = [
+        createMsg('1', 'user1', 'image'),
+        createMsg('2', 'user1', 'video'),
+      ];
+
+      // 1. Initial render while closed (isOpen = false)
+      const { rerender } = render(
+        React.createElement(MediaGalleryModal, {
+          isOpen: false,
+          items,
+          initialIndex: 0,
+          onClose: () => {},
+        })
+      );
+
+      // 2. Open modal (isOpen = true) - must not throw "Rendered more hooks than during the previous render"
+      expect(() => {
+        rerender(
+          React.createElement(MediaGalleryModal, {
+            isOpen: true,
+            items,
+            initialIndex: 0,
+            onClose: () => {},
+          })
+        );
+      }).not.toThrow();
+    });
+  });
 });
+

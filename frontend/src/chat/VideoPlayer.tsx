@@ -69,10 +69,19 @@ export const VideoPlayer = ({
     }
   }, [isPlaying]);
 
-  // Reset error state when the source URL changes
+  // Preserve playback position if src changes mid-playback (e.g. streaming -> cached blob)
+  const prevSrcRef = useRef(src);
+  const pendingResumeTimeRef = useRef(0);
   useEffect(() => {
-    setHasError(false);
-    retryCountRef.current = 0;
+    if (prevSrcRef.current !== src) {
+      const video = videoRef.current;
+      if (video && video.currentTime > 0.3 && !video.ended) {
+        pendingResumeTimeRef.current = video.currentTime;
+      }
+      prevSrcRef.current = src;
+      setHasError(false);
+      retryCountRef.current = 0;
+    }
   }, [src]);
 
   useEffect(() => {
@@ -87,6 +96,12 @@ export const VideoPlayer = ({
       setDuration(video.duration);
       setHasError(false);
       retryCountRef.current = 0;
+      if (pendingResumeTimeRef.current > 0) {
+        try {
+          video.currentTime = pendingResumeTimeRef.current;
+        } catch (_) {}
+        pendingResumeTimeRef.current = 0;
+      }
       if (autoPlay) {
         const p = video.play();
         if (p) p.catch(() => {});

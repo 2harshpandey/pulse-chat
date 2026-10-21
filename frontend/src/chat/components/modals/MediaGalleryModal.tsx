@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Message } from '../../types';
-import { sanitizeMediaUrl } from '../../utils';
+import { sanitizeMediaUrl, withCloudinaryTransform, getMediaGatePreviewUrl } from '../../utils';
 import { VideoPlayer } from '../../VideoPlayer';
 import { MediaDownloadButton } from '../message';
 import {
@@ -28,6 +28,9 @@ export interface MediaGalleryModalProps {
   onClose: () => void;
   onRequestDownload?: (messageId: string, mediaUrl: string, filename: string) => void;
   loadedMediaSrcById?: Record<string, string>;
+  loadedMediaMessageSet?: Set<string>;
+  onRequestMediaLoad?: (messageId: string, mediaUrl?: string, allowCancel?: boolean) => void;
+  currentUserId?: string;
 }
 
 export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
@@ -37,6 +40,9 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
   onClose,
   onRequestDownload,
   loadedMediaSrcById,
+  loadedMediaMessageSet,
+  onRequestMediaLoad,
+  currentUserId,
 }) => {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [touchOffset, setTouchOffset] = useState(0);
@@ -45,6 +51,9 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
   const touchStartXRef = useRef(0);
   const touchStartYRef = useRef(0);
   const isHorizontalSwipeRef = useRef<boolean | null>(null);
+  const requestedLoadIdsRef = useRef<Set<string>>(new Set());
+  // Stable media URL per slide to prevent swapping video source mid-playback
+  const activeMediaUrlRef = useRef<{ id: string; url: string } | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -58,6 +67,17 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
   const isVideo =
     Boolean(currentItem) &&
     (currentItem.type === 'video' || Boolean(currentItem.url?.match(/\.(mp4|webm|mov)$/i)));
+
+  // If opening or navigating to an item that is not yet loaded, auto-load it in fullscreen (exactly once)
+  useEffect(() => {
+    if (!isOpen || !currentItem?.id || !currentItem?.url) return;
+    if (currentUserId && currentItem.userId === currentUserId) return;
+    if (requestedLoadIdsRef.current.has(currentItem.id)) return;
+    if (loadedMediaMessageSet && !loadedMediaMessageSet.has(currentItem.id)) {
+      requestedLoadIdsRef.current.add(currentItem.id);
+      onRequestMediaLoad?.(currentItem.id, currentItem.url, false);
+    }
+  }, [isOpen, currentIndex, currentItem?.id, currentItem?.url, currentItem?.userId, currentUserId, loadedMediaMessageSet, onRequestMediaLoad]);
 
   const goToPrev = useCallback(() => {
     setCurrentIndex((prev) => Math.max(0, prev - 1));
@@ -139,8 +159,14 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
 
   if (!isOpen || items.length === 0) return null;
 
-  const itemUrl = (loadedMediaSrcById && loadedMediaSrcById[currentItem.id]) || currentItem.url;
-  const safeUrl = sanitizeMediaUrl(itemUrl);
+  // Stable media URL per slide to prevent swapping video source mid-playback
+  if (!activeMediaUrlRef.current || activeMediaUrlRef.current.id !== currentItem.id) {
+    activeMediaUrlRef.current = {
+      id: currentItem.id,
+      url: (loadedMediaSrcById && loadedMediaSrcById[currentItem.id]) || currentItem.url || '',
+    };
+  }
+  const safeUrl = sanitizeMediaUrl(activeMediaUrlRef.current.url);
 
   const formattedTime = currentItem.timestamp
     ? new Date(currentItem.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -275,8 +301,26 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
               const itemIsVideo =
                 item.type === 'video' ||
                 Boolean(item.url?.match(/\.(mp4|webm|mov)$/i));
-              const itemUrl = (loadedMediaSrcById && loadedMediaSrcById[item.id]) || item.url;
-              const thumbUrl = sanitizeMediaUrl(itemUrl);
+              const isLoaded = Boolean(
+                (currentUserId && item.userId === currentUserId) ||
+                (loadedMediaMessageSet && loadedMediaMessageSet.has(item.id)) ||
+                (loadedMediaSrcById && loadedMediaSrcById[item.id])
+              );
+
+              // Use lightweight static image poster from Cloudinary (~800 bytes)
+              // to prevent mounting heavy <video> elements that preload video streams
+              const videoPoster = itemIsVideo
+                ? withCloudinaryTransform(item.url || '', 'so_0,f_jpg,q_35,w_96,h_96,c_fill')
+                : '';
+
+              const imageThumb = !itemIsVideo
+                ? (loadedMediaSrcById && loadedMediaSrcById[item.id]) ||
+                  withCloudinaryTransform(item.url || '', 'f_auto,q_35,w_96,h_96,c_fill') ||
+                  getMediaGatePreviewUrl('image', item.url) ||
+                  item.url
+                : '';
+
+              const thumbUrl = sanitizeMediaUrl(itemIsVideo ? (videoPoster || item.url) : imageThumb);
 
               return (
                 <MediaGalleryThumb
@@ -287,13 +331,27 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                 >
                   {itemIsVideo ? (
                     <>
-                      <video
-                        src={thumbUrl}
-                        preload="metadata"
-                        muted
-                        playsInline
-                        onLoadedMetadata={(e) => { try { e.currentTarget.currentTime = 0.001; } catch (_) {} }}
-                      />
+                      {videoPoster ? (
+                        <img
+                          src={thumbUrl}
+                          alt=""
+                          loading="lazy"
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                            filter: isLoaded ? 'none' : 'blur(2px) brightness(0.85)',
+                            transition: 'filter 0.2s ease',
+                          }}
+                        />
+                      ) : (
+                        <video
+                          src={thumbUrl}
+                          preload="none"
+                          muted
+                          playsInline
+                        />
+                      )}
                       <div
                         style={{
                           position: 'absolute',
@@ -310,7 +368,18 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                       </div>
                     </>
                   ) : (
-                    <img src={thumbUrl} alt="" loading="lazy" />
+                    <img
+                      src={thumbUrl}
+                      alt=""
+                      loading="lazy"
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover',
+                        filter: isLoaded ? 'none' : 'blur(2px) brightness(0.85)',
+                        transition: 'filter 0.2s ease',
+                      }}
+                    />
                   )}
                 </MediaGalleryThumb>
               );

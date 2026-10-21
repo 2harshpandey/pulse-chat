@@ -6,6 +6,8 @@ import {
   getQuotedPreviewThumbUrl,
   sanitizeMediaUrl,
   normalizeMessageId,
+  formatMediaSize,
+  getMediaGatePreviewUrl,
 } from '../../utils';
 import {
   MessageRow,
@@ -22,6 +24,12 @@ import {
   MediaGroupOverflowOverlay,
   MediaPlayBadge,
   MediaVideoCornerTag,
+  MediaLoadGate,
+  MediaLoadIcon,
+  MediaLoadLabel,
+  MediaLoadPreview,
+  MediaSizeBadge,
+  DownloadProgressRing,
 } from '../../ChatStyledComponents';
 import { renderTextWithLinks } from '../../renderMessage';
 import {
@@ -32,6 +40,39 @@ import {
   useMessageGestures,
   MediaDownloadButton,
 } from './index';
+
+const DownloadSvg = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <polyline points="7 10 12 15 17 10" />
+    <line x1="12" y1="15" x2="12" y2="3" />
+  </svg>
+);
+
+const CancelSvg = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="6" y1="6" x2="18" y2="18" />
+    <line x1="18" y1="6" x2="6" y2="18" />
+  </svg>
+);
+
+const PlaySvg = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <polygon points="8 5 19 12 8 19" />
+  </svg>
+);
+
+const RingedProgressIcon = ({ progress }: { progress: number }) => (
+  <DownloadProgressRing $progress={progress} $visible={true}>
+    <svg className="ring-svg" width="36" height="36" viewBox="0 0 36 36" aria-hidden="true" style={{ width: '100%', height: '100%' }}>
+      <circle className="track" cx="18" cy="18" r="15.8" />
+      <circle className="progress" cx="18" cy="18" r="15.8" />
+    </svg>
+    <span className="cancel-icon" style={{ pointerEvents: 'none' }}>
+      <CancelSvg />
+    </span>
+  </DownloadProgressRing>
+);
 
 export interface MediaGroupItemProps {
   messages: Message[];
@@ -47,6 +88,9 @@ export interface MediaGroupItemProps {
   openMediaGallery: (items: Message[], initialIndex: number) => void;
   loadedMediaSrcById: Record<string, string>;
   onRequestDownload?: (messageId: string, mediaUrl: string, filename: string) => void;
+  loadedMediaMessageSet?: Set<string>;
+  onRequestMediaLoad?: (messageId: string, mediaUrl?: string) => void;
+  mediaLoadProgressById?: Record<string, number>;
   scrollToMessage: (
     messageId: string,
     sourceMessageId?: string,
@@ -89,6 +133,9 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
   openMediaGallery,
   loadedMediaSrcById,
   onRequestDownload,
+  loadedMediaMessageSet,
+  onRequestMediaLoad,
+  mediaLoadProgressById,
   scrollToMessage,
   isSelectModeActive,
   isSelected,
@@ -274,68 +321,157 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
                 const isVideo =
                   item.type === 'video' ||
                   Boolean(item.url?.match(/\.(mp4|webm|mov)$/i));
+                const isTileOwnMessage = item.userId === currentUserId;
+                const isTileLoaded = Boolean(
+                  isTileOwnMessage ||
+                  (loadedMediaMessageSet && loadedMediaMessageSet.has(item.id)) ||
+                  Boolean(loadedMediaSrcById[item.id])
+                );
+                const shouldGateTile = Boolean(item.url) && !item.isUploading && !isTileLoaded && !isTileOwnMessage;
+                const isTileLoading = Boolean(mediaLoadProgressById && (item.id in mediaLoadProgressById));
+                const tileLoadProgress = isTileLoading ? Math.max(0, Math.min(1, mediaLoadProgressById?.[item.id] || 0)) : 0;
+                const gatePreviewUrl = shouldGateTile
+                  ? sanitizeMediaUrl(getMediaGatePreviewUrl(isVideo ? 'video' : 'image', item.url))
+                  : '';
+                const tileMediaSizeLabel = formatMediaSize(item.size);
                 const itemSrc = sanitizeMediaUrl(loadedMediaSrcById[item.id] || item.url);
                 const isLastWithOverflow = isOverflow && idx === 3;
 
                 return (
                   <MediaGroupTile
                     key={item.id || idx}
-                    onClick={(e) => handleTileClick(e, idx)}
-                    title={isLastWithOverflow ? `View all ${count} photos/videos` : `View media ${idx + 1}`}
+                    onClick={(e) => {
+                      if (shouldGateTile && !isLastWithOverflow) {
+                        e.stopPropagation();
+                        if (onRequestMediaLoad && item.url) {
+                          onRequestMediaLoad(item.id, item.url);
+                        }
+                        return;
+                      }
+                      handleTileClick(e, idx);
+                    }}
+                    title={
+                      isLastWithOverflow
+                        ? `View all ${count} photos/videos`
+                        : shouldGateTile
+                          ? `Load ${isVideo ? 'video' : 'photo'} (${tileMediaSizeLabel || 'Tap to load'})`
+                          : `View media ${idx + 1}`
+                    }
                   >
-                    {isVideo ? (
+                    {shouldGateTile ? (
                       <>
-                        <video
-                          src={itemSrc}
-                          preload="metadata"
-                          muted
-                          playsInline
-                          onLoadedMetadata={(e) => { try { e.currentTarget.currentTime = 0.001; } catch (_) {} }}
-                          onContextMenu={(e) => e.preventDefault()}
-                        />
-                        <MediaPlayBadge>
-                          <svg viewBox="0 0 24 24">
-                            <polygon points="8 5 19 12 8 19" />
-                          </svg>
-                        </MediaPlayBadge>
-                        <MediaVideoCornerTag>
-                          <svg viewBox="0 0 24 24">
-                            <polygon points="23 7 16 12 23 17 23 7" />
-                            <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-                          </svg>
-                          VIDEO
-                        </MediaVideoCornerTag>
+                        {gatePreviewUrl && (
+                          <MediaLoadPreview
+                            src={gatePreviewUrl}
+                            alt=""
+                            aria-hidden="true"
+                            $isLoading={isTileLoading}
+                          />
+                        )}
+                        {isLastWithOverflow ? (
+                          <MediaGroupOverflowOverlay>
+                            +{overflowCount}
+                          </MediaGroupOverflowOverlay>
+                        ) : (
+                          <>
+                            <MediaLoadGate
+                              type="button"
+                              data-allow-quote-swipe
+                              aria-label={isVideo ? 'Load video' : 'Load image'}
+                              title={isVideo ? 'Load video' : 'Load image'}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (onRequestMediaLoad && item.url) {
+                                  onRequestMediaLoad(item.id, item.url);
+                                }
+                              }}
+                              $isLoading={isTileLoading}
+                            >
+                              <MediaLoadIcon>
+                                {isTileLoading ? (
+                                  <RingedProgressIcon progress={tileLoadProgress} />
+                                ) : isVideo ? (
+                                  <PlaySvg />
+                                ) : (
+                                  <DownloadSvg />
+                                )}
+                              </MediaLoadIcon>
+                              <MediaLoadLabel>
+                                {isTileLoading
+                                  ? `Loading ${Math.round(tileLoadProgress * 100)}%`
+                                  : 'Tap to load'}
+                              </MediaLoadLabel>
+                            </MediaLoadGate>
+                            {tileMediaSizeLabel && <MediaSizeBadge>{tileMediaSizeLabel}</MediaSizeBadge>}
+                            {isVideo && (
+                              <MediaVideoCornerTag style={{ zIndex: 3 }}>
+                                <svg viewBox="0 0 24 24">
+                                  <polygon points="23 7 16 12 23 17 23 7" />
+                                  <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+                                </svg>
+                                VIDEO
+                              </MediaVideoCornerTag>
+                            )}
+                          </>
+                        )}
                       </>
                     ) : (
-                      <img
-                        src={itemSrc}
-                        alt={item.originalName || `Media ${idx + 1}`}
-                        loading="lazy"
-                        onContextMenu={(e) => e.preventDefault()}
-                        onDragStart={(e) => e.preventDefault()}
-                      />
-                    )}
+                      <>
+                        {isVideo ? (
+                          <>
+                            <video
+                              src={itemSrc}
+                              preload="metadata"
+                              muted
+                              playsInline
+                              onLoadedMetadata={(e) => { try { e.currentTarget.currentTime = 0.001; } catch (_) {} }}
+                              onContextMenu={(e) => e.preventDefault()}
+                            />
+                            <MediaPlayBadge>
+                              <svg viewBox="0 0 24 24">
+                                <polygon points="8 5 19 12 8 19" />
+                              </svg>
+                            </MediaPlayBadge>
+                            <MediaVideoCornerTag>
+                              <svg viewBox="0 0 24 24">
+                                <polygon points="23 7 16 12 23 17 23 7" />
+                                <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+                              </svg>
+                              VIDEO
+                            </MediaVideoCornerTag>
+                          </>
+                        ) : (
+                          <img
+                            src={itemSrc}
+                            alt={item.originalName || `Media ${idx + 1}`}
+                            loading="lazy"
+                            onContextMenu={(e) => e.preventDefault()}
+                            onDragStart={(e) => e.preventDefault()}
+                          />
+                        )}
 
-                    {isLastWithOverflow ? (
-                      <MediaGroupOverflowOverlay>
-                        +{overflowCount}
-                      </MediaGroupOverflowOverlay>
-                    ) : (
-                      <MediaDownloadButton
-                        messageId={item.id}
-                        url={item.url}
-                        filename={item.originalName}
-                        isVideo={isVideo}
-                        onRequestDownload={onRequestDownload}
-                        style={{
-                          position: 'absolute',
-                          top: '6px',
-                          left: '6px',
-                          width: '30px',
-                          height: '30px',
-                          zIndex: 3,
-                        }}
-                      />
+                        {isLastWithOverflow ? (
+                          <MediaGroupOverflowOverlay>
+                            +{overflowCount}
+                          </MediaGroupOverflowOverlay>
+                        ) : (
+                          <MediaDownloadButton
+                            messageId={item.id}
+                            url={item.url}
+                            filename={item.originalName}
+                            isVideo={isVideo}
+                            onRequestDownload={onRequestDownload}
+                            style={{
+                              position: 'absolute',
+                              top: '6px',
+                              left: '6px',
+                              width: '30px',
+                              height: '30px',
+                              zIndex: 3,
+                            }}
+                          />
+                        )}
+                      </>
                     )}
                   </MediaGroupTile>
                 );

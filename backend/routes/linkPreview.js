@@ -221,6 +221,7 @@ router.get('/api/link-preview', apiLimiter, async (req, res) => {
     let title = null;
     let description = null;
     let image = null;
+    let favicon = null;
     let siteName = null;
 
     if (finalHtml) {
@@ -237,16 +238,40 @@ router.get('/api/link-preview', apiLimiter, async (req, res) => {
           .trim();
       };
 
-      const getMetaBy = (attr, val) => {
-        const regex = new RegExp(`<meta[^>]+(?:${attr}=["']${val}["'][^>]+content=["']([^"']*)["']|content=["']([^"']*)["'][^>]+${attr}=["']${val}["'])`, 'i');
-        const m = html.match(regex);
-        const matchVal = m ? (m[1] || m[2]) : null;
-        return matchVal ? decode(matchVal) : null;
+      const getMeta = (...keys) => {
+        for (const key of keys) {
+          const regex = new RegExp(`<meta[^>]+(?:(?:name|property|itemprop)=["']${key}["'][^>]+content=["']([^"']*)["']|content=["']([^"']*)["'][^>]+(?:name|property|itemprop)=["']${key}["'])`, 'i');
+          const m = html.match(regex);
+          const val = m ? (m[1] || m[2]) : null;
+          if (val) return decode(val);
+        }
+        return null;
       };
 
       const getFavicon = () => {
-        const m = html.match(/<link[^>]+rel=["'](?:shortcut )?icon["'][^>]+href=["']([^"']+)["']/i);
-        return m ? decode(m[1]) : null;
+        const linkTags = html.match(/<link[^>]+>/gi) || [];
+        // 1. High-res apple touch icons
+        for (const tag of linkTags) {
+          if (/rel=["'][^"']*apple-touch-icon[^"']*["']/i.test(tag)) {
+            const hrefMatch = tag.match(/href=["']([^"']+)["']/i);
+            if (hrefMatch && hrefMatch[1]) return decode(hrefMatch[1]);
+          }
+        }
+        // 2. Standard icons or shortcut icons
+        for (const tag of linkTags) {
+          if (/rel=["'][^"']*\bicon\b[^"']*["']/i.test(tag) || /rel=["'][^"']*shortcut\s+icon[^"']*["']/i.test(tag)) {
+            const hrefMatch = tag.match(/href=["']([^"']+)["']/i);
+            if (hrefMatch && hrefMatch[1]) return decode(hrefMatch[1]);
+          }
+        }
+        // 3. image_src link
+        for (const tag of linkTags) {
+          if (/rel=["'][^"']*image_src[^"']*["']/i.test(tag)) {
+            const hrefMatch = tag.match(/href=["']([^"']+)["']/i);
+            if (hrefMatch && hrefMatch[1]) return decode(hrefMatch[1]);
+          }
+        }
+        return null;
       };
 
       const getTitle = () => {
@@ -254,13 +279,16 @@ router.get('/api/link-preview', apiLimiter, async (req, res) => {
         return m ? decode(m[1]) : null;
       };
 
-      title = getMetaBy('property', 'og:title') || getMetaBy('name', 'twitter:title') || getTitle();
-      description = getMetaBy('property', 'og:description')
-        || getMetaBy('name', 'twitter:description')
-        || getMetaBy('name', 'description');
-      siteName = getMetaBy('property', 'og:site_name');
+      title = getMeta('og:title', 'twitter:title') || getTitle();
+      description = getMeta('og:description', 'twitter:description', 'description');
+      siteName = getMeta('og:site_name');
       
-      let rawImage = getMetaBy('property', 'og:image') || getMetaBy('name', 'twitter:image');
+      const rawFavicon = getFavicon();
+      favicon = rawFavicon ? (() => {
+        try { return new URL(rawFavicon, finalParsedUrl).href; } catch { return null; }
+      })() : null;
+
+      let rawImage = getMeta('og:image', 'og:image:url', 'og:image:secure_url', 'twitter:image', 'twitter:image:src', 'image');
       
       const finalHostname = finalParsedUrl ? finalParsedUrl.hostname.toLowerCase() : hostnameFallback;
       const isFinalAmazon = finalHostname === 'amazon.com' || finalHostname.endsWith('.amazon.com') || /(?:^|\.)amazon\.[a-z]{2,3}(?:\.[a-z]{2})?$/.test(finalHostname) || finalHostname === 'amzn.in' || finalHostname === 'amzn.to';
@@ -295,6 +323,14 @@ router.get('/api/link-preview', apiLimiter, async (req, res) => {
       image = rawImage ? (() => {
         try { return new URL(rawImage, finalParsedUrl).href; } catch { return null; }
       })() : null;
+
+      if (!favicon && finalParsedUrl) {
+        favicon = `${finalParsedUrl.origin}/favicon.ico`;
+      }
+    }
+
+    if (!favicon && finalParsedUrl) {
+      favicon = `${finalParsedUrl.origin}/favicon.ico`;
     }
 
     title = title || fallbackTitle;
@@ -308,7 +344,7 @@ router.get('/api/link-preview', apiLimiter, async (req, res) => {
 
     const hostname = finalParsedUrl ? finalParsedUrl.hostname.replace(/^www\./, '') : parsedUrlFallback.hostname.replace(/^www\./, '');
 
-    res.json({ title, description, image, hostname, siteName });
+    res.json({ title, description, image, favicon, hostname, siteName });
   } catch (error) {
     logger.error('Link preview fetch error:', { message: error.message });
     res.status(500).json({ error: 'Failed to fetch preview' });

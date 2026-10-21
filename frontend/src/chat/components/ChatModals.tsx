@@ -134,6 +134,9 @@ export const ChatModals: React.FC<ChatModalsProps> = ({
         onClose={media.closeMediaGallery}
         onRequestDownload={media.handleRequestDownload}
         loadedMediaSrcById={media.loadedMediaSrcById}
+        loadedMediaMessageSet={media.loadedMediaMessageSet}
+        onRequestMediaLoad={media.handleRequestMediaLoad}
+        currentUserId={media.userId}
       />
 
       <GifPickerModal

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { Message } from '../types';
 import {
   MAX_LOADED_MEDIA_TRACKING,
@@ -362,9 +362,11 @@ export function useChatMedia({
 
   // Request media load
   const handleRequestMediaLoad = useCallback(
-    (messageId: string, mediaUrl?: string) => {
+    (messageId: string, mediaUrl?: string, allowCancel: boolean = true) => {
       if (!messageId || !mediaUrl) return;
+      if (loadedMediaMessageIds.includes(messageId)) return;
       if (mediaLoadInFlightRef.current.has(messageId)) {
+        if (!allowCancel) return;
         mediaLoadAbortControllersRef.current.get(messageId)?.abort();
         mediaLoadAbortControllersRef.current.delete(messageId);
         mediaLoadInFlightRef.current.delete(messageId);
@@ -576,8 +578,10 @@ export function useChatMedia({
     openMediaGallery: lightbox.openMediaGallery,
     closeMediaGallery: lightbox.closeMediaGallery,
     // Media loading and transfers
+    userId,
     loadedMediaMessageIds,
     setLoadedMediaMessageIds,
+    loadedMediaMessageSet: useMemo(() => new Set(loadedMediaMessageIds), [loadedMediaMessageIds]),
     mediaLoadProgressById,
     loadedMediaSrcById,
     downloadProgressById,

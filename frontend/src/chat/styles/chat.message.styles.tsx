@@ -490,8 +490,15 @@ export const LinkPreviewImageWrapper = styled.div`
   min-width: 96px;
   position: relative;
   overflow: hidden;
-  background: rgba(0,0,0,0.05);
+  background: rgba(0,0,0,0.04);
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  [data-theme='dark'] & {
+    background: rgba(255,255,255,0.04);
+  }
 `;
 
 export const LinkPreviewImage = styled.img`
@@ -500,7 +507,7 @@ export const LinkPreviewImage = styled.img`
   left: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
 `;
 

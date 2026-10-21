@@ -26,6 +26,8 @@ export const VALID_TLDS = new Set([
   'blog', 'cloud', 'digital', 'media', 'social', 'email', 'live', 'video', 'tv',
   'news', 'agency', 'studio', 'design', 'space', 'team', 'group', 'global',
   'world', 'today', 'network', 'finance', 'health', 'care', 'academy',
+  'xyz', 'top', 'club', 'link', 'click', 'guru', 'life', 'vip', 'one', 'zone',
+  'host', 'games', 'fun', 'pub', 'art', 'wiki', 'chat',
   // Country codes
   'ac', 'ad', 'ae', 'af', 'ag', 'al', 'am', 'ao', 'ar', 'as', 'at', 'au', 'aw', 'az',
   'ba', 'bb', 'bd', 'be', 'bg', 'bh', 'bi', 'bj', 'bm', 'bn', 'bo', 'br', 'bs', 'bt',
@@ -50,10 +52,10 @@ export const VALID_TLDS = new Set([
 // light mode, yellow in dark mode). Own messages keep the yellow constant.
 export const LINK_COLOR_OWN = 'rgb(255, 238, 0)';
 
-// Candidate regex: matches http(s)://..., www.anything, or word.word patterns.
+// Candidate regex: matches http(s)://..., www.anything, or bare domain/subdomain patterns (e.g. web.whatsapp.com).
 // Uses a capturing group so text.split() keeps the matches in the result array.
 // TLD validation inside normalizeUrl filters false positives (gibberish domains).
-export const CANDIDATE_URL_RE = /((?:https?:\/\/|ftp:\/\/)[^\s]+|www\.[a-zA-Z0-9][a-zA-Z0-9\-.]*[a-zA-Z0-9]\.[a-zA-Z]{2,}(?:[^\s]*)?|(?<![/@#])[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.[a-zA-Z]{2,}(?:\/[^\s]*)?)/gi;
+export const CANDIDATE_URL_RE = /((?:https?:\/\/|ftp:\/\/)[^\s]+|www\.[a-zA-Z0-9][a-zA-Z0-9\-.]*[a-zA-Z0-9]\.[a-zA-Z]{2,}(?:[^\s]*)?|(?<![a-zA-Z0-9/@#.-])(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}(?::[0-9]{1,5})?(?:[/?#][^\s]*)?)/gi;
 
 export const normalizeUrl = (raw: string): { href: string; display: string } | null => {
   // Strip trailing punctuation
@@ -64,8 +66,10 @@ export const normalizeUrl = (raw: string): { href: string; display: string } | n
   if (/^ftp:\/\//i.test(display)) return { href: display, display };
   // Starts with www. - always a link
   if (/^www\./i.test(display)) return { href: `https://${display}`, display };
-  // Bare domain - validate TLD against known list
-  const hostname = display.split(/[/?#]/)[0];
+  // Bare domain/subdomain - validate TLD against known list
+  const hostWithPort = display.split(/[/?#]/)[0];
+  const [hostname, port] = hostWithPort.split(':');
+  if (port && !/^\d{1,5}$/.test(port)) return null;
   const labels = hostname.split('.');
   if (labels.length < 2) return null;
   const tld = labels[labels.length - 1].toLowerCase();
@@ -136,11 +140,16 @@ export const renderTextWithLinks = (text: string, sender: 'me' | 'other'): React
 // Returns the href for the first detected URL (used by LinkPreview card)
 export const detectFirstUrl = (text: string): string | null => {
   CANDIDATE_URL_RE.lastIndex = 0;
-  const match = CANDIDATE_URL_RE.exec(text);
+  let match: RegExpExecArray | null;
+  while ((match = CANDIDATE_URL_RE.exec(text)) !== null) {
+    const norm = normalizeUrl(match[0]);
+    if (norm) {
+      CANDIDATE_URL_RE.lastIndex = 0;
+      return norm.href;
+    }
+  }
   CANDIDATE_URL_RE.lastIndex = 0;
-  if (!match) return null;
-  const norm = normalizeUrl(match[0]);
-  return norm ? norm.href : null;
+  return null;
 };
 
 

@@ -53,6 +53,7 @@ export interface LinkPreviewData {
   title?: string | null;
   description?: string | null;
   image?: string | null;
+  favicon?: string | null;
   hostname: string;
   siteName?: string | null;
 }

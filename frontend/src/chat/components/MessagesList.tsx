@@ -251,6 +251,9 @@ export const MessagesList = React.memo(function MessagesList({
                 openDeleteMenu={handleOpenDeleteMenu}
                 openMediaGallery={openMediaGallery || ((_items, _idx) => {})}
                 loadedMediaSrcById={loadedMediaSrcById}
+                loadedMediaMessageSet={loadedMediaMessageSet}
+                onRequestMediaLoad={onRequestMediaLoad}
+                mediaLoadProgressById={mediaLoadProgressById}
                 onRequestDownload={onRequestDownload}
                 scrollToMessage={scrollToMessage}
                 isSelectModeActive={isSelectModeActive}

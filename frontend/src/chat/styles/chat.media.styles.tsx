@@ -149,7 +149,7 @@ export const MediaLoadGate = styled.button<{ $isLoading: boolean, $isUploadGate?
   position: absolute;
   inset: 0;
   border: none;
-  border-radius: 0.75rem;
+  border-radius: inherit;
   cursor: pointer;
   color: #f8fafc;
   background: transparent;
@@ -232,12 +232,12 @@ export const MediaLoadPreview = styled.img<{ $isLoading: boolean }>`
   height: 100%;
   display: block;
   object-fit: cover;
-  border-radius: 0.75rem;
+  border-radius: inherit;
   pointer-events: none;
   user-select: none;
-  opacity: ${p => p.$isLoading ? 0.92 : 0.66};
-  transform: scale(${p => p.$isLoading ? 1.02 : 1});
-  filter: ${p => p.$isLoading ? 'saturate(1.08) contrast(1.03)' : 'saturate(0.92) brightness(0.74)'};
+  opacity: ${p => p.$isLoading ? 0.92 : 0.68};
+  transform: scale(${p => p.$isLoading ? 1.04 : 1.06});
+  filter: ${p => p.$isLoading ? 'blur(8px) saturate(1.08) contrast(1.03)' : 'blur(12px) saturate(0.92) brightness(0.74)'};
   transition: opacity 0.24s ease, transform 0.24s ease, filter 0.24s ease;
   z-index: 1;
 `;

@@ -391,9 +391,23 @@ export const getMediaGatePreviewUrl = (mediaType: 'image' | 'video', mediaUrl?: 
   const safeUrl = sanitizeMediaUrl(mediaUrl);
   if (!safeUrl) return '';
   if (mediaType === 'video') {
-    return withCloudinaryTransform(safeUrl, 'so_0,f_jpg,q_55,w_720,h_720,c_fill') || '';
+    return withCloudinaryTransform(safeUrl, 'so_0,f_jpg,q_25,w_120,c_scale') || '';
   }
-  return withCloudinaryTransform(safeUrl, 'f_auto,q_55,w_720,h_720,c_fill') || safeUrl;
+
+  // Cloudinary image thumbnail: ultra-lightweight ~1KB preview with scale & quality reduction
+  const cloudThumb = withCloudinaryTransform(safeUrl, 'f_auto,q_25,w_120,c_scale');
+  if (cloudThumb) return cloudThumb;
+
+  // Giphy: use tiny static still (e.g. 200w_s.gif) rather than downloading the full animated GIF
+  if (isGiphyUrl(safeUrl)) {
+    return safeUrl
+      .replace(/\/giphy\.gif(\?.*)?$/i, '/200w_s.gif$1')
+      .replace(/\/200\.gif(\?.*)?$/i, '/200w_s.gif$1')
+      .replace(/\/200w\.gif(\?.*)?$/i, '/200w_s.gif$1');
+  }
+
+  // Never fall back to raw safeUrl: doing so forces the browser to preload the heavy file in the background!
+  return '';
 };
 
 export const formatMediaSize = (bytes?: number): string => {
@@ -596,3 +610,15 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
     return false;
   }
 }
+
+export const getRootDomain = (hostname: string): string => {
+  if (!hostname) return '';
+  const clean = hostname.replace(/^www\./i, '').toLowerCase();
+  const parts = clean.split('.');
+  if (parts.length <= 2) return clean;
+  const isSecondLevelCctld =
+    parts.length > 2 &&
+    ['co', 'com', 'org', 'net', 'gov', 'edu'].includes(parts[parts.length - 2]);
+  return parts.slice(isSecondLevelCctld ? -3 : -2).join('.');
+};
+

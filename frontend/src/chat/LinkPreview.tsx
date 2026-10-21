@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { LinkPreviewData } from './types';
-import { MAX_LINK_PREVIEW_CACHE_ENTRIES } from './constants';
-import { resolveApiBaseUrl } from './utils';
 import {
   LinkPreviewCard, LinkPreviewImageWrapper, LinkPreviewImage, LinkPreviewBody, LinkPreviewSiteName,
   LinkPreviewTitle, LinkPreviewDesc,
 } from './ChatStyledComponents';
+import { getRootDomain } from './utils';
 
 import {
   linkPreviewCache,
@@ -28,7 +27,6 @@ export const LinkPreviewSkeleton = ({ sender }: { sender: 'me' | 'other' }) => (
   </LinkPreviewCard>
 );
 
-
 export const LinkPreview: React.FC<{ url: string; sender: 'me' | 'other' }> = React.memo(({ url, sender }) => {
   const [data, setData] = useState<LinkPreviewData | null | undefined>(
     () => {
@@ -36,7 +34,11 @@ export const LinkPreview: React.FC<{ url: string; sender: 'me' | 'other' }> = Re
       return linkPreviewCache.get(url) ?? getLinkPreviewFallback(url);
     }
   );
+
+  const [candidateIdx, setCandidateIdx] = useState(0);
+
   useEffect(() => {
+    setCandidateIdx(0);
     if (linkPreviewCache.has(url)) {
       setData(linkPreviewCache.get(url) ?? getLinkPreviewFallback(url));
       return;
@@ -47,12 +49,62 @@ export const LinkPreview: React.FC<{ url: string; sender: 'me' | 'other' }> = Re
       if (!cancelled) setData(result ?? getLinkPreviewFallback(url));
     })();
     return () => { cancelled = true; };
-    return () => { cancelled = true; };
   }, [url]);
+
+  const rootDomain = data ? getRootDomain(data.hostname) : '';
+  const host = data ? data.hostname.replace(/^www\./i, '').toLowerCase() : '';
+
+  // Specific media/product previews (YouTube video thumbnail, Amazon product picture) should use data.image
+  const isSpecialMediaPreview = Boolean(
+    data?.image && (
+      host === 'youtube.com' || host === 'youtu.be' ||
+      host.includes('amazon.') || host.includes('amzn.') ||
+      data.image.includes('ytimg.com') || data.image.includes('media-amazon.com')
+    )
+  );
+
+  const candidates = useMemo(() => {
+    if (!data) return [];
+    const list: string[] = [];
+
+    // 1. YouTube video or Amazon product photo
+    if (isSpecialMediaPreview && data.image) {
+      list.push(data.image);
+    }
+
+    // 2. Official favicon from page (e.g. apple-touch-icon, like WhatsApp 2.8KB webp square icon)
+    if (data.favicon) {
+      list.push(data.favicon);
+    }
+
+    // 3. High quality DuckDuckGo and Google favicon CDNs on root domain (~1-3KB lightweight square icons)
+    if (rootDomain) {
+      list.push(`https://icons.duckduckgo.com/ip3/${rootDomain}.ico`);
+      list.push(`https://www.google.com/s2/favicons?domain=${encodeURIComponent(rootDomain)}&sz=128`);
+    }
+
+    // 4. Subdomain host fallback (Google can resolve some subdomains; avoid DuckDuckGo which returns a 404 dummy image)
+    if (host && host !== rootDomain) {
+      list.push(`https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=128`);
+      list.push(`https://${host}/favicon.ico`);
+    }
+
+    // 5. Root domain direct favicon.ico
+    if (rootDomain) {
+      list.push(`https://${rootDomain}/favicon.ico`);
+    }
+
+    // 6. Fallback to data.image if no favicon succeeded
+    if (!isSpecialMediaPreview && data.image) {
+      list.push(data.image);
+    }
+
+    return Array.from(new Set(list));
+  }, [data?.image, data?.favicon, host, rootDomain, isSpecialMediaPreview]);
+
   if (!data) return <LinkPreviewSkeleton sender={sender} />;
 
-  const primaryImage = data.image || `https://www.google.com/s2/favicons?domain=${encodeURIComponent(data.hostname)}&sz=128`;
-  const secondaryImage = `https://${data.hostname}/favicon.ico`;
+  const currentSrc = candidateIdx < candidates.length ? candidates[candidateIdx] : '';
 
   return (
     <LinkPreviewCard
@@ -62,20 +114,22 @@ export const LinkPreview: React.FC<{ url: string; sender: 'me' | 'other' }> = Re
       rel="noopener noreferrer"
       onClick={(e) => e.stopPropagation()}
     >
-      <LinkPreviewImageWrapper>
-        <LinkPreviewImage
-          src={primaryImage}
-          alt=""
-          onError={(e) => {
-            const current = e.currentTarget.getAttribute('src') || '';
-            if (current !== secondaryImage) {
-              e.currentTarget.setAttribute('src', secondaryImage);
-              return;
-            }
-            e.currentTarget.style.visibility = 'hidden';
-          }}
-        />
-      </LinkPreviewImageWrapper>
+      {currentSrc && (
+        <LinkPreviewImageWrapper>
+          <LinkPreviewImage
+            src={currentSrc}
+            alt=""
+            style={{
+              objectFit: 'contain',
+              padding: isSpecialMediaPreview ? '4px' : '14px',
+              boxSizing: 'border-box',
+            }}
+            onError={() => {
+              setCandidateIdx((prev) => prev + 1);
+            }}
+          />
+        </LinkPreviewImageWrapper>
+      )}
       <LinkPreviewBody>
         <LinkPreviewSiteName $sender={sender}>{data.siteName || data.hostname}</LinkPreviewSiteName>
         {data.title ? (
