@@ -3,9 +3,15 @@ import type { AdminController } from '../../hooks';
 import { formatDate, formatTime, isGiphyUrl, sanitizeUrl } from '../../utils';
 import {
   MessageLogScrollContainer,
-  DangerButton,
-  ClearHistoryButton,
-  PremiumExportButton,
+  MessagesHeaderRow,
+  MessagesHeaderTitleGroup,
+  MessagesCountBadge,
+  MessagesToolbar,
+  ToolbarButton,
+  FilterBadgeDot,
+  ClearFiltersButton,
+  FilterFooterRow,
+  ResponsiveButtonLabel,
   FilterToggleButton,
   MessageFilterCollapse,
   FilterContainer,
@@ -123,39 +129,73 @@ export function MessagesTab({ admin }: MessagesTabProps) {
     }
   };
 
+  const activeFiltersCount =
+    (filterMessageId.trim() ? 1 : 0) +
+    (filterUser.trim() ? 1 : 0) +
+    (filterEventType !== 'All' ? 1 : 0) +
+    (filterContent.trim() ? 1 : 0);
+
+  const handleClearAllFilters = () => {
+    setFilterMessageId('');
+    setFilterUser('');
+    setFilterEventType('All');
+    setFilterContent('');
+  };
+
   return (
     <MessageLogScrollContainer>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '0.5rem',
-          marginBottom: '0.5rem',
-        }}
-      >
-        <h2 style={{ margin: 0 }}>Message Log</h2>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <DangerButton
-            onClick={() => setShowBulkDeleteModal(true)}
-            disabled={selectedMessages.size === 0}
-            style={{
-              opacity: selectedMessages.size === 0 ? 0.5 : 1,
-              cursor: selectedMessages.size === 0 ? 'not-allowed' : 'pointer',
-            }}
+      <MessagesHeaderRow>
+        <MessagesHeaderTitleGroup>
+          <h2>Message Log</h2>
+          <MessagesCountBadge>
+            {filteredHistoryLogs.length} {filteredHistoryLogs.length === 1 ? 'event' : 'events'}
+          </MessagesCountBadge>
+        </MessagesHeaderTitleGroup>
+
+        <MessagesToolbar>
+          <FilterToggleButton
+            type="button"
+            $open={showMessageFilters}
+            $hasActive={activeFiltersCount > 0}
+            onClick={() => setShowMessageFilters((prev) => !prev)}
+            aria-label={showMessageFilters ? 'Hide message log filters' : 'Show message log filters'}
+            title={showMessageFilters ? 'Hide filters' : 'Show filters'}
           >
-            Delete Message(s) {selectedMessages.size > 0 ? `(${selectedMessages.size})` : ''}
-          </DangerButton>
-          {roomId !== 'me' && roomId !== 'global' && (
-            <ClearHistoryButton
-              onClick={handleDeleteRoom}
-              style={{ background: '#7f1d1d', color: '#fca5a5', border: '1px solid #991b1b' }}
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
             >
-              Delete Chat Room
-            </ClearHistoryButton>
-          )}
-          <PremiumExportButton
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+            </svg>
+            <span>Filters</span>
+            {activeFiltersCount > 0 && <FilterBadgeDot>{activeFiltersCount}</FilterBadgeDot>}
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+              style={{
+                width: '12px',
+                height: '12px',
+                transform: showMessageFilters ? 'rotate(180deg)' : 'none',
+                transition: 'transform 0.2s ease',
+              }}
+            >
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </FilterToggleButton>
+
+          <ToolbarButton
+            type="button"
+            $variant="primary"
             onClick={async () => {
               try {
                 const res = await fetch(`${apiUrl}/api/admin/export-messages`, { headers: apiHeaders() });
@@ -174,10 +214,9 @@ export function MessagesTab({ admin }: MessagesTabProps) {
                 alert('Failed to export messages.');
               }
             }}
+            title={roomId === 'me' ? 'Export Private Messages' : 'Export Room Messages'}
           >
             <svg
-              width="15"
-              height="15"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -190,11 +229,16 @@ export function MessagesTab({ admin }: MessagesTabProps) {
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-            {roomId === 'me' ? 'Export Private Messages' : 'Export Messages'}
-          </PremiumExportButton>
+            <ResponsiveButtonLabel>
+              <span className="long-label">{roomId === 'me' ? 'Export Private Messages' : 'Export Messages'}</span>
+              <span className="short-label">{roomId === 'me' ? 'Export Private' : 'Export'}</span>
+            </ResponsiveButtonLabel>
+          </ToolbarButton>
 
           {(roomId === 'me' || roomId === 'global') && (
-            <PremiumExportButton
+            <ToolbarButton
+              type="button"
+              $variant="primary"
               onClick={async () => {
                 try {
                   const res = await fetch(`${apiUrl}/api/admin/export-all-messages`, { headers: apiHeaders() });
@@ -213,10 +257,9 @@ export function MessagesTab({ admin }: MessagesTabProps) {
                   alert('Failed to export all messages.');
                 }
               }}
+              title="Export messages from all rooms"
             >
               <svg
-                width="15"
-                height="15"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -229,20 +272,72 @@ export function MessagesTab({ admin }: MessagesTabProps) {
                 <polyline points="7 10 12 15 17 10" />
                 <line x1="12" y1="15" x2="12" y2="3" />
               </svg>
-              Export All Rooms
-            </PremiumExportButton>
+              <ResponsiveButtonLabel>
+                <span className="long-label">Export All Rooms</span>
+                <span className="short-label">All Rooms</span>
+              </ResponsiveButtonLabel>
+            </ToolbarButton>
           )}
-        </div>
-      </div>
-      <FilterToggleButton
-        type="button"
-        $open={showMessageFilters}
-        onClick={() => setShowMessageFilters((prev) => !prev)}
-        aria-label={showMessageFilters ? 'Hide message log filters' : 'Show message log filters'}
-        title={showMessageFilters ? 'Hide filters' : 'Show filters'}
-      >
-        {showMessageFilters ? 'Hide filters' : 'Show filters'}
-      </FilterToggleButton>
+
+          <ToolbarButton
+            type="button"
+            $variant="danger"
+            onClick={() => setShowBulkDeleteModal(true)}
+            disabled={selectedMessages.size === 0}
+            title={
+              selectedMessages.size === 0
+                ? 'Select messages from the table below to delete'
+                : `Delete ${selectedMessages.size} selected message(s)`
+            }
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+            </svg>
+            <ResponsiveButtonLabel>
+              <span className="long-label">
+                Delete Message(s){selectedMessages.size > 0 ? ` (${selectedMessages.size})` : ''}
+              </span>
+              <span className="short-label">
+                Delete{selectedMessages.size > 0 ? ` (${selectedMessages.size})` : ''}
+              </span>
+            </ResponsiveButtonLabel>
+          </ToolbarButton>
+
+          {roomId !== 'me' && roomId !== 'global' && (
+            <ToolbarButton
+              type="button"
+              $variant="danger"
+              onClick={handleDeleteRoom}
+              style={{ background: '#7f1d1d', borderColor: '#991b1b' }}
+              title="Delete this chat room and all messages"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M3 6h18" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+              </svg>
+              Delete Room
+            </ToolbarButton>
+          )}
+        </MessagesToolbar>
+      </MessagesHeaderRow>
+
       <MessageFilterCollapse $open={showMessageFilters}>
         <FilterContainer>
           <Input
@@ -278,6 +373,30 @@ export function MessagesTab({ admin }: MessagesTabProps) {
             value={filterContent}
             onChange={(e) => setFilterContent(e.target.value)}
           />
+          {activeFiltersCount > 0 && (
+            <FilterFooterRow>
+              <span>
+                {activeFiltersCount} active filter{activeFiltersCount > 1 ? 's' : ''} applied (
+                {filteredHistoryLogs.length} event{filteredHistoryLogs.length === 1 ? '' : 's'} matching)
+              </span>
+              <ClearFiltersButton type="button" onClick={handleClearAllFilters}>
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+                Clear Filters
+              </ClearFiltersButton>
+            </FilterFooterRow>
+          )}
         </FilterContainer>
       </MessageFilterCollapse>
       {isHistoryLoading ? (

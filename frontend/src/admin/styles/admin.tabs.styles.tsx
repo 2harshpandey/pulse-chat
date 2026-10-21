@@ -1,6 +1,6 @@
 import styled, { css } from 'styled-components';
 import { slideUp, tabContentFade, cardEntrance, badgePop, pulse, emptyFloat } from './admin.animations';
-import { Input, SelectWrapper, Button } from './admin.layout.styles';
+import { Input, SelectWrapper, Select, Button } from './admin.layout.styles';
 
 export const TabContainer = styled.div`
   display: flex;
@@ -67,58 +67,326 @@ export const TabContent = styled.div`
   overflow: hidden;
   transition: background-color 0.3s ease, border-color 0.3s ease;
   animation: ${tabContentFade} 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-  @media (max-width: 768px) { padding: 1rem 0.85rem; }
-  @media (max-width: 480px) { padding: 0.85rem 0.65rem; border-top-right-radius: 8px; }
+  @media (max-width: 768px) {
+    padding: 0.85rem 0.65rem;
+    flex: none;
+    min-height: auto;
+    overflow: visible;
+    border-radius: 8px;
+  }
+  @media (max-width: 480px) {
+    padding: 0.75rem 0.5rem;
+    border-radius: 8px;
+  }
   @media (max-height: 500px) { padding: 0.4rem 0.5rem; }
 `;
 
-export const FilterContainer = styled.div`
+export const MessagesHeaderRow = styled.div`
   display: flex;
+  justify-content: space-between;
+  align-items: center;
   flex-wrap: wrap;
   gap: 0.75rem;
-  margin-bottom: 1.5rem;
-  padding: 1rem;
-  background-color: var(--bg-filter);
-  border-radius: 12px;
-  box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
-  flex-shrink: 0;
-  transition: background-color 0.3s ease;
-  animation: ${slideUp} 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  ${Input}, ${SelectWrapper} {
-    flex: 1; min-width: 160px; max-width: none; margin-bottom: 0;
-  }
-  @media (max-width: 480px) {
-    gap: 0.5rem; padding: 0.75rem;
-    ${Input}, ${SelectWrapper} { flex: 1 1 100%; min-width: unset; }
-  }
-  @media (max-height: 500px) {
-    flex-wrap: nowrap; gap: 0.3rem; padding: 0.3rem 0.5rem; margin-bottom: 0.3rem;
-    ${Input}, ${SelectWrapper} { flex: 1; min-width: 60px; margin-bottom: 0; }
+  margin-bottom: 0.75rem;
+
+  @media (max-width: 600px) {
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
   }
 `;
 
-export const FilterToggleButton = styled.button<{ $open: boolean }>`
-  align-self: flex-start;
-  display: none;
-  border: 1px solid var(--border-secondary);
+export const MessagesHeaderTitleGroup = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+
+  h2 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-heading);
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+
+    @media (max-width: 600px) {
+      font-size: 1.25rem;
+    }
+    @media (max-width: 380px) {
+      font-size: 1.1rem;
+    }
+  }
+`;
+
+export const MessagesCountBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 9999px;
   background: var(--bg-tertiary);
   color: var(--text-secondary);
-  border-radius: 10px;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.82rem;
+  border: 1px solid var(--border-secondary);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+`;
+
+export const MessagesToolbar = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+
+  @media (max-width: 600px) {
+    width: 100%;
+    gap: 0.4rem;
+  }
+`;
+
+export const ToolbarButton = styled.button<{
+  $variant?: 'primary' | 'danger' | 'default';
+  $active?: boolean;
+}>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.825rem;
   font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  letter-spacing: -0.01em;
+  box-sizing: border-box;
+
+  svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    transition: transform 0.2s ease;
+  }
+
+  ${(p: any) =>
+    p.$variant === 'danger'
+      ? css`
+          background-color: #ef4444;
+          color: #ffffff;
+          border: 1px solid #dc2626;
+          box-shadow: 0 1px 2px rgba(239, 68, 68, 0.2);
+          &:hover:not(:disabled) {
+            background-color: #dc2626;
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
+            transform: translateY(-1px);
+          }
+        `
+      : p.$variant === 'primary'
+      ? css`
+          background-color: #2563eb;
+          color: #ffffff;
+          border: 1px solid #1d4ed8;
+          box-shadow: 0 1px 2px rgba(37, 99, 235, 0.16);
+          &:hover:not(:disabled) {
+            background-color: #1d4ed8;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+            transform: translateY(-1px);
+          }
+          [data-theme='dark'] & {
+            background-color: #1e40af;
+            border-color: #3b82f6;
+            &:hover:not(:disabled) {
+              background-color: #2563eb;
+            }
+          }
+        `
+      : css`
+          background: ${p.$active ? 'var(--bg-tab-active)' : 'var(--bg-tertiary)'};
+          color: ${p.$active ? 'var(--accent-blue)' : 'var(--text-secondary)'};
+          border: 1px solid ${p.$active ? 'var(--accent-blue)' : 'var(--border-secondary)'};
+          &:hover:not(:disabled) {
+            border-color: var(--accent-blue);
+            color: var(--accent-blue);
+            transform: translateY(-1px);
+          }
+        `}
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
+  }
+
+  @media (max-width: 600px) {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.78rem;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+`;
+
+export const FilterBadgeDot = styled.span`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background-color: var(--accent-blue);
+  color: #ffffff;
+`;
+
+export const ClearFiltersButton = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px dashed var(--border-secondary);
+  background: transparent;
+  color: var(--text-muted);
   cursor: pointer;
   transition: all 0.2s ease;
+  white-space: nowrap;
 
-  &::after {
-    content: '${(p: any) => (p.$open ? '\\25B2' : '\\25BC')}';
-    margin-left: 0.45rem;
-    font-size: 0.7rem;
+  &:hover {
+    color: #ef4444;
+    border-color: #ef4444;
+    background: rgba(239, 68, 68, 0.08);
+  }
+`;
+
+export const FilterFooterRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.4rem;
+  grid-column: 1 / -1;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  gap: 0.5rem;
+  flex-wrap: wrap;
+`;
+
+export const ResponsiveButtonLabel = styled.span`
+  @media (max-width: 600px) {
+    .long-label {
+      display: none;
+    }
+    .short-label {
+      display: inline;
+    }
+  }
+  @media (min-width: 601px) {
+    .long-label {
+      display: inline;
+    }
+    .short-label {
+      display: none;
+    }
+  }
+`;
+
+export const FilterContainer = styled.div`
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding: 0.85rem;
+  background-color: var(--bg-filter);
+  border: 1px solid var(--border-primary);
+  border-radius: 12px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.03);
+  flex-shrink: 0;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+  animation: ${slideUp} 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+
+  ${Input}, ${SelectWrapper} {
+    width: 100%;
+    max-width: none;
+    margin-bottom: 0;
+  }
+
+  @media (max-width: 900px) {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.6rem;
+    padding: 0.75rem;
+  }
+
+  @media (max-width: 480px) {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+    padding: 0.55rem;
+
+    ${Input} {
+      padding: 0.4rem 0.6rem;
+      font-size: 0.8rem;
+      height: 35px;
+      border-radius: 6px;
+    }
+
+    ${SelectWrapper} {
+      height: 35px;
+      margin-bottom: 0;
+      &::after {
+        right: 0.6rem;
+        width: 0.5rem;
+        height: 0.5rem;
+      }
+    }
+
+    ${Select} {
+      padding: 0.4rem 1.6rem 0.4rem 0.6rem;
+      font-size: 0.8rem;
+      height: 35px;
+      border-radius: 6px;
+    }
+  }
+
+  @media (max-height: 500px) {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.3rem;
+    padding: 0.3rem 0.5rem;
+    margin-bottom: 0.3rem;
+  }
+`;
+
+export const FilterToggleButton = styled.button<{ $open: boolean; $hasActive?: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid ${(p: any) => (p.$hasActive ? 'var(--accent-blue)' : 'var(--border-secondary)')};
+  background: ${(p: any) => (p.$hasActive ? 'rgba(59, 130, 246, 0.1)' : 'var(--bg-tertiary)')};
+  color: ${(p: any) => (p.$hasActive ? 'var(--accent-blue)' : 'var(--text-secondary)')};
+  border-radius: 8px;
+  padding: 0.45rem 0.8rem;
+  font-size: 0.825rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+
+  svg {
+    width: 14px;
+    height: 14px;
+    transition: transform 0.2s ease;
   }
 
   &:hover {
-    border-color: var(--border-focus);
+    border-color: var(--accent-blue);
     color: var(--accent-blue);
+    transform: translateY(-1px);
   }
 
   &:focus-visible {
@@ -126,23 +394,17 @@ export const FilterToggleButton = styled.button<{ $open: boolean }>`
     outline-offset: 2px;
   }
 
-  @media (max-width: 768px) {
-    display: inline-flex;
-    align-items: center;
-    position: relative;
-    z-index: 2;
+  @media (max-width: 600px) {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.78rem;
+    flex: 1 1 auto;
+    min-width: 0;
   }
 `;
 
 export const MessageFilterCollapse = styled.div<{ $open: boolean }>`
-  @media (max-width: 768px) {
-    display: ${(p: any) => (p.$open ? 'block' : 'none')};
-    animation: ${(p: any) => (p.$open ? slideUp : 'none')} 0.22s ease;
-  }
-
-  @media (min-width: 769px) {
-    display: block;
-  }
+  display: ${(p: any) => (p.$open ? 'block' : 'none')};
+  animation: ${(p: any) => (p.$open ? slideUp : 'none')} 0.22s ease;
 `;
 
 export const PremiumExportButton = styled.button`
@@ -449,6 +711,12 @@ export const ScrollContainer = styled.div`
   overflow-y: auto;
   overflow-x: auto;
   padding-right: 0.5rem;
+  @media (max-width: 768px) {
+    flex: none;
+    min-height: auto;
+    overflow: visible;
+    padding-right: 0;
+  }
 `;
 
 export const EmptyState = styled.div`

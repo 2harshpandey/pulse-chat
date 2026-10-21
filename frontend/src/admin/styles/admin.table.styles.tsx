@@ -23,6 +23,7 @@ export const Th = styled.th`
   color: var(--text-secondary);
   white-space: nowrap;
   transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+  @media (max-width: 600px) { padding: 0.5rem 0.55rem; font-size: 0.74rem; }
   @media (max-height: 500px) { padding: 0.3rem 0.5rem; font-size: 0.78rem; }
 `;
 
@@ -42,6 +43,7 @@ export const Td = styled.td`
   color: var(--text-primary);
   transition: all 0.2s ease;
   tr:hover & { background-color: var(--bg-hover); }
+  @media (max-width: 600px) { padding: 0.5rem 0.55rem; font-size: 0.8rem; }
   @media (max-height: 500px) { padding: 0.3rem 0.5rem; font-size: 0.78rem; }
 `;
 
@@ -53,6 +55,11 @@ export const TableWrapper = styled.div`
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   border-radius: 8px;
+  @media (max-width: 768px) {
+    flex: none;
+    min-height: auto;
+    overflow-y: visible;
+  }
 `;
 
 export const MessageLogScrollContainer = styled.div`
@@ -64,7 +71,14 @@ export const MessageLogScrollContainer = styled.div`
   padding-right: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.75rem;
+
+  @media (max-width: 768px) {
+    flex: none;
+    min-height: auto;
+    overflow: visible;
+    gap: 0.5rem;
+  }
 `;
 
 export const MessageLogTableWrapper = styled.div`
@@ -75,6 +89,19 @@ export const MessageLogTableWrapper = styled.div`
   border: 1px solid var(--border-primary);
   border-radius: 10px;
   background: var(--bg-secondary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+  &::-webkit-scrollbar {
+    height: 6px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: var(--border-secondary);
+    border-radius: 4px;
+  }
 `;
 
 // Td variant that never wraps — used for compact columns (Date, Time, Event, Message ID)

@@ -10,8 +10,18 @@ export const AdminContainer = styled.div`
   flex-direction: column;
   animation: ${slideUp} 0.5s cubic-bezier(0.16, 1, 0.3, 1);
   transition: background-color 0.3s ease;
-  @media (max-width: 768px) { padding: 1.25rem 1rem; }
-  @media (max-width: 480px) { padding: 1rem 0.75rem; }
+  @media (max-width: 768px) {
+    padding: 0.85rem 0.65rem;
+    height: 100%;
+    max-height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+  @media (max-width: 480px) {
+    padding: 0.65rem 0.45rem;
+  }
   @media (max-height: 500px) { padding: 0.4rem 0.6rem; }
 `;
 
@@ -79,6 +89,10 @@ export const HeaderRow = styled.div`
   gap: 1rem;
   flex-wrap: wrap;
   flex-shrink: 0;
+  @media (max-width: 768px) {
+    margin-bottom: 0.75rem;
+    gap: 0.5rem;
+  }
   @media (max-height: 500px) { margin-bottom: 0.3rem; }
 `;
 
