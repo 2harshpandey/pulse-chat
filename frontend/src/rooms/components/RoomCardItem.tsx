@@ -9,7 +9,7 @@ import {
   RoomDescription,
   RoomStats,
   Stat,
-  Button
+  JoinButton
 } from '../RoomsStyledComponents';
 
 interface RoomCardItemProps {
@@ -86,9 +86,9 @@ export const RoomCardItem: React.FC<RoomCardItemProps> = ({
           {room.onlineCount || 0} Online
         </Stat>
         <div style={{ marginLeft: 'auto' }}>
-          <Button style={{ padding: '0.5rem 1rem', fontSize: '0.875rem' }} onClick={() => onJoin(room.id)}>
+          <JoinButton onClick={() => onJoin(room.id)}>
             Join
-          </Button>
+          </JoinButton>
         </div>
       </RoomStats>
     </RoomCard>

@@ -172,8 +172,9 @@ export const Button = styled.button<{ $primary?: boolean }>`
 
   &:hover {
     transform: translateY(-2px);
-    box-shadow: ${p => p.$primary ? '0 10px 20px -5px rgba(59, 130, 246, 0.4)' : 'none'};
+    box-shadow: ${p => p.$primary ? '0 10px 20px -5px rgba(59, 130, 246, 0.4)' : '0 4px 12px rgba(0, 0, 0, 0.15)'};
     background: ${p => p.$primary ? 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)' : 'var(--bg-hover)'};
+    border-color: ${p => p.$primary ? 'transparent' : 'var(--border-secondary, #475569)'};
   }
 
   @media (max-width: 480px) {
@@ -181,6 +182,33 @@ export const Button = styled.button<{ $primary?: boolean }>`
     font-size: 0.9rem;
     width: 100%;
     justify-content: center;
+  }
+`;
+
+export const JoinButton = styled.button`
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-secondary);
+  padding: 0.5rem 1.15rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  &:hover {
+    transform: translateY(-2px);
+    background: rgba(59, 130, 246, 0.15);
+    border-color: var(--accent-blue, #3b82f6);
+    color: var(--text-heading, #ffffff);
+    box-shadow: 0 0 0 1px var(--accent-blue, #3b82f6), 0 4px 12px rgba(59, 130, 246, 0.25);
+  }
+
+  &:active {
+    transform: translateY(0);
   }
 `;
 
