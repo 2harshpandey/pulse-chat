@@ -499,16 +499,29 @@ export function useChatMedia({
           if (!uploadedFileData) return;
           setMessages((prev) =>
             prev.map((m) => {
-              if (m.id !== messageId) return m;
-              const finalMessage = {
-                ...m,
-                ...uploadedFileData,
-                originalName: chooseReadableFilename(uploadedFileData.originalName, m.originalName),
-                isUploading: false,
-                id: uploadedFileData.id,
-              };
-              ws.current?.send(JSON.stringify(finalMessage));
-              return finalMessage;
+              if (m.id === messageId) {
+                const finalMessage = {
+                  ...m,
+                  ...uploadedFileData,
+                  originalName: chooseReadableFilename(uploadedFileData.originalName, m.originalName),
+                  isUploading: false,
+                  id: uploadedFileData.id,
+                };
+                ws.current?.send(JSON.stringify({ ...finalMessage, clientTempId: messageId }));
+                return finalMessage;
+              }
+              if (m.replyingTo && m.replyingTo.id === messageId) {
+                return {
+                  ...m,
+                  replyingTo: {
+                    ...m.replyingTo,
+                    id: uploadedFileData.id,
+                    url: uploadedFileData.url || m.replyingTo.url,
+                    type: uploadedFileData.type && uploadedFileData.type !== 'system_notification' ? uploadedFileData.type : m.replyingTo.type,
+                  }
+                };
+              }
+              return m;
             })
           );
         });

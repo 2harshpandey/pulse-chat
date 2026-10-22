@@ -25,6 +25,12 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
   quotedPreviewThumbUrl,
   scrollToMessage,
 }) => {
+  const [thumbLoadError, setThumbLoadError] = React.useState(false);
+
+  React.useEffect(() => {
+    setThumbLoadError(false);
+  }, [quotedPreviewThumbUrl]);
+
   if (!msg.replyingTo) return null;
 
   return (
@@ -60,15 +66,36 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
             : msg.replyingTo.text}
         </span>
       </div>
-      {!msg.replyingTo.isDeleted && msg.replyingTo.url && (msg.replyingTo.type === 'image' || msg.replyingTo.type === 'video') && (
-        quotedPreviewThumbUrl ? (
+      {!msg.replyingTo.isDeleted && (msg.replyingTo.url || quotedPreviewThumbUrl) && (msg.replyingTo.type === 'image' || msg.replyingTo.type === 'video') && (
+        quotedPreviewThumbUrl && !thumbLoadError ? (
           <QuotedMediaThumb>
             <img
               src={quotedPreviewThumbUrl}
               alt=""
               loading="lazy"
               decoding="async"
+              onError={() => setThumbLoadError(true)}
             />
+          </QuotedMediaThumb>
+        ) : msg.replyingTo.url ? (
+          <QuotedMediaThumb>
+            {msg.replyingTo.type === 'video' ? (
+              <video
+                src={msg.replyingTo.url}
+                muted
+                playsInline
+                preload="metadata"
+                style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }}
+              />
+            ) : (
+              <img
+                src={msg.replyingTo.url}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            )}
           </QuotedMediaThumb>
         ) : (
           <div

@@ -22,6 +22,7 @@ const messageSchema = new mongoose.Schema({
   deletedBy: { type: String, default: null },
   vanished: { type: Boolean, default: false },
   edited: { type: Boolean, default: false },
+  clientTempId: { type: String, default: null },
   replyingTo: {
     type: Object,
     default: null

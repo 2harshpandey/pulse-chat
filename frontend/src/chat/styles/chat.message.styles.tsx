@@ -458,7 +458,7 @@ export const QuotedMediaThumb = styled.div`
   border: 1px solid rgba(148, 163, 184, 0.35);
   position: relative;
 
-  img {
+  img, video {
     width: 100%;
     height: 100%;
     object-fit: cover;

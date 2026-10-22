@@ -193,34 +193,38 @@ export function useChatMessageNavigation({
       const replyUsername = typeof replyingToPayload.username === 'string' ? replyingToPayload.username.trim() : '';
       const replyType = typeof replyingToPayload.type === 'string' ? replyingToPayload.type : '';
       const replyUrl = typeof replyingToPayload.url === 'string' ? replyingToPayload.url.trim() : '';
+      const isGenericMediaText = ['video', 'image', 'photo', 'gif', 'message'].includes(replyText.toLowerCase());
 
       const sourceIndex = sourceId
         ? messagesRef.current.findIndex((m) => normalizeMessageId(m.id) === sourceId)
         : -1;
 
-      const metadataMatches = messagesRef.current
-        .map((m, index) => ({ m, index }))
-        .filter(({ m }) => {
-          if (sourceId && normalizeMessageId(m.id) === sourceId) return false;
-          if (replyUsername && m.username !== replyUsername) return false;
-          if (replyType && m.type !== replyType) return false;
-          if (replyUrl && (m.url || '').trim() !== replyUrl) return false;
-          if (replyText && (m.text || '').trim() !== replyText) return false;
-          if (!replyText && !replyUrl) return false;
-          return true;
-        });
+      // Scan backwards from sourceIndex to find the nearest matching quoted message
+      if (sourceIndex > 0) {
+        for (let i = sourceIndex - 1; i >= 0; i--) {
+          const candidate = messagesRef.current[i];
+          if (replyUsername && candidate.username !== replyUsername) continue;
+          if (replyType && candidate.type !== replyType) continue;
+          if (!isGenericMediaText && replyText && (candidate.text || '').trim() !== replyText) continue;
+          if (replyUrl && !replyUrl.startsWith('blob:') && (candidate.url || '').trim() !== replyUrl) continue;
 
-      if (metadataMatches.length === 0) return directRequested;
+          return normalizeMessageId(candidate.id) || directRequested;
+        }
+      }
 
-      const preferred = sourceIndex > 0
-        ? metadataMatches.filter(({ index }) => index < sourceIndex)
-        : metadataMatches;
+      // Fallback: scan anywhere in loaded messages
+      for (let i = messagesRef.current.length - 1; i >= 0; i--) {
+        const candidate = messagesRef.current[i];
+        if (sourceId && normalizeMessageId(candidate.id) === sourceId) continue;
+        if (replyUsername && candidate.username !== replyUsername) continue;
+        if (replyType && candidate.type !== replyType) continue;
+        if (!isGenericMediaText && replyText && (candidate.text || '').trim() !== replyText) continue;
+        if (replyUrl && !replyUrl.startsWith('blob:') && (candidate.url || '').trim() !== replyUrl) continue;
 
-      const chosen = preferred.length > 0
-        ? preferred[preferred.length - 1]
-        : metadataMatches[metadataMatches.length - 1];
+        return normalizeMessageId(candidate.id) || directRequested;
+      }
 
-      return normalizeMessageId(chosen.m.id) || directRequested;
+      return directRequested;
     },
     [messagesRef]
   );
@@ -271,6 +275,14 @@ export function useChatMessageNavigation({
           return;
         }
         if (!historyLoaded) {
+          resolve();
+          return;
+        }
+
+        // Guard: Do not attempt to load history for client-generated temporary IDs
+        const isClientTempId = /^\d+_\w+$/.test(targetId) || /^\d{13,}/.test(targetId);
+        if (isClientTempId) {
+          quoteWarn('Target message is a client temporary ID that cannot exist in server history:', targetId);
           resolve();
           return;
         }

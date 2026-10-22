@@ -432,6 +432,23 @@ export function useChatWebSocket({
           if (isJoinNotification || isIncomingMessage) {
             void playNotificationSound(isJoinNotification ? 'join' : 'message');
           }
+          if (messageData.clientTempId) {
+            setMessages(prev => prev.map(m => {
+              if (m.id === messageData.clientTempId) return normalized;
+              if (m.replyingTo && m.replyingTo.id === messageData.clientTempId) {
+                return {
+                  ...m,
+                  replyingTo: {
+                    ...m.replyingTo,
+                    id: normalized.id,
+                    url: normalized.url || m.replyingTo.url,
+                    type: normalized.type !== 'system_notification' ? normalized.type : m.replyingTo.type,
+                  }
+                };
+              }
+              return m;
+            }));
+          }
           appendMessageToWindowRef.current(normalized);
         }
       };

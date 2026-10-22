@@ -150,12 +150,61 @@ export function useChatMessages({
   }, []);
 
   const markDeletedReplyTargets = useCallback((list: Message[], deletedIds: Set<string>): Message[] => {
-    if (deletedIds.size === 0) return list;
-    return list.map((m) =>
-      m.replyingTo && deletedIds.has(m.replyingTo.id)
-        ? { ...m, replyingTo: { ...m.replyingTo, isDeleted: true } }
-        : m
-    );
+    if (list.length === 0) return list;
+    const messageById = new Map<string, Message>();
+    for (const msg of list) {
+      if (msg.id) messageById.set(normalizeMessageId(msg.id), msg);
+    }
+
+    return list.map((m, index) => {
+      if (!m.replyingTo) return m;
+
+      let targetId = normalizeMessageId(m.replyingTo.id);
+      let target = targetId ? messageById.get(targetId) : undefined;
+
+      // If target not found by exact ID (e.g. was a client tempId before upload finished):
+      if (!target && index > 0) {
+        const replyUsername = m.replyingTo.username;
+        const replyType = m.replyingTo.type;
+        const replyText = (m.replyingTo.text || '').trim();
+        const isGenericMediaText = ['video', 'image', 'photo', 'gif', 'message'].includes(replyText.toLowerCase());
+
+        for (let j = index - 1; j >= 0; j--) {
+          const candidate = list[j];
+          if (replyUsername && candidate.username !== replyUsername) continue;
+          if (replyType && candidate.type !== replyType) continue;
+          if (!isGenericMediaText && replyText && (candidate.text || '').trim() !== replyText) continue;
+          target = candidate;
+          break;
+        }
+      }
+
+      const isDeleted = (m.replyingTo.id && deletedIds.has(m.replyingTo.id)) || (target && target.isDeleted) || Boolean(m.replyingTo.isDeleted);
+      let changed = false;
+      const updatedReply = { ...m.replyingTo };
+
+      if (isDeleted !== m.replyingTo.isDeleted) {
+        updatedReply.isDeleted = isDeleted;
+        changed = true;
+      }
+
+      if (target) {
+        if (target.id && m.replyingTo.id !== target.id) {
+          updatedReply.id = target.id;
+          changed = true;
+        }
+        if (target.url && (!m.replyingTo.url || m.replyingTo.url.startsWith('blob:'))) {
+          updatedReply.url = target.url;
+          changed = true;
+        }
+        if (target.type && target.type !== 'system_notification' && m.replyingTo.type !== target.type) {
+          updatedReply.type = target.type;
+          changed = true;
+        }
+      }
+
+      return changed ? { ...m, replyingTo: updatedReply } : m;
+    });
   }, []);
 
   const filterVisibleMessages = useCallback((allMsgs: Message[]): Message[] => {

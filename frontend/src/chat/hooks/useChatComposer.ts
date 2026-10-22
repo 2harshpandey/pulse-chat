@@ -362,8 +362,23 @@ export function useChatComposer({
             id: uploadedFileData.id,
             text: i === 0 ? caption : undefined,
           };
-          setMessages(prev => prev.map(m => m.id === tempId ? finalMessage : m));
-          ws.current?.send(JSON.stringify(finalMessage));
+          setMessages(prev => prev.map(m => {
+            if (m.id === tempId) return finalMessage;
+            if (m.replyingTo && m.replyingTo.id === tempId) {
+              return {
+                ...m,
+                replyingTo: {
+                  ...m.replyingTo,
+                  id: finalMessage.id,
+                  url: finalMessage.url || m.replyingTo.url,
+                  type: finalMessage.type !== 'system_notification' ? finalMessage.type : m.replyingTo.type,
+                }
+              };
+            }
+            return m;
+          }));
+          if (replyingTo?.id === tempId) setReplyingTo(finalMessage);
+          ws.current?.send(JSON.stringify({ ...finalMessage, clientTempId: tempId }));
         })
         .catch(error => {
           if (error.message === 'Aborted') return;
@@ -476,8 +491,23 @@ export function useChatComposer({
             isUploading: false,
             id: uploadedFileData.id,
           };
-          setMessages(prev => prev.map(m => m.id === tempId ? finalMessage : m));
-          ws.current?.send(JSON.stringify(finalMessage));
+          setMessages(prev => prev.map(m => {
+            if (m.id === tempId) return finalMessage;
+            if (m.replyingTo && m.replyingTo.id === tempId) {
+              return {
+                ...m,
+                replyingTo: {
+                  ...m.replyingTo,
+                  id: finalMessage.id,
+                  url: finalMessage.url || m.replyingTo.url,
+                  type: finalMessage.type !== 'system_notification' ? finalMessage.type : m.replyingTo.type,
+                }
+              };
+            }
+            return m;
+          }));
+          if (replyingTo?.id === tempId) setReplyingTo(finalMessage);
+          ws.current?.send(JSON.stringify({ ...finalMessage, clientTempId: tempId }));
         })
         .catch(error => {
           if (error.message === 'Aborted') return;

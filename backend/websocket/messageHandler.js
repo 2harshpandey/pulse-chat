@@ -452,6 +452,29 @@ const handleNewMessage = async ({ ws, parsedMessage, wss, broadcastToAdmins, _br
     sanitisedMessage.url = undefined;
   }
 
+  // If replyingTo exists, resolve target from DB if needed
+  if (sanitisedMessage.replyingTo && typeof sanitisedMessage.replyingTo === 'object') {
+    const replyTargetId = sanitisedMessage.replyingTo.id;
+    if (replyTargetId) {
+      try {
+        const targetDoc = await Message.findOne({
+          roomId,
+          $or: [{ id: replyTargetId }, { clientTempId: replyTargetId }]
+        }).lean();
+        if (targetDoc) {
+          sanitisedMessage.replyingTo.id = targetDoc.id;
+          if (targetDoc.url) sanitisedMessage.replyingTo.url = targetDoc.url;
+          if (targetDoc.type) sanitisedMessage.replyingTo.type = targetDoc.type;
+        }
+      } catch (lookupErr) {
+        logger.warn('Failed to lookup replyingTo target in DB:', lookupErr);
+      }
+    }
+    if (typeof sanitisedMessage.replyingTo.url === 'string' && sanitisedMessage.replyingTo.url.startsWith('blob:')) {
+      sanitisedMessage.replyingTo.url = undefined;
+    }
+  }
+
   if (sanitisedMessage.type === 'video' || sanitisedMessage.type === 'image' || sanitisedMessage.type === 'file') {
     logger.info(`[DIAG] Media message received: type=${sanitisedMessage.type} id=${sanitisedMessage.id} url=${sanitisedMessage.url ? sanitisedMessage.url.substring(0, 80) : 'MISSING'}`);
   }
@@ -473,6 +496,24 @@ const handleNewMessage = async ({ ws, parsedMessage, wss, broadcastToAdmins, _br
     }
     logger.error('Failed to save message:', err);
     return;
+  }
+
+  // Reconcile replies in database that quoted this message's clientTempId
+  if (sanitisedMessage.clientTempId) {
+    try {
+      await Message.updateMany(
+        { roomId, 'replyingTo.id': sanitisedMessage.clientTempId },
+        {
+          $set: {
+            'replyingTo.id': messageDoc.id,
+            'replyingTo.url': messageDoc.url || '',
+            'replyingTo.type': messageDoc.type,
+          }
+        }
+      );
+    } catch (reconcileErr) {
+      logger.error('Failed to reconcile clientTempId in replies:', reconcileErr);
+    }
   }
 
   User.findOne({ roomId, userId: ws.userId }).then(user => {
