@@ -125,6 +125,29 @@ export function useChatMessageNavigation({
     applyHighlight(0);
   }, []);
 
+  const checkIsFullyVisible = useCallback((element: HTMLElement, scroller: HTMLElement): boolean => {
+    const containerRect = scroller.getBoundingClientRect();
+    if (containerRect.width === 0 || containerRect.height === 0) return false;
+
+    const elRect = element.getBoundingClientRect();
+    if (elRect.width === 0 && elRect.height === 0) return false;
+
+    const bubble =
+      (element.querySelector('[class*="MessageBubble"], [class*="MediaGroupContainer"]') as HTMLElement | null) ||
+      element;
+    const bubbleRect = bubble.getBoundingClientRect();
+
+    const tolerance = 2; // subpixel rendering tolerance
+    const isTopVisible = Math.min(elRect.top, bubbleRect.top) >= containerRect.top - tolerance;
+    const isBottomVisible = Math.max(elRect.bottom, bubbleRect.bottom) <= containerRect.bottom + tolerance;
+
+    if (bubbleRect.height > containerRect.height) {
+      return bubbleRect.top <= containerRect.top + tolerance && bubbleRect.bottom >= containerRect.bottom - tolerance;
+    }
+
+    return isTopVisible && isBottomVisible;
+  }, []);
+
   const scrollToLoadedMessage = useCallback(
     (messageId: string, behavior: 'auto' | 'smooth' = 'auto', force = false) => {
       const targetId = normalizeMessageId(messageId);
@@ -132,6 +155,18 @@ export function useChatMessageNavigation({
       const msgIndex = messagesRef.current.findIndex((m) => normalizeMessageId(m.id) === targetId);
       if (msgIndex === -1) return false;
 
+      // 1. If element is already rendered and FULLY visible on screen:
+      const immediateElement = findMessageElement(targetId);
+      const immediateScroller =
+        (chatContainerRef.current?.querySelector('[data-virtuoso-scroller]') as HTMLElement | null) ||
+        chatContainerRef.current;
+
+      if (immediateElement && immediateScroller && checkIsFullyVisible(immediateElement, immediateScroller)) {
+        highlightMessage(targetId);
+        return true;
+      }
+
+      // 2. Element is not fully visible, so scroll is required:
       clearPendingBottomScrollTimers();
       engageQuoteJumpLock(2600);
       scheduleProgrammaticScrollSuppression(2600);
@@ -143,11 +178,45 @@ export function useChatMessageNavigation({
 
       const ensureVisibleAndHighlight = (attempt: number) => {
         const element = findMessageElement(targetId);
-        if (!element) {
+        const scroller =
+          (chatContainerRef.current?.querySelector('[data-virtuoso-scroller]') as HTMLElement | null) ||
+          chatContainerRef.current;
+
+        if (!element || !scroller) {
           if (attempt < 25) window.setTimeout(() => ensureVisibleAndHighlight(attempt + 1), 40);
           return;
         }
-        element.scrollIntoView({ block: 'center', inline: 'nearest', behavior });
+
+        if (checkIsFullyVisible(element, scroller)) {
+          highlightMessage(targetId);
+          return;
+        }
+
+        const elRect = element.getBoundingClientRect();
+        const bubble =
+          (element.querySelector('[class*="MessageBubble"], [class*="MediaGroupContainer"]') as HTMLElement | null) ||
+          element;
+        const bubbleRect = bubble.getBoundingClientRect();
+        const containerRect = scroller.getBoundingClientRect();
+
+        const topEdge = Math.min(elRect.top, bubbleRect.top);
+        const bottomEdge = Math.max(elRect.bottom, bubbleRect.bottom);
+        const totalHeight = bottomEdge - topEdge;
+        const margin = 16;
+
+        const isPartiallyVisible =
+          topEdge < containerRect.bottom && bottomEdge > containerRect.top;
+
+        if (isPartiallyVisible) {
+          if (totalHeight > containerRect.height - 2 * margin || topEdge < containerRect.top + margin) {
+            scroller.scrollBy({ top: topEdge - containerRect.top - margin, behavior });
+          } else if (bottomEdge > containerRect.bottom - margin) {
+            scroller.scrollBy({ top: bottomEdge - containerRect.bottom + margin, behavior });
+          }
+        } else {
+          element.scrollIntoView({ block: 'center', inline: 'nearest', behavior });
+        }
+
         highlightMessage(targetId);
       };
 
@@ -155,6 +224,8 @@ export function useChatMessageNavigation({
       return true;
     },
     [
+      chatContainerRef,
+      checkIsFullyVisible,
       clearPendingBottomScrollTimers,
       engageQuoteJumpLock,
       highlightMessage,
@@ -253,15 +324,24 @@ export function useChatMessageNavigation({
       if (targetId && sourceId && targetId === sourceId) return;
 
       if (sourceId && sourceId !== targetId) {
-        const stack = quoteJumpReturnStackRef.current;
-        const lastSourceId = stack[stack.length - 1];
-        if (lastSourceId !== sourceId) {
-          const nextStack =
-            stack.length >= MAX_QUOTE_JUMP_STACK_DEPTH
-              ? stack.slice(stack.length - MAX_QUOTE_JUMP_STACK_DEPTH + 1)
-              : stack.slice();
-          nextStack.push(sourceId);
-          quoteJumpReturnStackRef.current = nextStack;
+        const immediateElement = findMessageElement(targetId);
+        const immediateScroller =
+          (chatContainerRef.current?.querySelector('[data-virtuoso-scroller]') as HTMLElement | null) ||
+          chatContainerRef.current;
+        const alreadyFullyVisible =
+          immediateElement && immediateScroller ? checkIsFullyVisible(immediateElement, immediateScroller) : false;
+
+        if (!alreadyFullyVisible) {
+          const stack = quoteJumpReturnStackRef.current;
+          const lastSourceId = stack[stack.length - 1];
+          if (lastSourceId !== sourceId) {
+            const nextStack =
+              stack.length >= MAX_QUOTE_JUMP_STACK_DEPTH
+                ? stack.slice(stack.length - MAX_QUOTE_JUMP_STACK_DEPTH + 1)
+                : stack.slice();
+            nextStack.push(sourceId);
+            quoteJumpReturnStackRef.current = nextStack;
+          }
         }
       }
 
@@ -391,6 +471,8 @@ export function useChatMessageNavigation({
     [
       activeSearchQuery,
       apiBase,
+      chatContainerRef,
+      checkIsFullyVisible,
       fetchAndPrependOlderMessages,
       filterVisibleMessages,
       firstItemIndexRef,
