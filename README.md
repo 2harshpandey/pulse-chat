@@ -94,6 +94,7 @@ Pulse Chat supports distinct, securely isolated rooms, allowing vast communities
 The messaging layer is built to support modern conversation patterns while preserving performance and consistency.
 
 - Reply and quote system with preview bar, sender context, and clickable quoted message blocks.
+- **Pinned Announcements & Jump Navigation**: Dynamic header banner displaying active room pins with animated highlight sweeps, seamless cyclic navigation across both current and historical server messages, and real-time synchronization on pins, unpins, and deletions.
 - Quoted media thumbnails optimized through Cloudinary transformations for low-latency previews.
 - **Inline Message Editing**: Full edit support with `(edited)` state tracking, event logging, and live synchronization to clients.
 - Delete-for-everyone workflow with content redaction and persistent event logging.
