@@ -482,12 +482,16 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     : 'Scroll to latest messages';
 
   const handleJumpToNextPinned = useCallback(async () => {
-    if (msgs.isJumpingToPinned || msgs.pinnedMessages.length === 0) return;
+    const activePins = (msgs.pinnedMessages || []).filter(
+      (m: any) => m && !m.isDeleted && !m.vanished && m.text !== 'This message has been deleted by an admin.'
+    );
+    if (msgs.isJumpingToPinned || activePins.length === 0) return;
     viewport.setNewMessagesWhileScrolledUp(0);
     if (search.activeSearchQuery) {
       search.resetSearch();
     }
-    const currentMsg = msgs.pinnedMessages[msgs.currentPinnedIndex];
+    const safeIndex = msgs.currentPinnedIndex >= activePins.length ? 0 : msgs.currentPinnedIndex;
+    const currentMsg = activePins[safeIndex];
     if (currentMsg) {
       msgs.setIsJumpingToPinned(true);
       try {
@@ -500,15 +504,12 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
       } finally {
         msgs.setIsJumpingToPinned(false);
         msgs.setCurrentPinnedIndex((prev) => {
-          if (msgs.pinnedMessages.length <= 1) return 0;
-          return (prev + 1) % msgs.pinnedMessages.length;
+          if (activePins.length <= 1) return 0;
+          return (safeIndex + 1) % activePins.length;
         });
       }
     } else {
-      msgs.setCurrentPinnedIndex((prev) => {
-        if (msgs.pinnedMessages.length <= 1) return 0;
-        return (prev + 1) % msgs.pinnedMessages.length;
-      });
+      msgs.setCurrentPinnedIndex(0);
     }
   }, [msgs, nav, search, viewport]);
 

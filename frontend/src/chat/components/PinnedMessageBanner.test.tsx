@@ -107,4 +107,50 @@ describe('PinnedMessageBanner', () => {
     expect(screen.getByText('Active pinned announcement')).toBeTruthy();
     expect(screen.getByText('Pinned Message')).toBeTruthy();
   });
+
+  it('triggers onClick callback when banner container is clicked', () => {
+    const handleClick = vi.fn();
+    const pins = [
+      {
+        id: 'msg-1',
+        text: 'Important reminder',
+        type: 'text',
+      },
+    ];
+
+    render(
+      <PinnedMessageBanner
+        pinnedMessages={pins}
+        currentPinnedIndex={0}
+        isJumpingToPinned={false}
+        onClick={handleClick}
+      />
+    );
+
+    const banner = screen.getByText('Important reminder');
+    banner.click();
+    expect(handleClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('gracefully handles currentPinnedIndex exceeding activePins length via safeIndex', () => {
+    const pins = [
+      {
+        id: 'msg-1',
+        text: 'Only active announcement',
+        type: 'text',
+      },
+    ];
+
+    render(
+      <PinnedMessageBanner
+        pinnedMessages={pins}
+        currentPinnedIndex={5} // out of bounds index
+        isJumpingToPinned={false}
+        onClick={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('Only active announcement')).toBeTruthy();
+  });
 });
+

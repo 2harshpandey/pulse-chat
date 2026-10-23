@@ -105,7 +105,7 @@ export function useChatMessageNavigation({
     const attemptDelayMs = 60;
 
     const applyHighlight = (attempt: number) => {
-      const element = document.getElementById(getMessageElementId(messageId));
+      const element = findMessageElement(messageId);
       if (!element) {
         if (attempt < maxAttempts) {
           window.setTimeout(() => applyHighlight(attempt + 1), attemptDelayMs);
@@ -150,13 +150,19 @@ export function useChatMessageNavigation({
 
   const scrollToLoadedMessage = useCallback(
     (messageId: string, behavior: 'auto' | 'smooth' = 'auto', force = false) => {
-      const targetId = normalizeMessageId(messageId);
-      if (!targetId) return false;
-      const msgIndex = messagesRef.current.findIndex((m) => normalizeMessageId(m.id) === targetId);
-      if (msgIndex === -1) return false;
+      const rawTargetId = normalizeMessageId(messageId);
+      if (!rawTargetId) return false;
+
+      // Find by id or _id in messagesRef.current
+      const targetMsg = messagesRef.current.find(
+        (m) => normalizeMessageId(m.id) === rawTargetId || normalizeMessageId(m._id) === rawTargetId
+      );
+      if (!targetMsg) return false;
+
+      const targetId = normalizeMessageId(targetMsg.id) || rawTargetId;
 
       // 1. If element is already rendered and FULLY visible on screen:
-      const immediateElement = findMessageElement(targetId);
+      const immediateElement = findMessageElement(targetId) || findMessageElement(rawTargetId);
       const immediateScroller =
         (chatContainerRef.current?.querySelector('[data-virtuoso-scroller]') as HTMLElement | null) ||
         chatContainerRef.current;
@@ -177,7 +183,7 @@ export function useChatMessageNavigation({
       if (!force && shouldSuppressProgrammaticScroll()) return false;
 
       const ensureVisibleAndHighlight = (attempt: number) => {
-        const element = findMessageElement(targetId);
+        const element = findMessageElement(targetId) || findMessageElement(rawTargetId);
         const scroller =
           (chatContainerRef.current?.querySelector('[data-virtuoso-scroller]') as HTMLElement | null) ||
           chatContainerRef.current;
@@ -214,6 +220,10 @@ export function useChatMessageNavigation({
             scroller.scrollBy({ top: bottomEdge - containerRect.bottom + margin, behavior });
           }
         } else {
+          // Robust container scroll positioning
+          const targetScrollTop =
+            topEdge - containerRect.top + scroller.scrollTop - Math.max(0, (containerRect.height - totalHeight) / 2);
+          scroller.scrollTo({ top: Math.max(0, targetScrollTop), behavior });
           element.scrollIntoView({ block: 'center', inline: 'nearest', behavior });
         }
 
@@ -242,8 +252,6 @@ export function useChatMessageNavigation({
     (requestedMessageId: string, sourceMessageId?: string, replyingToPayload?: any): string => {
       const sourceId = normalizeMessageId(sourceMessageId);
       const directRequested = normalizeMessageId(requestedMessageId);
-      const idsInMemory = new Set(messagesRef.current.map((m) => normalizeMessageId(m.id)).filter(Boolean));
-
       const candidateIds = [
         directRequested,
         normalizeMessageId(replyingToPayload?.id),
@@ -253,8 +261,11 @@ export function useChatMessageNavigation({
 
       for (const candidate of candidateIds) {
         if (sourceId && candidate === sourceId) continue;
-        if (idsInMemory.has(candidate)) {
-          return candidate;
+        const inMemory = messagesRef.current.find(
+          (m) => normalizeMessageId(m.id) === candidate || normalizeMessageId(m._id) === candidate
+        );
+        if (inMemory) {
+          return normalizeMessageId(inMemory.id) || candidate;
         }
       }
 

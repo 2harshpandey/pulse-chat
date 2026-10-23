@@ -92,6 +92,16 @@ export const findMessageElement = (rawId: any): HTMLElement | null => {
   const byId = document.getElementById(getMessageElementId(normalized)) as HTMLElement | null;
   if (byId) return byId;
 
+  // Direct ID match on element
+  const byRawId = document.getElementById(normalized) as HTMLElement | null;
+  if (byRawId) return byRawId;
+
+  // Match by data-message-id or data-mongo-id attribute
+  const byDataId = document.querySelector(
+    `[data-message-id="${normalized}"], [data-mongo-id="${normalized}"]`
+  ) as HTMLElement | null;
+  if (byDataId) return byDataId;
+
   // Fallback to grouped media message row if target is part of a media album
   const byGroup = document.querySelector(`[data-grouped-ids~="${normalized}"]`) as HTMLElement | null;
   if (byGroup) return byGroup;

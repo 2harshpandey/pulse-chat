@@ -218,6 +218,7 @@ export const MessageItem = React.memo(({
       <MessageRow
         id={getMessageElementId(msg.id)}
         data-message-id={normalizeMessageId(msg.id)}
+        data-mongo-id={normalizeMessageId(msg._id)}
         ref={messageRowRef}
         $sender={sender}
         $isSelected={isSelected}

@@ -226,6 +226,7 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
       <MessageRow
         id={getMessageElementId(primaryMessage.id)}
         data-message-id={normalizeMessageId(primaryMessage.id)}
+        data-mongo-id={normalizeMessageId(primaryMessage._id)}
         data-grouped-ids={messages.map((m) => normalizeMessageId(m.id)).filter(Boolean).join(' ')}
         ref={messageRowRef}
         $sender={sender}

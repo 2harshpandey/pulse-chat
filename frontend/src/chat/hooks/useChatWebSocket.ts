@@ -236,7 +236,8 @@ export function useChatWebSocket({
         }
         if (messageData.type === 'pinned_messages_update') {
           const rawPins = Array.isArray(messageData.data) ? messageData.data : [];
-          const validPins = rawPins.filter(
+          const normalizedPins = rawPins.map(normalizeMessage);
+          const validPins = normalizedPins.filter(
             (m: any) => m && !m.isDeleted && !m.vanished && m.text !== 'This message has been deleted by an admin.'
           );
           setPinnedMessages(validPins);
