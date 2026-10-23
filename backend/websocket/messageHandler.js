@@ -454,12 +454,13 @@ const handleNewMessage = async ({ ws, parsedMessage, wss, broadcastToAdmins, _br
 
   // If replyingTo exists, resolve target from DB if needed
   if (sanitisedMessage.replyingTo && typeof sanitisedMessage.replyingTo === 'object') {
-    const replyTargetId = sanitisedMessage.replyingTo.id;
-    if (replyTargetId) {
+    const rawReplyTargetId = sanitisedMessage.replyingTo.id;
+    if (typeof rawReplyTargetId === 'string' && rawReplyTargetId.trim()) {
+      const replyTargetId = String(rawReplyTargetId).trim();
       try {
         const targetDoc = await Message.findOne({
-          roomId,
-          $or: [{ id: replyTargetId }, { clientTempId: replyTargetId }]
+          roomId: String(roomId),
+          $or: [{ id: { $eq: replyTargetId } }, { clientTempId: { $eq: replyTargetId } }]
         }).lean();
         if (targetDoc) {
           sanitisedMessage.replyingTo.id = targetDoc.id;
@@ -481,9 +482,9 @@ const handleNewMessage = async ({ ws, parsedMessage, wss, broadcastToAdmins, _br
 
   const messageDoc = new Message({
     ...sanitisedMessage,
-    roomId,
+    roomId: String(roomId),
     reactions: toReactionMap(sanitisedMessage.reactions),
-    id: sanitisedMessage.id || Date.now().toString(),
+    id: typeof sanitisedMessage.id === 'string' && sanitisedMessage.id.trim() ? String(sanitisedMessage.id).trim() : Date.now().toString(),
     sender: ws.userId
   });
   
@@ -499,10 +500,11 @@ const handleNewMessage = async ({ ws, parsedMessage, wss, broadcastToAdmins, _br
   }
 
   // Reconcile replies in database that quoted this message's clientTempId
-  if (sanitisedMessage.clientTempId) {
+  if (typeof sanitisedMessage.clientTempId === 'string' && sanitisedMessage.clientTempId.trim()) {
+    const safeClientTempId = String(sanitisedMessage.clientTempId).trim();
     try {
       await Message.updateMany(
-        { roomId, 'replyingTo.id': sanitisedMessage.clientTempId },
+        { roomId: String(roomId), 'replyingTo.id': { $eq: safeClientTempId } },
         {
           $set: {
             'replyingTo.id': messageDoc.id,
