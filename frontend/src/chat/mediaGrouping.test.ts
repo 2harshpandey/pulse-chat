@@ -253,7 +253,7 @@ describe('Media grouping logic (WhatsApp / Telegram style)', () => {
       expect(onCloseMock).toHaveBeenCalledTimes(1);
     });
 
-    it('renders Download all as ZIP button in MediaGalleryModal when items count > 1', async () => {
+    it('does not render Download all in MediaGalleryModal (only out in chat) and styles single download button', async () => {
       const React = await import('react');
       const { render, cleanup } = await import('@testing-library/react');
       cleanup();
@@ -273,8 +273,13 @@ describe('Media grouping logic (WhatsApp / Telegram style)', () => {
         })
       );
 
+      // Download all button should NOT be in the modal (only out in chat)
       const downloadAllBtn = container.querySelector('button[title="Download all as ZIP"]');
-      expect(downloadAllBtn).not.toBeNull();
+      expect(downloadAllBtn).toBeNull();
+
+      // Single item download button should be rendered in the header
+      const singleDownloadBtn = container.querySelector('button[title="Download"]');
+      expect(singleDownloadBtn).not.toBeNull();
       cleanup();
     });
   });

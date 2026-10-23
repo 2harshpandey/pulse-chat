@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { transferManager, TransferInfo } from '../../TransferManager';
-import { MediaDownloadOverlayBtn, DownloadProgressRing } from '../../ChatStyledComponents';
+import { MediaDownloadOverlayBtn, MediaGalleryActionBtn, DownloadProgressRing } from '../../ChatStyledComponents';
 import { downloadFile } from '../../utils';
 
 export const DownloadSvg = () => (
@@ -26,6 +26,7 @@ export interface MediaDownloadButtonProps {
   onRequestDownload?: (messageId: string, mediaUrl: string, filename: string) => void;
   style?: React.CSSProperties;
   className?: string;
+  isGalleryHeader?: boolean;
 }
 
 export const MediaDownloadButton: React.FC<MediaDownloadButtonProps> = ({
@@ -36,6 +37,7 @@ export const MediaDownloadButton: React.FC<MediaDownloadButtonProps> = ({
   onRequestDownload,
   style,
   className,
+  isGalleryHeader = false,
 }) => {
   const [transferInfo, setTransferInfo] = useState<TransferInfo | undefined>(() =>
     transferManager.getTransfer(messageId)
@@ -79,8 +81,10 @@ export const MediaDownloadButton: React.FC<MediaDownloadButtonProps> = ({
 
   if (!url) return null;
 
+  const BtnComponent = isGalleryHeader ? MediaGalleryActionBtn : MediaDownloadOverlayBtn;
+
   return (
-    <MediaDownloadOverlayBtn
+    <BtnComponent
       style={style}
       className={className}
       title={isDownloading ? 'Tap to cancel download' : 'Download'}
@@ -107,6 +111,6 @@ export const MediaDownloadButton: React.FC<MediaDownloadButtonProps> = ({
       ) : (
         <DownloadSvg />
       )}
-    </MediaDownloadOverlayBtn>
+    </BtnComponent>
   );
 };
