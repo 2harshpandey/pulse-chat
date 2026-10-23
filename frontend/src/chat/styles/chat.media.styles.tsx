@@ -1021,6 +1021,7 @@ export const MediaGallerySlide = styled.div`
   align-items: center;
   justify-content: center;
   touch-action: pan-y;
+  cursor: pointer;
 
   img {
     max-width: 90vw;
@@ -1029,6 +1030,7 @@ export const MediaGallerySlide = styled.div`
     border-radius: 8px;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
     outline: none;
+    cursor: default;
   }
 
   @media (max-width: 768px) {
@@ -1050,6 +1052,7 @@ export const MediaGalleryVideoWrapper = styled.div`
   overflow: hidden;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
   background: #000;
+  cursor: default;
 
   @media (max-width: 768px) {
     width: 96vw;

@@ -931,6 +931,11 @@ export const ReportButton = styled(SendButton)`
   &:hover:not(:disabled) { background-color: #EA580C; box-shadow: 0 4px 16px rgba(249, 115, 22, 0.35); }
 `;
 
+export const DownloadAllButton = styled(SendButton)`
+  background-color: #3B82F6;
+  &:hover:not(:disabled) { background-color: #2563EB; box-shadow: 0 4px 16px rgba(59, 130, 246, 0.35); }
+`;
+
 export const SelectCheckboxContainer = styled.div`
   width: 40px;
   display: flex;

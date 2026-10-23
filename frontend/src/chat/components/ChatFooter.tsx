@@ -12,6 +12,7 @@ import {
   EditButton,
   CopyButton,
   ReportButton,
+  DownloadAllButton,
   DeleteButton,
   EditPreviewContainer,
   EditPreviewIcon,
@@ -45,6 +46,9 @@ export interface ChatFooterProps {
   onCopyMessage: (msg: Message) => void;
   onOpenReport: (msg: Message) => void;
   onInitiateDelete: () => void;
+  hasSelectedMedia?: boolean;
+  selectedMediaCount?: number;
+  onDownloadSelectedMedia?: () => void;
 
   // Regular input mode props
   editingMessageId: string | null;
@@ -109,6 +113,9 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
   onCopyMessage,
   onOpenReport,
   onInitiateDelete,
+  hasSelectedMedia,
+  selectedMediaCount,
+  onDownloadSelectedMedia,
   editingMessageId,
   editingMessageOriginalText,
   onCancelEdit,
@@ -186,6 +193,21 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
                   <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
                 </svg>
               </CopyButton>
+            )}
+            {hasSelectedMedia && onDownloadSelectedMedia && (
+              <DownloadAllButton
+                onClick={() => {
+                  onDownloadSelectedMedia();
+                }}
+                title={selectedMediaCount && selectedMediaCount > 1 ? "Download all as ZIP" : "Download"}
+                aria-label={selectedMediaCount && selectedMediaCount > 1 ? "Download all selected media as ZIP" : "Download selected media"}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+              </DownloadAllButton>
             )}
             {isMobileView && selectedMessages.length === 1 && selectedMessage && !selectedMessage.isDeleted && selectedMessage.userId !== currentUserId && selectedMessage.type !== 'system_notification' && (
               <ReportButton

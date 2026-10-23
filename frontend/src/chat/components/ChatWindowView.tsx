@@ -39,6 +39,8 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
     selectedMessageIds,
     loadedMediaMessageSet,
     selectedMessage,
+    selectedMediaMessages,
+    handleDownloadSelectedMedia,
     canEditSelectedMessage,
     hasNewMessagesIndicator,
     newMessagesIndicatorLabel,
@@ -166,6 +168,9 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
         canEditSelectedMessage={Boolean(canEditSelectedMessage)}
         isMobileView={viewport.isMobileView}
         currentUserId={userIdRef.current}
+        hasSelectedMedia={selectedMediaMessages.length > 0}
+        selectedMediaCount={selectedMediaMessages.length}
+        onDownloadSelectedMedia={handleDownloadSelectedMedia}
         onCancelSelectMode={selection.handleCancelSelectMode}
         onStartEdit={msgs.handleStartEdit}
         onCopyMessage={msgs.handleCopy}

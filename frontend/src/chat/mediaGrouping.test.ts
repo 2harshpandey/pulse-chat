@@ -215,6 +215,212 @@ describe('Media grouping logic (WhatsApp / Telegram style)', () => {
         );
       }).not.toThrow();
     });
+
+    it('calls onClose when clicking the blank area of MediaGallerySlide, but not when clicking the media', async () => {
+      const React = await import('react');
+      const { render, fireEvent } = await import('@testing-library/react');
+      const { MediaGalleryModal } = await import('./components/modals/MediaGalleryModal');
+      const vi = (await import('vitest')).vi;
+
+      const items: Message[] = [
+        createMsg('1', 'user1', 'image'),
+      ];
+      const onCloseMock = vi.fn();
+
+      const { container } = render(
+        React.createElement(MediaGalleryModal, {
+          isOpen: true,
+          items,
+          initialIndex: 0,
+          onClose: onCloseMock,
+        })
+      );
+
+      // Find the image
+      const img = container.querySelector('img[alt="Photo"]') as HTMLElement;
+      expect(img).not.toBeNull();
+
+      // Find MediaGallerySlide (parent of img)
+      const slide = img.parentElement as HTMLElement;
+      expect(slide).not.toBeNull();
+
+      // Clicking directly on img should stop propagation and NOT call onClose
+      fireEvent.click(img);
+      expect(onCloseMock).not.toHaveBeenCalled();
+
+      // Clicking on slide (blank area where target === currentTarget) should call onClose
+      fireEvent.click(slide);
+      expect(onCloseMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('renders Download all as ZIP button in MediaGalleryModal when items count > 1', async () => {
+      const React = await import('react');
+      const { render, cleanup } = await import('@testing-library/react');
+      cleanup();
+      const { MediaGalleryModal } = await import('./components/modals/MediaGalleryModal');
+
+      const items: Message[] = [
+        createMsg('1', 'user1', 'image'),
+        createMsg('2', 'user1', 'image'),
+      ];
+
+      const { container } = render(
+        React.createElement(MediaGalleryModal, {
+          isOpen: true,
+          items,
+          initialIndex: 0,
+          onClose: () => {},
+        })
+      );
+
+      const downloadAllBtn = container.querySelector('button[title="Download all as ZIP"]');
+      expect(downloadAllBtn).not.toBeNull();
+      cleanup();
+    });
+  });
+
+  describe('Download All actions on Desktop & Touch devices', () => {
+    it('renders Download all item in MessageActionMenuPortal when onDownloadAll is provided', async () => {
+      const React = await import('react');
+      const { render, fireEvent, cleanup } = await import('@testing-library/react');
+      cleanup();
+      const { MessageActionMenuPortal } = await import('./components/message/MessageActionMenuPortal');
+      const vi = (await import('vitest')).vi;
+
+      const msg = createMsg('1', 'user1', 'image');
+      const onDownloadAllMock = vi.fn();
+      const setActiveDeleteMenuMock = vi.fn();
+
+      const { getByText } = render(
+        React.createElement(MessageActionMenuPortal, {
+          msg,
+          menuPos: { top: 100, left: 100 },
+          deleteMenuRef: { current: null },
+          currentUserId: 'user1',
+          canEdit: false,
+          handleSetReply: () => {},
+          setActiveDeleteMenu: setActiveDeleteMenuMock,
+          handleToggleSelectMessage: () => {},
+          handleStartEdit: () => {},
+          handleCopy: () => {},
+          handleOpenReport: () => {},
+          onDownloadAll: onDownloadAllMock,
+        })
+      );
+
+      const downloadAllBtn = getByText('Download all');
+      expect(downloadAllBtn).not.toBeNull();
+
+      fireEvent.click(downloadAllBtn);
+      expect(onDownloadAllMock).toHaveBeenCalledTimes(1);
+      expect(setActiveDeleteMenuMock).toHaveBeenCalledWith(null);
+      cleanup();
+    });
+
+    it('renders DownloadAllButton in ChatFooter select mode when hasSelectedMedia is true', async () => {
+      const React = await import('react');
+      const { render, fireEvent, cleanup } = await import('@testing-library/react');
+      cleanup();
+      const { ChatFooter } = await import('./components/ChatFooter');
+      const vi = (await import('vitest')).vi;
+
+      const onDownloadSelectedMock = vi.fn();
+
+      const { container } = render(
+        React.createElement(ChatFooter, {
+          isSelectModeActive: true,
+          selectedMessages: ['1', '2'],
+          canEditSelectedMessage: false,
+          isMobileView: true,
+          currentUserId: 'user1',
+          onCancelSelectMode: () => {},
+          onStartEdit: () => {},
+          onCopyMessage: () => {},
+          onOpenReport: () => {},
+          onInitiateDelete: () => {},
+          hasSelectedMedia: true,
+          selectedMediaCount: 2,
+          onDownloadSelectedMedia: onDownloadSelectedMock,
+          editingMessageId: null,
+          editingMessageOriginalText: '',
+          onCancelEdit: () => {},
+          replyingTo: null,
+          onCancelReply: () => {},
+          onScrollToMessage: () => {},
+          stagedFile: null,
+          onCancelStagedFile: () => {},
+          stagedFiles: [],
+          onCancelStagedFiles: () => {},
+          showFilePreview: false,
+          stagedGif: null,
+          onCancelStagedGif: () => {},
+          isPlusMenuOpen: false,
+          onTogglePlusMenu: () => {},
+          isConnected: true,
+          onFileChange: () => {},
+          onAddFilesChange: () => {},
+          onNotifyNativeFilePickerOpen: () => {},
+          normalizedOverlayMessage: '',
+          inputMessage: '',
+          onInputChange: () => {},
+          onInputKeyDown: () => {},
+          onPaste: () => {},
+          onSyncInputOverlayScroll: () => {},
+          onSendMessage: () => {},
+          isEmojiPickerOpen: false,
+          onEmojiClick: () => {},
+          isDark: false,
+        })
+      );
+
+      const downloadBtn = container.querySelector('button[title="Download all as ZIP"]') as HTMLElement;
+      expect(downloadBtn).not.toBeNull();
+
+      fireEvent.click(downloadBtn);
+      expect(onDownloadSelectedMock).toHaveBeenCalledTimes(1);
+      cleanup();
+    });
+  });
+
+  describe('downloadAlbumAsZip utility', () => {
+    it('creates zip archive and triggers browser download anchor', async () => {
+      const { downloadAlbumAsZip } = await import('./utils');
+      const vi = (await import('vitest')).vi;
+
+      const fakeBlob = new Blob(['hello photo content'], { type: 'image/jpeg' });
+      const originalFetch = global.fetch;
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        blob: async () => fakeBlob,
+        headers: { get: () => '18' },
+      }) as any;
+
+      const clickMock = vi.fn();
+      const originalCreateElement = document.createElement.bind(document);
+      let capturedAnchor: any = null;
+      vi.spyOn(document, 'createElement').mockImplementation((tagName: string) => {
+        const el = originalCreateElement(tagName);
+        if (tagName.toLowerCase() === 'a') {
+          capturedAnchor = el;
+          el.click = clickMock;
+        }
+        return el;
+      });
+
+      const msgs = [
+        createMsg('1', 'alice', 'image', 0, { originalName: 'vacation.jpg' }),
+        createMsg('2', 'alice', 'image', 1, { originalName: 'vacation.jpg' }), // duplicate name to test deduplication
+      ];
+
+      await downloadAlbumAsZip(msgs);
+
+      expect(clickMock).toHaveBeenCalledTimes(1);
+      expect(capturedAnchor).not.toBeNull();
+      expect(capturedAnchor.download).toMatch(/^Pulse_Album_alice_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.zip$/);
+
+      global.fetch = originalFetch;
+      vi.restoreAllMocks();
+    });
   });
 });
 

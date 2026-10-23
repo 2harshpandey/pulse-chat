@@ -3,7 +3,8 @@ import { UserContext } from '../../UserContext';
 import { useTheme } from '../../ThemeContext';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { NEWER_LOAD_TRIGGER_PX } from '../constants';
-import { getUserId, resolveApiBaseUrl } from '../utils';
+import type { Message } from '../types';
+import { getUserId, resolveApiBaseUrl, downloadAlbumAsZip, downloadFile } from '../utils';
 import {
   useChatAudio,
   useChatSearch,
@@ -471,6 +472,35 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     selectedMessage.text &&
     new Date().getTime() - new Date(selectedMessage.timestamp).getTime() < 15 * 60 * 1000;
 
+  const selectedMediaMessages = useMemo(() => {
+    if (selection.selectedMessages.length === 0) return [];
+    const idSet = new Set(selection.selectedMessages);
+    const pool = new Map<string, Message>();
+    msgs.messages.forEach((m) => pool.set(m.id, m));
+    search.filteredMessages.forEach((m) => pool.set(m.id, m));
+    const result: Message[] = [];
+    selection.selectedMessages.forEach((id) => {
+      const m = pool.get(id);
+      if (m && !m.isDeleted && Boolean(m.url)) {
+        result.push(m);
+      }
+    });
+    return result;
+  }, [selection.selectedMessages, msgs.messages, search.filteredMessages]);
+
+  const handleDownloadSelectedMedia = useCallback(() => {
+    if (selectedMediaMessages.length === 0) return;
+    if (selectedMediaMessages.length === 1) {
+      const m = selectedMediaMessages[0];
+      const isVideo = m.type === 'video' || Boolean(m.url?.match(/\.(mp4|webm|mov)$/i));
+      const fallbackName = m.originalName || (isVideo ? 'video.mp4' : 'media.jpg');
+      void downloadFile(m.url, fallbackName, undefined, undefined, !isVideo);
+    } else {
+      void downloadAlbumAsZip(selectedMediaMessages);
+    }
+    selection.handleCancelSelectMode();
+  }, [selectedMediaMessages, selection]);
+
   const hasNewMessagesIndicator = viewport.newMessagesWhileScrolledUp > 0;
   const newMessagesIndicatorLabel =
     viewport.newMessagesWhileScrolledUp > 99 ? '99+' : String(viewport.newMessagesWhileScrolledUp);
@@ -581,6 +611,8 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     selectedMessageIds,
     loadedMediaMessageSet,
     selectedMessage,
+    selectedMediaMessages,
+    handleDownloadSelectedMedia,
     canEditSelectedMessage,
     hasNewMessagesIndicator,
     newMessagesIndicatorLabel,

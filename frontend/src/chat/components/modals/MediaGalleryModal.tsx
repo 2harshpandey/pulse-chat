@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Message } from '../../types';
-import { sanitizeMediaUrl, withCloudinaryTransform, getMediaGatePreviewUrl } from '../../utils';
+import { sanitizeMediaUrl, withCloudinaryTransform, getMediaGatePreviewUrl, downloadAlbumAsZip } from '../../utils';
 import { VideoPlayer } from '../../VideoPlayer';
 import { MediaDownloadButton } from '../message';
 import {
@@ -51,6 +51,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
   const touchStartXRef = useRef(0);
   const touchStartYRef = useRef(0);
   const isHorizontalSwipeRef = useRef<boolean | null>(null);
+  const hasSwipedRef = useRef(false);
   const requestedLoadIdsRef = useRef<Set<string>>(new Set());
   // Stable media URL per slide to prevent swapping video source mid-playback
   const activeMediaUrlRef = useRef<{ id: string; url: string } | null>(null);
@@ -114,6 +115,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     touchStartXRef.current = e.touches[0].clientX;
     touchStartYRef.current = e.touches[0].clientY;
     isHorizontalSwipeRef.current = null;
+    hasSwipedRef.current = false;
     setIsSwiping(true);
   };
 
@@ -124,8 +126,9 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     const deltaX = currentX - touchStartXRef.current;
     const deltaY = currentY - touchStartYRef.current;
 
-    if (isHorizontalSwipeRef.current === null) {
-      if (Math.abs(deltaX) > 8 || Math.abs(deltaY) > 8) {
+    if (Math.abs(deltaX) > 8 || Math.abs(deltaY) > 8) {
+      hasSwipedRef.current = true;
+      if (isHorizontalSwipeRef.current === null) {
         isHorizontalSwipeRef.current = Math.abs(deltaX) > Math.abs(deltaY);
       }
     }
@@ -155,6 +158,9 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
 
     setTouchOffset(0);
     isHorizontalSwipeRef.current = null;
+    setTimeout(() => {
+      hasSwipedRef.current = false;
+    }, 150);
   };
 
   if (!isOpen || items.length === 0) return null;
@@ -192,6 +198,23 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         </MediaGalleryInfo>
 
         <MediaGalleryActions>
+          {items.length > 1 && (
+            <MediaGalleryActionBtn
+              type="button"
+              title="Download all as ZIP"
+              aria-label="Download all items as ZIP"
+              onClick={() => {
+                void downloadAlbumAsZip(items);
+              }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 18, height: 18 }}>
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+            </MediaGalleryActionBtn>
+          )}
+
           <MediaDownloadButton
             messageId={currentItem.id}
             url={safeUrl}
@@ -222,7 +245,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         onTouchEnd={handleTouchEnd}
         onTouchCancel={handleTouchEnd}
         onClick={(e) => {
-          if (e.target === e.currentTarget) onClose();
+          if (e.target === e.currentTarget && !hasSwipedRef.current) onClose();
         }}
       >
         {/* Previous Button (Shown on non-touch devices) */}
@@ -249,9 +272,15 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
             transform: `translate3d(${touchOffset}px, 0, 0)`,
             transition: isSwiping ? 'none' : 'transform 0.28s cubic-bezier(0.16, 1, 0.3, 1)',
           }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !hasSwipedRef.current) onClose();
+          }}
         >
           {isVideo ? (
-            <MediaGalleryVideoWrapper key={currentItem.id || safeUrl}>
+            <MediaGalleryVideoWrapper
+              key={currentItem.id || safeUrl}
+              onClick={(e) => e.stopPropagation()}
+            >
               <VideoPlayer
                 src={safeUrl}
                 autoPlay={true}
@@ -264,6 +293,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
               src={safeUrl}
               alt={currentItem.originalName || 'Photo'}
               draggable={false}
+              onClick={(e) => e.stopPropagation()}
               onContextMenu={(e) => e.preventDefault()}
               onDragStart={(e) => e.preventDefault()}
             />
@@ -290,7 +320,11 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
       </MediaGalleryViewport>
 
       {/* Bottom Thumbnail Strip and Caption */}
-      <MediaGalleryBottom>
+      <MediaGalleryBottom
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose();
+        }}
+      >
         {currentItem.text && (
           <MediaGalleryCaption>{currentItem.text}</MediaGalleryCaption>
         )}

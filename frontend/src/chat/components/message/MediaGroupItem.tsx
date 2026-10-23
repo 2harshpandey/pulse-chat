@@ -8,6 +8,7 @@ import {
   normalizeMessageId,
   formatMediaSize,
   getMediaGatePreviewUrl,
+  downloadAlbumAsZip,
 } from '../../utils';
 import {
   MessageRow,
@@ -529,6 +530,9 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
           handleStartEdit={() => {}}
           handleCopy={handleCopy}
           handleOpenReport={handleOpenReport}
+          onDownloadAll={() => {
+            void downloadAlbumAsZip(messages);
+          }}
         />
       )}
     </React.Fragment>

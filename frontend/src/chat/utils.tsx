@@ -1,6 +1,6 @@
 // --- PURE UTILITY FUNCTIONS ---
 import React from 'react';
-import type { DownloadProgressCallback, RouterHistoryState } from './types';
+import type { DownloadProgressCallback, RouterHistoryState, Message } from './types';
 
 export const getCookie = (name: string): string | null => {
   if (typeof document === 'undefined') return null;
@@ -335,6 +335,120 @@ export const downloadFile = async (
       onProgress?.(0);
       throw proxyError;
     }
+  }
+};
+
+/**
+ * Downloads multiple media files from a grouped album or selection as a single ZIP archive.
+ * Dynamically loads JSZip on-demand to guarantee ZERO impact on initial site performance.
+ */
+export const downloadAlbumAsZip = async (
+  messages: Message[],
+  options?: {
+    zipNamePrefix?: string;
+    onProgress?: (progress: number) => void;
+  }
+): Promise<void> => {
+  const mediaItems = messages.filter(
+    (m) => !m.isDeleted && Boolean(m.url)
+  );
+
+  if (mediaItems.length === 0) return;
+
+  try {
+    options?.onProgress?.(0.05);
+
+    // Dynamically load JSZip to avoid bundle bloat
+    const jszipModule = await import('jszip');
+    const JSZip = (jszipModule && 'default' in jszipModule && jszipModule.default) ? jszipModule.default : (jszipModule as any);
+    const zip = new JSZip();
+
+    // Determine an informative zip filename with user, date, and timestamp
+    const primaryMsg = mediaItems[0];
+    const timestamp = primaryMsg.timestamp ? new Date(primaryMsg.timestamp) : new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const datePart = `${timestamp.getFullYear()}-${pad(timestamp.getMonth() + 1)}-${pad(timestamp.getDate())}`;
+    const timePart = `${pad(timestamp.getHours())}-${pad(timestamp.getMinutes())}-${pad(timestamp.getSeconds())}`;
+    const rawUser = primaryMsg.username ? sanitizeFilename(primaryMsg.username, 'PulseUser') : 'PulseUser';
+    const cleanUser = rawUser.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const prefix = options?.zipNamePrefix || 'Pulse_Album';
+    const zipFilename = `${prefix}_${cleanUser}_${datePart}_${timePart}.zip`;
+
+    // Deduplicate filenames within the ZIP archive
+    const usedNames = new Set<string>();
+    const totalCount = mediaItems.length;
+    let completedCount = 0;
+
+    await Promise.all(
+      mediaItems.map(async (msg, index) => {
+        const isVideo = msg.type === 'video' || Boolean(msg.url?.match(/\.(mp4|webm|mov)$/i));
+        const isGif = msg.type === 'gif' || Boolean(msg.url?.match(/\.gif$/i));
+        const defaultExt = isVideo ? '.mp4' : isGif ? '.gif' : '.jpg';
+
+        let baseName = msg.originalName ? sanitizeFilename(msg.originalName, '') : '';
+        if (!baseName && msg.url) {
+          try {
+            const pathname = new URL(msg.url).pathname;
+            baseName = sanitizeFilename(decodeURIComponent(pathname.split('/').pop() || ''), '');
+          } catch {}
+        }
+        if (!baseName) {
+          baseName = `media_${index + 1}${defaultExt}`;
+        }
+        if (!/\.[a-zA-Z0-9]+$/.test(baseName)) {
+          baseName += defaultExt;
+        }
+
+        // Handle duplicate filenames
+        let uniqueName = baseName;
+        let dupCounter = 1;
+        const extMatch = baseName.match(/(\.[a-zA-Z0-9]+)$/);
+        const ext = extMatch ? extMatch[1] : '';
+        const nameWithoutExt = ext ? baseName.slice(0, -ext.length) : baseName;
+
+        while (usedNames.has(uniqueName.toLowerCase())) {
+          uniqueName = `${nameWithoutExt} (${dupCounter})${ext}`;
+          dupCounter++;
+        }
+        usedNames.add(uniqueName.toLowerCase());
+
+        // Fetch blob using existing robust proxy fallback
+        let blob: Blob;
+        try {
+          blob = await fetchBlobWithProgress(msg.url);
+        } catch {
+          const proxyUrl = buildDownloadProxyUrl(msg.url, uniqueName);
+          blob = await fetchBlobWithProgress(proxyUrl);
+        }
+
+        zip.file(uniqueName, blob);
+        completedCount++;
+        options?.onProgress?.(0.05 + (completedCount / totalCount) * 0.75);
+      })
+    );
+
+    options?.onProgress?.(0.85);
+
+    const zipBlob = await zip.generateAsync({
+      type: 'blob',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 },
+    });
+
+    options?.onProgress?.(1);
+
+    const objectUrl = URL.createObjectURL(zipBlob);
+    const anchor = document.createElement('a');
+    anchor.href = objectUrl;
+    anchor.download = zipFilename;
+    anchor.rel = 'noopener noreferrer';
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
+  } catch (error) {
+    console.error('Failed to download album as zip:', error);
   }
 };
 

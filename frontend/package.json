@@ -11,6 +11,7 @@
     "@types/react-dom": "18.2.25",
     "@use-gesture/react": "^10.2.24",
     "emoji-picker-react": "^4.4.7",
+    "jszip": "^3.10.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router": "^7.18.2",
@@ -40,6 +41,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.1",
     "@types/jest": "^30.0.0",
+    "@types/jszip": "^3.4.0",
     "@types/node": "^20.19.0",
     "@types/styled-components": "^5.1.26",
     "@vitejs/plugin-react": "^5.0.0",
