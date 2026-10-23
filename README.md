@@ -4,6 +4,7 @@
 
 [![Live Site](https://img.shields.io/badge/Live-pulsechat.tech-2563eb?style=for-the-badge)](https://pulsechat.tech)
 [![Version](https://img.shields.io/badge/Version-v2.0.0-f59e0b?style=for-the-badge)](#overview)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 [![Frontend](https://img.shields.io/badge/Frontend-React%2018%20%2B%20TypeScript-61dafb?style=for-the-badge)](#technology-stack)
 [![Backend](https://img.shields.io/badge/Backend-Node.js%20%2B%20Express-111827?style=for-the-badge)](#technology-stack)
 [![PWA](https://img.shields.io/badge/PWA-Installable-purple?style=for-the-badge)](#user-experience-and-visual-design)
@@ -33,6 +34,7 @@
 - [Production Build](#production-build)
 - [Project Structure](#project-structure)
 - [Operational Notes](#operational-notes)
+- [Community & Governance](#community--governance)
 - [License](#license)
 
 ---
@@ -462,8 +464,17 @@ The optimized output is generated in the frontend build directory.
 
 ---
 
+## Community & Governance
+
+- **[Contributing Guide](CONTRIBUTING.md)** — Guidelines for local development setup, code conventions, and submitting pull requests.
+- **[Contributors](CONTRIBUTORS.md)** — Recognition of project creators and community contributors.
+- **[Code of Conduct](CODE_OF_CONDUCT.md)** — Contributor Covenant v2.1 standards for an inclusive, welcoming community.
+- **[Security Policy](SECURITY.md)** — Vulnerability reporting channels, response process, and security safeguards.
+
+---
+
 ## License
 
-All rights reserved.
+This project is licensed under the **[MIT License](LICENSE)**.
 
-Pulse Chat is proprietary software unless a separate written license is provided by the owner.
+Copyright (c) 2026 Harsh Pandey. See the [LICENSE](LICENSE) file for complete details.
