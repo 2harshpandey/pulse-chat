@@ -370,10 +370,15 @@ export function useChatMessageNavigation({
           return;
         }
 
-        // Guard: Do not attempt to load history for client-generated temporary IDs
-        const isClientTempId = /^\d+_\w+$/.test(targetId) || /^\d{13,}/.test(targetId);
-        if (isClientTempId) {
-          quoteWarn('Target message is a client temporary ID that cannot exist in server history:', targetId);
+        // Guard: Do not attempt to load history for in-flight temporary upload IDs (e.g. 1782315628560_0)
+        const isTemporaryUploadId = /^\d+_\d+$/.test(targetId);
+        const isUploadingLocally = messagesRef.current.some(
+          (m) =>
+            (normalizeMessageId(m.id) === targetId || normalizeMessageId((m as any).clientTempId) === targetId) &&
+            m.isUploading
+        );
+        if (isTemporaryUploadId || isUploadingLocally) {
+          quoteWarn('Target message is an in-flight temporary upload ID that cannot exist in server history:', targetId);
           resolve();
           return;
         }
@@ -444,7 +449,9 @@ export function useChatMessageNavigation({
           let fetchedPages = 0;
 
           while (
-            !messagesRef.current.some((m) => normalizeMessageId(m.id) === targetId) &&
+            !messagesRef.current.some(
+              (m) => normalizeMessageId(m.id) === targetId || normalizeMessageId(m._id) === targetId
+            ) &&
             hasMore &&
             cursor &&
             fetchedPages < MAX_QUOTE_AUTO_LOAD_PAGES

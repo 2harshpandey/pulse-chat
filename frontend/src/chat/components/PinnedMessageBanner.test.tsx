@@ -152,5 +152,30 @@ describe('PinnedMessageBanner', () => {
 
     expect(screen.getByText('Only active announcement')).toBeTruthy();
   });
+
+  it('renders and allows clicking pinned message with standard numeric timestamp ID', () => {
+    const handleClick = vi.fn();
+    const pins = [
+      {
+        id: '1782315628560',
+        _id: '6a3bfa6ce17bc885af7e8a4e',
+        text: 'rebrand.ly/harshphotos',
+        type: 'text',
+      },
+    ];
+
+    render(
+      <PinnedMessageBanner
+        pinnedMessages={pins}
+        currentPinnedIndex={0}
+        isJumpingToPinned={false}
+        onClick={handleClick}
+      />
+    );
+
+    const banner = screen.getByText('rebrand.ly/harshphotos');
+    banner.click();
+    expect(handleClick).toHaveBeenCalledTimes(1);
+  });
 });
 

@@ -499,7 +499,8 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
           currentMsg.id || currentMsg._id || currentMsg.messageId,
           undefined,
           'auto',
-          true
+          true,
+          currentMsg
         );
       } finally {
         msgs.setIsJumpingToPinned(false);
