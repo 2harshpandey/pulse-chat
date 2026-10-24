@@ -9,7 +9,6 @@ const Admin = React.lazy(() => import('./Admin'));
 const AboutDeveloper = React.lazy(() => import('./AboutDeveloper'));
 import { GlobalStyle } from './chat/ChatStyledComponents';
 import { NotFoundPage, ForbiddenPage, ServerErrorPage, TimeoutPage, RateLimitPage, MaintenancePage } from './ErrorPages';
-import { PwaUpdatePrompt } from './PwaUpdatePrompt';
 
 const GlobalHomeButton = styled.button`
   position: absolute;
@@ -237,7 +236,6 @@ function App() {
   return (
     <>
       <GlobalStyle />
-      <PwaUpdatePrompt />
       <AppRoutes />
     </>
   );

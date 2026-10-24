@@ -443,8 +443,7 @@ The optimized output is generated in the frontend build directory.
 │   │   ├── Auth.tsx
 │   │   ├── Home.tsx
 │   │   ├── AboutDeveloper.tsx
-│   │   ├── ThemeContext.tsx
-│   │   └── PwaUpdatePrompt.tsx
+│   │   └── ThemeContext.tsx
 │   ├── index.html
 │   └── vite.config.mts
 ├── README.md

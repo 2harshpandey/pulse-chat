@@ -16,7 +16,7 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       VitePWA({
-        registerType: 'prompt',
+        registerType: 'autoUpdate',
         injectRegister: 'auto',
         includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'pulse_logo.webp'],
         manifest: {
@@ -51,6 +51,7 @@ export default defineConfig(({ mode }) => {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,json}'],
           cleanupOutdatedCaches: true,
           clientsClaim: true,
+          skipWaiting: true,
         },
       })
     ],
