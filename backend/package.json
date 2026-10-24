@@ -39,6 +39,7 @@
     "form-data": ">=4.0.6",
     "ip-address": ">=10.7.4",
     "braces": ">=3.0.3",
-    "chokidar": ">=4.0.3"
+    "chokidar": ">=4.0.3",
+    "body-parser": ">=2.4.0"
   }
 }
