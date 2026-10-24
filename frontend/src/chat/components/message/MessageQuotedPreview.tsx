@@ -26,6 +26,7 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
   scrollToMessage,
 }) => {
   const [thumbLoadError, setThumbLoadError] = React.useState(false);
+  const [isLocating, setIsLocating] = React.useState(false);
 
   React.useEffect(() => {
     setThumbLoadError(false);
@@ -39,10 +40,18 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
       data-quote-swipe-ignore
       role="button"
       tabIndex={0}
+      style={isLocating ? { cursor: 'wait', opacity: 0.88 } : undefined}
       onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
-      onClick={(e: React.MouseEvent) => {
+      onKeyDown={(e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          (e.currentTarget as HTMLElement).click();
+        }
+      }}
+      onClick={async (e: React.MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
+        if (isLocating) return;
         if (msg.replyingTo) {
           const replyTargetId = resolveReplyTargetId(msg.replyingTo, msg.id);
           quoteLog('quoted-window click', {
@@ -50,7 +59,14 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
             rawReplyingTo: msg.replyingTo,
             resolvedReplyTargetId: replyTargetId,
           });
-          if (replyTargetId) scrollToMessage(replyTargetId, msg.id, 'auto', true, msg.replyingTo);
+          if (replyTargetId) {
+            try {
+              setIsLocating(true);
+              await scrollToMessage(replyTargetId, msg.id, 'auto', true, msg.replyingTo);
+            } finally {
+              setIsLocating(false);
+            }
+          }
         }
       }}
     >
@@ -63,7 +79,10 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
                 : (msg.replyingTo.deletedBy === currentUserId
                     ? 'You deleted this message.'
                     : 'This message has been deleted.'))
-            : msg.replyingTo.text}
+            : (msg.replyingTo.text ||
+               (msg.replyingTo.type === 'video' ? 'Video' :
+                msg.replyingTo.type === 'image' ? 'Photo' :
+                msg.replyingTo.type === 'file' ? 'File' : ''))}
         </span>
       </div>
       {!msg.replyingTo.isDeleted && (msg.replyingTo.url || quotedPreviewThumbUrl) && (msg.replyingTo.type === 'image' || msg.replyingTo.type === 'video') && (

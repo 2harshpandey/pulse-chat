@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import type { Message, Gif, ReplyContext } from '../types';
 import type { UserProfile } from '../../UserContext';
-import { MAX_MESSAGE_LENGTH, INITIAL_FIRST_ITEM_INDEX } from '../constants';
+import { MAX_MESSAGE_LENGTH, INITIAL_FIRST_ITEM_INDEX, isTouchDevice } from '../constants';
 import {
   isGiphyUrl,
   chooseReadableFilename,
@@ -259,12 +259,12 @@ export function useChatComposer({
       const tag = (document.activeElement as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       if (isSelectModeActive || !!lightboxUrl || isDeleteConfirmationVisible || isUserListVisible) return;
-      if (isMobileView) return;
+      if (isTouchDevice()) return;
       messageInputRef.current?.focus();
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [isSelectModeActive, lightboxUrl, isDeleteConfirmationVisible, isUserListVisible, isMobileView, messageInputRef]);
+  }, [isSelectModeActive, lightboxUrl, isDeleteConfirmationVisible, isUserListVisible, messageInputRef]);
 
   // Reset input helper
   const resetInput = useCallback(() => {
@@ -576,8 +576,13 @@ export function useChatComposer({
       handleCancelEdit();
       return;
     }
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      handleSendMessage();
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
-      if (isMobileView) return;
+      if (isTouchDevice()) return;
       e.preventDefault();
       handleSendMessage();
     }
@@ -674,9 +679,9 @@ export function useChatComposer({
   const handleChatAreaClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target !== chatContainerRef.current) return;
     if (isSelectModeActive || !!lightboxUrl || isDeleteConfirmationVisible) return;
-    if (isMobileView) return;
+    if (isTouchDevice()) return;
     messageInputRef.current?.focus();
-  }, [chatContainerRef, isDeleteConfirmationVisible, isMobileView, isSelectModeActive, lightboxUrl, messageInputRef]);
+  }, [chatContainerRef, isDeleteConfirmationVisible, isSelectModeActive, lightboxUrl, messageInputRef]);
 
   const handleScrollToBottomButtonClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();

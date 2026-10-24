@@ -4,29 +4,21 @@ import { isDesktopInteractionDevice, quoteLog } from '../constants';
 
 const checkIsMobile = () =>
   typeof window !== 'undefined'
-    ? window.innerWidth <= 768 || window.matchMedia('(pointer: coarse)').matches
+    ? window.innerWidth <= 768 || Boolean(window.matchMedia?.('(pointer: coarse)')?.matches)
     : false;
+
+export const IS_AT_BOTTOM_THRESHOLD_PX = 60;
 
 interface UseChatViewportProps {
   chatContainerRef: React.RefObject<HTMLDivElement | null>;
   inputOverlayRef: React.RefObject<HTMLDivElement | null>;
   messageInputRef: React.RefObject<HTMLTextAreaElement | null>;
-  messages?: Message[];
-  historyLoaded?: boolean;
-  messageTailSnapshotRef?: React.MutableRefObject<{ length: number; lastId: string | null }>;
-  scrollAnchorRef?: React.MutableRefObject<{ id: string; top: number } | null>;
-  previousScrollMetricsRef?: React.MutableRefObject<{ height: number; top: number } | null>;
 }
 
 export function useChatViewport({
   chatContainerRef,
   inputOverlayRef,
   messageInputRef,
-  messages,
-  historyLoaded,
-  messageTailSnapshotRef,
-  scrollAnchorRef,
-  previousScrollMetricsRef,
 }: UseChatViewportProps) {
   const [isMobileView, setIsMobileView] = useState(checkIsMobile);
   const [isDesktopInteraction, setIsDesktopInteraction] = useState(isDesktopInteractionDevice);
@@ -229,6 +221,16 @@ export function useChatViewport({
     pendingBottomScrollTimeoutsRef.current = [];
   }, []);
 
+  useEffect(() => {
+    return () => {
+      clearPendingBottomScrollTimers();
+      if (quoteJumpLockTimeoutRef.current !== null) {
+        window.clearTimeout(quoteJumpLockTimeoutRef.current);
+        quoteJumpLockTimeoutRef.current = null;
+      }
+    };
+  }, [clearPendingBottomScrollTimers]);
+
   const scheduleProgrammaticScrollSuppression = useCallback((durationMs: number) => {
     const until = performance.now() + Math.max(0, durationMs);
     suppressProgrammaticScrollUntilRef.current = Math.max(
@@ -295,7 +297,7 @@ export function useChatViewport({
     const scroller = getChatScrollerElement();
     if (!scroller) return;
     const distanceFromBottom = scroller.scrollHeight - (scroller.scrollTop + scroller.clientHeight);
-    const atBottom = distanceFromBottom <= 2;
+    const atBottom = distanceFromBottom <= IS_AT_BOTTOM_THRESHOLD_PX;
     isAtBottomRef.current = atBottom;
     lastAtBottomStateRef.current = atBottom;
     setIsScrollToBottomVisible(!atBottom);
@@ -311,11 +313,14 @@ export function useChatViewport({
       if (!allowDuringSuppression && shouldSuppressProgrammaticScroll()) return;
 
       scrollToBottom('auto', true);
-      const delays = [50, 200, 450];
-      pendingBottomScrollTimeoutsRef.current = delays.map((delay) =>
+      const delays = [50, 150, 350];
+      pendingBottomScrollTimeoutsRef.current = delays.map((delay, index) =>
         window.setTimeout(() => {
           if (!allowDuringSuppression && shouldSuppressProgrammaticScroll()) return;
           scrollToBottom('auto', true);
+          if (index === delays.length - 1) {
+            pendingBottomScrollTimeoutsRef.current = [];
+          }
         }, delay)
       );
     },
@@ -413,81 +418,6 @@ export function useChatViewport({
     scheduleProgrammaticScrollSuppression(1200);
   }, [clearPendingBottomScrollTimers, getChatScrollerElement, scheduleProgrammaticScrollSuppression]);
 
-  // Auto-scroll when new messages arrive
-  useEffect(() => {
-    if (!messages || !messageTailSnapshotRef) return;
-    const currentLength = messages.length;
-    const currentLastId = currentLength > 0 ? messages[currentLength - 1].id : null;
-    const prevSnapshot = messageTailSnapshotRef.current;
-
-    if (!historyLoaded) {
-      messageTailSnapshotRef.current = { length: currentLength, lastId: currentLastId };
-      return;
-    }
-
-    if (currentLength > prevSnapshot.length && prevSnapshot.length > 0) {
-      const hasPendingBottomScroll = pendingBottomScrollTimeoutsRef.current.length > 0;
-      if (isAtBottomRef.current || hasPendingBottomScroll) {
-        forceScrollToBottomAsync(true);
-      }
-    }
-
-    messageTailSnapshotRef.current = { length: currentLength, lastId: currentLastId };
-  }, [historyLoaded, messages, forceScrollToBottomAsync, messageTailSnapshotRef]);
-
-  // Initial scroll to bottom
-  useLayoutEffect(() => {
-    if (!messages) return;
-    if (messages.length > 0 && !hasInitialScrolled.current) {
-      hasInitialScrolled.current = true;
-      const scroller = chatContainerRef.current;
-      if (scroller) scroller.scrollTop = scroller.scrollHeight;
-    }
-  }, [messages, chatContainerRef]);
-
-  // Initial history bottom stabilization
-  useEffect(() => {
-    if (!historyLoaded) return;
-    if (initialHistoryBottomStabilized.current) return;
-    initialHistoryBottomStabilized.current = true;
-
-    const timer = setTimeout(() => {
-      if (shouldSuppressProgrammaticScroll()) return;
-      if (suppressInitialBottomPinRef.current) return;
-      const scroller = chatContainerRef.current;
-      if (scroller) scroller.scrollTop = scroller.scrollHeight;
-    }, 120);
-
-    return () => clearTimeout(timer);
-  }, [historyLoaded, shouldSuppressProgrammaticScroll, chatContainerRef]);
-
-  // Scroll anchor / metrics correction
-  useLayoutEffect(() => {
-    if (!messages || !chatContainerRef.current) return;
-    const scroller = chatContainerRef.current;
-    if (scrollAnchorRef?.current) {
-      const { id, top: beforeTop } = scrollAnchorRef.current;
-      scrollAnchorRef.current = null;
-      const el = document.getElementById(id);
-      if (el) {
-        const afterTop = el.getBoundingClientRect().top;
-        const diff = afterTop - beforeTop;
-        if (diff !== 0) {
-          scroller.scrollTop += diff;
-        }
-        return;
-      }
-    }
-
-    if (previousScrollMetricsRef?.current) {
-      const metrics = previousScrollMetricsRef.current;
-      previousScrollMetricsRef.current = null;
-      const heightDiff = scroller.scrollHeight - metrics.height;
-      if (heightDiff > 0) {
-        scroller.scrollTop = metrics.top + heightDiff;
-      }
-    }
-  }, [messages, chatContainerRef, previousScrollMetricsRef, scrollAnchorRef]);
 
   const syncInputOverlayScroll = useCallback(() => {
     if (!messageInputRef.current || !inputOverlayRef.current) return;
@@ -560,7 +490,7 @@ export function useChatViewport({
           if (overlay) overlay.style.height = nextHeightPx;
           lastInputHeightRef.current = nextHeight;
 
-          if (shouldMaintainBottom && wasAtBottom && nextHeight > previousHeight) {
+          if (shouldMaintainBottom && wasAtBottom) {
             requestAnimationFrame(() => scrollToBottom('auto', true));
           }
         } else if (overlay) {

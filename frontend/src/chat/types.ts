@@ -13,6 +13,7 @@ export interface ReplyContext {
 
 export interface Message {
   id: string;
+  _id?: string;
   userId: string;
   username: string;
   type: 'text' | 'image' | 'video' | 'file' | 'system_notification';

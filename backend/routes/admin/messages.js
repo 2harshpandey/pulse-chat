@@ -396,6 +396,10 @@ module.exports = (wss, broadcasts) => {
           : { $set: { isDeleted: true, deletedBy: 'admin', pinned: null } };
 
         await Message.updateMany({ roomId, id: { $in: messageIds } }, updatePayload);
+        await Message.updateMany(
+          { roomId, 'replyingTo.id': { $in: messageIds } },
+          { $set: { 'replyingTo.isDeleted': true, 'replyingTo.deletedBy': 'admin' } }
+        ).catch((e) => logger.error('Failed to update replyingTo on admin hide:', e));
 
         const eventPayload = vanish
           ? { $set: { 'message.vanished': true, 'message.isDeleted': true, 'message.deletedBy': 'admin', 'message.pinned': null } }
@@ -433,6 +437,10 @@ module.exports = (wss, broadcasts) => {
         broadcastToAdmins(roomId, 'bulk_history_delete', { messageIds });
 
         if (vanish) {
+          await Message.updateMany(
+            { roomId, 'replyingTo.id': { $in: messageIds } },
+            { $set: { 'replyingTo.isDeleted': true, 'replyingTo.deletedBy': 'admin' } }
+          ).catch((e) => logger.error('Failed to update replyingTo on admin vanish:', e));
           await Message.deleteMany({ roomId, id: { $in: messageIds } });
           await unpinIfPinned(wss, roomId, messageIds);
 
@@ -455,6 +463,10 @@ module.exports = (wss, broadcasts) => {
               },
             }
           );
+          await Message.updateMany(
+            { roomId, 'replyingTo.id': { $in: messageIds } },
+            { $set: { 'replyingTo.isDeleted': true, 'replyingTo.deletedBy': 'admin' } }
+          ).catch((e) => logger.error('Failed to update replyingTo on admin delete:', e));
           await unpinIfPinned(wss, roomId, messageIds);
 
           const updatedMessages = await Message.find({ roomId, id: { $in: messageIds } }).lean();

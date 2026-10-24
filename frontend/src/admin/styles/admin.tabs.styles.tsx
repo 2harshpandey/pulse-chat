@@ -537,6 +537,128 @@ export const ActivityLogItem = styled.div`
   animation: ${cardEntrance} 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 `;
 
+export const LogsTabHeaderRow = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding-top: 2px;
+  flex-shrink: 0;
+
+  h2 {
+    margin: 0;
+    font-size: 1.45rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+    transition: color 0.3s ease;
+  }
+
+  @media (max-width: 600px) {
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    h2 {
+      font-size: 1.2rem;
+    }
+  }
+`;
+
+export const LogsCopyButton = styled.button<{ $copied?: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.95rem;
+  font-size: 0.84rem;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  letter-spacing: -0.01em;
+  font-family: inherit;
+
+  /* Default / Idle State */
+  background: ${(p: any) => (p.$copied ? '#ecfdf5' : 'var(--bg-secondary)')};
+  color: ${(p: any) => (p.$copied ? '#059669' : 'var(--text-secondary)')};
+  border: 1px solid ${(p: any) => (p.$copied ? '#10b981' : 'var(--border-secondary)')};
+  box-shadow: ${(p: any) =>
+    p.$copied
+      ? '0 0 0 1px rgba(16, 185, 129, 0.2), 0 2px 8px rgba(16, 185, 129, 0.15)'
+      : '0 1px 2px rgba(0, 0, 0, 0.05)'};
+
+  /* Dark mode */
+  [data-theme='dark'] & {
+    background: ${(p: any) => (p.$copied ? 'rgba(16, 185, 129, 0.15)' : 'var(--bg-tab-active)')};
+    color: ${(p: any) => (p.$copied ? '#34d399' : 'var(--text-primary)')};
+    border-color: ${(p: any) => (p.$copied ? '#10b981' : 'var(--border-secondary)')};
+    box-shadow: ${(p: any) =>
+      p.$copied
+        ? '0 0 0 1px rgba(16, 185, 129, 0.3), 0 2px 10px rgba(16, 185, 129, 0.2)'
+        : '0 1px 3px rgba(0, 0, 0, 0.2)'};
+  }
+
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+    ${(p: any) =>
+      p.$copied
+        ? css`
+            background: #d1fae5;
+            border-color: #059669;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+            [data-theme='dark'] & {
+              background: rgba(16, 185, 129, 0.22);
+              border-color: #34d399;
+              box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
+            }
+          `
+        : css`
+            background: var(--bg-hover);
+            border-color: var(--accent-blue);
+            color: var(--accent-blue);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.12);
+            [data-theme='dark'] & {
+              background: #334155;
+              border-color: #60a5fa;
+              color: #93c5fd;
+              box-shadow: 0 4px 14px rgba(59, 130, 246, 0.2);
+            }
+          `}
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0) scale(0.97);
+    box-shadow: none;
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
+  svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  &:hover:not(:disabled) svg {
+    transform: ${(p: any) => (p.$copied ? 'scale(1.15)' : 'scale(1.1)')};
+  }
+
+  @media (max-width: 600px) {
+    padding: 0.42rem 0.75rem;
+    font-size: 0.8rem;
+  }
+`;
+
 export const Card = styled.div<{ $variant?: 'default' | 'success' | 'warning' | 'danger' }>`
   background: ${(p: any) => {
     switch (p.$variant) {

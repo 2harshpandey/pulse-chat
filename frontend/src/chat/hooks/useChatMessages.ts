@@ -15,7 +15,9 @@ import {
   getDeletedForMeIds,
   copyTextToClipboard,
   sanitizeMediaUrl,
+  findMessageElement,
 } from '../utils';
+import { albumDownloadManager } from '../albumDownloadManager';
 
 export interface UseChatMessagesProps {
   userId: string;
@@ -108,9 +110,25 @@ export function useChatMessages({
     copiedToastTimerRef.current = setTimeout(() => setShowCopiedToast(false), 2000);
   }, []);
 
+  const [albumDownloadToast, setAlbumDownloadToast] = useState<string | null>(null);
+  const albumDownloadToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const triggerAlbumDownloadToast = useCallback((message = 'Album download is already in progress') => {
+    if (albumDownloadToastTimerRef.current) clearTimeout(albumDownloadToastTimerRef.current);
+    setAlbumDownloadToast(message);
+    albumDownloadToastTimerRef.current = setTimeout(() => setAlbumDownloadToast(null), 2500);
+  }, []);
+
+  useEffect(() => {
+    return albumDownloadManager.onAlreadyInProgress(() => {
+      triggerAlbumDownloadToast('Album download is already in progress');
+    });
+  }, [triggerAlbumDownloadToast]);
+
   useEffect(() => {
     return () => {
       if (copiedToastTimerRef.current) clearTimeout(copiedToastTimerRef.current);
+      if (albumDownloadToastTimerRef.current) clearTimeout(albumDownloadToastTimerRef.current);
     };
   }, []);
 
@@ -154,32 +172,21 @@ export function useChatMessages({
     const messageById = new Map<string, Message>();
     for (const msg of list) {
       if (msg.id) messageById.set(normalizeMessageId(msg.id), msg);
+      if ((msg as any)._id) messageById.set(normalizeMessageId((msg as any)._id), msg);
+      if ((msg as any).clientTempId) messageById.set(normalizeMessageId((msg as any).clientTempId), msg);
     }
 
-    return list.map((m, index) => {
+    return list.map((m) => {
       if (!m.replyingTo) return m;
 
-      let targetId = normalizeMessageId(m.replyingTo.id);
-      let target = targetId ? messageById.get(targetId) : undefined;
+      const targetId = normalizeMessageId(m.replyingTo.id);
+      const target = targetId ? messageById.get(targetId) : undefined;
 
-      // If target not found by exact ID (e.g. was a client tempId before upload finished):
-      if (!target && index > 0) {
-        const replyUsername = m.replyingTo.username;
-        const replyType = m.replyingTo.type;
-        const replyText = (m.replyingTo.text || '').trim();
-        const isGenericMediaText = ['video', 'image', 'photo', 'gif', 'message'].includes(replyText.toLowerCase());
+      const isDeleted =
+        (targetId && deletedIds.has(targetId)) ||
+        (target && target.isDeleted) ||
+        Boolean(m.replyingTo.isDeleted);
 
-        for (let j = index - 1; j >= 0; j--) {
-          const candidate = list[j];
-          if (replyUsername && candidate.username !== replyUsername) continue;
-          if (replyType && candidate.type !== replyType) continue;
-          if (!isGenericMediaText && replyText && (candidate.text || '').trim() !== replyText) continue;
-          target = candidate;
-          break;
-        }
-      }
-
-      const isDeleted = (m.replyingTo.id && deletedIds.has(m.replyingTo.id)) || (target && target.isDeleted) || Boolean(m.replyingTo.isDeleted);
       let changed = false;
       const updatedReply = { ...m.replyingTo };
 
@@ -199,6 +206,14 @@ export function useChatMessages({
         }
         if (target.type && target.type !== 'system_notification' && m.replyingTo.type !== target.type) {
           updatedReply.type = target.type;
+          changed = true;
+        }
+        if (target.text && !target.isDeleted && m.replyingTo.text !== target.text) {
+          updatedReply.text = target.text;
+          changed = true;
+        }
+        if (target.deletedBy && updatedReply.deletedBy !== target.deletedBy) {
+          updatedReply.deletedBy = target.deletedBy;
           changed = true;
         }
       }
@@ -262,7 +277,7 @@ export function useChatMessages({
       setFirstItemIndexState(nextIdx);
 
       if (!isAtBottomRef.current && firstKept?.id) {
-        const anchorEl = document.getElementById(firstKept.id);
+        const anchorEl = findMessageElement(firstKept.id);
         if (anchorEl) {
           scrollAnchorRef.current = { id: firstKept.id, top: anchorEl.getBoundingClientRect().top };
         }
@@ -345,10 +360,11 @@ export function useChatMessages({
 
         const scroller = chatContainerRef.current;
         const anchorId = prev[0]?.id;
-        const anchorEl = anchorId ? document.getElementById(anchorId) : null;
+        const anchorEl = anchorId ? findMessageElement(anchorId) : null;
         if (anchorEl) {
           scrollAnchorRef.current = { id: anchorId, top: anchorEl.getBoundingClientRect().top };
-        } else if (scroller) {
+        }
+        if (scroller) {
           previousScrollMetricsRef.current = { height: scroller.scrollHeight, top: scroller.scrollTop };
         }
 
@@ -375,13 +391,24 @@ export function useChatMessages({
 
     isLoadingOlderRef.current = true;
     try {
-      await fetchAndPrependOlderMessages(oldestLoadedAtRef.current);
+      const res = await fetchAndPrependOlderMessages(oldestLoadedAtRef.current);
+      if (res.hasMore && chatContainerRef.current) {
+        const scroller = chatContainerRef.current;
+        // If user is still near the top after prepending, continue loading older messages seamlessly
+        if (scroller.scrollTop < 1200) {
+          window.setTimeout(() => {
+            if (!isLoadingOlderRef.current && hasMoreOlderMessagesRef.current) {
+              void loadOlderMessages();
+            }
+          }, 150);
+        }
+      }
     } catch (err) {
       console.error('Failed to load older messages:', err);
     } finally {
       isLoadingOlderRef.current = false;
     }
-  }, [fetchAndPrependOlderMessages, historyLoaded]);
+  }, [chatContainerRef, fetchAndPrependOlderMessages, historyLoaded]);
 
   // Append newer messages
   const fetchAndAppendNewerMessages = useCallback(async (afterCursor: string, limitOverride?: number) => {
@@ -429,7 +456,7 @@ export function useChatMessages({
       if (nextMessages.length > MAX_MESSAGES_WINDOW) {
         const evictCount = nextMessages.length - MAX_MESSAGES_WINDOW;
         const firstKept = nextMessages[evictCount];
-        const anchorEl = firstKept?.id ? document.getElementById(firstKept.id) : null;
+        const anchorEl = firstKept?.id ? findMessageElement(firstKept.id) : null;
         if (anchorEl) {
           scrollAnchorRef.current = { id: firstKept.id, top: anchorEl.getBoundingClientRect().top };
         }
@@ -677,6 +704,8 @@ export function useChatMessages({
     handleCancelEdit,
     showCopiedToast,
     triggerCopiedToast,
+    albumDownloadToast,
+    triggerAlbumDownloadToast,
     handleCopy,
   };
 }

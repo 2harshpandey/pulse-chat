@@ -16,6 +16,8 @@ interface MessageActionMenuPortalProps {
   handleCopy: (msg: Message) => void;
   handleOpenReport: (msg: Message) => void;
   onDownloadAll?: () => void;
+  onCancelDownload?: () => void;
+  isDownloadingAlbum?: boolean;
 }
 
 export const MessageActionMenuPortal: React.FC<MessageActionMenuPortalProps> = React.memo(({
@@ -31,6 +33,8 @@ export const MessageActionMenuPortal: React.FC<MessageActionMenuPortalProps> = R
   handleCopy,
   handleOpenReport,
   onDownloadAll,
+  onCancelDownload,
+  isDownloadingAlbum = false,
 }) => {
   if (!menuPos) return null;
 
@@ -63,13 +67,46 @@ export const MessageActionMenuPortal: React.FC<MessageActionMenuPortalProps> = R
               Reply
             </DeleteMenuItem>
             {onDownloadAll && (
-              <DeleteMenuItem onClick={() => { onDownloadAll(); setActiveDeleteMenu(null); }}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="7 10 12 15 17 10" />
-                  <line x1="12" y1="15" x2="12" y2="3" />
-                </svg>
-                Download all
+              <DeleteMenuItem
+                data-testid={isDownloadingAlbum ? 'cancel-album-download-menu-item' : 'download-album-menu-item'}
+                onClick={() => {
+                  if (isDownloadingAlbum && onCancelDownload) {
+                    onCancelDownload();
+                  } else {
+                    onDownloadAll();
+                  }
+                  setActiveDeleteMenu(null);
+                }}
+                style={isDownloadingAlbum ? { color: '#fda4af' } : undefined}
+              >
+                {isDownloadingAlbum ? (
+                  <>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                    Cancel download
+                  </>
+                ) : (
+                  <>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="7 10 12 15 17 10" />
+                      <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    Download all
+                  </>
+                )}
               </DeleteMenuItem>
             )}
             {canEdit && (

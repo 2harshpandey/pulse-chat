@@ -130,3 +130,12 @@ a.chat-link {
 a.chat-link:hover {
   text-decoration: none;
 }
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

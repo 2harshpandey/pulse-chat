@@ -1,15 +1,11 @@
-// --- Media, Upload, GIF, Link Preview, Download, and Messages Routes ---
+// --- Media, Upload, and Chat Management Routes ---
 
 const express = require('express');
-const http = require('http');
-const https = require('https');
-const dns = require('dns');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { Readable } = require('stream');
 const crypto = require('crypto');
-const axios = require('axios');
 const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
 const mongoose = require('mongoose');
@@ -18,11 +14,7 @@ const Message = require('../models/message');
 const MessageEvent = require('../models/messageEvent');
 const User = require('../models/user');
 const ChatState = require('../models/chatState');
-const {
-  getRoomState,
-  DEFAULT_HISTORY_PAGE_SIZE,
-  MAX_HISTORY_PAGE_SIZE,
-} = require('../state');
+const { getRoomState } = require('../state');
 const { unpinIfPinned, clearAllPins } = require('../websocket/pinnedManager');
 const {
   uploadLimiter,
@@ -32,14 +24,7 @@ const {
   adminSecretAuth,
   toClientMessage,
 } = require('../middleware');
-const {
-  isPrivateOrInternalIp,
-  isAllowedDownloadHost,
-  getAllowedDownloadHost,
-  runWithSafeRedirects,
-  sanitizeDownloadFilename,
-  getSignedCloudinaryDownloadUrl,
-} = require('../security');
+const { sanitizeDownloadFilename } = require('../security');
 const { WebSocket } = require('ws');
 
 const repairMojibakeText = (value) => String(value || '')

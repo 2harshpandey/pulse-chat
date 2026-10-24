@@ -2,13 +2,15 @@ import React, { useState, useEffect, useLayoutEffect, useRef, useContext, useMem
 import { UserContext } from '../../UserContext';
 import { useTheme } from '../../ThemeContext';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { NEWER_LOAD_TRIGGER_PX } from '../constants';
+import { NEWER_LOAD_TRIGGER_PX, MAX_MESSAGES_WINDOW } from '../constants';
 import type { Message } from '../types';
-import { getUserId, resolveApiBaseUrl, downloadAlbumAsZip, downloadFile } from '../utils';
+import { getUserId, resolveApiBaseUrl, downloadFile, findMessageElement } from '../utils';
+import { albumDownloadManager } from '../albumDownloadManager';
 import {
   useChatAudio,
   useChatSearch,
   useChatViewport,
+  IS_AT_BOTTOM_THRESHOLD_PX,
   useChatMedia,
   useChatMessages,
   useChatReactions,
@@ -383,21 +385,39 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
       return;
     }
 
-    if (currentLength > prevSnapshot.length && prevSnapshot.length > 0) {
-      const hasPendingBottomScroll = viewport.pendingBottomScrollTimeoutsRef.current.length > 0;
-      if (viewport.isAtBottomRef.current || hasPendingBottomScroll) {
-        viewport.forceScrollToBottomAsync(true);
+    const isNewTailMessage =
+      !msgs.hasMoreNewerMessages &&
+      !viewport.quoteJumpLockRef.current &&
+      !nav.isLocatingMessage &&
+      currentLength > 0 &&
+      prevSnapshot.length > 0 &&
+      currentLastId !== prevSnapshot.lastId &&
+      (currentLength === prevSnapshot.length + 1 ||
+        (currentLength === prevSnapshot.length && currentLength >= MAX_MESSAGES_WINDOW));
+
+    if (isNewTailMessage) {
+      const newestMsg = currentLength > 0 ? msgs.messages[currentLength - 1] : null;
+      const isSentByMe = Boolean(newestMsg?.userId && newestMsg.userId === userIdRef.current);
+      const wasAtBottom = viewport.isAtBottomRef.current;
+
+      // Only auto-scroll to bottom if a new message was appended to the tail AND (it was sent by me OR user was already at bottom)
+      if ((isSentByMe || wasAtBottom) && !viewport.shouldSuppressProgrammaticScroll()) {
+        viewport.forceScrollToBottomAsync(false);
       }
     }
 
     msgs.messageTailSnapshotRef.current = { length: currentLength, lastId: currentLastId };
   }, [
+    msgs.hasMoreNewerMessages,
     msgs.historyLoaded,
     msgs.messages,
     msgs.messageTailSnapshotRef,
+    nav.isLocatingMessage,
+    userIdRef,
     viewport.forceScrollToBottomAsync,
     viewport.isAtBottomRef,
-    viewport.pendingBottomScrollTimeoutsRef,
+    viewport.quoteJumpLockRef,
+    viewport.shouldSuppressProgrammaticScroll,
   ]);
 
   // Initial scroll to bottom
@@ -433,27 +453,30 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
   useLayoutEffect(() => {
     if (chatContainerRef.current) {
       const scroller = chatContainerRef.current;
+      let anchored = false;
       if (msgs.scrollAnchorRef.current) {
         const { id, top: beforeTop } = msgs.scrollAnchorRef.current;
         msgs.scrollAnchorRef.current = null;
-        const el = document.getElementById(id);
+        const el = findMessageElement(id);
         if (el) {
           const afterTop = el.getBoundingClientRect().top;
           const diff = afterTop - beforeTop;
           if (diff !== 0) {
             scroller.scrollTop += diff;
           }
-          return;
+          anchored = true;
         }
       }
 
-      if (msgs.previousScrollMetricsRef.current) {
+      if (!anchored && msgs.previousScrollMetricsRef.current) {
         const metrics = msgs.previousScrollMetricsRef.current;
         msgs.previousScrollMetricsRef.current = null;
         const heightDiff = scroller.scrollHeight - metrics.height;
         if (heightDiff > 0) {
           scroller.scrollTop = metrics.top + heightDiff;
         }
+      } else if (anchored) {
+        msgs.previousScrollMetricsRef.current = null;
       }
     }
   }, [msgs.messages, msgs.previousScrollMetricsRef, msgs.scrollAnchorRef]);
@@ -492,11 +515,13 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     if (selectedMediaMessages.length === 0) return;
     if (selectedMediaMessages.length === 1) {
       const m = selectedMediaMessages[0];
-      const isVideo = m.type === 'video' || Boolean(m.url?.match(/\.(mp4|webm|mov)$/i));
+      if (!m.url) return;
+      const isVideo = m.type === 'video' || Boolean(m.url.match(/\.(mp4|webm|mov)$/i));
       const fallbackName = m.originalName || (isVideo ? 'video.mp4' : 'media.jpg');
       void downloadFile(m.url, fallbackName, undefined, undefined, !isVideo);
     } else {
-      void downloadAlbumAsZip(selectedMediaMessages);
+      const albumKey = selectedMediaMessages[0]?.id || 'selected_album';
+      void albumDownloadManager.startDownload(albumKey, selectedMediaMessages);
     }
     selection.handleCancelSelectMode();
   }, [selectedMediaMessages, selection]);
@@ -576,7 +601,7 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     ) {
       msgs.loadNewerMessages();
     }
-    const atBottom = distanceFromBottom <= 20;
+    const atBottom = distanceFromBottom <= IS_AT_BOTTOM_THRESHOLD_PX;
     viewport.handleAtBottomStateChange(atBottom);
   }, [msgs, reactions, search, selection, viewport]);
 

@@ -1120,3 +1120,35 @@ export const MediaGalleryThumb = styled.div<{ $active: boolean }>`
     display: block;
   }
 `;
+
+export const MediaAlbumDownloadBadge = styled.div<{ $visible?: boolean }>`
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  background: rgba(15, 23, 42, 0.84);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 20px;
+  color: #f8fafc;
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+  white-space: nowrap;
+  animation: fadeIn 0.2s ease-out;
+
+  svg {
+    width: 13px;
+    height: 13px;
+    color: #38bdf8;
+    animation: spin 0.85s linear infinite;
+    flex-shrink: 0;
+  }
+`;

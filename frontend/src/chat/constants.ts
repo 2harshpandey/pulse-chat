@@ -12,6 +12,33 @@ export const isDesktopInteractionDevice = (): boolean => {
   return window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 };
 
+export const isTouchDevice = (): boolean => {
+  if (typeof window === 'undefined') return false;
+
+  if (typeof window.matchMedia === 'function') {
+    const hasFinePointer = Boolean(window.matchMedia('(pointer: fine)')?.matches);
+    const canHover = Boolean(window.matchMedia('(hover: hover)')?.matches);
+    // Desktop and laptop environments with mouse/trackpad pointer and hover are NOT touch devices
+    if (hasFinePointer && canHover) {
+      return false;
+    }
+
+    const hasCoarsePointer = Boolean(window.matchMedia('(pointer: coarse)')?.matches);
+    if (hasCoarsePointer && !hasFinePointer) {
+      return true;
+    }
+  }
+
+  const isMobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+    typeof navigator !== 'undefined' ? navigator.userAgent || '' : ''
+  );
+  const hasTouchCapability =
+    'ontouchstart' in window ||
+    (typeof navigator !== 'undefined' && typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 0);
+
+  return Boolean(isMobileUserAgent && hasTouchCapability);
+};
+
 export const INITIAL_HISTORY_BATCH_SIZE = 80;
 export const HISTORY_PAGE_SIZE = 50;
 
@@ -38,7 +65,7 @@ export const NEWER_LOAD_TRIGGER_PX = 2500;
  * causes visible anchor adjustments during slow upward scroll. A 1.5 s cooldown
  * means we only prepend once the user has slowed/stopped.
  */
-export const START_REACHED_COOLDOWN_MS = 1500;
+export const START_REACHED_COOLDOWN_MS = 250;
 
 export const INITIAL_FIRST_ITEM_INDEX = 1000000;
 

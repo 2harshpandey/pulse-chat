@@ -8,8 +8,8 @@ import {
   normalizeMessageId,
   formatMediaSize,
   getMediaGatePreviewUrl,
-  downloadAlbumAsZip,
 } from '../../utils';
+import { useAlbumDownload } from '../../albumDownloadManager';
 import {
   MessageRow,
   MessageBubble,
@@ -215,6 +215,13 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
       .filter((t): t is string => Boolean(t && t.length > 0));
     return Array.from(new Set(list)).join('\n');
   }, [messages]);
+
+  const {
+    isDownloading: isAlbumDownloading,
+    progress: albumProgress,
+    startDownload: startAlbumDownload,
+    cancelDownload: cancelAlbumDownload,
+  } = useAlbumDownload(primaryMessage.id);
 
   const handleTileClick = (e: React.MouseEvent, index: number) => {
     if (isSelectModeActive) return;
@@ -530,9 +537,11 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
           handleStartEdit={() => {}}
           handleCopy={handleCopy}
           handleOpenReport={handleOpenReport}
+          isDownloadingAlbum={isAlbumDownloading}
           onDownloadAll={() => {
-            void downloadAlbumAsZip(messages);
+            void startAlbumDownload(messages);
           }}
+          onCancelDownload={cancelAlbumDownload}
         />
       )}
     </React.Fragment>

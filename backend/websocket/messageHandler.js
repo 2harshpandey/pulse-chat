@@ -387,6 +387,15 @@ const handleDeleteForEveryone = async ({ ws, parsedMessage, wss, broadcastToAdmi
       { new: true }
     );
 
+    const targetReplyIds = [messageId];
+    if (originalMessage && originalMessage._id) {
+      targetReplyIds.push(String(originalMessage._id));
+    }
+    await Message.updateMany(
+      { roomId: String(roomId), 'replyingTo.id': { $in: targetReplyIds } },
+      { $set: { 'replyingTo.isDeleted': true, 'replyingTo.deletedBy': ws.userId } }
+    ).catch(e => logger.error('Failed to update replyingTo on delete:', e));
+
     // Unpin immediately if this message was pinned
     await unpinIfPinned(wss, roomId, [messageId]);
 
@@ -458,12 +467,19 @@ const handleNewMessage = async ({ ws, parsedMessage, wss, broadcastToAdmins, _br
     if (typeof rawReplyTargetId === 'string' && rawReplyTargetId.trim()) {
       const replyTargetId = String(rawReplyTargetId).trim();
       try {
+        const orConditions = [{ id: { $eq: replyTargetId } }, { clientTempId: { $eq: replyTargetId } }];
+        if (mongoose.isValidObjectId(replyTargetId)) {
+          orConditions.push({ _id: replyTargetId });
+        }
         const targetDoc = await Message.findOne({
           roomId: String(roomId),
-          $or: [{ id: { $eq: replyTargetId } }, { clientTempId: { $eq: replyTargetId } }]
+          $or: orConditions
         }).lean();
         if (targetDoc) {
-          sanitisedMessage.replyingTo.id = targetDoc.id;
+          sanitisedMessage.replyingTo.id = targetDoc.id || String(targetDoc._id);
+          sanitisedMessage.replyingTo.isDeleted = Boolean(targetDoc.isDeleted);
+          if (targetDoc.deletedBy) sanitisedMessage.replyingTo.deletedBy = targetDoc.deletedBy;
+          if (targetDoc.text && !targetDoc.isDeleted) sanitisedMessage.replyingTo.text = targetDoc.text;
           if (targetDoc.url) sanitisedMessage.replyingTo.url = targetDoc.url;
           if (targetDoc.type) sanitisedMessage.replyingTo.type = targetDoc.type;
         }

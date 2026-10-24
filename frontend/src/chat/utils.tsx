@@ -347,19 +347,22 @@ export const downloadAlbumAsZip = async (
   options?: {
     zipNamePrefix?: string;
     onProgress?: (progress: number) => void;
+    signal?: AbortSignal;
   }
 ): Promise<void> => {
   const mediaItems = messages.filter(
     (m) => !m.isDeleted && Boolean(m.url)
   );
 
-  if (mediaItems.length === 0) return;
+  if (mediaItems.length === 0 || options?.signal?.aborted) return;
 
   try {
     options?.onProgress?.(0.05);
 
     // Dynamically load JSZip to avoid bundle bloat
     const jszipModule = await import('jszip');
+    if (options?.signal?.aborted) return;
+
     const JSZip = (jszipModule && 'default' in jszipModule && jszipModule.default) ? jszipModule.default : (jszipModule as any);
     const zip = new JSZip();
 
@@ -381,14 +384,16 @@ export const downloadAlbumAsZip = async (
 
     await Promise.all(
       mediaItems.map(async (msg, index) => {
-        const isVideo = msg.type === 'video' || Boolean(msg.url?.match(/\.(mp4|webm|mov)$/i));
-        const isGif = msg.type === 'gif' || Boolean(msg.url?.match(/\.gif$/i));
+        if (!msg.url || options?.signal?.aborted) return;
+        const fileUrl = msg.url;
+        const isVideo = msg.type === 'video' || Boolean(fileUrl.match(/\.(mp4|webm|mov)$/i));
+        const isGif = Boolean(fileUrl.match(/\.gif$/i)) || isGiphyUrl(fileUrl);
         const defaultExt = isVideo ? '.mp4' : isGif ? '.gif' : '.jpg';
 
         let baseName = msg.originalName ? sanitizeFilename(msg.originalName, '') : '';
-        if (!baseName && msg.url) {
+        if (!baseName && fileUrl) {
           try {
-            const pathname = new URL(msg.url).pathname;
+            const pathname = new URL(fileUrl).pathname;
             baseName = sanitizeFilename(decodeURIComponent(pathname.split('/').pop() || ''), '');
           } catch {}
         }
@@ -415,17 +420,21 @@ export const downloadAlbumAsZip = async (
         // Fetch blob using existing robust proxy fallback
         let blob: Blob;
         try {
-          blob = await fetchBlobWithProgress(msg.url);
-        } catch {
-          const proxyUrl = buildDownloadProxyUrl(msg.url, uniqueName);
-          blob = await fetchBlobWithProgress(proxyUrl);
+          blob = await fetchBlobWithProgress(fileUrl, undefined, options?.signal);
+        } catch (fetchErr) {
+          if (options?.signal?.aborted) return;
+          const proxyUrl = buildDownloadProxyUrl(fileUrl, uniqueName);
+          blob = await fetchBlobWithProgress(proxyUrl, undefined, options?.signal);
         }
 
+        if (options?.signal?.aborted) return;
         zip.file(uniqueName, blob);
         completedCount++;
         options?.onProgress?.(0.05 + (completedCount / totalCount) * 0.75);
       })
     );
+
+    if (options?.signal?.aborted) return;
 
     options?.onProgress?.(0.85);
 
@@ -434,6 +443,8 @@ export const downloadAlbumAsZip = async (
       compression: 'DEFLATE',
       compressionOptions: { level: 6 },
     });
+
+    if (options?.signal?.aborted) return;
 
     options?.onProgress?.(1);
 
@@ -447,7 +458,10 @@ export const downloadAlbumAsZip = async (
     anchor.click();
     document.body.removeChild(anchor);
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
-  } catch (error) {
+  } catch (error: any) {
+    if (options?.signal?.aborted || error?.name === 'AbortError') {
+      return;
+    }
     console.error('Failed to download album as zip:', error);
   }
 };

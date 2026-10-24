@@ -5,6 +5,7 @@ import { PinnedMessageBanner } from './PinnedMessageBanner';
 import { ChatFooter } from './ChatFooter';
 import { MessagesList } from './MessagesList';
 import { TypingIndicator } from '../TypingIndicator';
+import { useAlbumDownload } from '../albumDownloadManager';
 import {
   ChatWindow,
   MessagesAndScrollWrapper,
@@ -13,6 +14,8 @@ import {
   NewMessagesBadge,
   SearchNotFoundToast,
   CopiedToast,
+  AlbumDownloadToast,
+  AlbumDownloadCancelButton,
 } from '../Chat.styles';
 
 export interface ChatWindowViewProps {
@@ -50,6 +53,22 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
     handleMessagesContainerScroll,
   } = chat;
 
+  const albumDownload = useAlbumDownload();
+
+  const isStatusToastVisible = Boolean(
+    nav.isLocatingMessage || msgs.albumDownloadToast || albumDownload.isDownloading
+  );
+
+  const statusToastText = nav.isLocatingMessage
+    ? 'Locating quoted message...'
+    : msgs.albumDownloadToast
+    ? msgs.albumDownloadToast
+    : albumDownload.isDownloading
+    ? (albumDownload.progress > 0.08
+        ? `Preparing ZIP... ${Math.round(albumDownload.progress * 100)}%`
+        : 'Preparing ZIP...')
+    : '';
+
   return (
     <ChatWindow>
       <PinnedMessageBanner
@@ -66,6 +85,17 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
           $isMobileView={viewport.isMobileView}
           ref={chatContainerRef as any}
           onScroll={handleMessagesContainerScroll}
+          onWheel={(e) => {
+            if (e.deltaY < 0 && chatContainerRef.current && chatContainerRef.current.scrollTop <= 150) {
+              if (
+                !msgs.isLoadingOlderRef.current &&
+                msgs.hasMoreOlderMessages &&
+                !search.suppressOlderMessageLoadRef.current
+              ) {
+                void msgs.loadOlderMessages();
+              }
+            }
+          }}
         >
           <MessagesList
             historyLoaded={msgs.historyLoaded}
@@ -158,6 +188,68 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
         </svg>
         Copied to clipboard
       </CopiedToast>
+
+      <AlbumDownloadToast
+        $visible={isStatusToastVisible}
+        data-testid="album-download-toast"
+        aria-live="polite"
+      >
+        {nav.isLocatingMessage || albumDownload.isDownloading ? (
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#38bdf8"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ width: '18px', height: '18px', animation: 'spin 1s linear infinite' }}
+          >
+            <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+          </svg>
+        ) : (
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#38bdf8"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ width: '18px', height: '18px' }}
+          >
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+        )}
+        <span>{statusToastText}</span>
+        {albumDownload.isDownloading && !nav.isLocatingMessage && !msgs.albumDownloadToast && (
+          <AlbumDownloadCancelButton
+            type="button"
+            data-testid="cancel-album-download-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              albumDownload.cancelDownload();
+            }}
+            title="Cancel album download"
+            aria-label="Cancel download"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              width="12"
+              height="12"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+            <span>Cancel</span>
+          </AlbumDownloadCancelButton>
+        )}
+      </AlbumDownloadToast>
 
       <TypingIndicator onlineUsers={socket.onlineUsers} currentUserId={userIdRef.current} />
 

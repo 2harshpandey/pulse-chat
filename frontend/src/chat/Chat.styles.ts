@@ -147,5 +147,83 @@ export const CopiedToast = styled.div<{ $visible: boolean }>`
   }
 `;
 
+export const AlbumDownloadToast = styled.div<{ $visible: boolean }>`
+  position: absolute;
+  bottom: 90px;
+  left: 50%;
+  transform: translateX(-50%) translateY(${p => p.$visible ? '0' : '16px'}) scale(${p => p.$visible ? 1 : 0.94});
+  opacity: ${p => p.$visible ? 1 : 0};
+  pointer-events: ${p => p.$visible ? 'auto' : 'none'};
+  background: rgba(15, 23, 42, 0.92);
+  color: #f1f5f9;
+  padding: 10px 22px;
+  border-radius: 30px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(56, 189, 248, 0.18);
+  transition: all 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 10002;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  white-space: nowrap;
+
+  svg {
+    width: 17px;
+    height: 17px;
+    color: #38bdf8;
+    flex-shrink: 0;
+  }
+
+  @media (max-width: 768px) {
+    bottom: 82px;
+    padding: 8px 18px;
+    font-size: 0.85rem;
+  }
+`;
+
+export const AlbumDownloadCancelButton = styled.button`
+  background: rgba(244, 63, 94, 0.16);
+  border: 1px solid rgba(244, 63, 94, 0.35);
+  color: #fda4af;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  outline: none;
+
+  svg {
+    width: 12px;
+    height: 12px;
+    color: #fda4af;
+    animation: none !important;
+  }
+
+  &:hover {
+    background: rgba(244, 63, 94, 0.28);
+    border-color: rgba(244, 63, 94, 0.6);
+    color: #fff;
+    transform: scale(1.05);
+
+    svg {
+      color: #fff;
+    }
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+`;
+
 // Re-export all styled components from ChatStyledComponents
 export * from './ChatStyledComponents';

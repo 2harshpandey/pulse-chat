@@ -1,30 +1,35 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import type { AdminController } from '../../hooks';
 import { formatServerLogLine } from '../../utils';
-import { Button, LogViewerContainer } from '../../AdminStyledComponents';
+import { LogViewerContainer, LogsTabHeaderRow } from '../../AdminStyledComponents';
+import { LogsCopyButton } from '../LogsCopyButton';
 
 export interface ServerLogsTabProps {
   admin: AdminController;
 }
 
 export function ServerLogsTab({ admin }: ServerLogsTabProps) {
-  const { handleRefreshServerLogs, isServerLogsLoading, serverLogs } = admin;
+  const { isServerLogsLoading, serverLogs } = admin;
+
+  const formattedLogsText = useMemo(() => {
+    return serverLogs
+      .filter((log) => typeof log === 'string' && log.trim().length > 0)
+      .map((log) => formatServerLogLine(log))
+      .join('\n');
+  }, [serverLogs]);
+
+  const hasLogs = serverLogs.some((log) => typeof log === 'string' && log.trim().length > 0);
 
   return (
     <>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '0.5rem',
-          marginBottom: '0.5rem',
-        }}
-      >
-        <h2 style={{ margin: 0 }}>Server Logs</h2>
-        <Button onClick={handleRefreshServerLogs}>Refresh</Button>
-      </div>
+      <LogsTabHeaderRow>
+        <h2>Server Logs</h2>
+        <LogsCopyButton
+          getLogsText={() => formattedLogsText}
+          hasLogs={hasLogs && !isServerLogsLoading}
+          label="Copy Logs"
+        />
+      </LogsTabHeaderRow>
       {isServerLogsLoading ? (
         <p>Loading server logs...</p>
       ) : (

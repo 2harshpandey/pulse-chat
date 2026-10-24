@@ -3,7 +3,7 @@
 > **A production-grade, real-time, scalable web messaging application engineered for high-fidelity conversations, dynamic multi-room routing, rich media exchange, secure moderation, and a premium responsive user experience.**
 
 [![Live Site](https://img.shields.io/badge/Live-pulsechat.tech-2563eb?style=for-the-badge)](https://pulsechat.tech)
-[![Version](https://img.shields.io/badge/Version-v2.0.0-f59e0b?style=for-the-badge)](#overview)
+[![Version](https://img.shields.io/badge/Version-v2.1.0-f59e0b?style=for-the-badge)](#overview)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 [![Frontend](https://img.shields.io/badge/Frontend-React%2018%20%2B%20TypeScript-61dafb?style=for-the-badge)](#technology-stack)
 [![Backend](https://img.shields.io/badge/Backend-Node.js%20%2B%20Express-111827?style=for-the-badge)](#technology-stack)
@@ -76,6 +76,7 @@ Pulse Chat includes a complete real-time messaging foundation suitable for high-
 - **Sliding Window Virtualization**: Powered by `react-virtuoso` with high-performance windowing, rendering tens of thousands of messages without UI freezes or memory bloat.
 - Adaptive overscan and viewport tuning for desktop and mobile scrolling performance.
 - **Instant Quote & Pin Navigation**: High-speed jump navigation that bulk loads message pages to eliminate timeouts when navigating to deeply historical messages.
+- **High-Speed History Engine**: Fluid high-velocity scrolling with continuous near-top loading, layout metric anchoring, and guaranteed auto-scroll bottom suppression while reading older messages.
 
 ---
 
@@ -157,6 +158,7 @@ The media layer supports rich file exchange while applying strict safety and per
 - **Overflow Counter Badge**: Albums with more than 4 items render an interactive `+N` badge indicating remaining media.
 - **On-Demand Media Load Gating**: Grouped and individual media tiles feature on-demand "Tap to load" gating with size badges and lightweight blurred placeholder frames (~1 KB), preventing heavy background preloading and eliminating memory pressure during fast scrolling.
 - **Full-Screen Media Gallery Modal**: Tapping any photo/video opens a mobile-optimized gallery lightbox with touch swipe navigation, thumbnail carousel strip, download buttons, and automatic full-resolution loading.
+- **Single-Click Album ZIP Downloads with Live Cancellation**: Download an entire mosaic album or selection as a compressed `.zip` archive on demand, featuring live percentage progress, duplicate filename prevention, and real-time abort cancellation via status toasts and context menus.
 
 ### Custom video player
 
@@ -247,7 +249,7 @@ Pulse Chat includes a dedicated administrative control plane for live moderation
 - Message history log covering edits, deletions, uploads, and creation events.
 - Categorized audit event stream with timestamps.
 - User report intake with message snapshot, session data, join history, and metadata.
-- Server log tailing with live refresh and WebSocket pushes.
+- Server log tailing with real-time WebSocket streaming and one-click clipboard copy buttons with visual confirmation across both Real-Time Activity and Server Logs.
 - Permanent history purge and frontend-only hide controls for compliance workflows.
 
 ---

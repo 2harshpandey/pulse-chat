@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import type { Message } from '../types';
 import {
   MAX_QUOTE_JUMP_STACK_DEPTH,
@@ -98,6 +98,8 @@ export function useChatMessageNavigation({
   isLoadingOlderRef,
   fetchAndPrependOlderMessages,
 }: UseChatMessageNavigationProps) {
+  const [isLocatingMessage, setIsLocatingMessage] = useState(false);
+
   // Highlight message helper
   const highlightMessage = useCallback((messageId: string) => {
     if (!messageId) return;
@@ -257,53 +259,20 @@ export function useChatMessageNavigation({
         normalizeMessageId(replyingToPayload?.id),
         normalizeMessageId(replyingToPayload?.messageId),
         normalizeMessageId(replyingToPayload?._id),
+        normalizeMessageId(replyingToPayload?.clientTempId),
       ].filter(Boolean);
 
       for (const candidate of candidateIds) {
         if (sourceId && candidate === sourceId) continue;
         const inMemory = messagesRef.current.find(
-          (m) => normalizeMessageId(m.id) === candidate || normalizeMessageId(m._id) === candidate
+          (m) =>
+            normalizeMessageId(m.id) === candidate ||
+            normalizeMessageId(m._id) === candidate ||
+            normalizeMessageId((m as any).clientTempId) === candidate
         );
         if (inMemory) {
           return normalizeMessageId(inMemory.id) || candidate;
         }
-      }
-
-      if (!replyingToPayload) return directRequested;
-
-      const replyText = typeof replyingToPayload.text === 'string' ? replyingToPayload.text.trim() : '';
-      const replyUsername = typeof replyingToPayload.username === 'string' ? replyingToPayload.username.trim() : '';
-      const replyType = typeof replyingToPayload.type === 'string' ? replyingToPayload.type : '';
-      const replyUrl = typeof replyingToPayload.url === 'string' ? replyingToPayload.url.trim() : '';
-      const isGenericMediaText = ['video', 'image', 'photo', 'gif', 'message'].includes(replyText.toLowerCase());
-
-      const sourceIndex = sourceId
-        ? messagesRef.current.findIndex((m) => normalizeMessageId(m.id) === sourceId)
-        : -1;
-
-      // Scan backwards from sourceIndex to find the nearest matching quoted message
-      if (sourceIndex > 0) {
-        for (let i = sourceIndex - 1; i >= 0; i--) {
-          const candidate = messagesRef.current[i];
-          if (replyUsername && candidate.username !== replyUsername) continue;
-          if (replyType && candidate.type !== replyType) continue;
-          if (!isGenericMediaText && replyText && (candidate.text || '').trim() !== replyText) continue;
-          if (replyUrl && !replyUrl.startsWith('blob:') && (candidate.url || '').trim() !== replyUrl) continue;
-
-          return normalizeMessageId(candidate.id) || directRequested;
-        }
-      }
-
-      // Fallback: scan anywhere in loaded messages
-      for (let i = messagesRef.current.length - 1; i >= 0; i--) {
-        const candidate = messagesRef.current[i];
-        if (sourceId && normalizeMessageId(candidate.id) === sourceId) continue;
-        if (replyUsername && candidate.username !== replyUsername) continue;
-        if (replyType && candidate.type !== replyType) continue;
-        if (!isGenericMediaText && replyText && (candidate.text || '').trim() !== replyText) continue;
-        if (replyUrl && !replyUrl.startsWith('blob:') && (candidate.url || '').trim() !== replyUrl) continue;
-
-        return normalizeMessageId(candidate.id) || directRequested;
       }
 
       return directRequested;
@@ -356,17 +325,23 @@ export function useChatMessageNavigation({
         }
       }
 
+      setIsLocatingMessage(true);
       return new Promise<void>((resolve) => {
-        if (!targetId) {
+        const finish = () => {
+          setIsLocatingMessage(false);
           resolve();
+        };
+
+        if (!targetId) {
+          finish();
           return;
         }
         if (scrollToLoadedMessage(targetId, behavior, force)) {
-          resolve();
+          requestAnimationFrame(() => finish());
           return;
         }
         if (!historyLoaded) {
-          resolve();
+          finish();
           return;
         }
 
@@ -379,7 +354,7 @@ export function useChatMessageNavigation({
         );
         if (isTemporaryUploadId || isUploadingLocally) {
           quoteWarn('Target message is an in-flight temporary upload ID that cannot exist in server history:', targetId);
-          resolve();
+          finish();
           return;
         }
 
@@ -435,7 +410,7 @@ export function useChatMessageNavigation({
 
                 requestAnimationFrame(() => {
                   scrollToLoadedMessage(targetId, behavior, force);
-                  resolve();
+                  finish();
                 });
                 return;
               }
@@ -481,7 +456,7 @@ export function useChatMessageNavigation({
 
           requestAnimationFrame(() => {
             scrollToLoadedMessage(targetId, behavior, force);
-            resolve();
+            finish();
           });
         })();
       });
@@ -554,5 +529,6 @@ export function useChatMessageNavigation({
     scrollToLoadedMessage,
     resolveReplyNavigationTargetId,
     scrollToMessage,
+    isLocatingMessage,
   };
 }
