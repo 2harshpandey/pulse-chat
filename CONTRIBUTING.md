@@ -87,7 +87,7 @@ Start the frontend development server:
 npm start
 ```
 
-The app will be available at `http://localhost:5173` (or the URL output by Vite).
+The app will be available at `http://localhost:3000` (or the URL output by Vite).
 
 ---
 

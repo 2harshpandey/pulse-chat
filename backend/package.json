@@ -5,8 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js",
-    "cleanup:reactions": "node scripts/cleanupReactions.js"
+    "dev": "nodemon index.js"
   },
   "keywords": [],
   "author": "",
