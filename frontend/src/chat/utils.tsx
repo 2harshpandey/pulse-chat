@@ -243,9 +243,9 @@ export const findMessageElement = (rawId: any): HTMLElement | null => {
   const byRawId = document.getElementById(normalized) as HTMLElement | null;
   if (byRawId) return byRawId;
 
-  // Match by data-message-id or data-mongo-id attribute
+  // Match by data-message-id, data-mongo-id, or data-client-temp-id attribute
   const byDataId = document.querySelector(
-    `[data-message-id="${normalized}"], [data-mongo-id="${normalized}"]`
+    `[data-message-id="${normalized}"], [data-mongo-id="${normalized}"], [data-client-temp-id="${normalized}"]`
   ) as HTMLElement | null;
   if (byDataId) return byDataId;
 

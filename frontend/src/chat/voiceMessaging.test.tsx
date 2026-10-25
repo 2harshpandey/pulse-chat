@@ -6,7 +6,7 @@ import { MessageQuotedPreview } from './components/message/MessageQuotedPreview'
 import { MessageActionMenuPortal } from './components/message/MessageActionMenuPortal';
 import { ChatFooter } from './components/ChatFooter';
 import type { Message } from './types';
-import { setAudioDurationCache } from './utils';
+import { setAudioDurationCache, downloadFile } from './utils';
 
 // Mock audio element behavior in jsdom
 beforeEach(() => {
@@ -616,6 +616,27 @@ describe('Voice Messaging System', () => {
       // Playback must not have been paused or aborted
       expect(screen.getByLabelText('Pause voice message')).toBeDefined();
       expect(window.HTMLMediaElement.prototype.pause).not.toHaveBeenCalled();
+    });
+
+    it('downloads local blob audio immediately via anchor without proxy', async () => {
+      const blobUrl = 'blob:http://localhost:3000/download-test-blob';
+      const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+      const appendChildSpy = vi.spyOn(document.body, 'appendChild');
+      const removeChildSpy = vi.spyOn(document.body, 'removeChild');
+
+      await downloadFile(blobUrl, 'voice_note.webm');
+
+      expect(appendChildSpy).toHaveBeenCalled();
+      const createdAnchor = appendChildSpy.mock.calls.find(call => (call[0] as HTMLElement).tagName === 'A')?.[0] as HTMLAnchorElement;
+      expect(createdAnchor).toBeDefined();
+      expect(createdAnchor.href).toBe(blobUrl);
+      expect(createdAnchor.download).toBe('voice_note.webm');
+      expect(clickSpy).toHaveBeenCalled();
+      expect(removeChildSpy).toHaveBeenCalledWith(createdAnchor);
+
+      clickSpy.mockRestore();
+      appendChildSpy.mockRestore();
+      removeChildSpy.mockRestore();
     });
   });
 });
