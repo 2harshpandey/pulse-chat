@@ -4,7 +4,7 @@ import { SystemMessage } from '../Chat.styles';
 import { MessageItem } from '../MessageItem';
 import { MediaGroupItem } from './message';
 
-import { isGiphyUrl } from '../utils';
+import { isGiphyUrl, setAudioDurationCache } from '../utils';
 
 export const isMediaMessage = (m: Message): boolean => {
   if (m.isDeleted) return false;
@@ -211,6 +211,19 @@ export const MessagesList = React.memo(function MessagesList({
   );
 
   const groupedItems = useMemo(() => groupMessages(messages), [messages]);
+
+  React.useEffect(() => {
+    messages.forEach((m) => {
+      if (m.type === 'audio' && typeof m.duration === 'number' && m.duration > 0) {
+        setAudioDurationCache(m.id, m.duration);
+        if (m.url) setAudioDurationCache(m.url, m.duration);
+      }
+      if (m.replyingTo?.type === 'audio' && typeof m.replyingTo.duration === 'number' && m.replyingTo.duration > 0) {
+        if (m.replyingTo.id) setAudioDurationCache(m.replyingTo.id, m.replyingTo.duration);
+        if (m.replyingTo.url) setAudioDurationCache(m.replyingTo.url, m.replyingTo.duration);
+      }
+    });
+  }, [messages]);
 
   if (!historyLoaded || messages.length === 0) return null;
 

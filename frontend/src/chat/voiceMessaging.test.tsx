@@ -6,6 +6,7 @@ import { MessageQuotedPreview } from './components/message/MessageQuotedPreview'
 import { MessageActionMenuPortal } from './components/message/MessageActionMenuPortal';
 import { ChatFooter } from './components/ChatFooter';
 import type { Message } from './types';
+import { setAudioDurationCache } from './utils';
 
 // Mock audio element behavior in jsdom
 beforeEach(() => {
@@ -415,8 +416,48 @@ describe('Voice Messaging System', () => {
       expect(getByText('khushu')).toBeDefined();
       expect(getByText('Voice Message')).toBeDefined();
       const badge = getByTestId('quoted-audio-duration-badge');
-      expect(badge).toBeDefined();
       expect(badge.textContent).toContain('0:45');
+    });
+
+    it('dynamically displays duration badge when audio duration resolves asynchronously or updates in cache', async () => {
+      const mockQuotingMessageWithoutDuration: Message = {
+        id: 'msg_reply_2',
+        userId: 'user_2',
+        username: 'Bob',
+        text: 'yahi tha nah woh audio???',
+        type: 'text',
+        timestamp: new Date().toISOString(),
+        replyingTo: {
+          id: 'voice_dynamic_target',
+          username: 'khushu',
+          text: 'Voice Message',
+          type: 'audio',
+          url: 'https://example.com/dynamic_voice.mp3',
+        },
+      };
+
+      const { queryByTestId, getByTestId } = render(
+        <MessageQuotedPreview
+          msg={mockQuotingMessageWithoutDuration}
+          currentUserId="user_2"
+          sender="me"
+          quotedPreviewThumbUrl=""
+          scrollToMessage={vi.fn()}
+        />
+      );
+
+      // Initially no duration on message
+      expect(queryByTestId('quoted-audio-duration-badge')).toBeNull();
+
+      // Audio player or loader resolves metadata and publishes to cache
+      act(() => {
+        setAudioDurationCache('voice_dynamic_target', 68);
+      });
+
+      // Now badge should be visible and showing 1:08
+      const badge = getByTestId('quoted-audio-duration-badge');
+      expect(badge).toBeDefined();
+      expect(badge.textContent).toContain('1:08');
     });
   });
 

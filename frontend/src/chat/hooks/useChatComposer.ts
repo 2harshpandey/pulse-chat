@@ -9,6 +9,9 @@ import {
   normalizeOverlayText,
   resolveApiBaseUrl,
   revokeBlobUrl,
+  audioDurationCache,
+  setAudioDurationCache,
+  resolveAudioDuration,
 } from '../utils';
 import { transferManager } from '../TransferManager';
 import { useChatDrafts } from './useChatDrafts';
@@ -327,7 +330,10 @@ export function useChatComposer({
         else if (replyingTo.type === 'video') replyText = 'Video';
         else if (replyingTo.type === 'audio') replyText = 'Voice Message';
       }
-      replyContext = { id: replyingTo.id, username: replyingTo.username, text: replyText, type, url: replyingTo.url, duration: replyingTo.duration, isDeleted: replyingTo.isDeleted, deletedBy: replyingTo.deletedBy };
+      const resolvedReplyDuration = replyingTo.duration ||
+        (replyingTo.id ? audioDurationCache.get(replyingTo.id) : undefined) ||
+        (replyingTo.url ? audioDurationCache.get(replyingTo.url) : undefined);
+      replyContext = { id: replyingTo.id, username: replyingTo.username, text: replyText, type, url: replyingTo.url, duration: resolvedReplyDuration, isDeleted: replyingTo.isDeleted, deletedBy: replyingTo.deletedBy };
     }
 
     const caption = previewCaption.trim();
@@ -346,14 +352,22 @@ export function useChatComposer({
         ? 'audio'
         : 'file';
 
+      const fileUrl = URL.createObjectURL(file);
+      let audioDuration: number | undefined = undefined;
+      if (isAudio) {
+        audioDuration = (await resolveAudioDuration(fileUrl, tempId)) || undefined;
+        if (audioDuration) setAudioDurationCache(tempId, audioDuration);
+      }
+
       const message: Message = {
         id: tempId,
         userId,
         username: userProfile?.username || '',
         type: fileType,
-        url: URL.createObjectURL(file),
+        url: fileUrl,
         originalName: file.name,
         size: file.size,
+        duration: audioDuration,
         text: i === 0 ? caption : undefined,
         timestamp: new Date().toISOString(),
         replyingTo: i === 0 ? replyContext : undefined,
@@ -364,9 +378,14 @@ export function useChatComposer({
 
       transferManager.startUpload(tempId, file, roomId, resolveApiBaseUrl(), userId, message)
         .then(uploadedFileData => {
+          if (uploadedFileData.id && audioDuration) {
+            setAudioDurationCache(uploadedFileData.id, audioDuration);
+            if (uploadedFileData.url) setAudioDurationCache(uploadedFileData.url, audioDuration);
+          }
           const finalMessage = {
             ...message,
             ...uploadedFileData,
+            duration: audioDuration,
             originalName: chooseReadableFilename(uploadedFileData.originalName, message.originalName),
             isUploading: false,
             id: uploadedFileData.id,
@@ -466,13 +485,16 @@ export function useChatComposer({
           replyText = 'Voice Message';
         }
       }
+      const resolvedReplyDuration = replyingTo.duration ||
+        (replyingTo.id ? audioDurationCache.get(replyingTo.id) : undefined) ||
+        (replyingTo.url ? audioDurationCache.get(replyingTo.url) : undefined);
       replyContext = {
         id: replyingTo.id,
         username: replyingTo.username,
         text: replyText,
         type,
         url: replyingTo.url,
-        duration: replyingTo.duration,
+        duration: resolvedReplyDuration,
         isDeleted: replyingTo.isDeleted,
         deletedBy: replyingTo.deletedBy,
       };
@@ -490,14 +512,22 @@ export function useChatComposer({
         ? 'audio'
         : 'file';
 
+      const fileUrl = URL.createObjectURL(stagedFile);
+      let audioDuration: number | undefined = undefined;
+      if (isAudio) {
+        audioDuration = (await resolveAudioDuration(fileUrl, tempId)) || undefined;
+        if (audioDuration) setAudioDurationCache(tempId, audioDuration);
+      }
+
       const message: Message = {
         id: tempId,
         userId,
         username: userProfile?.username || '',
         type: fileType,
-        url: URL.createObjectURL(stagedFile),
+        url: fileUrl,
         originalName: stagedFile.name,
         size: stagedFile.size,
+        duration: audioDuration,
         text: inputMessage,
         timestamp: new Date().toISOString(),
         replyingTo: replyContext,
@@ -508,9 +538,14 @@ export function useChatComposer({
 
       transferManager.startUpload(tempId, stagedFile, roomId, resolveApiBaseUrl(), userId, message)
         .then(uploadedFileData => {
+          if (uploadedFileData.id && audioDuration) {
+            setAudioDurationCache(uploadedFileData.id, audioDuration);
+            if (uploadedFileData.url) setAudioDurationCache(uploadedFileData.url, audioDuration);
+          }
           const finalMessage = {
             ...message,
             ...uploadedFileData,
+            duration: audioDuration,
             originalName: chooseReadableFilename(uploadedFileData.originalName, message.originalName),
             isUploading: false,
             id: uploadedFileData.id,
@@ -626,10 +661,16 @@ export function useChatComposer({
         text: replyText,
         type,
         url: replyingTo.url,
-        duration: replyingTo.duration,
+        duration: replyingTo.duration ||
+          (replyingTo.id ? audioDurationCache.get(replyingTo.id) : undefined) ||
+          (replyingTo.url ? audioDurationCache.get(replyingTo.url) : undefined),
         isDeleted: replyingTo.isDeleted,
         deletedBy: replyingTo.deletedBy,
       };
+    }
+
+    if (durationSeconds) {
+      setAudioDurationCache(tempId, durationSeconds);
     }
 
     const message: Message = {
@@ -653,6 +694,10 @@ export function useChatComposer({
 
     transferManager.startUpload(tempId, audioFile, roomId, resolveApiBaseUrl(), userId, message)
       .then(uploadedFileData => {
+        if (uploadedFileData.id && durationSeconds) {
+          setAudioDurationCache(uploadedFileData.id, durationSeconds);
+          if (uploadedFileData.url) setAudioDurationCache(uploadedFileData.url, durationSeconds);
+        }
         const finalMessage: Message = {
           ...message,
           ...uploadedFileData,

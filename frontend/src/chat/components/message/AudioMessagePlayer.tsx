@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import styled, { css } from 'styled-components';
 import type { Message } from '../../types';
-import { sanitizeMediaUrl, downloadFile, formatMediaSize } from '../../utils';
+import { sanitizeMediaUrl, downloadFile, formatMediaSize, audioDurationCache, setAudioDurationCache } from '../../utils';
 import { renderTextWithLinks } from '../../renderMessage';
 import { MessageText } from '../../ChatStyledComponents';
 import { speedBounce } from '../../styles/chat.animations';
@@ -409,10 +409,23 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
-  const [audioDuration, setAudioDuration] = useState<number>(() => msg.duration || 0);
+  const [audioDuration, setAudioDuration] = useState<number>(() => {
+    if (msg.duration && msg.duration > 0) return msg.duration;
+    if (msg.id && audioDurationCache.has(msg.id)) return audioDurationCache.get(msg.id)!;
+    if (msg.url && audioDurationCache.has(msg.url)) return audioDurationCache.get(msg.url)!;
+    return 0;
+  });
   const [playbackSpeed, setPlaybackSpeed] = useState<1 | 1.5 | 2>(1);
   const [isSpeedBouncing, setIsSpeedBouncing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (msg.duration && msg.duration > 0) {
+      setAudioDuration(msg.duration);
+      if (msg.id) setAudioDurationCache(msg.id, msg.duration);
+      if (msg.url) setAudioDurationCache(msg.url, msg.duration);
+    }
+  }, [msg.id, msg.url, msg.duration]);
 
   // Fallback / Precomputed waveform bars
   const waveformBars = useMemo(() => {
@@ -443,6 +456,8 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
     }
     if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
       setAudioDuration(audio.duration);
+      if (msg.id) setAudioDurationCache(msg.id, audio.duration);
+      if (msg.url) setAudioDurationCache(msg.url, audio.duration);
       if (!isPlaying && audio.currentTime !== 0) {
         audio.currentTime = 0;
         setCurrentTime(0);
@@ -453,6 +468,8 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
         audio.removeEventListener('timeupdate', onSeekEnd);
         if (audio.duration && isFinite(audio.duration)) {
           setAudioDuration(audio.duration);
+          if (msg.id) setAudioDurationCache(msg.id, audio.duration);
+          if (msg.url) setAudioDurationCache(msg.url, audio.duration);
         }
         audio.currentTime = 0;
         setCurrentTime(0);
@@ -461,6 +478,8 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
       audio.currentTime = 1e101;
     } else if (msg.duration && msg.duration > 0) {
       setAudioDuration(msg.duration);
+      if (msg.id) setAudioDurationCache(msg.id, msg.duration);
+      if (msg.url) setAudioDurationCache(msg.url, msg.duration);
       if (!isPlaying && audio.currentTime !== 0) {
         audio.currentTime = 0;
         setCurrentTime(0);

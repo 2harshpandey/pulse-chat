@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Message } from '../../types';
-import { resolveReplyTargetId } from '../../utils';
+import { resolveReplyTargetId, resolveAudioDuration, audioDurationCache, setAudioDurationCache, subscribeAudioDuration } from '../../utils';
 import { quoteLog } from '../../constants';
 import { QuotedMessageContainer, QuotedMediaThumb } from '../../ChatStyledComponents';
 import { formatAudioDuration } from './AudioMessagePlayer';
@@ -29,9 +29,64 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
   const [thumbLoadError, setThumbLoadError] = React.useState(false);
   const [isLocating, setIsLocating] = React.useState(false);
 
+  const [resolvedDuration, setResolvedDuration] = React.useState<number | null>(() => {
+    if (msg.replyingTo?.duration && msg.replyingTo.duration > 0) {
+      return msg.replyingTo.duration;
+    }
+    const targetId = msg.replyingTo?.id;
+    const targetUrl = msg.replyingTo?.url;
+    if (targetId && audioDurationCache.has(targetId)) return audioDurationCache.get(targetId)!;
+    if (targetUrl && audioDurationCache.has(targetUrl)) return audioDurationCache.get(targetUrl)!;
+    return null;
+  });
+
   React.useEffect(() => {
     setThumbLoadError(false);
   }, [quotedPreviewThumbUrl]);
+
+  React.useEffect(() => {
+    if (msg.replyingTo?.type !== 'audio') {
+      setResolvedDuration(null);
+      return;
+    }
+
+    const targetId = msg.replyingTo.id;
+    const targetUrl = msg.replyingTo.url;
+
+    // 1. If replyingTo already had duration, use and cache it
+    if (msg.replyingTo.duration && msg.replyingTo.duration > 0) {
+      setResolvedDuration(msg.replyingTo.duration);
+      if (targetId) setAudioDurationCache(targetId, msg.replyingTo.duration);
+      if (targetUrl) setAudioDurationCache(targetUrl, msg.replyingTo.duration);
+    } else {
+      const cached = (targetId && audioDurationCache.get(targetId)) || (targetUrl && audioDurationCache.get(targetUrl));
+      if (cached) {
+        setResolvedDuration(cached);
+      }
+    }
+
+    // 2. Subscribe to reactive duration changes
+    const unsubscribe = subscribeAudioDuration((key, dur) => {
+      if ((targetId && key === targetId) || (targetUrl && key === targetUrl)) {
+        setResolvedDuration(dur);
+      }
+    });
+
+    // 3. If unresolved and we have targetUrl or targetId, trigger resolution
+    let active = true;
+    if (targetUrl || targetId) {
+      resolveAudioDuration(targetUrl, targetId).then((dur) => {
+        if (active && dur) {
+          setResolvedDuration(dur);
+        }
+      });
+    }
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [msg.replyingTo?.id, msg.replyingTo?.url, msg.replyingTo?.type, msg.replyingTo?.duration]);
 
   if (!msg.replyingTo) return null;
 
@@ -94,7 +149,7 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
                   msg.replyingTo.type === 'audio' ? 'Voice Message' :
                   msg.replyingTo.type === 'file' ? 'File' : ''))}
           </span>
-          {!msg.replyingTo.isDeleted && msg.replyingTo.type === 'audio' && Boolean(msg.replyingTo.duration && msg.replyingTo.duration > 0) && (
+          {!msg.replyingTo.isDeleted && msg.replyingTo.type === 'audio' && Boolean(resolvedDuration && resolvedDuration > 0) && (
             <span
               data-testid="quoted-audio-duration-badge"
               style={{
@@ -122,7 +177,7 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
               <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor">
                 <polygon points="5 3 19 12 5 21 5 3" />
               </svg>
-              {formatAudioDuration(msg.replyingTo.duration!)}
+              {formatAudioDuration(resolvedDuration!)}
             </span>
           )}
         </div>

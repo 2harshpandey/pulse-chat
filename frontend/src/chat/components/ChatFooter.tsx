@@ -2,7 +2,7 @@ import React from 'react';
 import EmojiPicker, { EmojiClickData, EmojiStyle, Theme } from 'emoji-picker-react';
 import type { Message, Gif } from '../types';
 import { MAX_MESSAGE_LENGTH, quoteLog } from '../constants';
-import { isGiphyUrl, resolveReplyTargetId } from '../utils';
+import { isGiphyUrl, resolveReplyTargetId, audioDurationCache, setAudioDurationCache, subscribeAudioDuration, resolveAudioDuration } from '../utils';
 import { CANDIDATE_URL_RE, renderTextWithLinks } from '../renderMessage';
 import { FilmIcon, FileIcon } from '../TypingIndicator';
 import {
@@ -173,6 +173,56 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
   isDark,
 }) => {
   const recorder = useVoiceRecorder();
+
+  const [replyAudioDuration, setReplyAudioDuration] = React.useState<number | null>(() => {
+    if (replyingTo?.type === 'audio') {
+      if (replyingTo.duration && replyingTo.duration > 0) return replyingTo.duration;
+      if (replyingTo.id && audioDurationCache.has(replyingTo.id)) return audioDurationCache.get(replyingTo.id)!;
+      if (replyingTo.url && audioDurationCache.has(replyingTo.url)) return audioDurationCache.get(replyingTo.url)!;
+    }
+    return null;
+  });
+
+  React.useEffect(() => {
+    if (replyingTo?.type !== 'audio') {
+      setReplyAudioDuration(null);
+      return;
+    }
+
+    const targetId = replyingTo.id;
+    const targetUrl = replyingTo.url;
+
+    if (replyingTo.duration && replyingTo.duration > 0) {
+      setReplyAudioDuration(replyingTo.duration);
+      if (targetId) setAudioDurationCache(targetId, replyingTo.duration);
+      if (targetUrl) setAudioDurationCache(targetUrl, replyingTo.duration);
+    } else {
+      const cached = (targetId && audioDurationCache.get(targetId)) || (targetUrl && audioDurationCache.get(targetUrl));
+      if (cached) {
+        setReplyAudioDuration(cached);
+      }
+    }
+
+    const unsubscribe = subscribeAudioDuration((key, dur) => {
+      if ((targetId && key === targetId) || (targetUrl && key === targetUrl)) {
+        setReplyAudioDuration(dur);
+      }
+    });
+
+    let active = true;
+    if (targetUrl || targetId) {
+      resolveAudioDuration(targetUrl, targetId).then((dur) => {
+        if (active && dur) {
+          setReplyAudioDuration(dur);
+        }
+      });
+    }
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [replyingTo?.id, replyingTo?.url, replyingTo?.type, replyingTo?.duration]);
 
   // Forward voice recorder errors to the unified bottom status toast
   React.useEffect(() => {
@@ -364,7 +414,7 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
                       return (
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                           <span>{replyingTo.text || 'Voice Message'}</span>
-                          {Boolean(replyingTo.duration && replyingTo.duration > 0) && (
+                          {Boolean(replyAudioDuration && replyAudioDuration > 0) && (
                             <span style={{
                               display: 'inline-flex',
                               alignItems: 'center',
@@ -379,7 +429,7 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
                               <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor">
                                 <polygon points="5 3 19 12 5 21 5 3" />
                               </svg>
-                              {formatAudioDuration(replyingTo.duration!)}
+                              {formatAudioDuration(replyAudioDuration!)}
                             </span>
                           )}
                         </span>

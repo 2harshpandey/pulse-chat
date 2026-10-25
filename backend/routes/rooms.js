@@ -126,6 +126,15 @@ router.get('/:id/meta', apiLimiter, async (req, res) => {
     if (id === 'global') {
       return res.json({ isPrivate: false, requiresPassword: false, name: 'Global Chat' });
     }
+    if (id === 'me') {
+      return res.json({
+        id: 'me',
+        isPrivate: true,
+        requiresPassword: !!process.env.CLIENT_PASSWORD,
+        name: 'Private Room',
+        description: 'Direct private chat room'
+      });
+    }
     const room = await Room.findOne({ $or: [{ id }, { alias: id }] });
     if (!room) return res.status(404).json({ error: 'Room not found.' });
     if (room.isPrivate && id !== room.id) return res.status(404).json({ error: 'Room not found.' });
@@ -147,6 +156,15 @@ router.post('/verify-join', checkPasswordRateLimit, async (req, res) => {
   if (!roomId) return res.status(400).json({ error: 'Room ID is required.' });
   
   if (roomId === 'global') {
+    return res.json({ valid: true });
+  }
+
+  if (roomId === 'me') {
+    if (process.env.CLIENT_PASSWORD && password !== process.env.CLIENT_PASSWORD) {
+      recordFailedPasswordAttempt(req.passwordRateLimitKey);
+      return res.status(401).json({ error: 'Incorrect password.' });
+    }
+    resetPasswordAttempts(req.passwordRateLimitKey);
     return res.json({ valid: true });
   }
 

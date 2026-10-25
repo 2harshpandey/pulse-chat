@@ -260,7 +260,14 @@ export const useRoomsController = () => {
     e.preventDefault();
     setJoinModalError('');
 
-    if (!joinRoomId.trim()) {
+    let targetRoom = joinRoomId.trim();
+    if (targetRoom.includes('/room/')) {
+      targetRoom = targetRoom.split('/room/').pop()?.split('?')[0]?.split('#')[0] || targetRoom;
+    } else if (targetRoom.endsWith('/me') || targetRoom === 'me' || targetRoom === '/me') {
+      targetRoom = 'me';
+    }
+
+    if (!targetRoom) {
       setJoinModalError('Room ID is required.');
       return;
     }
@@ -274,7 +281,7 @@ export const useRoomsController = () => {
       const res = await fetch(`${apiBase}/api/rooms/verify-join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId: joinRoomId.trim(), password: joinPasswordInput })
+        body: JSON.stringify({ roomId: targetRoom, password: joinPasswordInput })
       });
       const data = await res.json();
 
@@ -293,7 +300,8 @@ export const useRoomsController = () => {
     localStorage.setItem('pulseUsername', joinUsername.trim());
     setIsJoinModalOpen(false);
     saveStateBeforeNavigating();
-    navigate(`/room/${joinRoomId.trim()}`, {
+    const destination = targetRoom === 'me' ? '/me' : `/room/${targetRoom}`;
+    navigate(destination, {
       state: {
         autoJoin: true,
         username: joinUsername.trim(),
