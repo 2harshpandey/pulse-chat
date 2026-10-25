@@ -18,6 +18,8 @@ const messageSchema = new mongoose.Schema({
   url: { type: String },
   originalName: { type: String },
   size: { type: Number },
+  duration: { type: Number },
+  waveform: { type: [Number] },
   isDeleted: { type: Boolean, default: false },
   deletedBy: { type: String, default: null },
   vanished: { type: Boolean, default: false },

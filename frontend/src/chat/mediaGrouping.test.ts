@@ -48,6 +48,12 @@ describe('Media grouping logic (WhatsApp / Telegram style)', () => {
         )
       ).toBe(false);
     });
+
+    it('rejects audio messages and voice recordings so they never group into album grids', () => {
+      expect(isMediaMessage(createMsg('1', 'user1', 'audio', 0, { url: 'https://example.com/audio.webm' }))).toBe(false);
+      expect(isMediaMessage(createMsg('2', 'user1', 'file', 0, { originalName: 'voice-message-123.webm', url: 'https://example.com/voice.webm' }))).toBe(false);
+      expect(isMediaMessage(createMsg('3', 'user1', 'file', 0, { originalName: 'track.mp3', url: 'https://example.com/track.mp3' }))).toBe(false);
+    });
   });
 
   describe('groupMessages', () => {

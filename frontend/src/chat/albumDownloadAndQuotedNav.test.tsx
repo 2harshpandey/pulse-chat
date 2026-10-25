@@ -273,6 +273,22 @@ describe('Album Download Manager and Quoted Message Locating', () => {
       expect(toast.textContent).toBe('');
     });
 
+    it('displays error message in status toast when error occurs', () => {
+      const ErrorToastComponent = ({ errorText }: { errorText: string }) => {
+        const isVisible = Boolean(errorText);
+        return (
+          <div data-testid="album-download-toast" data-is-error="true" style={{ opacity: isVisible ? 1 : 0 }}>
+            <span>{errorText}</span>
+          </div>
+        );
+      };
+
+      render(<ErrorToastComponent errorText="No microphone found on this device." />);
+      const toast = screen.getByTestId('album-download-toast');
+      expect(toast.style.opacity).toBe('1');
+      expect(screen.getByText('No microphone found on this device.')).not.toBeNull();
+    });
+
     it('renders cancel button and triggers cancel callback during active download', () => {
       const onCancelMock = vi.fn();
       const CancelToastTestComponent = ({ isDownloading }: { isDownloading: boolean }) => (

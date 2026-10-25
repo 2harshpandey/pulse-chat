@@ -3,7 +3,7 @@
 > **A production-grade, real-time, scalable web messaging application engineered for high-fidelity conversations, dynamic multi-room routing, rich media exchange, secure moderation, and a premium responsive user experience.**
 
 [![Live Site](https://img.shields.io/badge/Live-pulsechat.tech-2563eb?style=for-the-badge)](https://pulsechat.tech)
-[![Version](https://img.shields.io/badge/Version-v2.1.0-f59e0b?style=for-the-badge)](#overview)
+[![Version](https://img.shields.io/badge/Version-v2.2.0-f59e0b?style=for-the-badge)](#overview)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 [![Frontend](https://img.shields.io/badge/Frontend-React%2018%20%2B%20TypeScript-61dafb?style=for-the-badge)](#technology-stack)
 [![Backend](https://img.shields.io/badge/Backend-Node.js%20%2B%20Express-111827?style=for-the-badge)](#technology-stack)
@@ -128,10 +128,11 @@ The media layer supports rich file exchange while applying strict safety and per
 
 ### Supported media workflows
 
-- Images
-- Videos
-- GIFs
-- Generic files
+- Images (JPG, PNG, WebP, GIF, SVG)
+- Videos (MP4, WebM, MOV)
+- Voice Messages & Audio Files (MP3, WAV, OGG, M4A, AAC, OPUS, FLAC, WEBA, WMA)
+- GIFs (integrated Giphy search & custom URLs)
+- Generic documents and file attachments
 - Multi-file upload batches
 - Captioned upload sends
 
@@ -176,6 +177,19 @@ Pulse Chat includes a purpose-built video playback interface with:
 - Auto-hiding controls.
 - **Seamless Playback Position Preservation**: Captures video timestamp during background stream-to-blob transitions, eliminating mid-play rewind glitches.
 - Automatic off-screen pause when scrolled out of view unless Picture-in-Picture is active.
+
+### Voice messaging & audio player
+
+Pulse Chat includes a built-in voice recorder and audio playback engine designed for seamless audio messaging:
+
+- **One-Tap Voice Recording**: Interactive microphone control in the chat footer with live recording timer, real-time animated waveform feedback, and instant cancel or send workflows.
+- **Universal Audio Rendering**: Native voice recordings and uploaded audio tracks across all major formats (`.mp3`, `.wav`, `.ogg`, `.m4a`, `.aac`, `.opus`, `.flac`, `.weba`, `.wma`, etc.) automatically render as rich, interactive audio bubbles.
+- **Interactive Deterministic Waveforms**: Dynamic 36-bar acoustic waveform visualization with hover and drag scrubbing, precise click-to-seek navigation, and played/unplayed color differentiation across light and dark modes.
+- **Playback Speed Toggle**: Quick-cycle speed controls (`1x` → `1.5x` → `2x`) for fast voice note consumption.
+- **Global Audio Playback Coordinator**: Auto-pauses previous audio streams whenever another audio or video player starts playing to prevent overlapping audio.
+- **Duration & Progress Display**: Crisp mm:ss elapsed and total duration readouts.
+- **Direct Download Affordance**: One-click download button to save audio files locally.
+- **Keyboard & Accessibility Support**: Spacebar toggle, arrow key seeking, and ARIA attributes for screen readers.
 
 ### Download and caching controls
 

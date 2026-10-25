@@ -147,15 +147,15 @@ export const CopiedToast = styled.div<{ $visible: boolean }>`
   }
 `;
 
-export const AlbumDownloadToast = styled.div<{ $visible: boolean }>`
+export const AlbumDownloadToast = styled.div<{ $visible: boolean; $isError?: boolean }>`
   position: absolute;
   bottom: 90px;
   left: 50%;
   transform: translateX(-50%) translateY(${p => p.$visible ? '0' : '16px'}) scale(${p => p.$visible ? 1 : 0.94});
   opacity: ${p => p.$visible ? 1 : 0};
   pointer-events: ${p => p.$visible ? 'auto' : 'none'};
-  background: rgba(15, 23, 42, 0.92);
-  color: #f1f5f9;
+  background: ${p => p.$isError ? 'rgba(30, 15, 20, 0.94)' : 'rgba(15, 23, 42, 0.92)'};
+  color: ${p => p.$isError ? '#fecaca' : '#f1f5f9'};
   padding: 10px 22px;
   border-radius: 30px;
   font-size: 0.88rem;
@@ -164,18 +164,30 @@ export const AlbumDownloadToast = styled.div<{ $visible: boolean }>`
   display: flex;
   align-items: center;
   gap: 10px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(56, 189, 248, 0.18);
+  box-shadow: ${p => p.$isError 
+    ? '0 10px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(239, 68, 68, 0.35)' 
+    : '0 10px 30px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(56, 189, 248, 0.18)'};
   transition: all 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
   z-index: 10002;
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(56, 189, 248, 0.25);
+  border: 1px solid ${p => p.$isError ? 'rgba(239, 68, 68, 0.45)' : 'rgba(56, 189, 248, 0.25)'};
   white-space: nowrap;
+
+  [data-theme='light'] & {
+    background: ${p => p.$isError ? 'rgba(254, 242, 242, 0.96)' : 'rgba(255, 255, 255, 0.95)'};
+    color: ${p => p.$isError ? '#991b1b' : '#0f172a'};
+    border: 1px solid ${p => p.$isError ? 'rgba(239, 68, 68, 0.5)' : '#cbd5e1'};
+    box-shadow: ${p => p.$isError
+      ? '0 10px 25px rgba(239, 68, 68, 0.2), 0 0 0 1px rgba(239, 68, 68, 0.3)'
+      : '0 10px 25px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.05)'};
+  }
 
   svg {
     width: 17px;
     height: 17px;
-    color: #38bdf8;
+    color: ${p => p.$isError ? '#ef4444' : '#38bdf8'};
+    stroke: ${p => p.$isError ? '#ef4444' : '#38bdf8'};
     flex-shrink: 0;
   }
 

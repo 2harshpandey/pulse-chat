@@ -367,6 +367,22 @@ const handleDeleteForEveryone = async ({ ws, parsedMessage, wss, broadcastToAdmi
     const originalMessage = await Message.findOne({ id: messageId }).lean();
     if (!originalMessage) return;
 
+    // Idempotency guard: ignore duplicate delete requests for already-deleted messages
+    if (originalMessage.isDeleted) {
+      logger.info(`Message ${messageId} is already deleted for everyone. Skipping.`);
+      return;
+    }
+
+    const existingDeleteEvent = await MessageEvent.findOne({
+      roomId,
+      type: { $in: ['delete_everyone', 'delete'] },
+      $or: [{ messageId }, { 'message.id': messageId }]
+    }).lean();
+    if (existingDeleteEvent) {
+      logger.info(`Delete event for message ${messageId} already exists in MessageEvent. Skipping duplicate.`);
+      return;
+    }
+
     const updatedMessage = await Message.findOneAndUpdate(
       { id: messageId },
       {
@@ -492,7 +508,7 @@ const handleNewMessage = async ({ ws, parsedMessage, wss, broadcastToAdmins, _br
     }
   }
 
-  if (sanitisedMessage.type === 'video' || sanitisedMessage.type === 'image' || sanitisedMessage.type === 'file') {
+  if (sanitisedMessage.type === 'video' || sanitisedMessage.type === 'image' || sanitisedMessage.type === 'file' || sanitisedMessage.type === 'audio') {
     logger.info(`[DIAG] Media message received: type=${sanitisedMessage.type} id=${sanitisedMessage.id} url=${sanitisedMessage.url ? sanitisedMessage.url.substring(0, 80) : 'MISSING'}`);
   }
 

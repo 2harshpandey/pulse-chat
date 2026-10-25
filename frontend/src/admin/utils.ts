@@ -55,10 +55,13 @@ export const isPhotoLog = (log: any): boolean => {
 
 export const isVideoLog = (log: any): boolean => {
   if (!log || log.type !== 'create') return false;
+  if (log.message?.type === 'audio') return false;
+  const originalName = log.message?.originalName || '';
+  if (/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i.test(originalName)) return false;
+  if (originalName.toLowerCase().includes('voice')) return false;
   const msgType = log.message?.type;
   const url = log.message?.url || '';
   const mime = log.message?.mimeType || '';
-  const originalName = log.message?.originalName || '';
   const text = log.message?.text || '';
   return (
     msgType === 'video' ||
@@ -69,8 +72,19 @@ export const isVideoLog = (log: any): boolean => {
   );
 };
 
+export const isAudioLog = (log: any): boolean => {
+  if (!log || log.type !== 'create') return false;
+  if (log.message?.type === 'audio') return true;
+  const originalName = log.message?.originalName || '';
+  if (/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i.test(originalName)) return true;
+  if (originalName.toLowerCase().includes('voice')) return true;
+  const mime = log.message?.mimeType || '';
+  if (mime.startsWith('audio/')) return true;
+  return false;
+};
+
 export const isDocumentLog = (log: any): boolean => {
-  if (!log || log.type !== 'create' || isGifLog(log) || isPhotoLog(log) || isVideoLog(log)) return false;
+  if (!log || log.type !== 'create' || isGifLog(log) || isPhotoLog(log) || isVideoLog(log) || isAudioLog(log)) return false;
   const msgType = log.message?.type;
   const url = log.message?.url || '';
   const mime = log.message?.mimeType || '';

@@ -183,12 +183,23 @@ module.exports = (wss, broadcasts) => {
         ];
       } else if (typeLower === 'video') {
         query.type = 'create';
+        query['message.type'] = { $ne: 'audio' };
+        query['message.originalName'] = { $not: /(voice-message|\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$)/i };
         query.$or = [
           { 'message.type': 'video' },
           { 'message.mimeType': /^video\//i },
           { 'message.url': /\.(mp4|webm|mov|mkv|avi)($|\?)/i },
           { 'message.originalName': /\.(mp4|webm|mov|mkv|avi)$/i },
           { 'message.text': /\[.*?\.(mp4|webm|mov|mkv|avi)\]/i },
+        ];
+      } else if (typeLower === 'audio' || typeLower === 'voice') {
+        query.type = 'create';
+        query.$or = [
+          { 'message.type': 'audio' },
+          { 'message.mimeType': /^audio\//i },
+          { 'message.url': /\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)($|\?)/i },
+          { 'message.originalName': /\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i },
+          { 'message.originalName': /voice-message/i },
         ];
       } else if (typeLower === 'gif') {
         query.type = 'create';
@@ -358,11 +369,22 @@ module.exports = (wss, broadcasts) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 200);
     const events = await MessageEvent.find(query)
       .sort({ createdAt: -1 })
-      .limit(limit + 1)
+      .limit(limit * 2 + 1)
       .lean();
 
-    const hasMore = events.length > limit;
-    const batch = hasMore ? events.slice(0, limit) : events;
+    // Deduplicate any duplicate delete_everyone events for the same messageId
+    const seenDeleteMsgKeys = new Set();
+    const deduplicatedEvents = events.filter(e => {
+      if (e.type === 'delete_everyone' || e.type === 'delete') {
+        const key = `${e.roomId || roomId}_${e.messageId || e.message?.id}`;
+        if (seenDeleteMsgKeys.has(key)) return false;
+        seenDeleteMsgKeys.add(key);
+      }
+      return true;
+    });
+
+    const hasMore = deduplicatedEvents.length > limit;
+    const batch = hasMore ? deduplicatedEvents.slice(0, limit) : deduplicatedEvents;
     const oldestCreatedAt = batch.length > 0 ? batch[batch.length - 1].createdAt : null;
 
     res.json({

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import type { ChatController } from '../hooks/useChatController';
 import { compressImage } from '../hooks/useChatMedia';
 import { PinnedMessageBanner } from './PinnedMessageBanner';
@@ -55,11 +55,31 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
 
   const albumDownload = useAlbumDownload();
 
+  const [statusErrorToast, setStatusErrorToast] = useState<string | null>(null);
+  const statusErrorToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const triggerStatusErrorToast = useCallback((msg: string) => {
+    if (statusErrorToastTimerRef.current) clearTimeout(statusErrorToastTimerRef.current);
+    setStatusErrorToast(msg);
+    statusErrorToastTimerRef.current = setTimeout(() => {
+      setStatusErrorToast(null);
+      statusErrorToastTimerRef.current = null;
+    }, 4500);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (statusErrorToastTimerRef.current) clearTimeout(statusErrorToastTimerRef.current);
+    };
+  }, []);
+
   const isStatusToastVisible = Boolean(
-    nav.isLocatingMessage || msgs.albumDownloadToast || albumDownload.isDownloading
+    statusErrorToast || nav.isLocatingMessage || msgs.albumDownloadToast || albumDownload.isDownloading
   );
 
-  const statusToastText = nav.isLocatingMessage
+  const statusToastText = statusErrorToast
+    ? statusErrorToast
+    : nav.isLocatingMessage
     ? 'Locating quoted message...'
     : msgs.albumDownloadToast
     ? msgs.albumDownloadToast
@@ -191,10 +211,25 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
 
       <AlbumDownloadToast
         $visible={isStatusToastVisible}
+        $isError={Boolean(statusErrorToast)}
         data-testid="album-download-toast"
         aria-live="polite"
       >
-        {nav.isLocatingMessage || albumDownload.isDownloading ? (
+        {statusErrorToast ? (
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#ef4444"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ width: '18px', height: '18px' }}
+          >
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+        ) : nav.isLocatingMessage || albumDownload.isDownloading ? (
           <svg
             viewBox="0 0 24 24"
             fill="none"
@@ -222,7 +257,7 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
           </svg>
         )}
         <span>{statusToastText}</span>
-        {albumDownload.isDownloading && !nav.isLocatingMessage && !msgs.albumDownloadToast && (
+        {albumDownload.isDownloading && !statusErrorToast && !nav.isLocatingMessage && !msgs.albumDownloadToast && (
           <AlbumDownloadCancelButton
             type="button"
             data-testid="cancel-album-download-btn"
@@ -263,6 +298,8 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
         hasSelectedMedia={selectedMediaMessages.length > 0}
         selectedMediaCount={selectedMediaMessages.length}
         onDownloadSelectedMedia={handleDownloadSelectedMedia}
+        onSendVoiceNote={composer.handleSendVoiceNote}
+        onErrorToast={triggerStatusErrorToast}
         onCancelSelectMode={selection.handleCancelSelectMode}
         onStartEdit={msgs.handleStartEdit}
         onCopyMessage={msgs.handleCopy}

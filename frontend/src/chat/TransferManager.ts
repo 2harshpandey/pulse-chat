@@ -35,6 +35,7 @@ export interface TransferInfo {
   chunks?: BlobPart[];
   receivedBytes?: number;
   totalBytes?: number;
+  messageObj?: any;
 }
 
 class TransferManager {
@@ -91,6 +92,7 @@ class TransferManager {
       progress: startProgress || 0,
       file,
       abortController,
+      messageObj,
     };
     this.transfers.set(messageId, info);
     this.notify();
@@ -128,6 +130,12 @@ class TransferManager {
           formData.append('userId', userId);
           formData.append('roomId', roomId);
           formData.append('text', messageObj?.text || '');
+          if (messageObj?.duration !== undefined) {
+            formData.append('duration', messageObj.duration.toString());
+          }
+          if (messageObj?.waveform) {
+            formData.append('waveform', JSON.stringify(messageObj.waveform));
+          }
 
           // Retry each chunk up to 3 times on transient network errors.
           // This handles brief mobile signal dips without failing the whole upload.
@@ -221,7 +229,7 @@ class TransferManager {
   resumeUpload(id: string, roomId: string, apiBase: string, userId: string): Promise<any> | null {
     const info = this.transfers.get(id);
     if (!info || info.type !== 'upload' || info.state !== 'paused' || !info.file) return null;
-    return this.startUpload(id, info.file, roomId, apiBase, userId);
+    return this.startUpload(id, info.file, roomId, apiBase, userId, info.messageObj);
   }
 
   cancelTransfer(id: string) {

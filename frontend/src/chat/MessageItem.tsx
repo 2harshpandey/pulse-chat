@@ -207,7 +207,7 @@ export const MessageItem = React.memo(({
 
   const messageTime = new Date(msg.timestamp).getTime();
   const now = new Date().getTime();
-  const canEdit = msg.userId === currentUserId && (now - messageTime) < 15 * 60 * 1000 && msg.text;
+  const canEdit = msg.userId === currentUserId && (now - messageTime) < 15 * 60 * 1000 && msg.text && !msg.isDeleted;
   const isDeleted = msg.isDeleted;
   const handleVideoFullscreenEnterForMessage = useCallback(() => {
     onVideoFullscreenEnter?.(msg.id);

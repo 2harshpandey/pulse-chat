@@ -325,6 +325,7 @@ export function useChatComposer({
         if (isGiphyUrl(replyingTo.url)) replyText = 'GIF';
         else if (replyingTo.type === 'image') replyText = 'Image';
         else if (replyingTo.type === 'video') replyText = 'Video';
+        else if (replyingTo.type === 'audio') replyText = 'Voice Message';
       }
       replyContext = { id: replyingTo.id, username: replyingTo.username, text: replyText, type, url: replyingTo.url, isDeleted: replyingTo.isDeleted, deletedBy: replyingTo.deletedBy };
     }
@@ -334,7 +335,16 @@ export function useChatComposer({
     for (let i = 0; i < stagedFiles.length; i++) {
       const file = stagedFiles[i];
       const tempId = Date.now().toString() + '_' + i;
-      const fileType: 'image' | 'video' | 'file' = file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'file';
+      const isAudio = file.type.startsWith('audio/') || /\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i.test(file.name);
+      const isImage = file.type.startsWith('image/') || /\.(jpeg|jpg|png|gif|svg|webp)$/i.test(file.name);
+      const isVideo = !isAudio && (file.type.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(file.name));
+      const fileType: 'image' | 'video' | 'file' | 'audio' = isImage
+        ? 'image'
+        : isVideo
+        ? 'video'
+        : isAudio
+        ? 'audio'
+        : 'file';
 
       const message: Message = {
         id: tempId,
@@ -452,6 +462,8 @@ export function useChatComposer({
           replyText = 'Image';
         } else if (replyingTo.type === 'video') {
           replyText = 'Video';
+        } else if (replyingTo.type === 'audio') {
+          replyText = 'Voice Message';
         }
       }
       replyContext = {
@@ -466,11 +478,22 @@ export function useChatComposer({
     }
 
     if (stagedFile) {
+      const isAudio = stagedFile.type.startsWith('audio/') || /\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i.test(stagedFile.name);
+      const isImage = stagedFile.type.startsWith('image/') || /\.(jpeg|jpg|png|gif|svg|webp)$/i.test(stagedFile.name);
+      const isVideo = !isAudio && (stagedFile.type.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(stagedFile.name));
+      const fileType: 'image' | 'video' | 'file' | 'audio' = isImage
+        ? 'image'
+        : isVideo
+        ? 'video'
+        : isAudio
+        ? 'audio'
+        : 'file';
+
       const message: Message = {
         id: tempId,
         userId,
         username: userProfile?.username || '',
-        type: stagedFile.type.startsWith('image/') ? 'image' : stagedFile.type.startsWith('video/') ? 'video' : 'file',
+        type: fileType,
         url: URL.createObjectURL(stagedFile),
         originalName: stagedFile.name,
         size: stagedFile.size,
@@ -560,6 +583,119 @@ export function useChatComposer({
       resetInput();
       if (hadReply) forceScrollToBottomAsync();
     }
+  };
+
+  // Send recorded voice note
+  const handleSendVoiceNote = async (audioFile: File, durationSeconds: number, waveform?: number[]) => {
+    if (!ws.current || ws.current.readyState !== WebSocket.OPEN || !userProfile) return;
+    if (Date.now() - lastPingAtRef.current > 25000) return;
+
+    if (hasMoreNewerMessagesRef.current) {
+      await jumpToLatestMessages();
+    }
+
+    if (activeSearchQuery || chatSearchQuery || isSearchActive) {
+      resetSearch();
+    }
+
+    const tempId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    let replyContext: ReplyContext | undefined = undefined;
+    if (replyingTo) {
+      const { type } = replyingTo;
+      if (type === 'system_notification') {
+        setReplyingTo(null);
+        return;
+      }
+
+      let replyText = replyingTo.text || 'Message';
+      if (!replyingTo.text) {
+        if (isGiphyUrl(replyingTo.url)) {
+          replyText = 'GIF';
+        } else if (replyingTo.type === 'image') {
+          replyText = 'Image';
+        } else if (replyingTo.type === 'video') {
+          replyText = 'Video';
+        } else if (replyingTo.type === 'audio') {
+          replyText = 'Voice Message';
+        }
+      }
+      replyContext = {
+        id: replyingTo.id,
+        username: replyingTo.username,
+        text: replyText,
+        type,
+        url: replyingTo.url,
+        isDeleted: replyingTo.isDeleted,
+        deletedBy: replyingTo.deletedBy,
+      };
+    }
+
+    const message: Message = {
+      id: tempId,
+      userId,
+      username: userProfile?.username || '',
+      type: 'audio',
+      url: URL.createObjectURL(audioFile),
+      originalName: audioFile.name,
+      size: audioFile.size,
+      duration: durationSeconds,
+      waveform,
+      text: '',
+      timestamp: new Date().toISOString(),
+      replyingTo: replyContext,
+      isUploading: true,
+    };
+
+    appendMessageToWindow(message);
+    forceScrollToBottomAsync(true);
+
+    transferManager.startUpload(tempId, audioFile, roomId, resolveApiBaseUrl(), userId, message)
+      .then(uploadedFileData => {
+        const finalMessage: Message = {
+          ...message,
+          ...uploadedFileData,
+          originalName: chooseReadableFilename(uploadedFileData.originalName, message.originalName),
+          isUploading: false,
+          id: uploadedFileData.id,
+          type: 'audio',
+          duration: durationSeconds,
+          waveform: waveform || uploadedFileData.waveform,
+        };
+        setMessages(prev => prev.map(m => {
+          if (m.id === tempId) return finalMessage;
+          if (m.replyingTo && m.replyingTo.id === tempId) {
+            return {
+              ...m,
+              replyingTo: {
+                ...m.replyingTo,
+                id: finalMessage.id,
+                url: finalMessage.url || m.replyingTo.url,
+                type: 'audio',
+              }
+            };
+          }
+          return m;
+        }));
+        if (replyingTo?.id === tempId) setReplyingTo(finalMessage);
+        ws.current?.send(JSON.stringify({ ...finalMessage, clientTempId: tempId }));
+      })
+      .catch(error => {
+        if (error.message === 'Aborted') return;
+        console.error('Voice note upload failed!', error);
+        const errorText = error instanceof Error && error.message ? error.message : 'Upload failed';
+        setMessages(prev => prev.map(m => m.id === tempId ? {
+          ...message,
+          url: '',
+          isUploading: false,
+          uploadError: true,
+          originalName: sanitizeFilename(message.originalName || audioFile.name, 'file'),
+          text: errorText,
+        } : m));
+      });
+
+    const hadReply = !!replyingTo;
+    resetInput();
+    if (hadReply) forceScrollToBottomAsync();
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -748,6 +884,7 @@ export function useChatComposer({
     handleInputKeyDown,
     handlePaste,
     handleSendMessage,
+    handleSendVoiceNote,
     handleSendFromPreview,
     resetInput,
     handleClearChat,

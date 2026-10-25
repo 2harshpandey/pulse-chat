@@ -13,4 +13,5 @@ export * from './useChatEmojiPicker';
 export * from './useChatReactions';
 export * from './useChatSelection';
 export * from './useChatMessageNavigation';
+export * from './useVoiceRecorder';
 export * from './useChatController';

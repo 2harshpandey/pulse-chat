@@ -288,28 +288,32 @@ export const RoomName = styled.h3`
   }
 `;
 
-export const CopyIcon = styled.button`
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-primary);
+export const CopyIcon = styled.button<{ $copied?: boolean }>`
+  background: ${p => (p.$copied ? 'rgba(34, 197, 94, 0.18)' : 'var(--bg-elevated)')};
+  border: 1px solid ${p => (p.$copied ? 'rgba(34, 197, 94, 0.5)' : 'var(--border-secondary)')};
   border-radius: 6px;
-  color: var(--text-secondary);
-  width: 24px;
-  height: 24px;
+  color: ${p => (p.$copied ? '#22c55e' : 'var(--text-secondary)')};
+  width: 26px;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
   
   &:hover {
-    background: var(--border-primary);
-    color: var(--text-primary);
-    transform: scale(1.05);
+    background: ${p => (p.$copied ? 'rgba(34, 197, 94, 0.26)' : 'rgba(59, 130, 246, 0.18)')};
+    border-color: ${p => (p.$copied ? 'rgba(34, 197, 94, 0.7)' : 'rgba(59, 130, 246, 0.55)')};
+    color: ${p => (p.$copied ? '#22c55e' : 'var(--accent-blue)')};
+    transform: scale(1.08);
+    box-shadow: 0 2px 8px ${p => (p.$copied ? 'rgba(34, 197, 94, 0.3)' : 'rgba(59, 130, 246, 0.25)')};
   }
   
   &:active {
     transform: scale(0.95);
+    background: ${p => (p.$copied ? 'rgba(34, 197, 94, 0.35)' : 'rgba(59, 130, 246, 0.3)')};
   }
 `;
 

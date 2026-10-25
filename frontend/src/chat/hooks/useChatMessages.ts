@@ -565,6 +565,7 @@ export function useChatMessages({
 
   // Edit handlers
   const handleStartEdit = useCallback((message: Message) => {
+    if (message.isDeleted) return;
     const draft = inputMessageRef.current;
     setPriorDraftBeforeEdit(draft);
     setEditingMessageOriginalText(message.text || '');

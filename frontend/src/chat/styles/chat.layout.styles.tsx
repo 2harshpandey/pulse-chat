@@ -2,7 +2,8 @@ import styled, { css } from 'styled-components';
 import {
   fadeInScale, slideIn, subtleSlideUp, shimmerOverlay, speakerPulse, speakerWave,
   inputFocusGlow, sendPulse, staggerFadeIn, reactionPickerSlideIn,
-  quoteJumpHighlight, pulseBorderAnim, floatAnim, selectModeSlideUp
+  quoteJumpHighlight, pulseBorderAnim, floatAnim, selectModeSlideUp,
+  recordingBlink, recordingBarSlideIn, micButtonPop
 } from './chat.animations';
 
 // --- EMOJI PANEL ---
@@ -408,19 +409,23 @@ export const MessageRow = styled.div<{ $sender: string; $isSelected?: boolean; $
 export const Username = styled.div<{ $sender: 'me' | 'other' }>`
   font-size: 0.75rem;
   font-weight: 700;
-  padding: 0.2rem 0.5rem;
+  padding: 0.2rem 0.55rem;
   border-radius: 10px;
   margin-bottom: 4px;
   margin-right: ${props => props.$sender === 'me' ? '8px' : '0'};
   display: inline-block;
-  background-color: ${props => props.$sender === 'me' ? '#DBEAFE' : '#F1F5F9'};
-  color: ${props => props.$sender === 'me' ? '#1E40AF' : '#475569'};
+  background-color: ${props => props.$sender === 'me' ? '#DBEAFE' : '#E2E8F0'};
+  color: ${props => props.$sender === 'me' ? '#1E40AF' : '#1E293B'};
+  border: 1px solid ${props => props.$sender === 'me' ? 'rgba(59, 130, 246, 0.25)' : '#CBD5E1'};
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
   text-shadow: none;
   transition: none;
 
   [data-theme='dark'] & {
     background-color: ${props => props.$sender === 'me' ? 'rgba(59,130,246,0.2)' : 'var(--bg-hover)'};
     color: ${props => props.$sender === 'me' ? '#93c5fd' : 'var(--text-secondary)'};
+    border-color: ${props => props.$sender === 'me' ? 'rgba(59,130,246,0.3)' : 'var(--border-secondary)'};
+    box-shadow: none;
   }
 `;
 
@@ -879,6 +884,7 @@ export const SendButton = styled.button`
   cursor: pointer;
   transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
   display: flex; align-items: center; justify-content: center;
+  animation: ${micButtonPop} 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
   &:hover:not(:disabled) { 
     background-color: #2563EB; 
     transform: scale(1.12);
@@ -894,6 +900,175 @@ export const SendButton = styled.button`
     transform: scale(1);
     box-shadow: none;
     opacity: 0.6;
+  }
+`;
+
+export const MicButton = styled.button`
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  background-color: #3B82F6;
+  color: white;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: ${micButtonPop} 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  &:hover:not(:disabled) {
+    background-color: #2563EB;
+    transform: scale(1.12);
+    box-shadow: 0 4px 20px rgba(59, 130, 246, 0.35), 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.92);
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);
+  }
+
+  &:disabled {
+    background-color: #9ca3af;
+    cursor: not-allowed;
+    transform: scale(1);
+    box-shadow: none;
+    opacity: 0.6;
+  }
+
+  svg {
+    width: 22px;
+    height: 22px;
+  }
+`;
+
+export const RecordingBarWrapper = styled.div`
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-secondary);
+  border-radius: 24px;
+  padding: 0 12px;
+  gap: 10px;
+  animation: ${recordingBarSlideIn} 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+
+  [data-theme='light'] & {
+    background-color: #f1f5f9;
+    border-color: #cbd5e1;
+  }
+`;
+
+export const RecordingCancelBtn = styled.button`
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: rgba(239, 68, 68, 0.25);
+    color: #dc2626;
+    transform: scale(1.1);
+  }
+
+  &:active {
+    transform: scale(0.92);
+  }
+
+  svg {
+    width: 17px;
+    height: 17px;
+  }
+`;
+
+export const RecordingStatusIndicator = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+`;
+
+export const RecordingBlinkDot = styled.div<{ $isPaused?: boolean }>`
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background-color: ${p => p.$isPaused ? '#f59e0b' : '#ef4444'};
+  box-shadow: 0 0 8px ${p => p.$isPaused ? 'rgba(245, 158, 11, 0.6)' : 'rgba(239, 68, 68, 0.6)'};
+  animation: ${p => p.$isPaused ? 'none' : recordingBlink} 1.2s ease-in-out infinite;
+`;
+
+export const RecordingTimerSpan = styled.span`
+  font-size: 0.88rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  min-width: 36px;
+`;
+
+export const RecordingWaveformBarBox = styled.div`
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  gap: 2.5px;
+  overflow: hidden;
+  padding: 0 4px;
+`;
+
+export const RecordingWaveformBar = styled.div<{ $level: number; $isPaused?: boolean }>`
+  flex: 1;
+  min-width: 2px;
+  max-width: 4px;
+  height: ${p => Math.max(10, Math.round(p.$level * 100))}%;
+  border-radius: 9999px;
+  background-color: ${p => p.$isPaused ? 'rgba(148, 163, 184, 0.5)' : '#3B82F6'};
+  transition: height 0.08s ease, background-color 0.2s ease;
+
+  [data-theme='light'] & {
+    background-color: ${p => p.$isPaused ? 'rgba(100, 116, 139, 0.4)' : '#2563EB'};
+  }
+`;
+
+export const RecordingPauseResumeBtn = styled.button<{ $isPaused?: boolean }>`
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border-secondary);
+  background: var(--bg-tertiary);
+  color: ${p => p.$isPaused ? '#3B82F6' : 'var(--text-secondary)'};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: rgba(59, 130, 246, 0.15);
+    color: #3b82f6;
+    transform: scale(1.1);
+  }
+
+  &:active {
+    transform: scale(0.92);
+  }
+
+  svg {
+    width: 16px;
+    height: 16px;
   }
 `;
 

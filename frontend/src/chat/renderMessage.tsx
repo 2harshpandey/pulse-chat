@@ -13,6 +13,7 @@ import {
 } from './ChatStyledComponents';
 import { VideoPlayer } from './VideoPlayer';
 import { MediaDisplay } from './MediaDisplay';
+import { AudioMessagePlayer } from './components/message/AudioMessagePlayer';
 import { transferManager } from './TransferManager';
 import type { TransferInfo } from './TransferManager';
 
@@ -174,8 +175,15 @@ export const renderMessageContent = (
   onMediaLoad?: () => void,
   isSelectModeActive: boolean = false,
 ) => {
-  const isVideo = msg.type === 'video' || msg.url?.match(/\.(mp4|webm|mov)$/i);
-  const isImage = msg.type === 'image' || msg.url?.match(/\.(jpeg|jpg|gif|png|svg)$/i);
+  const isAudio = msg.type === 'audio' || Boolean(
+    (!msg.type || msg.type === 'file') && (
+      msg.url?.match(/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)($|\?)/i) ||
+      msg.originalName?.match(/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i) ||
+      (msg.originalName?.toLowerCase().includes('voice') && msg.url?.match(/\.(webm|ogg|mp4|m4a)($|\?)/i))
+    )
+  );
+  const isVideo = !isAudio && (msg.type === 'video' || Boolean(msg.url?.match(/\.(mp4|webm|mov)$/i)));
+  const isImage = msg.type === 'image' || Boolean(msg.url?.match(/\.(jpeg|jpg|gif|png|svg)$/i));
   const isOwnMessage = sender === 'me';
   const shouldGateMedia = Boolean(msg.url) && !msg.isUploading && !isMediaLoaded && !isOwnMessage;
   const resolvedMediaUrl = loadedMediaSrc || msg.url || '';
@@ -449,7 +457,19 @@ export const renderMessageContent = (
     );
   }
 
-  if (msg.type === 'file' || (msg.url && !isImage && !isVideo)) {
+  if (isAudio && (msg.url || msg.isUploading)) {
+    return (
+      <MediaContent>
+        <AudioMessagePlayer
+          msg={msg}
+          sender={sender}
+          isSelectModeActive={isSelectModeActive}
+        />
+      </MediaContent>
+    );
+  }
+
+  if (msg.type === 'file' || (msg.url && !isImage && !isVideo && !isAudio)) {
     return (
       <MediaContent>
         <FileAttachmentCard
@@ -521,7 +541,7 @@ export const renderMessageContent = (
   // Show a small placeholder so the message bubble is not silently invisible.
   // Cast to string to bypass TS narrowing — runtime data may have type='video'|'image'|'file' with no url.
   const msgTypeStr = msg.type as string;
-  if (msgTypeStr === 'video' || msgTypeStr === 'image' || msgTypeStr === 'file') {
+  if (msgTypeStr === 'video' || msgTypeStr === 'image' || msgTypeStr === 'file' || msgTypeStr === 'audio') {
     return (
       <MediaContent>
         <div style={{
@@ -543,6 +563,13 @@ export const renderMessageContent = (
                 <rect x="3" y="3" width="18" height="18" rx="2" />
                 <line x1="3" y1="3" x2="21" y2="21" />
               </>
+            ) : msgTypeStr === 'audio' ? (
+              <>
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                <line x1="12" y1="19" x2="12" y2="23" />
+                <line x1="8" y1="23" x2="16" y2="23" />
+              </>
             ) : (
               <>
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -550,7 +577,7 @@ export const renderMessageContent = (
               </>
             )}
           </svg>
-          <span>Media unavailable</span>
+          <span>{msgTypeStr === 'audio' ? 'Voice message unavailable' : 'Media unavailable'}</span>
         </div>
       </MediaContent>
     );

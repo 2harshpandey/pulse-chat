@@ -32,7 +32,18 @@ import {
   MessageInput,
   CharacterCounter,
   SendButton,
+  MicButton,
+  RecordingBarWrapper,
+  RecordingCancelBtn,
+  RecordingStatusIndicator,
+  RecordingBlinkDot,
+  RecordingTimerSpan,
+  RecordingWaveformBarBox,
+  RecordingWaveformBar,
+  RecordingPauseResumeBtn,
 } from '../Chat.styles';
+import { useVoiceRecorder } from '../hooks';
+import { formatAudioDuration, audioCoordinator } from './message';
 
 export interface ChatFooterProps {
   isSelectModeActive: boolean;
@@ -49,6 +60,8 @@ export interface ChatFooterProps {
   hasSelectedMedia?: boolean;
   selectedMediaCount?: number;
   onDownloadSelectedMedia?: () => void;
+  onSendVoiceNote?: (file: File, duration: number, waveform?: number[]) => void;
+  onErrorToast?: (msg: string) => void;
 
   // Regular input mode props
   editingMessageId: string | null;
@@ -116,6 +129,8 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
   hasSelectedMedia,
   selectedMediaCount,
   onDownloadSelectedMedia,
+  onSendVoiceNote,
+  onErrorToast,
   editingMessageId,
   editingMessageOriginalText,
   onCancelEdit,
@@ -157,6 +172,46 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
   onEmojiClick,
   isDark,
 }) => {
+  const recorder = useVoiceRecorder();
+
+  // Forward voice recorder errors to the unified bottom status toast
+  React.useEffect(() => {
+    if (recorder.error) {
+      onErrorToast?.(recorder.error);
+    }
+  }, [recorder.error, onErrorToast]);
+
+  // Cancel any active voice recording if select mode becomes active
+  React.useEffect(() => {
+    if (isSelectModeActive && recorder.isRecording) {
+      recorder.cancelRecording();
+    }
+  }, [isSelectModeActive, recorder]);
+
+  // Pressing Enter while recording sends the voice message
+  React.useEffect(() => {
+    if (!recorder.isRecording) return;
+    const handleRecordingKeyDown = async (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        const result = await recorder.stopRecording();
+        if (result && result.file && result.file.size > 0 && result.duration > 0) {
+          onSendVoiceNote?.(result.file, result.duration, result.waveform);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleRecordingKeyDown);
+    return () => window.removeEventListener('keydown', handleRecordingKeyDown);
+  }, [recorder, onSendVoiceNote]);
+
+  const hasSendableContent = Boolean(
+    inputMessage.trim() ||
+    stagedFile ||
+    stagedGif ||
+    stagedFiles.length > 0 ||
+    editingMessageId
+  );
+
   return (
     <Footer>
       {isSelectModeActive ? (
@@ -270,6 +325,25 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
                 <video src={replyingTo.url} style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover' }} />
               ) : (replyingTo.type === 'image' || replyingTo.type === 'video') && replyingTo.url ? (
                 <FilePreviewImage src={replyingTo.url} alt="Reply preview" />
+              ) : replyingTo.type === 'audio' ? (
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '6px',
+                  background: 'rgba(59, 130, 246, 0.15)',
+                  color: '#3b82f6',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                    <line x1="12" y1="19" x2="12" y2="23" />
+                    <line x1="8" y1="23" x2="16" y2="23" />
+                  </svg>
+                </div>
               ) : null}
               <ReplyText>
                 <p>Replying to {replyingTo.username}</p>
@@ -286,6 +360,7 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
                     if (isGiphyUrl(replyingTo.url)) return 'GIF';
                     if (replyingTo.type === 'image') return 'Image';
                     if (replyingTo.type === 'video') return 'Video';
+                    if (replyingTo.type === 'audio') return 'Voice Message';
                     return 'Message';
                   })()}
                 </span>
@@ -338,122 +413,220 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
           )}
 
           <InputContainer>
-            <div style={{ position: 'relative' }} ref={plusMenuRef}>
-              <PlusMenuButton
-                ref={plusButtonRef}
-                $isOpen={isPlusMenuOpen}
-                onPointerDown={(e) => e.preventDefault()}
-                onClick={onTogglePlusMenu}
-                disabled={!isConnected}
-                aria-label="Open actions menu"
-                title="Emoji, GIF, or File"
-              >
-                <svg viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-              </PlusMenuButton>
-
-              <PlusMenu $isVisible={isPlusMenuOpen}>
-                <PlusMenuItem
-                  ref={emojiButtonRef}
-                  onPointerDown={onEmojiPointerDown}
+            {recorder.isRecording ? (
+              <RecordingBarWrapper role="region" aria-label="Voice recording in progress">
+                <RecordingCancelBtn
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={recorder.cancelRecording}
+                  title="Cancel recording"
+                  aria-label="Cancel recording"
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
-                    <line x1="9" y1="9" x2="9.01" y2="9"></line>
-                    <line x1="15" y1="9" x2="15.01" y2="9"></line>
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                    <line x1="10" y1="11" x2="10" y2="17" />
+                    <line x1="14" y1="11" x2="14" y2="17" />
                   </svg>
-                  <span>Emoji</span>
-                </PlusMenuItem>
+                </RecordingCancelBtn>
 
-                <PlusMenuItem
-                  onPointerDown={onGifPointerDown}
-                >
-                  <FilmIcon /> <span>GIF</span>
-                </PlusMenuItem>
+                <RecordingStatusIndicator>
+                  <RecordingBlinkDot $isPaused={recorder.isPaused} />
+                  <RecordingTimerSpan>{formatAudioDuration(recorder.duration)}</RecordingTimerSpan>
+                </RecordingStatusIndicator>
 
-                <PlusMenuItem
-                  onClick={() => {
-                    onTogglePlusMenu();
-                    onNotifyNativeFilePickerOpen();
-                    fileInputRef?.current?.click();
-                  }}
-                >
-                  <FileIcon /> <span>Send File</span>
-                </PlusMenuItem>
-              </PlusMenu>
-            </div>
-
-            <InputTextWrapper>
-              {(() => {
-                CANDIDATE_URL_RE.lastIndex = 0;
-                const hasUrl = CANDIDATE_URL_RE.test(normalizedOverlayMessage);
-                CANDIDATE_URL_RE.lastIndex = 0;
-                return (
-                  <>
-                    {hasUrl && (
-                      <InputHighlightOverlay ref={inputOverlayRef} aria-hidden="true">
-                        {renderTextWithLinks(normalizedOverlayMessage, 'other')}
-                      </InputHighlightOverlay>
-                    )}
-                    <MessageInput
-                      $hasUrl={hasUrl}
-                      ref={messageInputRef}
-                      rows={1}
-                      id="chat-message-input"
-                      name="chatMessage"
-                      disabled={!isConnected}
-                      placeholder={
-                        !isConnected
-                          ? 'Connecting...'
-                          : editingMessageId
-                          ? 'Edit message...'
-                          : stagedFile || stagedGif
-                          ? 'Add a caption...'
-                          : 'Type your message...'
-                      }
-                      value={inputMessage}
-                      onChange={onInputChange}
-                      onKeyDown={onInputKeyDown}
-                      onPaste={onPaste}
-                      onScroll={onSyncInputOverlayScroll}
-                      maxLength={MAX_MESSAGE_LENGTH}
+                <RecordingWaveformBarBox aria-hidden="true">
+                  {recorder.liveLevels.map((lvl, idx) => (
+                    <RecordingWaveformBar
+                      key={idx}
+                      $level={lvl}
+                      $isPaused={recorder.isPaused}
                     />
-                  </>
-                );
-              })()}
-            </InputTextWrapper>
+                  ))}
+                </RecordingWaveformBarBox>
 
-            {inputMessage.length >= MAX_MESSAGE_LENGTH - 200 && (
-              <CharacterCounter $warning={inputMessage.length >= MAX_MESSAGE_LENGTH - 20}>
-                {MAX_MESSAGE_LENGTH - inputMessage.length}
-              </CharacterCounter>
+                <RecordingPauseResumeBtn
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  $isPaused={recorder.isPaused}
+                  onClick={recorder.isPaused ? recorder.resumeRecording : recorder.pauseRecording}
+                  title={recorder.isPaused ? 'Resume recording' : 'Pause recording'}
+                  aria-label={recorder.isPaused ? 'Resume recording' : 'Pause recording'}
+                >
+                  {recorder.isPaused ? (
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                      <polygon points="5 3 19 12 5 21 5 3" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                      <rect x="6" y="4" width="4" height="16" rx="1" />
+                      <rect x="14" y="4" width="4" height="16" rx="1" />
+                    </svg>
+                  )}
+                </RecordingPauseResumeBtn>
+              </RecordingBarWrapper>
+            ) : (
+              <>
+                <div style={{ position: 'relative' }} ref={plusMenuRef}>
+                  <PlusMenuButton
+                    ref={plusButtonRef}
+                    $isOpen={isPlusMenuOpen}
+                    onPointerDown={(e) => e.preventDefault()}
+                    onClick={onTogglePlusMenu}
+                    disabled={!isConnected}
+                    aria-label="Open actions menu"
+                    title="Emoji, GIF, or File"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                  </PlusMenuButton>
+
+                  <PlusMenu $isVisible={isPlusMenuOpen}>
+                    <PlusMenuItem
+                      ref={emojiButtonRef}
+                      onPointerDown={onEmojiPointerDown}
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <path d="M8 14s1.5 2 4 2 4-2 4-2"></path>
+                        <line x1="9" y1="9" x2="9.01" y2="9"></line>
+                        <line x1="15" y1="9" x2="15.01" y2="9"></line>
+                      </svg>
+                      <span>Emoji</span>
+                    </PlusMenuItem>
+
+                    <PlusMenuItem
+                      onPointerDown={onGifPointerDown}
+                    >
+                      <FilmIcon /> <span>GIF</span>
+                    </PlusMenuItem>
+
+                    <PlusMenuItem
+                      onClick={() => {
+                        onTogglePlusMenu();
+                        onNotifyNativeFilePickerOpen();
+                        fileInputRef?.current?.click();
+                      }}
+                    >
+                      <FileIcon /> <span>Send File</span>
+                    </PlusMenuItem>
+                  </PlusMenu>
+                </div>
+
+                <InputTextWrapper>
+                  {(() => {
+                    CANDIDATE_URL_RE.lastIndex = 0;
+                    const hasUrl = CANDIDATE_URL_RE.test(normalizedOverlayMessage);
+                    CANDIDATE_URL_RE.lastIndex = 0;
+                    return (
+                      <>
+                        {hasUrl && (
+                          <InputHighlightOverlay ref={inputOverlayRef} aria-hidden="true">
+                            {renderTextWithLinks(normalizedOverlayMessage, 'other')}
+                          </InputHighlightOverlay>
+                        )}
+                        <MessageInput
+                          $hasUrl={hasUrl}
+                          ref={messageInputRef}
+                          rows={1}
+                          id="chat-message-input"
+                          name="chatMessage"
+                          disabled={!isConnected}
+                          placeholder={
+                            !isConnected
+                              ? 'Connecting...'
+                              : editingMessageId
+                              ? 'Edit message...'
+                              : stagedFile || stagedGif
+                              ? 'Add a caption...'
+                              : 'Type your message...'
+                          }
+                          value={inputMessage}
+                          onChange={onInputChange}
+                          onKeyDown={onInputKeyDown}
+                          onPaste={onPaste}
+                          onScroll={onSyncInputOverlayScroll}
+                          maxLength={MAX_MESSAGE_LENGTH}
+                        />
+                      </>
+                    );
+                  })()}
+                </InputTextWrapper>
+
+                {inputMessage.length >= MAX_MESSAGE_LENGTH - 200 && (
+                  <CharacterCounter $warning={inputMessage.length >= MAX_MESSAGE_LENGTH - 20}>
+                    {MAX_MESSAGE_LENGTH - inputMessage.length}
+                  </CharacterCounter>
+                )}
+              </>
             )}
 
-            <SendButton
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={onSendMessage}
-              disabled={
-                !isConnected ||
-                (!inputMessage.trim() && !stagedFile && !stagedGif && stagedFiles.length === 0)
-              }
-              title={editingMessageId ? 'Save edit' : 'Send message'}
-              aria-label={editingMessageId ? 'Save edit' : 'Send message'}
-              style={editingMessageId ? { background: 'linear-gradient(135deg, #6366f1, #4f46e5)' } : undefined}
-            >
-              {editingMessageId ? (
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            {recorder.isRecording ? (
+              <SendButton
+                key="voice-send-btn"
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={async () => {
+                  const result = await recorder.stopRecording();
+                  if (result && result.file && result.file.size > 0 && result.duration > 0) {
+                    onSendVoiceNote?.(result.file, result.duration, result.waveform);
+                  }
+                }}
+                title="Send voice message"
+                aria-label="Send voice message"
+                style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="22" y1="2" x2="11" y2="13"></line>
                   <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
                 </svg>
-              )}
-            </SendButton>
+              </SendButton>
+            ) : hasSendableContent ? (
+              <SendButton
+                key="text-send-btn"
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={onSendMessage}
+                disabled={!isConnected}
+                title={editingMessageId ? 'Save edit' : 'Send message'}
+                aria-label={editingMessageId ? 'Save edit' : 'Send message'}
+                style={editingMessageId ? { background: 'linear-gradient(135deg, #6366f1, #4f46e5)' } : undefined}
+              >
+                {editingMessageId ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                  </svg>
+                )}
+              </SendButton>
+            ) : (
+              <MicButton
+                key="voice-mic-btn"
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={async () => {
+                  if (!isConnected) return;
+                  audioCoordinator.stop();
+                  await recorder.startRecording();
+                }}
+                disabled={!isConnected}
+                title="Record voice message"
+                aria-label="Record voice message"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                  <line x1="12" y1="19" x2="12" y2="23" />
+                  <line x1="8" y1="23" x2="16" y2="23" />
+                </svg>
+              </MicButton>
+            )}
 
             <input
               type="file"
@@ -461,7 +634,7 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
               onClick={onNotifyNativeFilePickerOpen}
               onChange={onFileChange}
               style={{ display: 'none' }}
-              accept="image/*,video/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.txt,.html"
+              accept="image/*,video/*,audio/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.txt,.html,.mp3,.wav,.ogg,.m4a,.aac,.flac"
               multiple
             />
             <input
@@ -470,7 +643,7 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
               onClick={onNotifyNativeFilePickerOpen}
               onChange={onAddFilesChange}
               style={{ display: 'none' }}
-              accept="image/*,video/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.txt,.html"
+              accept="image/*,video/*,audio/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.txt,.html,.mp3,.wav,.ogg,.m4a,.aac,.flac"
               multiple
             />
           </InputContainer>

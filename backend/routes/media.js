@@ -55,15 +55,22 @@ const upload = multer({
   limits: { fileSize: MAX_UPLOAD_BYTES },
 });
 
-const getUploadResourceType = (mimetype = '') => {
+const isAudioMimeOrExt = (mimetype = '', filename = '') => {
+  if (mimetype.startsWith('audio/')) return true;
+  return /\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i.test(filename || '');
+};
+
+const getUploadResourceType = (mimetype = '', filename = '') => {
   if (mimetype.startsWith('image/')) return 'image';
   if (mimetype.startsWith('video/')) return 'video';
+  if (isAudioMimeOrExt(mimetype, filename)) return 'video';
   return 'raw';
 };
 
-const getMessageFileType = (mimetype = '') => {
+const getMessageFileType = (mimetype = '', filename = '') => {
   if (mimetype.startsWith('image/')) return 'image';
   if (mimetype.startsWith('video/')) return 'video';
+  if (isAudioMimeOrExt(mimetype, filename)) return 'audio';
   return 'file';
 };
 
@@ -74,7 +81,7 @@ const uploadBufferToCloudinary = (file, originalName) => new Promise((resolve, r
     .replace(/\s+/g, '_')
     .slice(0, 80);
   const ext = parsedName.ext ? parsedName.ext.replace(/^\./, '') : '';
-  const resourceType = getUploadResourceType(file.mimetype || '');
+  const resourceType = getUploadResourceType(file.mimetype || '', originalName);
   const publicId = `pulse-chat/${safeBase}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 
   const isVideo = resourceType === 'video';
@@ -123,7 +130,7 @@ const uploadFileStreamToCloudinary = (filePath, mimetype, originalName) => new P
     .replace(/\s+/g, '_')
     .slice(0, 80);
   const ext = parsedName.ext ? parsedName.ext.replace(/^\./, '') : '';
-  const resourceType = getUploadResourceType(mimetype || '');
+  const resourceType = getUploadResourceType(mimetype || '', originalName);
   const publicId = `pulse-chat/${safeBase}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 
   const isVideo = resourceType === 'video';
@@ -232,13 +239,23 @@ module.exports = (wss, broadcasts) => {
 
         logger.info(`File uploaded to room ${roomId}: ${originalName}`);
 
+        const parsedDuration = req.body.duration ? Number(req.body.duration) : undefined;
+        let parsedWaveform = undefined;
+        if (req.body.waveform) {
+          try {
+            parsedWaveform = typeof req.body.waveform === 'string' ? JSON.parse(req.body.waveform) : req.body.waveform;
+          } catch {}
+        }
+
         res.status(200).json({
           id: uploaded.public_id,
-          type: getMessageFileType(req.file.mimetype || ''),
+          type: getMessageFileType(req.file.mimetype || '', originalName),
           url: uploaded.secure_url,
           originalName,
           size: req.file.size,
           text: req.body.text,
+          duration: parsedDuration,
+          waveform: parsedWaveform,
         });
       } catch (uploadError) {
         logger.error('Cloudinary upload error:', {
@@ -351,13 +368,23 @@ module.exports = (wss, broadcasts) => {
           // Cleanup
           try { fs.unlinkSync(tmpPath); } catch (e) { logger.error(`Failed to delete temp file ${tmpPath}`); }
 
+          const parsedDuration = req.body.duration ? Number(req.body.duration) : undefined;
+          let parsedWaveform = undefined;
+          if (req.body.waveform) {
+            try {
+              parsedWaveform = typeof req.body.waveform === 'string' ? JSON.parse(req.body.waveform) : req.body.waveform;
+            } catch {}
+          }
+
           return res.status(200).json({
             id: uploaded.public_id,
-            type: getMessageFileType(fileMime),
+            type: getMessageFileType(fileMime, safeName),
             url: uploaded.secure_url,
             originalName: safeName,
             size: fileSize,
             text: text,
+            duration: parsedDuration,
+            waveform: parsedWaveform,
           });
         }
 

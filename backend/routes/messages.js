@@ -46,7 +46,10 @@ router.get('/api/messages/search', apiLimiter, async (req, res) => {
     const { frontendHiddenBefore } = getRoomState(roomId);
     const query = {
       roomId,
-      text: { $regex: escaped, $options: 'i' },
+      $or: [
+        { text: { $regex: escaped, $options: 'i' } },
+        { originalName: { $regex: escaped, $options: 'i' } },
+      ],
       isDeleted: { $ne: true },   // exclude "deleted for everyone" messages
       vanished: { $ne: true },    // exclude admin-vanished messages
     };
@@ -54,7 +57,7 @@ router.get('/api/messages/search', apiLimiter, async (req, res) => {
       query.createdAt = { $gte: new Date(frontendHiddenBefore) };
     }
     const messages = await Message.find(query).sort({ createdAt: -1 }).limit(200).lean();
-    res.json(messages.reverse()); // chronological order for the chat display
+    res.json(messages.reverse().map(toClientMessage)); // chronological order and clean reactions for the chat display
   } catch (error) {
     logger.error('Failed to search messages:', error);
     res.status(500).json({ error: 'Failed to search messages' });

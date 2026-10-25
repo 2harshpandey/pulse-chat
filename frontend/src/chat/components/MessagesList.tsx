@@ -10,6 +10,14 @@ export const isMediaMessage = (m: Message): boolean => {
   if (m.isDeleted) return false;
   if (m.isUploading || m.uploadError) return false;
   if (m.url && isGiphyUrl(m.url)) return false;
+  if (
+    m.type === 'audio' ||
+    m.url?.match(/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)($|\?)/i) ||
+    m.originalName?.match(/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i) ||
+    (m.originalName?.toLowerCase().includes('voice') && m.url?.match(/\.(webm|ogg|mp4|m4a)($|\?)/i))
+  ) {
+    return false;
+  }
   if (m.type === 'image' || m.type === 'video') return true;
   if (m.url && m.url.match(/\.(jpeg|jpg|png|svg|webp|mp4|webm|mov)$/i)) return true;
   return false;

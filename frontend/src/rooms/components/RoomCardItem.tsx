@@ -53,7 +53,9 @@ export const RoomCardItem: React.FC<RoomCardItemProps> = ({
             {room.id}
           </code>
           <CopyIcon
+            $copied={copiedId === room.id}
             title="Copy Room ID"
+            aria-label="Copy Room ID"
             onClick={(e) => onCopyId(e, room.id)}
           >
             {copiedId === room.id ? (

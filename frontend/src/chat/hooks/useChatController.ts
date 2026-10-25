@@ -491,6 +491,7 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
   const canEditSelectedMessage =
     selection.selectedMessages.length === 1 &&
     selectedMessage &&
+    !selectedMessage.isDeleted &&
     selectedMessage.userId === userIdRef.current &&
     selectedMessage.text &&
     new Date().getTime() - new Date(selectedMessage.timestamp).getTime() < 15 * 60 * 1000;
@@ -516,9 +517,16 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     if (selectedMediaMessages.length === 1) {
       const m = selectedMediaMessages[0];
       if (!m.url) return;
-      const isVideo = m.type === 'video' || Boolean(m.url.match(/\.(mp4|webm|mov)$/i));
-      const fallbackName = m.originalName || (isVideo ? 'video.mp4' : 'media.jpg');
-      void downloadFile(m.url, fallbackName, undefined, undefined, !isVideo);
+      const isAudio = m.type === 'audio' || Boolean(
+        (!m.type || m.type === 'file') && (
+          m.url.match(/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)($|\?)/i) ||
+          m.originalName?.match(/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i) ||
+          (m.originalName?.toLowerCase().includes('voice') && m.url.match(/\.(webm|ogg|mp4|m4a)($|\?)/i))
+        )
+      );
+      const isVideo = !isAudio && (m.type === 'video' || Boolean(m.url.match(/\.(mp4|webm|mov)$/i)));
+      const fallbackName = m.originalName || (isAudio ? 'voice-message.mp3' : isVideo ? 'video.mp4' : 'media.jpg');
+      void downloadFile(m.url, fallbackName, undefined, undefined, !isVideo && !isAudio);
     } else {
       const albumKey = selectedMediaMessages[0]?.id || 'selected_album';
       void albumDownloadManager.startDownload(albumKey, selectedMediaMessages);

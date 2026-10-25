@@ -74,9 +74,11 @@ export function useChatSelection({
   const deleteForEveryone = useCallback(
     (messageId: string) => {
       if (!ws.current) return;
+      const msgObj = messages.find((m) => m.id === messageId);
+      if (msgObj && msgObj.isDeleted) return;
       ws.current.send(JSON.stringify({ type: 'delete_for_everyone', messageId, roomId }));
     },
-    [roomId, ws]
+    [messages, roomId, ws]
   );
 
   const handleOpenDeleteMenu = useCallback(
@@ -136,7 +138,8 @@ export function useChatSelection({
       const allMessagesAreRecent = selectedMessageObjects.every(
         (msg) => now - new Date(msg.timestamp).getTime() < timeLimit
       );
-      setCanDeleteForEveryone(allMessagesAreRecent);
+      const noneAlreadyDeleted = selectedMessageObjects.every((msg) => !msg.isDeleted);
+      setCanDeleteForEveryone(allMessagesAreRecent && noneAlreadyDeleted);
     }
     setIsDeleteConfirmationVisible(true);
   }, [messages, selectedMessages, userId]);
@@ -155,6 +158,8 @@ export function useChatSelection({
 
   const handleBulkDeleteForEveryone = useCallback(() => {
     selectedMessages.forEach((id) => {
+      const msgObj = messages.find((m) => m.id === id);
+      if (msgObj && msgObj.isDeleted) return;
       if (ws.current) {
         ws.current.send(JSON.stringify({ type: 'delete_for_everyone', messageId: id, roomId }));
       }
@@ -166,7 +171,7 @@ export function useChatSelection({
     setIsDeleteConfirmationVisible(false);
     setIsSelectModeActive(false);
     setSelectedMessages([]);
-  }, [overlayGuardPushed, roomId, selectedMessages, ws]);
+  }, [messages, overlayGuardPushed, roomId, selectedMessages, ws]);
 
   // Report handlers
   const handleOpenReport = useCallback(

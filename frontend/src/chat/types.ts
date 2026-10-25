@@ -5,7 +5,7 @@ export interface ReplyContext {
   id: string;
   username: string;
   text: string;
-  type: 'text' | 'image' | 'video' | 'file';
+  type: 'text' | 'image' | 'video' | 'file' | 'audio';
   url?: string;
   isDeleted?: boolean;
   deletedBy?: string;
@@ -16,11 +16,13 @@ export interface Message {
   _id?: string;
   userId: string;
   username: string;
-  type: 'text' | 'image' | 'video' | 'file' | 'system_notification';
+  type: 'text' | 'image' | 'video' | 'file' | 'audio' | 'system_notification';
   text?: string;
   url?: string;
   originalName?: string;
   size?: number;
+  duration?: number;
+  waveform?: number[];
   timestamp: string;
   createdAt?: string;
   updatedAt?: string;

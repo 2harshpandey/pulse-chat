@@ -386,9 +386,16 @@ export const downloadAlbumAsZip = async (
       mediaItems.map(async (msg, index) => {
         if (!msg.url || options?.signal?.aborted) return;
         const fileUrl = msg.url;
-        const isVideo = msg.type === 'video' || Boolean(fileUrl.match(/\.(mp4|webm|mov)$/i));
+        const isAudio = msg.type === 'audio' || Boolean(
+          (!msg.type || msg.type === 'file') && (
+            fileUrl.match(/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)($|\?)/i) ||
+            msg.originalName?.match(/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i) ||
+            (msg.originalName?.toLowerCase().includes('voice') && fileUrl.match(/\.(webm|ogg|mp4|m4a)($|\?)/i))
+          )
+        );
+        const isVideo = !isAudio && (msg.type === 'video' || Boolean(fileUrl.match(/\.(mp4|webm|mov)$/i)));
         const isGif = Boolean(fileUrl.match(/\.gif$/i)) || isGiphyUrl(fileUrl);
-        const defaultExt = isVideo ? '.mp4' : isGif ? '.gif' : '.jpg';
+        const defaultExt = isAudio ? '.mp3' : isVideo ? '.mp4' : isGif ? '.gif' : '.jpg';
 
         let baseName = msg.originalName ? sanitizeFilename(msg.originalName, '') : '';
         if (!baseName && fileUrl) {
