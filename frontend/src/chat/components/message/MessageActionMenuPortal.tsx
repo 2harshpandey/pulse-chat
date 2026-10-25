@@ -15,6 +15,7 @@ interface MessageActionMenuPortalProps {
   handleStartEdit: (msg: Message) => void;
   handleCopy: (msg: Message) => void;
   handleOpenReport: (msg: Message) => void;
+  onDownload?: (msg: Message) => void;
   onDownloadAll?: () => void;
   onCancelDownload?: () => void;
   isDownloadingAlbum?: boolean;
@@ -32,6 +33,7 @@ export const MessageActionMenuPortal: React.FC<MessageActionMenuPortalProps> = R
   handleStartEdit,
   handleCopy,
   handleOpenReport,
+  onDownload,
   onDownloadAll,
   onCancelDownload,
   isDownloadingAlbum = false,
@@ -107,6 +109,22 @@ export const MessageActionMenuPortal: React.FC<MessageActionMenuPortalProps> = R
                     Download all
                   </>
                 )}
+              </DeleteMenuItem>
+            )}
+            {Boolean(msg.url && !msg.isDeleted && !msg.isUploading && onDownload) && (
+              <DeleteMenuItem
+                data-testid="download-message-menu-item"
+                onClick={() => {
+                  onDownload!(msg);
+                  setActiveDeleteMenu(null);
+                }}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                Download
               </DeleteMenuItem>
             )}
             {canEdit && (

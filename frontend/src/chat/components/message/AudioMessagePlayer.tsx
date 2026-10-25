@@ -78,11 +78,58 @@ const PlayerContainer = styled.div<{ $sender: 'me' | 'other' }>`
   }
 `;
 
-const PlayerMainRow = styled.div`
+const AudioPlayerCard = styled.div<{ $sender: 'me' | 'other'; $hasCaption?: boolean }>`
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
+  transition: all 0.2s ease;
+
+  ${p => p.$hasCaption ? `
+    padding: 10px 12px;
+    border-radius: 14px;
+    background: ${p.$sender === 'me'
+      ? 'rgba(0, 0, 0, 0.14)'
+      : 'rgba(255, 255, 255, 0.05)'};
+    border: 1px solid ${p.$sender === 'me'
+      ? 'rgba(255, 255, 255, 0.18)'
+      : 'rgba(148, 163, 184, 0.18)'};
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+
+    [data-theme='light'] & {
+      background: ${p.$sender === 'me'
+        ? 'rgba(255, 255, 255, 0.16)'
+        : 'rgba(0, 0, 0, 0.035)'};
+      border: 1px solid ${p.$sender === 'me'
+        ? 'rgba(255, 255, 255, 0.28)'
+        : 'rgba(0, 0, 0, 0.08)'};
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+    }
+  ` : `
+    padding: 2px 0;
+  `}
+`;
+
+const AudioCaptionContainer = styled.div<{ $sender: 'me' | 'other' }>`
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px 8px 2px 8px;
+  border-top: 1px solid ${p => p.$sender === 'me'
+    ? 'rgba(255, 255, 255, 0.24)'
+    : 'rgba(148, 163, 184, 0.22)'};
+  word-break: break-word;
+
+  [data-theme='light'] & {
+    border-top: 1px solid ${p => p.$sender === 'me'
+      ? 'rgba(255, 255, 255, 0.32)'
+      : 'rgba(0, 0, 0, 0.08)'};
+  }
+
+  p {
+    margin: 0;
+    font-size: 0.95rem;
+    line-height: 1.45;
+  }
 `;
 
 const PlayPauseButton = styled.button<{ $sender: 'me' | 'other'; $isPlaying: boolean }>`
@@ -151,7 +198,7 @@ const WaveformBarsContainer = styled.div`
   width: 100%;
   cursor: pointer;
   padding: 4px 0;
-  touch-action: none;
+  touch-action: pan-y;
   outline: none;
 
   &:focus-visible {
@@ -511,7 +558,9 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
 
   const handleWaveformPointerDown = (e: React.PointerEvent) => {
     if (isSelectModeActive) return;
-    e.stopPropagation();
+    if (e.pointerType !== 'touch') {
+      e.stopPropagation();
+    }
     seekToPosition(e.clientX);
 
     if (pointerCleanupsRef.current) {
@@ -571,7 +620,7 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
         }}
       />
 
-      <PlayerMainRow>
+      <AudioPlayerCard $sender={sender} data-sender={sender} $hasCaption={Boolean(msg.text)}>
         <PlayPauseButton
           type="button"
           $sender={sender}
@@ -673,12 +722,14 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
             </RightControls>
           </InfoRow>
         </WaveformWrapper>
-      </PlayerMainRow>
+      </AudioPlayerCard>
 
       {msg.text && (
-        <MessageText style={{ paddingTop: '0.45rem', margin: 0 }}>
-          {renderTextWithLinks(msg.text, sender)}
-        </MessageText>
+        <AudioCaptionContainer $sender={sender} data-sender={sender}>
+          <MessageText style={{ paddingTop: '0', margin: 0 }}>
+            {renderTextWithLinks(msg.text, sender)}
+          </MessageText>
+        </AudioCaptionContainer>
       )}
     </PlayerContainer>
   );

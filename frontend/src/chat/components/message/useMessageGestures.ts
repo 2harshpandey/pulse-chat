@@ -207,7 +207,6 @@ export function useMessageGestures({
   const isLongPressIgnoredTarget = useCallback((target: HTMLElement) => {
     return Boolean(
       target.closest('.mobile-reaction-picker') ||
-      target.closest('[data-quote-swipe-ignore]') ||
       target.closest('button, a, input, textarea, [contenteditable="true"]')
     );
   }, []);

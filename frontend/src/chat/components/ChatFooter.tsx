@@ -360,7 +360,31 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
                     if (isGiphyUrl(replyingTo.url)) return 'GIF';
                     if (replyingTo.type === 'image') return 'Image';
                     if (replyingTo.type === 'video') return 'Video';
-                    if (replyingTo.type === 'audio') return 'Voice Message';
+                    if (replyingTo.type === 'audio') {
+                      return (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                          <span>{replyingTo.text || 'Voice Message'}</span>
+                          {Boolean(replyingTo.duration && replyingTo.duration > 0) && (
+                            <span style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                              padding: '1px 6px',
+                              borderRadius: '9999px',
+                              fontSize: '0.72rem',
+                              fontWeight: 600,
+                              background: 'rgba(59, 130, 246, 0.15)',
+                              color: '#3b82f6',
+                            }}>
+                              <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor">
+                                <polygon points="5 3 19 12 5 21 5 3" />
+                              </svg>
+                              {formatAudioDuration(replyingTo.duration!)}
+                            </span>
+                          )}
+                        </span>
+                      );
+                    }
                     return 'Message';
                   })()}
                 </span>

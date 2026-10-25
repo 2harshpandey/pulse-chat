@@ -327,7 +327,7 @@ export function useChatComposer({
         else if (replyingTo.type === 'video') replyText = 'Video';
         else if (replyingTo.type === 'audio') replyText = 'Voice Message';
       }
-      replyContext = { id: replyingTo.id, username: replyingTo.username, text: replyText, type, url: replyingTo.url, isDeleted: replyingTo.isDeleted, deletedBy: replyingTo.deletedBy };
+      replyContext = { id: replyingTo.id, username: replyingTo.username, text: replyText, type, url: replyingTo.url, duration: replyingTo.duration, isDeleted: replyingTo.isDeleted, deletedBy: replyingTo.deletedBy };
     }
 
     const caption = previewCaption.trim();
@@ -472,6 +472,7 @@ export function useChatComposer({
         text: replyText,
         type,
         url: replyingTo.url,
+        duration: replyingTo.duration,
         isDeleted: replyingTo.isDeleted,
         deletedBy: replyingTo.deletedBy,
       };
@@ -625,6 +626,7 @@ export function useChatComposer({
         text: replyText,
         type,
         url: replyingTo.url,
+        duration: replyingTo.duration,
         isDeleted: replyingTo.isDeleted,
         deletedBy: replyingTo.deletedBy,
       };

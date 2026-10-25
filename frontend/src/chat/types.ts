@@ -7,6 +7,7 @@ export interface ReplyContext {
   text: string;
   type: 'text' | 'image' | 'video' | 'file' | 'audio';
   url?: string;
+  duration?: number;
   isDeleted?: boolean;
   deletedBy?: string;
 }

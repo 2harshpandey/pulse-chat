@@ -3,6 +3,7 @@ import type { Message } from '../../types';
 import { resolveReplyTargetId } from '../../utils';
 import { quoteLog } from '../../constants';
 import { QuotedMessageContainer, QuotedMediaThumb } from '../../ChatStyledComponents';
+import { formatAudioDuration } from './AudioMessagePlayer';
 
 interface MessageQuotedPreviewProps {
   msg: Message;
@@ -72,19 +73,59 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
     >
       <div style={{ flex: 1, minWidth: 0 }}>
         <p>{msg.replyingTo.username}</p>
-        <span style={msg.replyingTo.isDeleted ? { fontStyle: 'italic', opacity: 0.7 } : undefined}>
-          {msg.replyingTo.isDeleted
-            ? (msg.replyingTo.deletedBy === 'admin'
-                ? 'This message has been deleted by an admin.'
-                : (msg.replyingTo.deletedBy === currentUserId
-                    ? 'You deleted this message.'
-                    : 'This message has been deleted.'))
-            : (msg.replyingTo.text ||
-               (msg.replyingTo.type === 'video' ? 'Video' :
-                msg.replyingTo.type === 'image' ? 'Photo' :
-                msg.replyingTo.type === 'audio' ? 'Voice Message' :
-                msg.replyingTo.type === 'file' ? 'File' : ''))}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, marginTop: '1px' }}>
+          <span style={{
+            flex: '0 1 auto',
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            ...(msg.replyingTo.isDeleted ? { fontStyle: 'italic', opacity: 0.7 } : {})
+          }}>
+            {msg.replyingTo.isDeleted
+              ? (msg.replyingTo.deletedBy === 'admin'
+                  ? 'This message has been deleted by an admin.'
+                  : (msg.replyingTo.deletedBy === currentUserId
+                      ? 'You deleted this message.'
+                      : 'This message has been deleted.'))
+              : (msg.replyingTo.text ||
+                 (msg.replyingTo.type === 'video' ? 'Video' :
+                  msg.replyingTo.type === 'image' ? 'Photo' :
+                  msg.replyingTo.type === 'audio' ? 'Voice Message' :
+                  msg.replyingTo.type === 'file' ? 'File' : ''))}
+          </span>
+          {!msg.replyingTo.isDeleted && msg.replyingTo.type === 'audio' && Boolean(msg.replyingTo.duration && msg.replyingTo.duration > 0) && (
+            <span
+              data-testid="quoted-audio-duration-badge"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '3.5px',
+                padding: '1px 7px',
+                borderRadius: '9999px',
+                fontSize: '0.70rem',
+                fontWeight: 600,
+                fontVariantNumeric: 'tabular-nums',
+                letterSpacing: '0.01em',
+                flexShrink: 0,
+                background: sender === 'me'
+                  ? 'rgba(255, 255, 255, 0.22)'
+                  : 'rgba(59, 130, 246, 0.16)',
+                color: sender === 'me'
+                  ? '#ffffff'
+                  : 'var(--accent-primary, #3b82f6)',
+                border: sender === 'me'
+                  ? '1px solid rgba(255, 255, 255, 0.32)'
+                  : '1px solid rgba(59, 130, 246, 0.25)',
+              }}
+            >
+              <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor">
+                <polygon points="5 3 19 12 5 21 5 3" />
+              </svg>
+              {formatAudioDuration(msg.replyingTo.duration!)}
+            </span>
+          )}
+        </div>
       </div>
       {!msg.replyingTo.isDeleted && msg.replyingTo.type === 'audio' && (
         <div

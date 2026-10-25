@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
 import { render, fireEvent, screen, act, cleanup } from '@testing-library/react';
 import { formatAudioDuration, generateDeterministicWaveform, audioCoordinator, AudioMessagePlayer } from './components/message/AudioMessagePlayer';
+import { MessageQuotedPreview } from './components/message/MessageQuotedPreview';
+import { MessageActionMenuPortal } from './components/message/MessageActionMenuPortal';
 import { ChatFooter } from './components/ChatFooter';
 import type { Message } from './types';
 
@@ -378,6 +380,111 @@ describe('Voice Messaging System', () => {
 
       // Timer should now show 0:00 (or duration when idle at 0)
       expect(screen.getByText('0:30')).toBeDefined();
+    });
+  });
+
+  describe('Quoted Audio Duration Badge', () => {
+    it('renders duration badge with formatted time when quoting an audio message', () => {
+      const mockQuotingMessage: Message = {
+        id: 'msg_reply_1',
+        userId: 'user_2',
+        username: 'Bob',
+        text: 'yahi tha nah woh audio???',
+        type: 'text',
+        timestamp: new Date().toISOString(),
+        replyingTo: {
+          id: 'voice_1',
+          username: 'khushu',
+          text: '',
+          type: 'audio',
+          url: 'https://example.com/voice.mp3',
+          duration: 45,
+        },
+      };
+
+      const { getByTestId, getByText } = render(
+        <MessageQuotedPreview
+          msg={mockQuotingMessage}
+          currentUserId="user_2"
+          sender="me"
+          quotedPreviewThumbUrl=""
+          scrollToMessage={vi.fn()}
+        />
+      );
+
+      expect(getByText('khushu')).toBeDefined();
+      expect(getByText('Voice Message')).toBeDefined();
+      const badge = getByTestId('quoted-audio-duration-badge');
+      expect(badge).toBeDefined();
+      expect(badge.textContent).toContain('0:45');
+    });
+  });
+
+  describe('AudioMessagePlayer Caption Distinction', () => {
+    it('renders distinct audio player card and caption container when caption is present', () => {
+      const mockMessageWithCaption: Message = {
+        id: 'voice_caption_1',
+        userId: 'user_1',
+        username: 'Alice',
+        type: 'audio',
+        url: 'https://example.com/audio.mp3',
+        text: 'aur doosra audio yeh raha',
+        duration: 15,
+        timestamp: new Date().toISOString(),
+      };
+
+      const { container, getByText } = render(
+        <AudioMessagePlayer msg={mockMessageWithCaption} sender="me" isSelectModeActive={false} />
+      );
+
+      expect(getByText('aur doosra audio yeh raha')).toBeDefined();
+      expect(container.querySelector('[title="Voice message"]')).toBeDefined();
+      expect(container.querySelector('[aria-label="Seek audio position"]')).toBeDefined();
+    });
+  });
+
+  describe('MessageActionMenuPortal Single Message Download', () => {
+    it('renders Download item and invokes onDownload when clicked', async () => {
+      const mockAudioMessage: Message = {
+        id: 'voice_dl_1',
+        userId: 'user_1',
+        username: 'Alice',
+        type: 'audio',
+        url: 'https://example.com/audio.mp3',
+        originalName: 'recording.mp3',
+        timestamp: new Date().toISOString(),
+      };
+
+      const onDownloadMock = vi.fn();
+      const setActiveDeleteMenuMock = vi.fn();
+
+      render(
+        <MessageActionMenuPortal
+          msg={mockAudioMessage}
+          menuPos={{ top: 100, left: 100 }}
+          deleteMenuRef={{ current: document.createElement('div') }}
+          currentUserId="user_1"
+          canEdit={false}
+          handleSetReply={vi.fn()}
+          setActiveDeleteMenu={setActiveDeleteMenuMock}
+          handleToggleSelectMessage={vi.fn()}
+          handleStartEdit={vi.fn()}
+          handleCopy={vi.fn()}
+          handleOpenReport={vi.fn()}
+          onDownload={onDownloadMock}
+        />
+      );
+
+      const downloadItem = screen.getByTestId('download-message-menu-item');
+      expect(downloadItem).toBeDefined();
+      expect(downloadItem.textContent).toContain('Download');
+
+      await act(async () => {
+        fireEvent.click(downloadItem);
+      });
+
+      expect(onDownloadMock).toHaveBeenCalledWith(mockAudioMessage);
+      expect(setActiveDeleteMenuMock).toHaveBeenCalledWith(null);
     });
   });
 });

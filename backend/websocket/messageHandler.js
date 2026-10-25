@@ -498,6 +498,7 @@ const handleNewMessage = async ({ ws, parsedMessage, wss, broadcastToAdmins, _br
           if (targetDoc.text && !targetDoc.isDeleted) sanitisedMessage.replyingTo.text = targetDoc.text;
           if (targetDoc.url) sanitisedMessage.replyingTo.url = targetDoc.url;
           if (targetDoc.type) sanitisedMessage.replyingTo.type = targetDoc.type;
+          if (targetDoc.duration) sanitisedMessage.replyingTo.duration = targetDoc.duration;
         }
       } catch (lookupErr) {
         logger.warn('Failed to lookup replyingTo target in DB:', lookupErr);
@@ -542,6 +543,7 @@ const handleNewMessage = async ({ ws, parsedMessage, wss, broadcastToAdmins, _br
             'replyingTo.id': messageDoc.id,
             'replyingTo.url': messageDoc.url || '',
             'replyingTo.type': messageDoc.type,
+            'replyingTo.duration': messageDoc.duration,
           }
         }
       );

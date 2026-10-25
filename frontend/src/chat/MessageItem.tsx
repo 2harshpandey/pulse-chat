@@ -6,6 +6,7 @@ import {
   sanitizeMediaUrl,
   inferredContentLengthByUrlCache,
   buildDownloadProxyUrl, normalizeMessageId,
+  downloadFile,
 } from './utils';
 import {
   MessageRow, MessageBubble, Username, FooterContainer, Timestamp,
@@ -213,6 +214,20 @@ export const MessageItem = React.memo(({
     onVideoFullscreenEnter?.(msg.id);
   }, [onVideoFullscreenEnter, msg.id]);
 
+  const handleDownloadMessage = useCallback((targetMsg: Message) => {
+    if (!targetMsg.url) return;
+    const isAudio = targetMsg.type === 'audio' || Boolean(
+      (!targetMsg.type || targetMsg.type === 'file') && (
+        targetMsg.url.match(/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)($|\?)/i) ||
+        targetMsg.originalName?.match(/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i) ||
+        (targetMsg.originalName?.toLowerCase().includes('voice') && targetMsg.url.match(/\.(webm|ogg|mp4|m4a)($|\?)/i))
+      )
+    );
+    const isVideo = !isAudio && (targetMsg.type === 'video' || Boolean(targetMsg.url.match(/\.(mp4|webm|mov)$/i)));
+    const fallbackName = targetMsg.originalName || (isAudio ? 'voice-message.mp3' : isVideo ? 'video.mp4' : 'media.jpg');
+    void downloadFile(targetMsg.url, fallbackName, undefined, undefined, !isVideo && !isAudio);
+  }, []);
+
   return (
     <React.Fragment>
       <MessageRow
@@ -381,6 +396,7 @@ export const MessageItem = React.memo(({
           handleStartEdit={handleStartEdit}
           handleCopy={handleCopy}
           handleOpenReport={handleOpenReport}
+          onDownload={handleDownloadMessage}
         />
       )}
     </React.Fragment>
