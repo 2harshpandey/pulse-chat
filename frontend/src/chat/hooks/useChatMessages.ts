@@ -249,7 +249,7 @@ export function useChatMessages({
     }
 
     const current = messagesRef.current;
-    if (msg.id && current.some((m) => m.id === msg.id)) return;
+    if (msg.id && current.some((m) => m.id === msg.id || (Boolean((m as any).clientTempId && (msg as any).clientTempId) && (m as any).clientTempId === (msg as any).clientTempId))) return;
     if (msg.id && getDeletedForMeIds(userId).has(msg.id)) return;
 
     const prevMsg = current.length > 0 ? current[current.length - 1] : null;

@@ -427,14 +427,19 @@ export const downloadFile = async (
     return;
   }
 
+  const pathName = decodeURIComponent(parsed.pathname.split('/').pop() || '');
+  const fallbackName = sanitizeFilename(pathName, 'download');
+  const safeFilename = sanitizeFilename(filename, fallbackName);
+
+  if (parsed.protocol === 'blob:') {
+    triggerAnchorDownload(url, safeFilename);
+    return;
+  }
+
   const isTrustedHost =
     (parsed.protocol === 'https:' || parsed.protocol === 'http:') &&
     ALLOWED_DOWNLOAD_HOSTS.some(h => parsed.hostname === h || parsed.hostname.endsWith('.' + h));
   if (!isTrustedHost) return;
-
-  const pathName = decodeURIComponent(parsed.pathname.split('/').pop() || '');
-  const fallbackName = sanitizeFilename(pathName, 'download');
-  const safeFilename = sanitizeFilename(filename, fallbackName);
 
   const downloadViaProxy = async () => {
     const proxyUrl = buildDownloadProxyUrl(parsed.href, safeFilename);

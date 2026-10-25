@@ -36,6 +36,8 @@ export interface Message {
   pinned?: { pinnedAt: string; expiresAt?: string | null } | null;
   isUploading?: boolean;
   uploadError?: boolean;
+  clientTempId?: string;
+  localBlobUrl?: string;
   cursor?: string;
 }
 

@@ -407,11 +407,39 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const waveformRef = useRef<HTMLDivElement | null>(null);
 
+  const coordinatorId = (msg as any).clientTempId || msg.id;
+
+  // Retain the local blob URL (if available) across upload completion so that
+  // transitioning from the temp upload message to the remote Cloudinary message never aborts playback.
+  const localBlobUrlRef = useRef<string | null>(
+    (msg.url && msg.url.startsWith('blob:')) ? msg.url : ((msg as any).localBlobUrl || null)
+  );
+
+  if (msg.url && msg.url.startsWith('blob:') && !localBlobUrlRef.current) {
+    localBlobUrlRef.current = msg.url;
+  }
+  if ((msg as any).localBlobUrl && !localBlobUrlRef.current) {
+    localBlobUrlRef.current = (msg as any).localBlobUrl;
+  }
+
+  const activeSrc = useMemo(() => {
+    if (localBlobUrlRef.current) {
+      return localBlobUrlRef.current;
+    }
+    return sanitizeMediaUrl(msg.url || '');
+  }, [msg.url]);
+
   const [isPlaying, setIsPlaying] = useState(false);
+  const isPlayingRef = useRef(isPlaying);
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
   const [currentTime, setCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState<number>(() => {
     if (msg.duration && msg.duration > 0) return msg.duration;
     if (msg.id && audioDurationCache.has(msg.id)) return audioDurationCache.get(msg.id)!;
+    if (coordinatorId && audioDurationCache.has(coordinatorId)) return audioDurationCache.get(coordinatorId)!;
     if (msg.url && audioDurationCache.has(msg.url)) return audioDurationCache.get(msg.url)!;
     return 0;
   });
@@ -423,21 +451,29 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
     if (msg.duration && msg.duration > 0) {
       setAudioDuration(msg.duration);
       if (msg.id) setAudioDurationCache(msg.id, msg.duration);
+      if (coordinatorId) setAudioDurationCache(coordinatorId, msg.duration);
       if (msg.url) setAudioDurationCache(msg.url, msg.duration);
     }
-  }, [msg.id, msg.url, msg.duration]);
+  }, [msg.id, coordinatorId, msg.url, msg.duration]);
+
+  // Immediately buffer local blob recordings so clicking play is instantaneous
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (activeSrc && activeSrc.startsWith('blob:')) {
+      try {
+        audio.load();
+      } catch {}
+    }
+  }, [activeSrc]);
 
   // Fallback / Precomputed waveform bars
   const waveformBars = useMemo(() => {
     if (Array.isArray(msg.waveform) && msg.waveform.length >= 16) {
       return msg.waveform;
     }
-    return generateDeterministicWaveform(msg.id || msg.url || 'pulse_voice', 34);
-  }, [msg.waveform, msg.id, msg.url]);
-
-  const sanitizedSrc = useMemo(() => {
-    return sanitizeMediaUrl(msg.url || '');
-  }, [msg.url]);
+    return generateDeterministicWaveform((msg as any).clientTempId || msg.id || msg.url || 'pulse_voice', 34);
+  }, [msg.waveform, (msg as any).clientTempId, msg.id, msg.url]);
 
   // Handle global coordinator pause
   const handleCoordinatorPause = useCallback(() => {
@@ -457,8 +493,9 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
     if (audio.duration && !isNaN(audio.duration) && isFinite(audio.duration)) {
       setAudioDuration(audio.duration);
       if (msg.id) setAudioDurationCache(msg.id, audio.duration);
+      if (coordinatorId) setAudioDurationCache(coordinatorId, audio.duration);
       if (msg.url) setAudioDurationCache(msg.url, audio.duration);
-      if (!isPlaying && audio.currentTime !== 0) {
+      if (audio.paused && !isPlayingRef.current && audio.currentTime !== 0) {
         audio.currentTime = 0;
         setCurrentTime(0);
       }
@@ -469,18 +506,22 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
         if (audio.duration && isFinite(audio.duration)) {
           setAudioDuration(audio.duration);
           if (msg.id) setAudioDurationCache(msg.id, audio.duration);
+          if (coordinatorId) setAudioDurationCache(coordinatorId, audio.duration);
           if (msg.url) setAudioDurationCache(msg.url, audio.duration);
         }
-        audio.currentTime = 0;
-        setCurrentTime(0);
+        if (audio.paused && !isPlayingRef.current) {
+          audio.currentTime = 0;
+          setCurrentTime(0);
+        }
       };
       audio.addEventListener('timeupdate', onSeekEnd);
       audio.currentTime = 1e101;
     } else if (msg.duration && msg.duration > 0) {
       setAudioDuration(msg.duration);
       if (msg.id) setAudioDurationCache(msg.id, msg.duration);
+      if (coordinatorId) setAudioDurationCache(coordinatorId, msg.duration);
       if (msg.url) setAudioDurationCache(msg.url, msg.duration);
-      if (!isPlaying && audio.currentTime !== 0) {
+      if (audio.paused && !isPlayingRef.current && audio.currentTime !== 0) {
         audio.currentTime = 0;
         setCurrentTime(0);
       }
@@ -491,9 +532,16 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
   const handleTimeUpdate = () => {
     const audio = audioRef.current;
     if (!audio) return;
-    if (audioDuration > 0 && audio.currentTime > audioDuration && !isPlaying) {
+
+    const effectiveTotal = audioDuration || (audio.duration && isFinite(audio.duration) ? audio.duration : 0);
+
+    // In Chromium, MediaRecorder WebM blobs have duration Infinity, so native 'ended' doesn't fire.
+    // Trigger clean end when currentTime reaches or passes known duration.
+    if (effectiveTotal > 0 && audio.currentTime >= effectiveTotal) {
+      handleEnded();
       return;
     }
+
     setCurrentTime(audio.currentTime);
     if (!audioDuration || !isFinite(audioDuration)) {
       if (audio.duration && isFinite(audio.duration)) {
@@ -503,9 +551,29 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
   };
 
   const handleEnded = () => {
+    const audio = audioRef.current;
+    if (audio) {
+      try {
+        audio.pause();
+        audio.currentTime = 0;
+      } catch {}
+    }
     setIsPlaying(false);
     setCurrentTime(0);
-    audioCoordinator.stop(msg.id);
+    audioCoordinator.stop(coordinatorId);
+  };
+
+  const handleAudioError = () => {
+    if (localBlobUrlRef.current && msg.url && !msg.url.startsWith('blob:')) {
+      localBlobUrlRef.current = null;
+      if (audioRef.current) {
+        audioRef.current.src = sanitizeMediaUrl(msg.url);
+        try { audioRef.current.load(); } catch {}
+      }
+      return;
+    }
+    setIsPlaying(false);
+    setIsLoading(false);
   };
 
   const togglePlayPause = (e: React.MouseEvent) => {
@@ -517,19 +585,33 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
     if (isPlaying) {
       audio.pause();
       setIsPlaying(false);
-      audioCoordinator.stop(msg.id);
+      audioCoordinator.stop(coordinatorId);
     } else {
-      audioCoordinator.play(msg.id, handleCoordinatorPause);
+      audioCoordinator.play(coordinatorId, handleCoordinatorPause);
       setIsLoading(true);
-      audio.play()
-        .then(() => {
-          setIsPlaying(true);
-          setIsLoading(false);
-        })
-        .catch(() => {
-          setIsPlaying(false);
-          setIsLoading(false);
-        });
+
+      if (audio.readyState === 0) {
+        try { audio.load(); } catch {}
+      }
+
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            setIsPlaying(true);
+            setIsLoading(false);
+          })
+          .catch((err) => {
+            if (err?.name !== 'AbortError') {
+              console.warn('Audio playback error:', err);
+            }
+            setIsPlaying(false);
+            setIsLoading(false);
+          });
+      } else {
+        setIsPlaying(true);
+        setIsLoading(false);
+      }
     }
   };
 
@@ -610,9 +692,9 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
       if (audioRef.current && !audioRef.current.paused) {
         try { audioRef.current.pause(); } catch {}
       }
-      audioCoordinator.stop(msg.id);
+      audioCoordinator.stop(coordinatorId);
     };
-  }, [msg.id]);
+  }, [coordinatorId]);
 
   // Calculate playback percentage for dual-color waveform
   const effectiveTotal = audioDuration || (audioRef.current?.duration && isFinite(audioRef.current.duration) ? audioRef.current.duration : 0);
@@ -628,15 +710,12 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
     <PlayerContainer $sender={sender} data-sender={sender}>
       <audio
         ref={audioRef}
-        src={sanitizedSrc}
-        preload="metadata"
+        src={activeSrc}
+        preload={activeSrc && activeSrc.startsWith('blob:') ? 'auto' : 'metadata'}
         onLoadedMetadata={handleLoadedMetadata}
         onTimeUpdate={handleTimeUpdate}
         onEnded={handleEnded}
-        onError={() => {
-          setIsPlaying(false);
-          setIsLoading(false);
-        }}
+        onError={handleAudioError}
       />
 
       <AudioPlayerCard $sender={sender} data-sender={sender} $hasCaption={Boolean(msg.text)}>

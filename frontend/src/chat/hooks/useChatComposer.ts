@@ -361,6 +361,8 @@ export function useChatComposer({
 
       const message: Message = {
         id: tempId,
+        clientTempId: tempId,
+        localBlobUrl: fileUrl,
         userId,
         username: userProfile?.username || '',
         type: fileType,
@@ -382,13 +384,15 @@ export function useChatComposer({
             setAudioDurationCache(uploadedFileData.id, audioDuration);
             if (uploadedFileData.url) setAudioDurationCache(uploadedFileData.url, audioDuration);
           }
-          const finalMessage = {
+          const finalMessage: Message = {
             ...message,
             ...uploadedFileData,
             duration: audioDuration,
             originalName: chooseReadableFilename(uploadedFileData.originalName, message.originalName),
             isUploading: false,
             id: uploadedFileData.id,
+            clientTempId: tempId,
+            localBlobUrl: fileUrl,
             text: i === 0 ? caption : undefined,
           };
           setMessages(prev => prev.map(m => {
@@ -521,6 +525,8 @@ export function useChatComposer({
 
       const message: Message = {
         id: tempId,
+        clientTempId: tempId,
+        localBlobUrl: fileUrl,
         userId,
         username: userProfile?.username || '',
         type: fileType,
@@ -542,13 +548,15 @@ export function useChatComposer({
             setAudioDurationCache(uploadedFileData.id, audioDuration);
             if (uploadedFileData.url) setAudioDurationCache(uploadedFileData.url, audioDuration);
           }
-          const finalMessage = {
+          const finalMessage: Message = {
             ...message,
             ...uploadedFileData,
             duration: audioDuration,
             originalName: chooseReadableFilename(uploadedFileData.originalName, message.originalName),
             isUploading: false,
             id: uploadedFileData.id,
+            clientTempId: tempId,
+            localBlobUrl: fileUrl,
           };
           setMessages(prev => prev.map(m => {
             if (m.id === tempId) return finalMessage;
@@ -673,12 +681,15 @@ export function useChatComposer({
       setAudioDurationCache(tempId, durationSeconds);
     }
 
+    const localBlobUrl = URL.createObjectURL(audioFile);
     const message: Message = {
       id: tempId,
+      clientTempId: tempId,
+      localBlobUrl,
       userId,
       username: userProfile?.username || '',
       type: 'audio',
-      url: URL.createObjectURL(audioFile),
+      url: localBlobUrl,
       originalName: audioFile.name,
       size: audioFile.size,
       duration: durationSeconds,
@@ -704,6 +715,8 @@ export function useChatComposer({
           originalName: chooseReadableFilename(uploadedFileData.originalName, message.originalName),
           isUploading: false,
           id: uploadedFileData.id,
+          clientTempId: tempId,
+          localBlobUrl,
           type: 'audio',
           duration: durationSeconds,
           waveform: waveform || uploadedFileData.waveform,

@@ -12,6 +12,7 @@ import { setAudioDurationCache } from './utils';
 beforeEach(() => {
   window.HTMLMediaElement.prototype.play = vi.fn().mockImplementation(() => Promise.resolve());
   window.HTMLMediaElement.prototype.pause = vi.fn();
+  window.HTMLMediaElement.prototype.load = vi.fn();
 });
 
 afterEach(() => {
@@ -526,6 +527,95 @@ describe('Voice Messaging System', () => {
 
       expect(onDownloadMock).toHaveBeenCalledWith(mockAudioMessage);
       expect(setActiveDeleteMenuMock).toHaveBeenCalledWith(null);
+    });
+  });
+
+  describe('Instant Playback of Newly Recorded Voice Notes', () => {
+    it('calls audio.load() on mount for optimistic blob messages and plays immediately upon click', async () => {
+      const blobUrl = 'blob:http://localhost:3000/voice-test-blob';
+      const optimisticVoiceNote: Message = {
+        id: 'temp_voice_123',
+        clientTempId: 'temp_voice_123',
+        localBlobUrl: blobUrl,
+        userId: 'user_1',
+        username: 'Me',
+        type: 'audio',
+        url: blobUrl,
+        duration: 8,
+        isUploading: true,
+        timestamp: new Date().toISOString(),
+      };
+
+      const { container } = render(
+        <AudioMessagePlayer msg={optimisticVoiceNote} sender="me" isSelectModeActive={false} />
+      );
+
+      // Verify audio element has src pointing to blob and preload="auto"
+      const audioElement = container.querySelector('audio');
+      expect(audioElement).toBeDefined();
+      expect(audioElement?.getAttribute('src')).toBe(blobUrl);
+      expect(audioElement?.getAttribute('preload')).toBe('auto');
+      expect(window.HTMLMediaElement.prototype.load).toHaveBeenCalled();
+
+      // Click play immediately during upload
+      const playBtn = screen.getByLabelText('Play voice message');
+      await act(async () => {
+        fireEvent.click(playBtn);
+      });
+
+      // Should be actively playing
+      expect(screen.getByLabelText('Pause voice message')).toBeDefined();
+      expect(window.HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1);
+    });
+
+    it('preserves local blob audio source and continuous playback when message transitions to uploaded', async () => {
+      const blobUrl = 'blob:http://localhost:3000/voice-persistent-blob';
+      const optimisticMsg: Message = {
+        id: 'temp_voice_999',
+        clientTempId: 'temp_voice_999',
+        localBlobUrl: blobUrl,
+        userId: 'user_1',
+        username: 'Me',
+        type: 'audio',
+        url: blobUrl,
+        duration: 12,
+        isUploading: true,
+        timestamp: new Date().toISOString(),
+      };
+
+      const { container, rerender } = render(
+        <AudioMessagePlayer msg={optimisticMsg} sender="me" isSelectModeActive={false} />
+      );
+
+      // Start playback while uploading
+      const playBtn = screen.getByLabelText('Play voice message');
+      await act(async () => {
+        fireEvent.click(playBtn);
+      });
+      expect(screen.getByLabelText('Pause voice message')).toBeDefined();
+
+      // Simulate upload completion: id becomes MongoDB id, url becomes Cloudinary
+      const uploadedMsg: Message = {
+        ...optimisticMsg,
+        id: '671c50e123456789abcdef01',
+        clientTempId: 'temp_voice_999',
+        url: 'https://res.cloudinary.com/pulse/audio/upload/voice-msg.webm',
+        isUploading: false,
+      };
+
+      await act(async () => {
+        rerender(
+          <AudioMessagePlayer msg={uploadedMsg} sender="me" isSelectModeActive={false} />
+        );
+      });
+
+      // The audio element MUST still maintain the local blob to prevent reload/stutter
+      const audioElement = container.querySelector('audio');
+      expect(audioElement?.getAttribute('src')).toBe(blobUrl);
+
+      // Playback must not have been paused or aborted
+      expect(screen.getByLabelText('Pause voice message')).toBeDefined();
+      expect(window.HTMLMediaElement.prototype.pause).not.toHaveBeenCalled();
     });
   });
 });

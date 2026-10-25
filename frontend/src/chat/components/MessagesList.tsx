@@ -319,7 +319,7 @@ export const MessagesList = React.memo(function MessagesList({
         }
 
         return (
-          <div key={msg.id || `msg-${index}`} id={msg.id}>
+          <div key={(msg as any).clientTempId || msg.id || `msg-${index}`} id={msg.id}>
             {showDateSeparator && (
               <div style={{ display: 'flex', justifyContent: 'center', margin: '1.5rem 0 1rem 0' }}>
                 <div

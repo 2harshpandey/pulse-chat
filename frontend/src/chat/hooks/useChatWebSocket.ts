@@ -435,8 +435,14 @@ export function useChatWebSocket({
           }
           if (messageData.clientTempId) {
             setMessages(prev => prev.map(m => {
-              if (m.id === messageData.clientTempId) return normalized;
-              if (m.replyingTo && m.replyingTo.id === messageData.clientTempId) {
+              if (m.id === messageData.clientTempId || (m as any).clientTempId === messageData.clientTempId) {
+                return {
+                  ...normalized,
+                  clientTempId: messageData.clientTempId,
+                  localBlobUrl: (m as any).localBlobUrl || (normalized as any).localBlobUrl,
+                };
+              }
+              if (m.replyingTo && (m.replyingTo.id === messageData.clientTempId || (m.replyingTo as any).clientTempId === messageData.clientTempId)) {
                 return {
                   ...m,
                   replyingTo: {
