@@ -483,7 +483,7 @@ The optimized output is generated in the frontend build directory.
 
 - **[Contributing Guide](CONTRIBUTING.md)** — Guidelines for local development setup, code conventions, and submitting pull requests.
 - **[Contributors](CONTRIBUTORS.md)** — Recognition of project creators and community contributors.
-- **[Code of Conduct](CODE_OF_CONDUCT.md)** — Contributor Covenant v2.1 standards for an inclusive, welcoming community.
+- **[Code of Conduct](CODE_OF_CONDUCT.md)** — Contributor Covenant standards for an inclusive, welcoming community.
 - **[Security Policy](SECURITY.md)** — Vulnerability reporting channels, response process, and security safeguards.
 
 ---
