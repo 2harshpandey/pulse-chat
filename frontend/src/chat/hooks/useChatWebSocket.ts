@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Message } from '../types';
 import type { UserProfile } from '../../UserContext';
-import { clearOverlayGuardHistoryEntry, resolveApiBaseUrl } from '../utils';
+import { clearOverlayGuardHistoryEntry, resolveApiBaseUrl, isGroupStartMessage } from '../utils';
 import { transferManager } from '../TransferManager';
 import { INITIAL_HISTORY_BATCH_SIZE, INITIAL_FIRST_ITEM_INDEX } from '../constants';
 
@@ -259,7 +259,7 @@ export function useChatWebSocket({
           for (let i = 0; i < processed.length; i++) {
             const current = processed[i];
             const prev = i > 0 ? processed[i - 1] : null;
-            if (!prev || prev.type === 'system_notification' || prev.userId !== current.userId) {
+            if (isGroupStartMessage(current, prev)) {
               groupStartMessageIdsRef.current.add(current.id);
             }
           }

@@ -16,6 +16,7 @@ import {
   copyTextToClipboard,
   sanitizeMediaUrl,
   findMessageElement,
+  isGroupStartMessage,
 } from '../utils';
 import { albumDownloadManager } from '../albumDownloadManager';
 
@@ -253,7 +254,7 @@ export function useChatMessages({
     if (msg.id && getDeletedForMeIds(userId).has(msg.id)) return;
 
     const prevMsg = current.length > 0 ? current[current.length - 1] : null;
-    if (!prevMsg || prevMsg.type === 'system_notification' || prevMsg.userId !== msg.userId) {
+    if (isGroupStartMessage(msg, prevMsg)) {
       groupStartMessageIdsRef.current.add(msg.id);
     }
 
@@ -320,7 +321,7 @@ export function useChatMessages({
     for (let i = 0; i < filteredBatch.length; i++) {
       const current = filteredBatch[i];
       const prev = i > 0 ? filteredBatch[i - 1] : null;
-      if (!prev || prev.type === 'system_notification' || prev.userId !== current.userId) {
+      if (isGroupStartMessage(current, prev)) {
         groupStartMessageIdsRef.current.add(current.id);
       }
     }
@@ -519,7 +520,7 @@ export function useChatMessages({
       for (let i = 0; i < patched.length; i++) {
         const current = patched[i];
         const prev = i > 0 ? patched[i - 1] : null;
-        if (!prev || prev.type === 'system_notification' || prev.userId !== current.userId) {
+        if (isGroupStartMessage(current, prev)) {
           groupStartMessageIdsRef.current.add(current.id);
         }
       }

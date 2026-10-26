@@ -20,6 +20,7 @@ lerna-debug.log*
 
 # Build output
 /frontend/build/
+*.zip
 
 # Misc
 .DS_Store

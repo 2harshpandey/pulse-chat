@@ -240,12 +240,35 @@ export const MessagesList = React.memo(function MessagesList({
         }
 
         const prevItem = index > 0 ? displayArr[index - 1] : null;
-        const prevMsg = prevItem ? (prevItem.type === 'single' ? prevItem.message : prevItem.primaryMessage) : null;
-        const showUsername = !prevMsg || prevMsg.type === 'system_notification' || prevMsg.userId !== msg.userId;
+        const prevMsg = prevItem
+          ? (prevItem.type === 'single' ? prevItem.message : prevItem.messages[prevItem.messages.length - 1])
+          : null;
 
-        const currentDateStr = msg.timestamp ? new Date(msg.timestamp).toDateString() : null;
-        const prevDateStr = prevMsg?.timestamp ? new Date(prevMsg.timestamp).toDateString() : null;
-        const showDateSeparator = currentDateStr && currentDateStr !== prevDateStr;
+        // Find previous item's date string, looking back past any system messages if needed
+        let prevDateStr: string | null = null;
+        for (let p = index - 1; p >= 0; p--) {
+          const pi = displayArr[p];
+          const pm = pi.type === 'single' ? pi.message : pi.primaryMessage;
+          const ts = pm?.timestamp || pm?.createdAt;
+          if (ts && !isNaN(new Date(ts).getTime())) {
+            prevDateStr = new Date(ts).toDateString();
+            break;
+          }
+        }
+
+        const currentTs = msg.timestamp || msg.createdAt;
+        const currentDateStr = currentTs && !isNaN(new Date(currentTs).getTime())
+          ? new Date(currentTs).toDateString()
+          : null;
+        const showDateSeparator = Boolean(currentDateStr && currentDateStr !== prevDateStr);
+
+        // A date separator interrupts consecutive message sequences, so the first message after a date badge must show the username badge
+        const showUsername = Boolean(
+          !prevMsg ||
+          prevMsg.type === 'system_notification' ||
+          prevMsg.userId !== msg.userId ||
+          showDateSeparator
+        );
 
         if (item.type === 'group') {
           const isGroupPinned = item.messages.some((m) => pinnedMessageIdSet.has(m.id));
@@ -268,7 +291,7 @@ export const MessagesList = React.memo(function MessagesList({
                       zIndex: 1,
                     }}
                   >
-                    {getDateSeparatorText(msg.timestamp)}
+                    {getDateSeparatorText(msg.timestamp || msg.createdAt || '')}
                   </div>
                 </div>
               )}
@@ -335,7 +358,7 @@ export const MessagesList = React.memo(function MessagesList({
                     zIndex: 1,
                   }}
                 >
-                  {getDateSeparatorText(msg.timestamp)}
+                  {getDateSeparatorText(msg.timestamp || msg.createdAt || '')}
                 </div>
               </div>
             )}

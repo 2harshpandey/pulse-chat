@@ -62,6 +62,24 @@ export const getMessageElementId = (rawId: any): string => {
 
 export const normalizeOverlayText = (value: string): string => value.replace(/\u00A0/g, ' ');
 
+export const isGroupStartMessage = (current: Message, prev?: Message | null): boolean => {
+  if (!prev) return true;
+  if (prev.type === 'system_notification') return true;
+  if (prev.userId !== current.userId) return true;
+  const currentTs = current.timestamp || current.createdAt;
+  const prevTs = prev.timestamp || prev.createdAt;
+  if (currentTs && prevTs) {
+    const curDate = new Date(currentTs);
+    const prevDate = new Date(prevTs);
+    if (!isNaN(curDate.getTime()) && !isNaN(prevDate.getTime())) {
+      if (curDate.toDateString() !== prevDate.toDateString()) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
 export const audioDurationCache = new Map<string, number>();
 
 type AudioDurationSubscriber = (key: string, duration: number) => void;

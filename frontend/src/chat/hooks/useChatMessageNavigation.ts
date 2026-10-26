@@ -10,6 +10,7 @@ import {
   normalizeMessageId,
   getMessageElementId,
   findMessageElement,
+  isGroupStartMessage,
 } from '../utils';
 
 export interface UseChatMessageNavigationProps {
@@ -378,7 +379,7 @@ export function useChatMessageNavigation({
                 for (let i = 0; i < patched.length; i++) {
                   const current = patched[i];
                   const prev = i > 0 ? patched[i - 1] : null;
-                  if (!prev || prev.type === 'system_notification' || prev.userId !== current.userId) {
+                  if (isGroupStartMessage(current, prev)) {
                     groupStartMessageIdsRef.current.add(current.id);
                   }
                 }
