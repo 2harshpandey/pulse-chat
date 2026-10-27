@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { sendClientDiagnostic } from '../telemetry';
 
 export interface VoiceRecordingResult {
   file: File;
@@ -225,6 +226,7 @@ export function useVoiceRecorder() {
 
       mediaRecorder.start(200); // 200ms timeslices for smooth data chunking
       setIsRecording(true);
+      sendClientDiagnostic('voice_record_start', { mimeType });
 
       // Start duration counter with precise active-time accumulation
       let accumulatedMs = 0;
@@ -263,6 +265,7 @@ export function useVoiceRecorder() {
       } else if (errName === 'NotFoundError' || errName === 'DevicesNotFoundError') {
         errMsg = 'No microphone found on this device.';
       }
+      sendClientDiagnostic('voice_record_error', { error: errName, message: errMsg });
       setTimedError(errMsg);
       onErrorHandler?.(errMsg);
       return false;
@@ -275,6 +278,7 @@ export function useVoiceRecorder() {
         mediaRecorderRef.current.pause();
         setIsPaused(true);
         isPausedRef.current = true;
+        sendClientDiagnostic('voice_record_pause', { durationSeconds: durationRef.current });
       } catch {}
     }
   }, []);
@@ -285,11 +289,13 @@ export function useVoiceRecorder() {
         mediaRecorderRef.current.resume();
         setIsPaused(false);
         isPausedRef.current = false;
+        sendClientDiagnostic('voice_record_resume', { durationSeconds: durationRef.current });
       } catch {}
     }
   }, []);
 
   const cancelRecording = useCallback(() => {
+    sendClientDiagnostic('voice_record_cancel', { durationSeconds: durationRef.current });
     if (mediaRecorderRef.current) {
       try {
         mediaRecorderRef.current.onstop = null;
@@ -383,6 +389,8 @@ export function useVoiceRecorder() {
         setDuration(0);
         durationRef.current = 0;
         setLiveLevels(new Array(24).fill(0.15));
+
+        sendClientDiagnostic('voice_record_complete', { durationSeconds: finalDuration, fileSize: audioFile.size });
 
         resolve({
           file: audioFile,

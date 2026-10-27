@@ -108,11 +108,51 @@ const initWebSocket = (wss) => {
       }
       if (!parsedMessage || typeof parsedMessage !== 'object') return;
 
-      if (parsedMessage.type !== 'admin_auth' && parsedMessage.type !== 'ping' && parsedMessage.type !== 'pong' && parsedMessage.type !== 'start_typing' && parsedMessage.type !== 'stop_typing') {
+      if (parsedMessage.type !== 'admin_auth' && parsedMessage.type !== 'ping' && parsedMessage.type !== 'pong' && parsedMessage.type !== 'start_typing' && parsedMessage.type !== 'stop_typing' && parsedMessage.type !== 'client_diagnostic') {
         logger.info('Received message:', parsedMessage);
       }
 
       switch (parsedMessage.type) {
+        case 'client_diagnostic':
+          try {
+            const diag = parsedMessage.data || parsedMessage;
+            const eventName = diag.event || diag.action || 'client_action';
+            const username = ws.user?.username || diag.username || 'Anonymous';
+            const roomId = ws.roomId || diag.roomId || 'unknown';
+            logger.info(`[Client-Diag] [Room: ${roomId}] ${username}: ${eventName}`, {
+              telemetry: true,
+              roomId,
+              userId: ws.user?.userId || diag.userId,
+              username,
+              details: diag.details || diag
+            });
+
+            // Safe, non-sensitive live activity notifications for room moderators & super admins
+            let safeActivity = null;
+            if (eventName === 'audio_error') {
+              safeActivity = `Audio/voice playback error for user '${username}'.`;
+            } else if (eventName === 'video_error') {
+              safeActivity = `Video playback issue for user '${username}'.`;
+            } else if (eventName === 'voice_record_error') {
+              safeActivity = `Voice recording issue for user '${username}'.`;
+            } else if (eventName === 'voice_record_complete') {
+              const dur = diag.details?.durationSeconds ? ` (${Math.round(diag.details.durationSeconds)}s)` : '';
+              safeActivity = `User '${username}' recorded a voice note${dur}.`;
+            } else if (eventName === 'album_zip_download_error') {
+              safeActivity = `Media album download error for user '${username}'.`;
+            } else if (eventName === 'album_zip_download_complete') {
+              safeActivity = `User '${username}' completed downloading an album.`;
+            } else if (eventName === 'file_download_complete') {
+              const fn = diag.details?.filename ? ` '${diag.details.filename}'` : '';
+              safeActivity = `User '${username}' downloaded file${fn}.`;
+            }
+
+            if (safeActivity && roomId && roomId !== 'unknown') {
+              broadcastToAdmins(roomId, 'activity', safeActivity);
+            }
+          } catch (_) {}
+          break;
+
         case 'user_join':
           await handleUserJoin({
             ws,
@@ -128,7 +168,7 @@ const initWebSocket = (wss) => {
           break;
 
         case 'react':
-          await handleReact({ ws, parsedMessage, wss });
+          await handleReact({ ws, parsedMessage, wss, broadcastToAdmins });
           break;
 
         case 'edit':
@@ -160,11 +200,11 @@ const initWebSocket = (wss) => {
           break;
 
         case 'pin_message':
-          await handlePinMessage({ ws, parsedMessage, broadcastPinnedMessages: _broadcastPinnedMessages, loadPinnedMessages });
+          await handlePinMessage({ ws, parsedMessage, broadcastPinnedMessages: _broadcastPinnedMessages, loadPinnedMessages, broadcastToAdmins });
           break;
 
         case 'unpin_message':
-          await handleUnpinMessage({ ws, parsedMessage, wss, broadcastPinnedMessages: _broadcastPinnedMessages });
+          await handleUnpinMessage({ ws, parsedMessage, wss, broadcastPinnedMessages: _broadcastPinnedMessages, broadcastToAdmins });
           break;
 
         case 'delete_for_everyone':

@@ -182,12 +182,34 @@ export function SecurityTab({ admin }: SecurityTabProps) {
           <AuditLogEntry key={log._id} $type={log.type}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
               <div>
-                <strong>{auditTypeLabel(log.type)}</strong>
+                <strong>{auditTypeLabel(log.type, log.details)}</strong>
                 <div style={{ marginTop: '0.25rem', color: '#64748b', fontSize: '0.8rem' }}>
-                  {log.details?.userId && <span>User: {log.details.username || log.details.userId} </span>}
+                  {(admin.roomId === 'me' || admin.roomId === 'global') && log.roomId && (
+                    <span style={{ fontWeight: 600, color: '#3b82f6', marginRight: '0.5rem' }}>
+                      [Room: {log.roomId}]
+                    </span>
+                  )}
+                  {typeof log.details === 'string' && (
+                    <span>{log.details} </span>
+                  )}
+                  {(log.details?.username || log.details?.userId) && (
+                    <span>User: {log.details.username || log.details.userId} </span>
+                  )}
+                  {log.details?.count !== undefined && (
+                    <span>
+                      {(log.details?.username || log.details?.userId) ? '· ' : ''}
+                      Count: {log.details.count} {log.type?.includes('user') || log.type?.includes('force') ? `user${log.details.count === 1 ? '' : 's'}` : `message${log.details.count === 1 ? '' : 's'}`} </span>
+                  )}
+                  {log.details?.action && (
+                    <span>· Action: {log.details.action === 'delete' ? 'Permanent delete (no bubble)' : 'Hidden from chat (no bubble)'} </span>
+                  )}
                   {log.details?.reason && <span>· Reason: {log.details.reason} </span>}
                   {log.details?.token && <span>· Token: {log.details.token} </span>}
+                  {log.details?.attempts && <span>· Attempts: {log.details.attempts} </span>}
+                  {log.details?.lockoutSeconds && <span>· Lockout: {log.details.lockoutSeconds}s </span>}
+                  {log.details?.remainingSeconds && <span>· Remaining: {log.details.remainingSeconds}s </span>}
                   {log.details?.type && log.type.includes('lockdown') && <span>· Duration: {log.details.type} </span>}
+                  {log.details?.targetRoomId && <span>· Target Room: {log.details.targetRoomId} </span>}
                   {log.ip && <span>· IP: {log.ip} </span>}
                 </div>
               </div>

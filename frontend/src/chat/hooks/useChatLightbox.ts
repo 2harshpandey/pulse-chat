@@ -6,19 +6,23 @@ import {
   PHOTO_LIGHTBOX_STEP,
   PHOTO_LIGHTBOX_WHEEL_SENSITIVITY,
 } from '../constants';
+import { sendClientDiagnostic } from '../telemetry';
 
 export function useChatLightbox() {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const lightboxOpenedAtRef = useRef<number>(0);
   const [mediaGallery, setMediaGallery] = useState<{
     items: Message[];
     initialIndex: number;
   } | null>(null);
 
   const openMediaGallery = useCallback((items: Message[], initialIndex: number = 0) => {
+    sendClientDiagnostic('media_gallery_open', { totalItems: items.length, initialIndex });
     setMediaGallery({ items, initialIndex });
   }, []);
 
   const closeMediaGallery = useCallback(() => {
+    sendClientDiagnostic('media_gallery_close');
     setMediaGallery(null);
   }, []);
   const [lightboxTransform, setLightboxTransform] = useState<{ scale: number; x: number; y: number }>({
@@ -79,11 +83,17 @@ export function useChatLightbox() {
   );
 
   const openLightbox = useCallback((url: string) => {
+    lightboxOpenedAtRef.current = Date.now();
+    sendClientDiagnostic('photo_lightbox_open', { mediaUrl: url });
     setLightboxTransform({ scale: PHOTO_LIGHTBOX_MIN_SCALE, x: 0, y: 0 });
     setLightboxUrl(url);
   }, []);
 
   const closeLightbox = useCallback(() => {
+    const duration = lightboxOpenedAtRef.current > 0
+      ? Math.round((Date.now() - lightboxOpenedAtRef.current) / 1000)
+      : 0;
+    sendClientDiagnostic('photo_lightbox_close', { durationViewedSeconds: duration });
     setLightboxUrl(null);
   }, []);
 
@@ -96,6 +106,11 @@ export function useChatLightbox() {
       setLightboxTransform((prev) => {
         const nextScale = Math.min(PHOTO_LIGHTBOX_MAX_SCALE, prev.scale + PHOTO_LIGHTBOX_STEP);
         const nextOffset = clampLightboxOffset(nextScale, prev.x, prev.y);
+        sendClientDiagnostic(
+          'photo_lightbox_zoom',
+          { scale: Math.round(nextScale * 100) / 100, method: 'button_zoom_in' },
+          { debounceMs: 400, debounceKey: 'lightbox_zoom' }
+        );
         return { scale: nextScale, ...nextOffset };
       });
     },
@@ -108,6 +123,11 @@ export function useChatLightbox() {
       setLightboxTransform((prev) => {
         const nextScale = Math.max(PHOTO_LIGHTBOX_MIN_SCALE, prev.scale - PHOTO_LIGHTBOX_STEP);
         const nextOffset = clampLightboxOffset(nextScale, prev.x, prev.y);
+        sendClientDiagnostic(
+          'photo_lightbox_zoom',
+          { scale: Math.round(nextScale * 100) / 100, method: 'button_zoom_out' },
+          { debounceMs: 400, debounceKey: 'lightbox_zoom' }
+        );
         return { scale: nextScale, ...nextOffset };
       });
     },
@@ -125,6 +145,11 @@ export function useChatLightbox() {
           Math.max(PHOTO_LIGHTBOX_MIN_SCALE, prev.scale + delta)
         );
         const nextOffset = clampLightboxOffset(nextScale, prev.x, prev.y);
+        sendClientDiagnostic(
+          'photo_lightbox_zoom',
+          { scale: Math.round(nextScale * 100) / 100, method: 'mouse_wheel' },
+          { debounceMs: 400, debounceKey: 'lightbox_zoom' }
+        );
         return { scale: nextScale, ...nextOffset };
       });
     },

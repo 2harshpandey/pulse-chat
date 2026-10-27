@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import styled, { css, keyframes } from 'styled-components';
 import type { Message } from '../../types';
-import { sanitizeMediaUrl, downloadFile, formatMediaSize, audioDurationCache, setAudioDurationCache } from '../../utils';
+import { sanitizeMediaUrl, downloadFile, formatMediaSize, audioDurationCache, setAudioDurationCache, isCloudinaryUrl } from '../../utils';
 import { renderTextWithLinks } from '../../renderMessage';
 import { MessageText } from '../../ChatStyledComponents';
 import { speedBounce } from '../../styles/chat.animations';
+import { sendClientDiagnostic } from '../../telemetry';
 
 // --- Global Audio Coordinator ---
 // Ensures only one audio message plays at a time across the entire chat.
@@ -596,7 +597,7 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
       return localBlobUrlRef.current;
     }
     const cleanUrl = sanitizeMediaUrl(msg.url || '');
-    if (hasFallbackToMp3 && cleanUrl && cleanUrl.includes('cloudinary.com') && /\.webm(\?|$)/i.test(cleanUrl)) {
+    if (hasFallbackToMp3 && cleanUrl && isCloudinaryUrl(cleanUrl) && /\.webm(\?|$)/i.test(cleanUrl)) {
       return cleanUrl.replace(/\.webm(\?|$)/i, '.mp3$1');
     }
     return cleanUrl;
@@ -751,9 +752,18 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
     setIsPlaying(false);
     setCurrentTime(0);
     audioCoordinator.stop(coordinatorId);
+    sendClientDiagnostic('audio_ended', {
+      messageId: msg.id,
+      totalDuration: Math.round(audioDuration || 0),
+    });
   };
 
   const handleAudioError = () => {
+    sendClientDiagnostic('audio_error', {
+      messageId: msg.id,
+      url: msg.url,
+      hasFallbackToMp3,
+    });
     if (msg.isUploading || !activeSrc) {
       return;
     }
@@ -766,7 +776,7 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
       }
     }
     // If WebM playback failed (e.g. on iOS Safari / Apple devices), try MP3 version from Cloudinary
-    if (!hasFallbackToMp3 && msg.url && msg.url.includes('cloudinary.com') && /\.webm(\?|$)/i.test(msg.url)) {
+    if (!hasFallbackToMp3 && msg.url && isCloudinaryUrl(msg.url) && /\.webm(\?|$)/i.test(msg.url)) {
       setHasFallbackToMp3(true);
       return;
     }
@@ -785,6 +795,12 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
             setIsPlaying(true);
             setIsLoading(false);
             setHasLoadError(false);
+            sendClientDiagnostic('audio_play', {
+              messageId: msg.id,
+              currentTime: Math.round(audioRef.current?.currentTime || 0),
+              duration: Math.round(audioDuration || 0),
+              format: 'mp3_fallback',
+            });
           }).catch((err) => {
             if (err?.name === 'AbortError') {
               setIsPlaying(false);
@@ -822,6 +838,11 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
       audio.pause();
       setIsPlaying(false);
       audioCoordinator.stop(coordinatorId);
+      sendClientDiagnostic('audio_pause', {
+        messageId: msg.id,
+        currentTime: Math.round(currentTime),
+        duration: Math.round(audioDuration || 0),
+      });
     } else {
       audioCoordinator.play(coordinatorId, handleCoordinatorPause);
       setIsLoading(true);
@@ -837,6 +858,11 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
             setIsPlaying(true);
             setIsLoading(false);
             setHasLoadError(false);
+            sendClientDiagnostic('audio_play', {
+              messageId: msg.id,
+              currentTime: Math.round(audio.currentTime),
+              duration: Math.round(audioDuration || 0),
+            });
           })
           .catch((err) => {
             if (err?.name === 'AbortError') {
@@ -845,7 +871,7 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
               return;
             }
             console.warn('Audio playback error:', err);
-            if (!hasFallbackToMp3 && msg.url && msg.url.includes('cloudinary.com') && /\.webm(\?|$)/i.test(msg.url)) {
+            if (!hasFallbackToMp3 && msg.url && isCloudinaryUrl(msg.url) && /\.webm(\?|$)/i.test(msg.url)) {
               setHasFallbackToMp3(true);
             } else if (!msg.isUploading && activeSrc) {
               setHasLoadError(true);
@@ -857,6 +883,11 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
       } else {
         setIsPlaying(true);
         setIsLoading(false);
+        sendClientDiagnostic('audio_play', {
+          messageId: msg.id,
+          currentTime: Math.round(audio.currentTime),
+          duration: Math.round(audioDuration || 0),
+        });
       }
     }
   };
@@ -873,6 +904,10 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
     if (audioRef.current) {
       audioRef.current.playbackRate = nextSpeed;
     }
+    sendClientDiagnostic('audio_speed_change', {
+      messageId: msg.id,
+      speed: nextSpeed,
+    });
   };
 
   const seekToPosition = (clientX: number) => {
@@ -893,6 +928,11 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
       audio.currentTime = newTime;
     } catch {}
     setCurrentTime(newTime);
+    sendClientDiagnostic(
+      'audio_seek',
+      { messageId: msg.id, toTime: Math.round(newTime), duration: Math.round(effectiveDuration) },
+      { debounceMs: 400, debounceKey: `audio_seek_${msg.id}` }
+    );
   };
 
   const handleWaveformClick = (e: React.MouseEvent) => {

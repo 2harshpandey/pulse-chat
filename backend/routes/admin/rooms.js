@@ -12,7 +12,7 @@ const { getRoomState } = require('../../state');
 const { adminLimiter, adminAuth } = require('../../middleware');
 
 module.exports = (wss, broadcasts) => {
-  const { broadcast } = broadcasts;
+  const { broadcast, broadcastToAdmins } = broadcasts;
   const router = express.Router();
 
   // --- Global Super Admin Room Management ---
@@ -69,12 +69,15 @@ module.exports = (wss, broadcasts) => {
         }
       }
 
-      await AuditLog.create({
+      const auditEntry = await AuditLog.create({
         roomId: 'me',
-        action: 'ROOM_DELETED',
-        details: `Super Admin deleted room: ${targetRoomId}`,
+        type: 'room_deleted',
+        details: { targetRoomId, message: `Super Admin deleted room: ${targetRoomId}` },
         timestamp: new Date(),
       });
+      if (typeof broadcastToAdmins === 'function') {
+        broadcastToAdmins('me', 'audit_log', auditEntry);
+      }
 
       res.json({ success: true, message: 'Room deleted successfully' });
     } catch (error) {

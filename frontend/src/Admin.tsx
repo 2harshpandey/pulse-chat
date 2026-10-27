@@ -142,11 +142,11 @@ const Admin = () => {
         <TabButton active={admin.activeTab === 'security'} onClick={() => admin.setActiveTab('security')}>
           Security
         </TabButton>
+        <TabButton active={admin.activeTab === 'activity'} onClick={() => admin.setActiveTab('activity')}>
+          Live Activity
+        </TabButton>
         {(admin.roomId === 'me' || admin.roomId === 'global') && (
           <>
-            <TabButton active={admin.activeTab === 'activity'} onClick={() => admin.setActiveTab('activity')}>
-              Live Activity
-            </TabButton>
             <TabButton active={admin.activeTab === 'logs'} onClick={() => admin.setActiveTab('logs')}>
               Server Logs
             </TabButton>
@@ -168,9 +168,7 @@ const Admin = () => {
         {admin.activeTab === 'reports' && <ReportsTab admin={admin} />}
         {admin.activeTab === 'access' && <AccessLinksTab admin={admin} />}
         {admin.activeTab === 'security' && <SecurityTab admin={admin} />}
-        {(admin.roomId === 'me' || admin.roomId === 'global') && admin.activeTab === 'activity' && (
-          <LiveActivityTab admin={admin} />
-        )}
+        {admin.activeTab === 'activity' && <LiveActivityTab admin={admin} />}
         {(admin.roomId === 'me' || admin.roomId === 'global') && admin.activeTab === 'logs' && (
           <ServerLogsTab admin={admin} />
         )}

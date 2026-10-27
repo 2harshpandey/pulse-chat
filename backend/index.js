@@ -62,14 +62,34 @@ app.use(apiLimiter);
 const broadcasts = initWebSocket(wss);
 const { broadcastToAdmins, broadcastOnlineUsers, broadcast } = broadcasts;
 
-// Inject broadcast into auth router (needs it for audit-log fan-out)
+// Inject broadcast into routers and middleware for audit-log & activity fan-out
 authRouter.setBroadcast(broadcastToAdmins);
+require('./middleware').setBroadcast(broadcastToAdmins);
+roomsRouter.setBroadcast(broadcastToAdmins);
 
 // ---------------------------------------------------------------------------
 // Route mounting
 // ---------------------------------------------------------------------------
 app.get('/health', (_req, res) => res.status(200).send('OK'));
 app.get('/', (_req, res) => res.send('Pulse Chat Server is running!'));
+
+// Non-blocking diagnostic telemetry endpoint (for page beacons & background telemetry)
+app.post('/api/telemetry/diagnostic', (req, res) => {
+  try {
+    const diag = req.body || {};
+    const eventName = diag.event || diag.action || 'client_action';
+    const username = diag.username || 'Anonymous';
+    const roomId = diag.roomId || 'unknown';
+    logger.info(`[Client-Diag] [Room: ${roomId}] ${username}: ${eventName}`, {
+      telemetry: true,
+      roomId,
+      userId: diag.userId,
+      username,
+      details: diag.details || diag
+    });
+  } catch (_) {}
+  res.status(204).end();
+});
 
 app.use('/', authRouter);
 app.use('/', require('./routes/admin')(wss, broadcasts));

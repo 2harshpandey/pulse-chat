@@ -229,7 +229,7 @@ export function useChatMessages({
     const filtered = (clearTs > 0
       ? allMsgs.filter(m => m.type === 'system_notification' || new Date(m.timestamp).getTime() > clearTs)
       : allMsgs
-    ).filter(m => !deletedForMeIds.has(m.id));
+    ).filter(m => !deletedForMeIds.has(m.id) && (m.type as string) !== 'client_diagnostic');
     const deletedIds = new Set(filtered.filter(m => m.isDeleted).map(m => m.id));
     return markDeletedReplyTargets(filtered, deletedIds);
   }, [markDeletedReplyTargets, userId]);

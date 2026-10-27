@@ -30,9 +30,16 @@ export function useAdminController() {
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('messages');
   const [activityLogs, setActivityLogs] = useState<string[]>(() => {
-    const saved = sessionStorage.getItem('admin-activity-logs');
+    const targetRoom = urlRoomId || 'me';
+    const saved = sessionStorage.getItem(`admin-activity-logs-${targetRoom}`);
     return saved ? JSON.parse(saved) : [];
   });
+
+  useEffect(() => {
+    const saved = sessionStorage.getItem(`admin-activity-logs-${roomId}`);
+    setActivityLogs(saved ? JSON.parse(saved) : []);
+  }, [roomId]);
+
   const ws = useRef<WebSocket | null>(null);
   const activityLogRef = useRef<HTMLDivElement>(null);
   const adminPasswordInputRef = useRef<HTMLInputElement>(null);
@@ -238,7 +245,7 @@ export function useAdminController() {
         fetch(`${apiUrl}/api/admin/server-logs`, { headers })
           .then((res) => (res.ok ? res.text() : ''))
           .then((text) => {
-            if (text) setServerLogs(text.split('\n').reverse());
+            if (text) setServerLogs(text.split('\n').filter((l) => l.trim().length > 0).reverse());
           })
           .catch(() => {})
           .finally(() => setIsServerLogsLoading(false));
@@ -318,12 +325,12 @@ export function useAdminController() {
 
   // --- Server Logs Actions ---
   const handleRefreshServerLogs = async () => {
-    if (!passwordRef.current) return;
+    if (!passwordRef.current || (roomId !== 'me' && roomId !== 'global')) return;
     try {
       const res = await fetch(`${apiUrl}/api/admin/server-logs`, {
         headers: { 'x-admin-password': passwordRef.current, 'x-room-id': roomId },
       });
-      if (res.ok) setServerLogs((await res.text()).split('\n').reverse());
+      if (res.ok) setServerLogs((await res.text()).split('\n').filter((l) => l.trim().length > 0).reverse());
     } catch (err) {
       console.error('Failed to fetch server logs', err);
     }

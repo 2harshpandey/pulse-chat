@@ -130,8 +130,15 @@ export const formatDuration = (durationMs?: number | null): string => {
   return `${minutes}m`;
 };
 
-// Rewrites the "timestamp" field inside a raw Winston JSON log line to IST
+const serverLogFormatCache = new Map<string, string>();
+const MAX_LOG_CACHE_SIZE = 2500;
+
+// Rewrites the "timestamp" field inside a raw Winston JSON log line to IST (with O(1) cache)
 export const formatServerLogLine = (line: string): string => {
+  if (!line) return '';
+  const cached = serverLogFormatCache.get(line);
+  if (cached !== undefined) return cached;
+
   try {
     const parsed = JSON.parse(line);
     if (parsed.timestamp) {
@@ -145,8 +152,17 @@ export const formatServerLogLine = (line: string): string => {
           `${pad(ist.getUTCHours())}:${pad(ist.getUTCMinutes())}:${pad(ist.getUTCSeconds())} IST`;
       }
     }
-    return JSON.stringify(parsed);
+    const result = JSON.stringify(parsed);
+    if (serverLogFormatCache.size >= MAX_LOG_CACHE_SIZE) {
+      serverLogFormatCache.clear();
+    }
+    serverLogFormatCache.set(line, result);
+    return result;
   } catch {
+    if (serverLogFormatCache.size >= MAX_LOG_CACHE_SIZE) {
+      serverLogFormatCache.clear();
+    }
+    serverLogFormatCache.set(line, line);
     return line;
   }
 };
@@ -165,7 +181,14 @@ export const getLinkStatus = (link: TempLinkData): { status: 'active' | 'expired
   return { status: 'active', label: 'Active' };
 };
 
-export const auditTypeLabel = (type: string): string => {
+export const auditTypeLabel = (type: string, details?: any): string => {
+  if (type === 'messages_deleted_disappear') {
+    if (details?.action === 'hide') {
+      return '💨 Messages Vanished (Hidden)';
+    }
+    return '🗑️ Messages Deleted (Disappeared)';
+  }
+
   const labels: Record<string, string> = {
     'user_blocked': '🚫 User Blocked',
     'user_unblocked': '✅ User Unblocked',
@@ -180,6 +203,14 @@ export const auditTypeLabel = (type: string): string => {
     'temp_link_expired_attempt': '🔗 Expired Link Attempt',
     'lockdown_enabled': '🔒 Lockdown Enabled',
     'lockdown_disabled': '🔓 Lockdown Disabled',
+    'join_failed_rate_limit': '⏱️ Join Failed (Rate Limit Lockout)',
+    'potential_bruteforce_detected': '🚨 Potential Brute Force Detected',
+    'admin_auth_failed': '🛑 Admin Authentication Failed',
+    'force_logged_out_all': '⚠️ All Users Force Logged Out',
+    'messages_deleted_disappear': '🗑️ Messages Deleted (Disappeared)',
+    'messages_deleted_bubble': '🗑️ Messages Deleted (Bubble Kept)',
+    'messages_hidden': '👁️ Messages Hidden',
+    'room_deleted': '🗑️ Room Deleted',
   };
-  return labels[type] || type;
+  return labels[type] || type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 };

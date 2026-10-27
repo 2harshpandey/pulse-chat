@@ -109,6 +109,13 @@ router.all('/api/download', apiLimiter, async (req, res) => {
     const contentType = String(payloadResponse.headers['content-type'] || 'application/octet-stream');
     const upstreamLength = Number.parseInt(String(payloadResponse.headers['content-length'] || ''), 10);
 
+    logger.info(`[Download] File download: ${safeFilename}`, {
+      filename: safeFilename,
+      size: upstreamLength || undefined,
+      contentType,
+      ip: req.ip || req.headers['x-forwarded-for'],
+    });
+
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', contentDisposition);
     res.setHeader('Cache-Control', 'private, max-age=120');

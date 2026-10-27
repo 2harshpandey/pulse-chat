@@ -11,16 +11,37 @@ const { getRoomState } = require('../state');
  */
 /**
  * Send a typed message to every authenticated admin WebSocket client in a room.
+ * For room-specific events (roomId !== 'me' && roomId !== 'global'), also relays
+ * to super admin clients ('me') with room context for comprehensive live monitoring.
  */
 const broadcastToAdmins = (roomId, type, data) => {
   const { adminClients } = getRoomState(roomId);
-  if (!adminClients || adminClients.size === 0) return;
+  const targetRoomClients = (adminClients && adminClients.size > 0) ? Array.from(adminClients) : [];
+
+  let superAdminClients = [];
+  if (roomId !== 'me' && roomId !== 'global') {
+    const superState = getRoomState('me');
+    if (superState && superState.adminClients && superState.adminClients.size > 0) {
+      superAdminClients = Array.from(superState.adminClients);
+    }
+  }
+
+  const allTargets = new Set([...targetRoomClients, ...superAdminClients]);
+  if (allTargets.size === 0) return;
 
   try {
-    const message = JSON.stringify({ type, data });
-    adminClients.forEach(client => {
+    const regularMessage = JSON.stringify({ type, data, roomId });
+    const superAdminActivityMessage = (type === 'activity' && typeof data === 'string' && !data.includes(`[Room: ${roomId}]`))
+      ? JSON.stringify({ type, data: `[Room: ${roomId}] ${data}`, roomId })
+      : regularMessage;
+
+    allTargets.forEach(client => {
       if (client.readyState === WebSocket.OPEN) {
-        client.send(message);
+        if (superAdminClients.includes(client) && !targetRoomClients.includes(client)) {
+          client.send(superAdminActivityMessage);
+        } else {
+          client.send(regularMessage);
+        }
       }
     });
   } catch (err) {
@@ -100,10 +121,10 @@ const startLogWatcher = () => {
           }
           if (!hasAdmins) return;
 
-          // Read only the last 32KB of the file instead of loading the entire file into memory
+          // Read up to 1MB of the file instead of loading the entire file into memory
           fs.stat(logFilePath, (statErr, stats) => {
             if (statErr || !stats) return;
-            const bufferSize = Math.min(stats.size, 32768);
+            const bufferSize = Math.min(stats.size, 1048576);
             if (bufferSize === 0) return;
 
             const buffer = Buffer.alloc(bufferSize);
@@ -111,12 +132,16 @@ const startLogWatcher = () => {
             try {
               fd = fs.openSync(logFilePath, 'r');
               fs.readSync(fd, buffer, 0, bufferSize, stats.size - bufferSize);
-              const rawText = buffer.toString('utf8');
-              const lines = rawText.split('\n').slice(-100).join('\n');
-              const payload = { type: 'server_logs', data: lines };
-              for (const roomId of roomStates.keys()) {
-                broadcastToAdmins(roomId, payload.type, payload.data);
+              let rawText = buffer.toString('utf8');
+              if (stats.size > bufferSize) {
+                const firstNewline = rawText.indexOf('\n');
+                if (firstNewline !== -1) {
+                  rawText = rawText.slice(firstNewline + 1);
+                }
               }
+              const lines = rawText.split('\n').filter(Boolean).slice(-1000).join('\n');
+              const payload = { type: 'server_logs', data: lines };
+              broadcastToAdmins('me', payload.type, payload.data);
             } catch (readErr) {
               // Ignore or log error without throwing
             } finally {

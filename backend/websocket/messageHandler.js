@@ -20,7 +20,7 @@ const { unpinIfPinned, broadcastPinnedMessages } = require('./pinnedManager');
 /**
  * Handle reaction addition/toggle.
  */
-const handleReact = async ({ ws, parsedMessage, wss }) => {
+const handleReact = async ({ ws, parsedMessage, wss, broadcastToAdmins }) => {
   const { messageId, userId, roomId = 'me' } = parsedMessage;
   const emoji = normalizeReactionEmoji(parsedMessage.emoji);
   if (!emoji || typeof messageId !== 'string' || typeof userId !== 'string') {
@@ -61,6 +61,22 @@ const handleReact = async ({ ws, parsedMessage, wss }) => {
 
     messageDoc.markModified('reactions');
     await messageDoc.save();
+
+    logger.info(`[Reaction] [Room: ${roomId}] User '${username}' ${previousEmoji !== emoji ? `reacted ${emoji}` : 'removed reaction'} on message ${messageId}`, {
+      roomId,
+      userId,
+      username,
+      messageId,
+      emoji: previousEmoji !== emoji ? emoji : null,
+    });
+
+    if (typeof broadcastToAdmins === 'function') {
+      broadcastToAdmins(
+        roomId,
+        'activity',
+        `User '${username}' ${previousEmoji !== emoji ? `reacted ${emoji}` : 'removed reaction'} on a message.`
+      );
+    }
 
     const reactionsPlain = filterValidReactions(messageDoc.reactions);
 
@@ -250,7 +266,7 @@ const handleReportUser = async ({ ws, parsedMessage, broadcastToAdmins }) => {
 /**
  * Handle pin_message action (admins only).
  */
-const handlePinMessage = async ({ ws, parsedMessage, broadcastPinnedMessages, loadPinnedMessages }) => {
+const handlePinMessage = async ({ ws, parsedMessage, broadcastPinnedMessages, loadPinnedMessages, broadcastToAdmins }) => {
   logger.info(`Received pin_message:`, parsedMessage);
   if (!ws.isAdmin) {
     logger.warn('Pin failed: not an admin');
@@ -326,6 +342,11 @@ const handlePinMessage = async ({ ws, parsedMessage, broadcastPinnedMessages, lo
       state.pinnedMessages.push(toClientMessage(updatedMsg));
     }
     broadcastPinnedMessages(roomId);
+    if (typeof broadcastToAdmins === 'function') {
+      const preview = msg.text ? (msg.text.length > 50 ? msg.text.slice(0, 50) + '...' : msg.text) : (msg.type === 'audio' ? 'Voice note' : (msg.type || 'Media'));
+      const expiryText = expiresAt ? ` (expires in ${Math.round(durationMs / 60000)}m)` : '';
+      broadcastToAdmins(roomId, 'activity', `Admin pinned a message: "${preview}"${expiryText}.`);
+    }
   } catch (error) {
     logger.error('Failed to pin message:', error);
   }
@@ -334,7 +355,7 @@ const handlePinMessage = async ({ ws, parsedMessage, broadcastPinnedMessages, lo
 /**
  * Handle unpin_message action (admins only).
  */
-const handleUnpinMessage = async ({ ws, parsedMessage, wss, broadcastPinnedMessages }) => {
+const handleUnpinMessage = async ({ ws, parsedMessage, wss, broadcastPinnedMessages, broadcastToAdmins }) => {
   if (!ws.isAdmin) return;
   const { messageId } = parsedMessage;
   const roomId = ws.roomId || 'me';
@@ -351,6 +372,9 @@ const handleUnpinMessage = async ({ ws, parsedMessage, wss, broadcastPinnedMessa
     }
 
     await unpinIfPinned(wss, roomId, [targetMsgId, messageId]);
+    if (typeof broadcastToAdmins === 'function') {
+      broadcastToAdmins(roomId, 'activity', `Admin unpinned a message.`);
+    }
   } catch (error) {
     logger.error('Failed to unpin message:', error);
   }
@@ -470,6 +494,10 @@ const handleNewMessage = async ({ ws, parsedMessage, wss, broadcastToAdmins, _br
     _broadcastOnlineUsers(roomId);
   }
 
+  if (parsedMessage?.type === 'client_diagnostic') {
+    return;
+  }
+
   // Sanitise blob: URLs
   const sanitisedMessage = { ...parsedMessage };
   if (typeof sanitisedMessage.url === 'string' && sanitisedMessage.url.startsWith('blob:')) {
@@ -564,7 +592,27 @@ const handleNewMessage = async ({ ws, parsedMessage, wss, broadcastToAdmins, _br
     });
     event.save().catch(e => logger.error('Failed to save message create event:', e));
     broadcastToAdmins(roomId, 'history', event);
-    broadcastToAdmins(roomId, 'activity', `New message from '${username}': "${messageDoc.text || '[Media]'}"`);
+
+    let messageSummary;
+    if (messageDoc.type === 'audio') {
+      const dur = messageDoc.duration ? ` (${Math.round(messageDoc.duration)}s)` : '';
+      messageSummary = `User '${username}' sent a voice message${dur}.`;
+    } else if (messageDoc.type === 'image') {
+      const name = messageDoc.originalName ? ` ('${messageDoc.originalName}')` : '';
+      messageSummary = `User '${username}' shared an image${name}.`;
+    } else if (messageDoc.type === 'video') {
+      const name = messageDoc.originalName ? ` ('${messageDoc.originalName}')` : '';
+      messageSummary = `User '${username}' shared a video${name}.`;
+    } else if (messageDoc.type === 'file') {
+      const name = messageDoc.originalName ? ` ('${messageDoc.originalName}')` : '';
+      messageSummary = `User '${username}' shared a file${name}.`;
+    } else if (messageDoc.type === 'poll') {
+      messageSummary = `User '${username}' created a poll: "${messageDoc.poll?.question || 'Untitled'}".`;
+    } else {
+      const textPreview = messageDoc.text ? (messageDoc.text.length > 80 ? messageDoc.text.slice(0, 80) + '...' : messageDoc.text) : '[Message]';
+      messageSummary = `New message from '${username}': "${textPreview}"`;
+    }
+    broadcastToAdmins(roomId, 'activity', messageSummary);
   }).catch(e => logger.error('Failed to find user for message event:', e));
 
   wss.clients.forEach(client => {

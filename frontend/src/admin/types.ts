@@ -38,6 +38,7 @@ export interface LockdownData {
 
 export interface AuditLogData {
   _id: string;
+  roomId?: string;
   type: string;
   details: any;
   ip?: string;

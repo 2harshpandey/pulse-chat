@@ -62,9 +62,12 @@ export function useAdminWebSocket({
       const message = JSON.parse(event.data);
       switch (message.type) {
         case 'activity':
+          if ((currentRoomId !== 'me' && currentRoomId !== 'global') && message.roomId && message.roomId !== currentRoomId) {
+            break;
+          }
           setActivityLogs((prev) => {
-            const newLogs = [`[${new Date().toLocaleTimeString()}] ${message.data}`, ...prev].slice(0, 50);
-            sessionStorage.setItem('admin-activity-logs', JSON.stringify(newLogs));
+            const newLogs = [`[${new Date().toLocaleTimeString()}] ${message.data}`, ...prev].slice(0, 300);
+            sessionStorage.setItem(`admin-activity-logs-${currentRoomId}`, JSON.stringify(newLogs));
             return newLogs;
           });
           break;
@@ -75,13 +78,21 @@ export function useAdminWebSocket({
           break;
         case 'chat_cleared':
           setHistoryLogs([]);
-          setActivityLogs((prev) => [`[${new Date().toLocaleTimeString()}] Chat history permanently cleared.`, ...prev]);
+          setActivityLogs((prev) => {
+            const newLogs = [`[${new Date().toLocaleTimeString()}] Chat history permanently cleared.`, ...prev];
+            sessionStorage.setItem(`admin-activity-logs-${currentRoomId}`, JSON.stringify(newLogs));
+            return newLogs;
+          });
           break;
         case 'chat_hidden_for_everyone':
-          setActivityLogs((prev) => [
-            `[${new Date().toLocaleTimeString()}] All existing chats were hidden from frontend for everyone.`,
-            ...prev,
-          ]);
+          setActivityLogs((prev) => {
+            const newLogs = [
+              `[${new Date().toLocaleTimeString()}] All existing chats were hidden from frontend for everyone.`,
+              ...prev,
+            ];
+            sessionStorage.setItem(`admin-activity-logs-${currentRoomId}`, JSON.stringify(newLogs));
+            return newLogs;
+          });
           break;
         case 'bulk_history_update':
           setHistoryLogs((prev) => {
@@ -136,7 +147,9 @@ export function useAdminWebSocket({
           setLoggedInUsersList(message.data);
           break;
         case 'server_logs':
-          setServerLogs(message.data.split('\n').reverse());
+          if (currentRoomId === 'me' || currentRoomId === 'global') {
+            setServerLogs(message.data.split('\n').filter((l: string) => l.trim().length > 0).reverse());
+          }
           break;
         case 'temp_link_created':
           setTempLinks((prev) => {
@@ -167,6 +180,9 @@ export function useAdminWebSocket({
           setLockdownStatus(message.data);
           break;
         case 'audit_log':
+          if ((currentRoomId !== 'me' && currentRoomId !== 'global') && message.data?.roomId && message.data.roomId !== currentRoomId) {
+            break;
+          }
           setAuditLogs((prev) => [{ ...message.data, _id: Date.now().toString() }, ...prev].slice(0, 200));
           break;
         case 'user_reported':

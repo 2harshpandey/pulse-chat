@@ -7,6 +7,10 @@ const { filterValidReactions } = require('./reactions');
 const BlockedUser = require('./models/blockedUser');
 const LoginLockdown = require('./models/loginLockdown');
 const Room = require('./models/room');
+const AuditLog = require('./models/auditLog');
+
+let _broadcastToAdmins = () => {};
+const setBroadcast = (fn) => { if (typeof fn === 'function') _broadcastToAdmins = fn; };
 
 // --- IP Helpers ---
 
@@ -46,6 +50,26 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: getClientIp,
   message: { error: 'Too many login attempts. Please wait a few minutes before trying again.' },
+  handler: (req, res, _next, options) => {
+    const ip = extractIp(req);
+    const roomId = req.body?.roomId || req.body?.id || req.query?.roomId || req.headers['x-room-id'] || 'me';
+    const userAgent = req.headers['user-agent'] || '';
+    const username = req.body?.username || req.query?.username;
+    AuditLog.create({
+      roomId,
+      type: 'join_failed_rate_limit',
+      details: {
+        reason: 'Too many authentication attempts (exceeded 100 requests per 15-minute window)',
+        username,
+      },
+      ip,
+      userAgent,
+    }).then((entry) => {
+      _broadcastToAdmins(roomId, 'audit_log', entry);
+      _broadcastToAdmins(roomId, 'activity', `Security warning: Auth rate limit triggered on room '${roomId}' for IP ${ip}.`);
+    }).catch(() => {});
+    return res.status(options.statusCode).json(options.message);
+  },
 });
 
 const uploadLimiter = rateLimit({
@@ -105,6 +129,20 @@ const checkPasswordRateLimit = (req, res, next) => {
   const record = passwordAttemptLocks.get(key);
   if (record && record.lockUntil > Date.now()) {
     const remaining = Math.ceil((record.lockUntil - Date.now()) / 1000);
+    AuditLog.create({
+      roomId,
+      type: 'join_failed_rate_limit',
+      details: {
+        reason: `Temporary lockout active due to repeated failed attempts (${remaining}s remaining)`,
+        remainingSeconds: remaining,
+        username: req.body?.username,
+      },
+      ip,
+      userAgent: req.headers['user-agent'] || '',
+    }).then((entry) => {
+      _broadcastToAdmins(roomId, 'audit_log', entry);
+    }).catch(() => {});
+
     return res.status(429).json({ error: `Too many failed attempts. Locked out for ${remaining} seconds.` });
   }
   
@@ -116,7 +154,7 @@ const checkPasswordRateLimit = (req, res, next) => {
   next();
 };
 
-const recordFailedPasswordAttempt = (key) => {
+const recordFailedPasswordAttempt = (key, req) => {
   const now = Date.now();
   let record = passwordAttemptLocks.get(key) || { count: 0, lockUntil: 0, lastAttempt: 0 };
   if (record.lastAttempt && (now - record.lastAttempt > 10 * 60 * 1000)) {
@@ -127,6 +165,28 @@ const recordFailedPasswordAttempt = (key) => {
   if (record.count >= 5) {
     record.lockUntil = now + 60 * 1000; // 1 minute lockdown after 5 consecutive failures
     record.count = 0; // Reset count after lockdown starts so they get fresh tries later
+
+    if (req) {
+      const ip = extractIp(req);
+      const roomId = req.body?.roomId || req.body?.id || req.headers['x-room-id'] || 'me';
+      const userAgent = req.headers['user-agent'] || '';
+      const username = req.body?.username;
+      AuditLog.create({
+        roomId,
+        type: 'potential_bruteforce_detected',
+        details: {
+          attempts: 5,
+          lockoutSeconds: 60,
+          reason: '5 consecutive failed password attempts detected from this IP',
+          username,
+        },
+        ip,
+        userAgent,
+      }).then((entry) => {
+        _broadcastToAdmins(roomId, 'audit_log', entry);
+        _broadcastToAdmins(roomId, 'activity', `Potential brute-force detected: IP ${ip} failed 5 consecutive password attempts on room '${roomId}'. Locked out for 60s.`);
+      }).catch(() => {});
+    }
   }
   passwordAttemptLocks.set(key, record);
 };
@@ -296,4 +356,5 @@ module.exports = {
   isUserBlocked,
   isLoginLocked,
   toClientMessage,
+  setBroadcast,
 };

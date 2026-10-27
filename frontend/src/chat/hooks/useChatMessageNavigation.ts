@@ -12,6 +12,7 @@ import {
   findMessageElement,
   isGroupStartMessage,
 } from '../utils';
+import { sendClientDiagnostic } from '../telemetry';
 
 export interface UseChatMessageNavigationProps {
   apiBase: string;
@@ -327,6 +328,7 @@ export function useChatMessageNavigation({
       }
 
       setIsLocatingMessage(true);
+      sendClientDiagnostic('quote_jump_to_message', { targetId, sourceId });
       return new Promise<void>((resolve) => {
         const finish = () => {
           setIsLocatingMessage(false);

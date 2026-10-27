@@ -6,7 +6,7 @@ import { MessageQuotedPreview } from './components/message/MessageQuotedPreview'
 import { MessageActionMenuPortal } from './components/message/MessageActionMenuPortal';
 import { ChatFooter } from './components/ChatFooter';
 import type { Message } from './types';
-import { setAudioDurationCache, downloadFile } from './utils';
+import { setAudioDurationCache, downloadFile, isCloudinaryUrl } from './utils';
 
 // Mock audio element behavior in jsdom
 beforeEach(() => {
@@ -781,6 +781,26 @@ describe('Voice Messaging System', () => {
         fireEvent.click(button);
       });
       expect(window.HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('isCloudinaryUrl URL sanitization (CodeQL CWE-020)', () => {
+    it('accurately identifies genuine Cloudinary URLs', () => {
+      expect(isCloudinaryUrl('https://res.cloudinary.com/demo/video/upload/audio.webm')).toBe(true);
+      expect(isCloudinaryUrl('https://api.cloudinary.com/v1_1/demo/resources')).toBe(true);
+      expect(isCloudinaryUrl('http://cloudinary.com/assets/audio.mp3')).toBe(true);
+      expect(isCloudinaryUrl('https://subdomain.res.cloudinary.com/file.webm')).toBe(true);
+    });
+
+    it('rejects spoofed URLs with cloudinary.com in domain suffix or path', () => {
+      expect(isCloudinaryUrl('https://evil-cloudinary.com/audio.webm')).toBe(false);
+      expect(isCloudinaryUrl('https://notcloudinary.com/audio.webm')).toBe(false);
+      expect(isCloudinaryUrl('https://attacker.com/res.cloudinary.com/audio.webm')).toBe(false);
+      expect(isCloudinaryUrl('https://attacker.com?redirect=res.cloudinary.com')).toBe(false);
+      expect(isCloudinaryUrl('javascript:alert(1)')).toBe(false);
+      expect(isCloudinaryUrl('')).toBe(false);
+      expect(isCloudinaryUrl(null)).toBe(false);
+      expect(isCloudinaryUrl(undefined)).toBe(false);
     });
   });
 });

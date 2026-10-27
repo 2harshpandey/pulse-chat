@@ -524,6 +524,7 @@ export const LogViewerContainer = styled.pre`
   border-radius: 4px;
   font-family: 'Courier New', Courier, monospace;
   font-size: 0.85rem;
+  line-height: 1.5;
   white-space: pre-wrap;
   word-wrap: break-word;
   border: 1px solid var(--border-primary);
@@ -532,9 +533,29 @@ export const LogViewerContainer = styled.pre`
   @media (max-height: 500px) { padding: 0.4rem 0.5rem; font-size: 0.75rem; }
 `;
 
+export const ServerLogItem = styled.div`
+  margin-bottom: 1.2em;
+  line-height: 1.5;
+  word-break: break-all;
+  content-visibility: auto;
+  contain-intrinsic-size: 0 45px;
+  &:last-child {
+    margin-bottom: 0;
+  }
+`;
+
 export const ActivityLogItem = styled.div`
-  padding: 0.25rem 0;
+  padding: 0.35rem 0.5rem;
+  border-radius: 4px;
+  line-height: 1.5;
   animation: ${cardEntrance} 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background-color 0.2s ease;
+  word-break: break-word;
+  content-visibility: auto;
+  contain-intrinsic-size: 0 35px;
+  &:hover {
+    background-color: rgba(255, 255, 255, 0.04);
+  }
 `;
 
 export const LogsTabHeaderRow = styled.div`
@@ -808,10 +829,13 @@ export const AuditLogEntry = styled.div<{ $type?: string }>`
   border-left: 3px solid ${(p: any) => {
     if (p.$type?.includes('blocked')) return '#ef4444';
     if (p.$type?.includes('unblocked')) return '#22c55e';
-    if (p.$type?.includes('failed')) return '#f59e0b';
+    if (p.$type?.includes('bruteforce') || p.$type?.includes('auth_failed')) return '#dc2626';
+    if (p.$type?.includes('failed') || p.$type?.includes('rate_limit')) return '#f59e0b';
     if (p.$type?.includes('temp_link')) return '#3B82F6';
     if (p.$type?.includes('lockdown')) return '#8b5cf6';
     if (p.$type?.includes('force')) return '#f97316';
+    if (p.$type?.includes('disappear') || p.$type?.includes('deleted')) return '#f43f5e';
+    if (p.$type?.includes('hidden')) return '#8b5cf6';
     return '#94a3b8';
   }};
   background: var(--bg-tertiary);

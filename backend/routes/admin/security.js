@@ -10,8 +10,11 @@ module.exports = (wss, broadcasts) => {
   const { broadcastToAdmins } = broadcasts;
   const router = express.Router();
 
-  // --- Server Activity Log ---
+  // --- Server Activity Log (Strictly super admin only) ---
   router.get('/api/admin/server-logs', adminLimiter, adminAuth, (req, res) => {
+    if (!req.isSuperAdmin || (req.roomId !== 'me' && req.roomId !== 'global')) {
+      return res.status(403).json({ error: 'Server logs are only available to the super admin panel.' });
+    }
     const logFilePath = path.join(__dirname, '..', '..', 'pulse-activity.log');
     if (!fs.existsSync(logFilePath)) {
       return res.type('text/plain').send('');
@@ -20,7 +23,7 @@ module.exports = (wss, broadcasts) => {
       if (statErr || !stats) {
         return res.status(500).send('Could not read server logs.');
       }
-      const bufferSize = Math.min(stats.size, 65536);
+      const bufferSize = Math.min(stats.size, 1048576);
       if (bufferSize === 0) {
         return res.type('text/plain').send('');
       }
@@ -35,8 +38,14 @@ module.exports = (wss, broadcasts) => {
       } finally {
         if (fd) fs.closeSync(fd);
       }
-      const rawText = buffer.toString('utf8');
-      const lines = rawText.split('\n').slice(-200).join('\n');
+      let rawText = buffer.toString('utf8');
+      if (stats.size > bufferSize) {
+        const firstNewline = rawText.indexOf('\n');
+        if (firstNewline !== -1) {
+          rawText = rawText.slice(firstNewline + 1);
+        }
+      }
+      const lines = rawText.split('\n').filter(Boolean).slice(-1000).join('\n');
       res.type('text/plain').send(lines);
     });
   });
@@ -133,9 +142,10 @@ module.exports = (wss, broadcasts) => {
 
   // --- Audit Logs ---
   router.get('/api/admin/audit-logs', adminLimiter, adminAuth, async (req, res) => {
-    const roomId = req.roomId;
+    const isSuperPanel = req.isSuperAdmin && (req.roomId === 'me' || req.roomId === 'global');
     try {
-      const logs = await AuditLog.find({ roomId }).sort({ timestamp: -1 }).limit(200);
+      const query = isSuperPanel ? {} : { roomId: req.roomId };
+      const logs = await AuditLog.find(query).sort({ timestamp: -1 }).limit(200);
       res.json(logs);
     } catch (error) {
       logger.error('Failed to fetch audit logs:', error);

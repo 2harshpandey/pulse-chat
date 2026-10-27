@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { SPEEDS } from './constants';
 import { sanitizeMediaUrl } from './utils';
+import { sendClientDiagnostic } from './telemetry';
 import {
   VideoPlayerWrapper, CVPContainer, CVPControls, CVPTimelineWrapper, CVPTimelineTrack,
   CVPTimelineFill, CVPTimelineThumb, CVPBottomRow, CVPIconBtn, CVPTime, CVPSpeedBtn,
@@ -109,8 +110,25 @@ export const VideoPlayer = ({
         video.currentTime = 0.01;
       }
     };
-    const onPlay = () => { setIsPlaying(true); resetControlsTimer(); };
-    const onPause = () => { setIsPlaying(false); setShowControls(true); if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current); };
+    const onPlay = () => {
+      setIsPlaying(true);
+      resetControlsTimer();
+      sendClientDiagnostic('video_play', {
+        src: sanitizeMediaUrl(src),
+        duration: Math.round(video.duration || 0),
+        currentTime: Math.round(video.currentTime),
+      });
+    };
+    const onPause = () => {
+      setIsPlaying(false);
+      setShowControls(true);
+      if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current);
+      sendClientDiagnostic('video_pause', {
+        src: sanitizeMediaUrl(src),
+        currentTime: Math.round(video.currentTime),
+        duration: Math.round(video.duration || 0),
+      });
+    };
     const onEnded = () => {
       if (video.loop) {
         setIsPlaying(true);
@@ -118,9 +136,17 @@ export const VideoPlayer = ({
       }
       setIsPlaying(false);
       setShowControls(true);
+      sendClientDiagnostic('video_ended', {
+        src: sanitizeMediaUrl(src),
+        totalDuration: Math.round(video.duration || 0),
+      });
     };
     const onVolumeChange = () => { setVolume(video.volume); setIsMuted(video.muted); };
     const onError = () => {
+      sendClientDiagnostic('video_error', {
+        src: sanitizeMediaUrl(src),
+        error: video.error?.message || 'Video error',
+      });
       // blob: URLs that fail are dead references — retrying is pointless.
       const currentSrc = video.src || '';
       if (currentSrc.startsWith('blob:')) {
@@ -259,7 +285,13 @@ export const VideoPlayer = ({
   const skip = (sec: number) => {
     const v = videoRef.current;
     if (!v) return;
-    v.currentTime = Math.min(Math.max(v.currentTime + sec, 0), v.duration || 0);
+    const newTime = Math.min(Math.max(v.currentTime + sec, 0), v.duration || 0);
+    v.currentTime = newTime;
+    sendClientDiagnostic(
+      'video_seek',
+      { toTime: Math.round(newTime), duration: Math.round(v.duration || 0) },
+      { debounceMs: 400, debounceKey: 'video_seek' }
+    );
   };
 
   const toggleMute = () => {
@@ -272,6 +304,10 @@ export const VideoPlayer = ({
     const nextIdx = (speedIdx + 1) % SPEEDS.length;
     setSpeedIdx(nextIdx);
     if (videoRef.current) videoRef.current.playbackRate = SPEEDS[nextIdx];
+    sendClientDiagnostic('video_speed_change', {
+      speed: SPEEDS[nextIdx],
+      src: sanitizeMediaUrl(src),
+    });
   };
 
   const toggleFullscreen = () => {

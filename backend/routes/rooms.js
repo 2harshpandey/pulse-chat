@@ -4,9 +4,13 @@ const crypto = require('crypto');
 const logger = require('../logger');
 const Room = require('../models/room');
 const User = require('../models/user');
+const AuditLog = require('../models/auditLog');
 const { apiLimiter, extractIp, generateDeviceHash, checkPasswordRateLimit, recordFailedPasswordAttempt, resetPasswordAttempts } = require('../middleware');
 
 const router = express.Router();
+
+let _broadcastToAdmins = () => {};
+const setBroadcast = (fn) => { if (typeof fn === 'function') _broadcastToAdmins = fn; };
 
 const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -161,7 +165,20 @@ router.post('/verify-join', checkPasswordRateLimit, async (req, res) => {
 
   if (roomId === 'me') {
     if (process.env.CLIENT_PASSWORD && password !== process.env.CLIENT_PASSWORD) {
-      recordFailedPasswordAttempt(req.passwordRateLimitKey);
+      recordFailedPasswordAttempt(req.passwordRateLimitKey, req);
+      const ip = extractIp(req);
+      const userAgent = req.headers['user-agent'] || '';
+      const username = req.body?.username;
+      AuditLog.create({
+        roomId: 'me',
+        type: 'join_failed_password',
+        details: { username, reason: 'Incorrect room password' },
+        ip,
+        userAgent,
+      }).then((entry) => {
+        _broadcastToAdmins('me', 'audit_log', entry);
+        _broadcastToAdmins('me', 'activity', `Join attempt failed: Incorrect password on room 'me'.`);
+      }).catch(() => {});
       return res.status(401).json({ error: 'Incorrect password.' });
     }
     resetPasswordAttempts(req.passwordRateLimitKey);
@@ -181,7 +198,20 @@ router.post('/verify-join', checkPasswordRateLimit, async (req, res) => {
 
     if (room.isPrivate && room.joinPassword) {
       if (password !== room.joinPassword) {
-        recordFailedPasswordAttempt(req.passwordRateLimitKey);
+        recordFailedPasswordAttempt(req.passwordRateLimitKey, req);
+        const ip = extractIp(req);
+        const userAgent = req.headers['user-agent'] || '';
+        const username = req.body?.username;
+        AuditLog.create({
+          roomId: room.id,
+          type: 'join_failed_password',
+          details: { username, reason: 'Incorrect room password' },
+          ip,
+          userAgent,
+        }).then((entry) => {
+          _broadcastToAdmins(room.id, 'audit_log', entry);
+          _broadcastToAdmins(room.id, 'activity', `Join attempt failed: Incorrect password on room '${room.id}'.`);
+        }).catch(() => {});
         return res.status(401).json({ error: 'Incorrect password.' });
       }
     }
@@ -301,7 +331,20 @@ router.post('/join', apiLimiter, checkPasswordRateLimit, async (req, res) => {
       return res.json({ success: true });
     }
 
-    recordFailedPasswordAttempt(req.passwordRateLimitKey);
+    recordFailedPasswordAttempt(req.passwordRateLimitKey, req);
+    const ip = extractIp(req);
+    const userAgent = req.headers['user-agent'] || '';
+    const username = req.body?.username;
+    AuditLog.create({
+      roomId: room.id,
+      type: 'join_failed_password',
+      details: { username, reason: 'Incorrect room password' },
+      ip,
+      userAgent,
+    }).then((entry) => {
+      _broadcastToAdmins(room.id, 'audit_log', entry);
+      _broadcastToAdmins(room.id, 'activity', `Join attempt failed: Incorrect password on room '${room.id}'.`);
+    }).catch(() => {});
     return res.status(401).json({ error: 'Invalid password.' });
   } catch (error) {
     logger.error('Failed to verify join:', error);
@@ -324,14 +367,44 @@ router.post('/admin-auth', apiLimiter, checkPasswordRateLimit, async (req, res) 
     }
 
     const room = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] });
-    if (!room) return res.status(404).json({ error: 'Room not found.' });
+    if (!room) {
+      if (roomId === 'me') {
+        recordFailedPasswordAttempt(req.passwordRateLimitKey, req);
+        const ip = extractIp(req);
+        const userAgent = req.headers['user-agent'] || '';
+        AuditLog.create({
+          roomId: 'me',
+          type: 'admin_auth_failed',
+          details: { reason: 'Incorrect admin password' },
+          ip,
+          userAgent,
+        }).then((entry) => {
+          _broadcastToAdmins('me', 'audit_log', entry);
+          _broadcastToAdmins('me', 'activity', `Security warning: Failed admin login attempt for room 'me'.`);
+        }).catch(() => {});
+        return res.status(401).json({ error: 'Invalid admin password.' });
+      }
+      return res.status(404).json({ error: 'Room not found.' });
+    }
 
     if (room.adminPassword === adminPassword) {
       resetPasswordAttempts(req.passwordRateLimitKey);
       return res.json({ success: true });
     }
 
-    recordFailedPasswordAttempt(req.passwordRateLimitKey);
+    recordFailedPasswordAttempt(req.passwordRateLimitKey, req);
+    const ip = extractIp(req);
+    const userAgent = req.headers['user-agent'] || '';
+    AuditLog.create({
+      roomId: room.id,
+      type: 'admin_auth_failed',
+      details: { reason: 'Incorrect admin password' },
+      ip,
+      userAgent,
+    }).then((entry) => {
+      _broadcastToAdmins(room.id, 'audit_log', entry);
+      _broadcastToAdmins(room.id, 'activity', `Security warning: Failed admin login attempt for room '${room.id}'.`);
+    }).catch(() => {});
     return res.status(401).json({ error: 'Invalid admin password.' });
   } catch (error) {
     logger.error('Failed to verify admin access:', error);
@@ -505,4 +578,5 @@ router.delete('/admin/joinPassword', apiLimiter, async (req, res) => {
   }
 });
 
+router.setBroadcast = setBroadcast;
 module.exports = router;

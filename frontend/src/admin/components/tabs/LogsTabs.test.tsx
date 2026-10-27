@@ -80,14 +80,18 @@ describe('LogsCopyButton and Logs Tabs', () => {
       const admin = createMockAdmin({
         activityLogs: [
           '[7:39:08 PM] An admin client connected to admin channel.',
-          '[7:35:15 PM] An admin client connected to admin channel.',
+          '[7:35:15 PM] [Room: room-b] User \'genericUser\' connected.',
         ],
       });
 
       render(<LiveActivityTab admin={admin} />);
 
       expect(screen.getByRole('heading', { level: 2, name: /real-time activity/i })).toBeInTheDocument();
-      expect(screen.getByText('[7:39:08 PM] An admin client connected to admin channel.')).toBeInTheDocument();
+      expect(screen.getByText('2 events')).toBeInTheDocument();
+      expect(screen.getByText('[7:39:08 PM]')).toBeInTheDocument();
+      expect(screen.getByText('An admin client connected to admin channel.')).toBeInTheDocument();
+      expect(screen.getByText('[Room: room-b]')).toBeInTheDocument();
+      expect(screen.getByText("User 'genericUser' connected.")).toBeInTheDocument();
 
       const copyBtn = screen.getByRole('button', { name: /copy logs/i });
       expect(copyBtn).toBeEnabled();
@@ -95,7 +99,7 @@ describe('LogsCopyButton and Logs Tabs', () => {
       fireEvent.click(copyBtn);
 
       expect(copySpy).toHaveBeenCalledWith(
-        '[7:39:08 PM] An admin client connected to admin channel.\n[7:35:15 PM] An admin client connected to admin channel.'
+        '[7:39:08 PM] An admin client connected to admin channel.\n[7:35:15 PM] [Room: room-b] User \'genericUser\' connected.'
       );
 
       await waitFor(() => {
@@ -103,10 +107,11 @@ describe('LogsCopyButton and Logs Tabs', () => {
       });
     });
 
-    it('disables copy button when activityLogs is empty', () => {
+    it('disables copy button when activityLogs is empty and shows empty state', () => {
       const admin = createMockAdmin({ activityLogs: [] });
       render(<LiveActivityTab admin={admin} />);
 
+      expect(screen.getByText(/no live activity recorded yet/i)).toBeInTheDocument();
       const copyBtn = screen.getByRole('button', { name: /copy logs/i });
       expect(copyBtn).toBeDisabled();
     });
@@ -158,6 +163,25 @@ describe('LogsCopyButton and Logs Tabs', () => {
       expect(screen.getByText('Loading server logs...')).toBeInTheDocument();
       const copyBtn = screen.getByRole('button', { name: /copy logs/i });
       expect(copyBtn).toBeDisabled();
+    });
+
+    it('separates copied logs with an empty line between each log entry', async () => {
+      const log1 = 'Log line 1';
+      const log2 = 'Log line 2';
+      const admin = createMockAdmin({
+        serverLogs: [log1, log2],
+        isServerLogsLoading: false,
+      });
+
+      render(<ServerLogsTab admin={admin} />);
+
+      const copyBtn = screen.getByRole('button', { name: /copy logs/i });
+      fireEvent.click(copyBtn);
+
+      expect(copySpy).toHaveBeenCalledWith('Log line 1\n\nLog line 2');
+      await waitFor(() => {
+        expect(screen.getByText('Copied!')).toBeInTheDocument();
+      });
     });
   });
 });

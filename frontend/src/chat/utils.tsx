@@ -1,6 +1,7 @@
 // --- PURE UTILITY FUNCTIONS ---
 import React from 'react';
 import type { DownloadProgressCallback, RouterHistoryState, Message, PresenceActivity } from './types';
+import { sendClientDiagnostic } from './telemetry';
 
 export const getCookie = (name: string): string | null => {
   if (typeof document === 'undefined') return null;
@@ -292,6 +293,24 @@ export const resolveReplyTargetId = (replyingTo: any, sourceMessageId?: string):
  */
 export const ALLOWED_DOWNLOAD_HOSTS = ['res.cloudinary.com', 'giphy.com'];
 
+/**
+ * Safely checks if a URL belongs to Cloudinary's trusted domains (res.cloudinary.com or *.cloudinary.com)
+ * by parsing the hostname rather than checking a raw substring, preventing CodeQL CWE-020 alerts.
+ */
+export const isCloudinaryUrl = (url: string | undefined | null): boolean => {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    return (
+      (parsed.protocol === 'https:' || parsed.protocol === 'http:') &&
+      (host === 'cloudinary.com' || host.endsWith('.cloudinary.com'))
+    );
+  } catch {
+    return false;
+  }
+};
+
 export const resolveApiBaseUrl = (): string => {
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
@@ -449,8 +468,11 @@ export const downloadFile = async (
   const fallbackName = sanitizeFilename(pathName, 'download');
   const safeFilename = sanitizeFilename(filename, fallbackName);
 
+  sendClientDiagnostic('file_download_start', { filename: safeFilename, preferProxy });
+
   if (parsed.protocol === 'blob:') {
     triggerAnchorDownload(url, safeFilename);
+    sendClientDiagnostic('file_download_complete', { filename: safeFilename, source: 'blob' });
     return;
   }
 

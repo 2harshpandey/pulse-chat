@@ -433,12 +433,14 @@ module.exports = (wss, broadcasts) => {
 
         if (vanish) {
           broadcast(roomId, { type: 'bulk_delete', messageIds });
-          await AuditLog.create({ roomId, type: 'messages_deleted_disappear', details: { count: messageIds.length, action: 'hide' } });
+          const auditEntry = await AuditLog.create({ roomId, type: 'messages_deleted_disappear', details: { count: messageIds.length, action: 'hide' } });
+          broadcastToAdmins(roomId, 'audit_log', auditEntry);
           broadcastToAdmins(roomId, 'activity', `${messageIds.length} message(s) vanished from frontend by super admin (retained in DB).`);
         } else {
           const updatedMessages = await Message.find({ roomId, id: { $in: messageIds } }).lean();
           broadcast(roomId, { type: 'bulk_update', messages: updatedMessages });
-          await AuditLog.create({ roomId, type: 'messages_hidden', details: { count: messageIds.length } });
+          const auditEntry = await AuditLog.create({ roomId, type: 'messages_hidden', details: { count: messageIds.length } });
+          broadcastToAdmins(roomId, 'audit_log', auditEntry);
           broadcastToAdmins(roomId, 'activity', `${messageIds.length} message(s) hidden from frontend by admin.`);
         }
 
@@ -467,7 +469,8 @@ module.exports = (wss, broadcasts) => {
           await unpinIfPinned(wss, roomId, messageIds);
 
           broadcast(roomId, { type: 'bulk_delete', messageIds });
-          await AuditLog.create({ roomId, type: 'messages_deleted_disappear', details: { count: messageIds.length, action: 'delete' } });
+          const auditEntry = await AuditLog.create({ roomId, type: 'messages_deleted_disappear', details: { count: messageIds.length, action: 'delete' } });
+          broadcastToAdmins(roomId, 'audit_log', auditEntry);
           broadcastToAdmins(roomId, 'activity', `${messageIds.length} message(s) permanently deleted (vanished) and history scrubbed by super admin.`);
         } else {
           await Message.updateMany(
@@ -494,7 +497,8 @@ module.exports = (wss, broadcasts) => {
           const updatedMessages = await Message.find({ roomId, id: { $in: messageIds } }).lean();
           broadcast(roomId, { type: 'bulk_update', messages: updatedMessages });
 
-          await AuditLog.create({ roomId, type: 'messages_deleted_bubble', details: { count: messageIds.length } });
+          const auditEntry = await AuditLog.create({ roomId, type: 'messages_deleted_bubble', details: { count: messageIds.length } });
+          broadcastToAdmins(roomId, 'audit_log', auditEntry);
           broadcastToAdmins(roomId, 'activity', `${messageIds.length} message(s) scrubbed from database (bubble preserved) and history deleted by admin.`);
         }
       }

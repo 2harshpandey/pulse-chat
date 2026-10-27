@@ -22,7 +22,7 @@ const getVisibleMessagesQuery = (beforeTimestamp, frontendHiddenBefore) => {
     createdAt.$lt = beforeTimestamp;
   }
 
-  const query = { vanished: { $ne: true } };
+  const query = { vanished: { $ne: true }, type: { $ne: 'client_diagnostic' } };
   if (Object.keys(createdAt).length > 0) {
     query.createdAt = createdAt;
   }

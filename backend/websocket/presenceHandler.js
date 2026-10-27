@@ -173,7 +173,11 @@ const handleUserJoin = async ({
   ).catch(err => logger.error('Failed to save user:', err));
 
   broadcastToAdmins(roomId, 'user_joined', { userId, username });
-  broadcastToAdmins(roomId, 'activity', `User '${username}' connected.`);
+  broadcastToAdmins(
+    roomId,
+    'activity',
+    reconnectedFromPending ? `User '${username}' reconnected (reconnect / refresh).` : `User '${username}' connected.`
+  );
   broadcastToAdmins(roomId, 'logged_in_users', Array.from(loggedInUsers.values()));
   _broadcastOnlineUsers(roomId);
 

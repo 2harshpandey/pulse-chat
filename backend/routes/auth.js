@@ -5,6 +5,7 @@
 
 const express = require('express');
 const router = express.Router();
+const logger = require('../logger');
 const AuditLog = require('../models/auditLog');
 const TempLink = require('../models/tempLink');
 const Room = require('../models/room');
@@ -45,6 +46,7 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
       ip, userAgent,
     });
     _broadcastToAdmins(roomId, 'audit_log', { type: 'join_failed_blocked', details: { userId, username, reason: blockCheck.reason }, ip, timestamp: new Date() });
+    _broadcastToAdmins(roomId, 'activity', `Join attempt blocked: Blocked user '${username || 'Unknown'}' attempted to enter.`);
     return res.status(403).json({ success: false, error: 'You have been blocked from this chat room.' });
   }
 
@@ -59,6 +61,7 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
         ip, userAgent,
       });
       _broadcastToAdmins(roomId, 'audit_log', { type: 'join_failed_lockdown', details: { userId, username }, ip, timestamp: new Date() });
+      _broadcastToAdmins(roomId, 'activity', `Join attempt rejected: User '${username || 'Unknown'}' attempted to join while lockdown is active.`);
       return res.status(403).json({ success: false, error: 'New logins are temporarily disabled. Please try again later.' });
     }
   }
@@ -99,6 +102,8 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
           onlineUsers.delete(takenUser.userId);
         } else {
           await AuditLog.create({ roomId, type: 'join_failed_username_taken', details: { userId, username }, ip, userAgent });
+          _broadcastToAdmins(roomId, 'audit_log', { roomId, type: 'join_failed_username_taken', details: { userId, username }, ip, timestamp: new Date() });
+          _broadcastToAdmins(roomId, 'activity', `Join attempt failed: Username '${username}' is already in use.`);
           return res.status(409).json({ success: false, error: 'That username is already in use. Please choose a different one.' });
         }
       }
@@ -124,9 +129,10 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
     resetPasswordAttempts(req.passwordRateLimitKey);
     res.status(200).json({ success: true });
   } else {
-    recordFailedPasswordAttempt(req.passwordRateLimitKey);
+    recordFailedPasswordAttempt(req.passwordRateLimitKey, req);
     await AuditLog.create({ roomId, type: 'join_failed_password', details: { userId, username }, ip, userAgent });
-    _broadcastToAdmins(roomId, 'audit_log', { type: 'join_failed_password', details: { userId, username }, ip, timestamp: new Date() });
+    _broadcastToAdmins(roomId, 'audit_log', { roomId, type: 'join_failed_password', details: { userId, username }, ip, timestamp: new Date() });
+    _broadcastToAdmins(roomId, 'activity', `Join attempt failed: Incorrect password for user '${username || 'Unknown'}'.`);
     res.status(401).json({ success: false, error: 'Incorrect password.' });
   }
 });
@@ -170,11 +176,13 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
   }
   if (tempLink.isRevoked) {
     await AuditLog.create({ roomId, type: 'temp_link_expired_attempt', details: { token: token.substring(0, 8) + '...', userId, username, reason: 'revoked' }, ip, userAgent });
+    _broadcastToAdmins(roomId, 'activity', `User '${username || 'Unknown'}' attempted to join via revoked access link.`);
     return res.status(410).json({ success: false, error: 'This link has been revoked.' });
   }
 
   if (new Date() > tempLink.expiresAt) {
     await AuditLog.create({ roomId, type: 'temp_link_expired_attempt', details: { token: token.substring(0, 8) + '...', userId, username, reason: 'expired' }, ip, userAgent });
+    _broadcastToAdmins(roomId, 'activity', `User '${username || 'Unknown'}' attempted to join via expired access link.`);
     return res.status(410).json({ success: false, error: 'This link has expired.' });
   }
 
@@ -199,6 +207,9 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
       }
       onlineUsers.delete(takenUser.userId);
     } else {
+      await AuditLog.create({ roomId, type: 'join_failed_username_taken', details: { userId, username, viaTempLink: true }, ip, userAgent });
+      _broadcastToAdmins(roomId, 'audit_log', { roomId, type: 'join_failed_username_taken', details: { userId, username, viaTempLink: true }, ip, timestamp: new Date() });
+      _broadcastToAdmins(roomId, 'activity', `Temp link join attempt failed: Username '${username}' is already in use.`);
       return res.status(409).json({ success: false, error: 'That username is already in use. Please choose a different one.' });
     }
   }
@@ -223,6 +234,7 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
 
   await AuditLog.create({ roomId, type: 'temp_link_used', details: { token: token.substring(0, 8) + '...', userId, username: username.trim() }, ip, userAgent });
   _broadcastToAdmins(roomId, 'audit_log', { type: 'temp_link_used', details: { userId, username: username.trim() }, timestamp: new Date() });
+  _broadcastToAdmins(roomId, 'activity', `User '${username.trim()}' joined via temporary access link.`);
 
   // Track as logged in
   loggedInUsers.set(userId, { userId, username: username.trim(), loginTime: new Date(), ip, userAgent, viaTempLink: true });

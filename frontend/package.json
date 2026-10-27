@@ -21,6 +21,7 @@
     "web-vitals": "^2.1.4"
   },
   "scripts": {
+    "dev": "vite --host",
     "start": "vite --host",
     "build": "vite build",
     "test": "vitest",

@@ -4,6 +4,7 @@ import type { UserProfile, PresenceActivity } from '../../UserContext';
 import { clearOverlayGuardHistoryEntry, resolveApiBaseUrl, isGroupStartMessage } from '../utils';
 import { transferManager } from '../TransferManager';
 import { INITIAL_HISTORY_BATCH_SIZE, INITIAL_FIRST_ITEM_INDEX } from '../constants';
+import { initTelemetryContext, updateTelemetryWs } from '../telemetry';
 
 interface UseChatWebSocketProps {
   ws?: React.MutableRefObject<WebSocket | null>;
@@ -227,6 +228,7 @@ export function useChatWebSocket({
         setIsConnected(true);
         reconnectDelayRef.current = 600;
         presenceActivityRef.current = null;
+        initTelemetryContext(ws.current, roomId, userId, userProfile?.username);
         ws.current?.send(
           JSON.stringify({ type: 'user_join', ...(userProfile || {}), userId, roomId })
         );
@@ -234,6 +236,7 @@ export function useChatWebSocket({
 
       ws.current.onclose = () => {
         setIsConnected(false);
+        updateTelemetryWs(null);
         if (isNativeFilePickerOpenRef.current) {
           isNativeFilePickerOpenRef.current = false;
         }

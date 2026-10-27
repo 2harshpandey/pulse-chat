@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { Message } from './types';
 import { downloadAlbumAsZip } from './utils';
+import { sendClientDiagnostic } from './telemetry';
 
 type Listener = () => void;
 
@@ -111,6 +112,10 @@ class AlbumDownloadManager {
     this.abortControllers.set(albumId, controller);
     this.activeDownloads.set(albumId, 0.05);
     this.notify();
+    sendClientDiagnostic('album_zip_download_start', {
+      albumId,
+      itemsCount: Array.isArray(target) ? target.length : undefined,
+    });
 
     try {
       if (typeof target === 'function') {
@@ -129,12 +134,15 @@ class AlbumDownloadManager {
           signal: controller.signal,
         });
       }
+      sendClientDiagnostic('album_zip_download_complete', { albumId });
       return !controller.signal.aborted;
     } catch (err: any) {
       if (controller.signal.aborted || err?.name === 'AbortError') {
+        sendClientDiagnostic('album_zip_download_cancelled', { albumId });
         return false;
       }
       console.error('Album download failed:', err);
+      sendClientDiagnostic('album_zip_download_error', { albumId, error: String(err) });
       return false;
     } finally {
       this.abortControllers.delete(albumId);
