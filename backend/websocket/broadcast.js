@@ -35,7 +35,7 @@ const broadcastOnlineUsers = (wss, roomId) => {
   const { onlineUsers, typingUsers } = getRoomState(roomId);
   const users = Array.from(onlineUsers.values()).map(user => {
     const rawActivity = typingUsers.get(user.userId);
-    const activity = rawActivity === 'gif_selecting' ? 'gif_selecting' : (rawActivity ? 'typing' : undefined);
+    const activity = rawActivity || undefined;
     return {
       ...user,
       isTyping: Boolean(activity),

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import type { Message } from '../types';
+import type { Message, PresenceActivity } from '../types';
 import {
   MAX_LOADED_MEDIA_TRACKING,
   getInputDraftKey,
@@ -67,7 +67,9 @@ interface UseChatMediaProps {
   setInputMessage: React.Dispatch<React.SetStateAction<string>>;
   resetInputLayerHeight: () => void;
   ws: React.MutableRefObject<WebSocket | null>;
-  setPresenceActivity: (act: 'typing' | 'gif_selecting' | null) => void;
+  setPresenceActivity: (act: PresenceActivity | null) => void;
+  startSendingActivity?: (act: PresenceActivity) => void;
+  stopSendingActivity?: () => void;
   messageInputRef: React.RefObject<HTMLTextAreaElement | null>;
 }
 
@@ -84,6 +86,8 @@ export function useChatMedia({
   resetInputLayerHeight,
   ws,
   setPresenceActivity,
+  startSendingActivity,
+  stopSendingActivity,
   messageInputRef,
 }: UseChatMediaProps) {
   // Staged Files & Previews
@@ -483,6 +487,18 @@ export function useChatMedia({
 
   const handleResumeUpload = useCallback(
     (messageId: string) => {
+      const targetMessage = messages.find((m) => m.id === messageId);
+      const activity: PresenceActivity =
+        targetMessage?.type === 'audio'
+          ? 'sending_audio'
+          : targetMessage?.type === 'image'
+          ? (targetMessage.url && /\.gif($|\?)/i.test(targetMessage.url) ? 'sending_gif' : 'sending_photo')
+          : targetMessage?.type === 'video'
+          ? 'sending_video'
+          : 'sending_file';
+
+      startSendingActivity?.(activity);
+
       transferManager
         .resumeUpload(messageId, roomId, apiBase, userId)
         ?.catch((error) => {
@@ -524,9 +540,12 @@ export function useChatMedia({
               return m;
             })
           );
+        })
+        .finally(() => {
+          stopSendingActivity?.();
         });
     },
-    [apiBase, roomId, setMessages, userId, ws]
+    [apiBase, messages, roomId, setMessages, startSendingActivity, stopSendingActivity, userId, ws]
   );
 
   const handleCancelUpload = useCallback((messageId: string) => {

@@ -267,12 +267,24 @@ const handleFilePickerClose = ({ ws }) => {
   }
 };
 
+const VALID_PRESENCE_ACTIVITIES = new Set([
+  'typing',
+  'gif_selecting',
+  'sending_audio',
+  'sending_photo',
+  'sending_video',
+  'sending_file',
+  'sending_media',
+  'sending_gif',
+]);
+
 /**
- * Handle typing status updates.
+ * Handle typing and media sending presence updates.
  */
 const handleStartTyping = ({ ws, parsedMessage, _broadcastOnlineUsers }) => {
   if (ws.userId && ws.roomId) {
-    const activity = parsedMessage.activity === 'gif_selecting' ? 'gif_selecting' : 'typing';
+    const raw = typeof parsedMessage.activity === 'string' ? parsedMessage.activity.trim() : '';
+    const activity = VALID_PRESENCE_ACTIVITIES.has(raw) ? raw : 'typing';
     getRoomState(ws.roomId).typingUsers.set(ws.userId, activity);
     _broadcastOnlineUsers(ws.roomId);
   }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
-import type { Message, Gif, ReplyContext } from '../types';
+import type { Message, Gif, ReplyContext, PresenceActivity } from '../types';
 import type { UserProfile } from '../../UserContext';
 import { MAX_MESSAGE_LENGTH, INITIAL_FIRST_ITEM_INDEX, isTouchDevice } from '../constants';
 import {
@@ -12,6 +12,8 @@ import {
   audioDurationCache,
   setAudioDurationCache,
   resolveAudioDuration,
+  getPresenceActivityForFile,
+  getPresenceActivityForFiles,
 } from '../utils';
 import { transferManager } from '../TransferManager';
 import { useChatDrafts } from './useChatDrafts';
@@ -36,7 +38,9 @@ interface UseChatComposerProps {
   resetInputLayerHeight: () => void;
   syncInputOverlayScroll: () => void;
   handleTyping: () => void;
-  setPresenceActivity: (act: 'typing' | 'gif_selecting' | null) => void;
+  setPresenceActivity: (act: PresenceActivity | null) => void;
+  startSendingActivity: (act: PresenceActivity) => void;
+  stopSendingActivity: () => void;
   editingMessageId: string | null;
   setEditingMessageId: (id: string | null) => void;
   priorDraftBeforeEdit: string;
@@ -108,6 +112,8 @@ export function useChatComposer({
   syncInputOverlayScroll,
   handleTyping,
   setPresenceActivity,
+  startSendingActivity,
+  stopSendingActivity,
   editingMessageId,
   setEditingMessageId,
   priorDraftBeforeEdit,
@@ -337,6 +343,7 @@ export function useChatComposer({
     }
 
     const caption = previewCaption.trim();
+    const batchActivity = getPresenceActivityForFiles(stagedFiles);
 
     for (let i = 0; i < stagedFiles.length; i++) {
       const file = stagedFiles[i];
@@ -378,6 +385,8 @@ export function useChatComposer({
       appendMessageToWindow(message);
       forceScrollToBottomAsync(true);
 
+      startSendingActivity(batchActivity);
+
       transferManager.startUpload(tempId, file, roomId, resolveApiBaseUrl(), userId, message)
         .then(uploadedFileData => {
           if (uploadedFileData.id && audioDuration) {
@@ -411,7 +420,8 @@ export function useChatComposer({
             return m;
           }));
           if (replyingTo?.id === tempId) setReplyingTo(finalMessage);
-          ws.current?.send(JSON.stringify({ ...finalMessage, clientTempId: tempId }));
+          const { localBlobUrl: _omittedBlob, ...broadcastPayload } = finalMessage;
+          ws.current?.send(JSON.stringify({ ...broadcastPayload, clientTempId: tempId }));
         })
         .catch(error => {
           if (error.message === 'Aborted') return;
@@ -425,6 +435,9 @@ export function useChatComposer({
             originalName: sanitizeFilename(message.originalName || file.name, 'file'),
             text: errorText,
           } : m));
+        })
+        .finally(() => {
+          stopSendingActivity();
         });
     }
 
@@ -542,6 +555,9 @@ export function useChatComposer({
       appendMessageToWindow(message);
       forceScrollToBottomAsync(true);
 
+      const fileActivity = getPresenceActivityForFile(stagedFile);
+      startSendingActivity(fileActivity);
+
       transferManager.startUpload(tempId, stagedFile, roomId, resolveApiBaseUrl(), userId, message)
         .then(uploadedFileData => {
           if (uploadedFileData.id && audioDuration) {
@@ -574,7 +590,8 @@ export function useChatComposer({
             return m;
           }));
           if (replyingTo?.id === tempId) setReplyingTo(finalMessage);
-          ws.current?.send(JSON.stringify({ ...finalMessage, clientTempId: tempId }));
+          const { localBlobUrl: _omittedBlob, ...broadcastPayload } = finalMessage;
+          ws.current?.send(JSON.stringify({ ...broadcastPayload, clientTempId: tempId }));
         })
         .catch(error => {
           if (error.message === 'Aborted') return;
@@ -588,12 +605,16 @@ export function useChatComposer({
             originalName: sanitizeFilename(message.originalName || stagedFile.name, 'file'),
             text: errorText,
           } : m));
+        })
+        .finally(() => {
+          stopSendingActivity();
         });
 
       const hadReply = !!replyingTo;
       resetInput();
       if (hadReply) forceScrollToBottomAsync();
     } else if (stagedGif) {
+      startSendingActivity('sending_gif');
       const gifMessage: Message = {
         id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         userId,
@@ -607,6 +628,7 @@ export function useChatComposer({
       appendMessageToWindow(gifMessage);
       forceScrollToBottomAsync(true);
       ws.current?.send(JSON.stringify({ ...gifMessage, roomId }));
+      stopSendingActivity();
       const hadReply = !!replyingTo;
       resetInput();
       if (hadReply) forceScrollToBottomAsync();
@@ -703,6 +725,8 @@ export function useChatComposer({
     appendMessageToWindow(message);
     forceScrollToBottomAsync(true);
 
+    startSendingActivity('sending_audio');
+
     transferManager.startUpload(tempId, audioFile, roomId, resolveApiBaseUrl(), userId, message)
       .then(uploadedFileData => {
         if (uploadedFileData.id && durationSeconds) {
@@ -737,7 +761,8 @@ export function useChatComposer({
           return m;
         }));
         if (replyingTo?.id === tempId) setReplyingTo(finalMessage);
-        ws.current?.send(JSON.stringify({ ...finalMessage, clientTempId: tempId }));
+        const { localBlobUrl: _omittedBlob, ...broadcastPayload } = finalMessage;
+        ws.current?.send(JSON.stringify({ ...broadcastPayload, clientTempId: tempId }));
       })
       .catch(error => {
         if (error.message === 'Aborted') return;
@@ -751,6 +776,9 @@ export function useChatComposer({
           originalName: sanitizeFilename(message.originalName || audioFile.name, 'file'),
           text: errorText,
         } : m));
+      })
+      .finally(() => {
+        stopSendingActivity();
       });
 
     const hadReply = !!replyingTo;

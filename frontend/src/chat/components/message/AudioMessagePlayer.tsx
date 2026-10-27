@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import styled, { css } from 'styled-components';
+import styled, { css, keyframes } from 'styled-components';
 import type { Message } from '../../types';
 import { sanitizeMediaUrl, downloadFile, formatMediaSize, audioDurationCache, setAudioDurationCache } from '../../utils';
 import { renderTextWithLinks } from '../../renderMessage';
@@ -60,6 +60,12 @@ export const generateDeterministicWaveform = (seedStr: string, barsCount = 34): 
   }
   return bars;
 };
+
+const audioShake = keyframes`
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+`;
 
 // --- STYLED COMPONENTS ---
 
@@ -132,7 +138,12 @@ const AudioCaptionContainer = styled.div<{ $sender: 'me' | 'other' }>`
   }
 `;
 
-const PlayPauseButton = styled.button<{ $sender: 'me' | 'other'; $isPlaying: boolean }>`
+const PlayPauseButton = styled.button<{
+  $sender: 'me' | 'other';
+  $isPlaying: boolean;
+  $hasError?: boolean;
+  $isShaking?: boolean;
+}>`
   width: 44px;
   height: 44px;
   border-radius: 50%;
@@ -141,10 +152,25 @@ const PlayPauseButton = styled.button<{ $sender: 'me' | 'other'; $isPlaying: boo
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  cursor: pointer;
+  cursor: ${p => p.$hasError ? 'not-allowed' : 'pointer'};
   transition: all 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
   outline: none;
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.18);
+
+  ${p => p.$isShaking && css`
+    animation: ${audioShake} 0.4s ease-in-out;
+  `}
+
+  ${p => p.$hasError && css`
+    opacity: 0.9;
+    svg {
+      color: #ef4444 !important;
+      stroke: #ef4444 !important;
+    }
+    &:hover {
+      box-shadow: 0 4px 16px rgba(239, 68, 68, 0.4);
+    }
+  `}
 
   &[data-sender='me'] {
     background: rgba(255, 255, 255, 0.95);
@@ -178,7 +204,7 @@ const PlayPauseButton = styled.button<{ $sender: 'me' | 'other'; $isPlaying: boo
   svg {
     width: 20px;
     height: 20px;
-    margin-left: ${p => p.$isPlaying ? '0' : '2px'};
+    margin-left: ${p => p.$isPlaying || p.$hasError ? '0' : '2px'};
   }
 `;
 
@@ -188,6 +214,57 @@ const WaveformWrapper = styled.div`
   flex: 1;
   min-width: 0;
   gap: 6px;
+`;
+
+const UnavailableTrack = styled.div<{ $sender: 'me' | 'other' }>`
+  display: flex;
+  align-items: center;
+  height: 30px;
+  width: 100%;
+  padding: 2px 0;
+  user-select: none;
+`;
+
+const UnavailableBadge = styled.div<{ $sender: 'me' | 'other' }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+
+  /* Sender: me (blue bubble) */
+  &[data-sender='me'] {
+    background: rgba(0, 0, 0, 0.22);
+    border: 1px solid rgba(255, 255, 255, 0.26);
+    color: #fecaca;
+    svg { stroke: #fca5a5; }
+  }
+
+  /* Sender: other (dark mode) */
+  &[data-sender='other'] {
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.28);
+    color: #f87171;
+    svg { stroke: #ef4444; }
+  }
+
+  /* Sender: other (light mode) */
+  [data-theme='light'] &[data-sender='other'] {
+    background: rgba(254, 242, 242, 0.94);
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    color: #b91c1c;
+    svg { stroke: #dc2626; }
+  }
+
+  svg {
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+  }
 `;
 
 const WaveformBarsContainer = styled.div`
@@ -257,6 +334,9 @@ const InfoRow = styled.div<{ $sender: 'me' | 'other' }>`
   width: 100%;
   font-size: 0.74rem;
   font-weight: 500;
+  min-width: 0;
+  gap: 8px;
+  box-sizing: border-box;
 
   &[data-sender='me'] {
     color: rgba(255, 255, 255, 0.9);
@@ -275,15 +355,23 @@ const InfoRow = styled.div<{ $sender: 'me' | 'other' }>`
   }
 `;
 
-const TimerText = styled.span`
+const TimerText = styled.span<{ $hasError?: boolean }>`
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
+  white-space: nowrap;
+  flex-shrink: 0;
+
+  ${p => p.$hasError && `
+    opacity: 0.78;
+  `}
 `;
 
 const RightControls = styled.div`
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
+  min-width: 0;
 `;
 
 const SpeedButton = styled.button<{ $sender: 'me' | 'other'; $isBouncing?: boolean; $isBoosted?: boolean }>`
@@ -343,31 +431,96 @@ const SpeedButton = styled.button<{ $sender: 'me' | 'other'; $isBouncing?: boole
 
   /* --- SENDER: OTHER (Keep distinct theme colors for other users) --- */
   &[data-sender='other'] {
-    background: ${p => p.$isBoosted ? '#3B82F6' : 'rgba(59, 130, 246, 0.12)'};
-    color: ${p => p.$isBoosted ? '#ffffff' : '#2563eb'};
-    border: 1.5px solid ${p => p.$isBoosted ? '#3B82F6' : 'rgba(59, 130, 246, 0.35)'};
+    background: ${p => p.$isBoosted ? '#3B82F6' : 'rgba(59, 130, 246, 0.16)'};
+    color: ${p => p.$isBoosted ? '#ffffff' : '#60a5fa'};
+    border: 1.5px solid ${p => p.$isBoosted ? '#3B82F6' : 'rgba(96, 165, 250, 0.4)'};
     box-shadow: ${p => p.$isBoosted ? '0 2px 10px rgba(59, 130, 246, 0.35)' : '0 1px 3px rgba(0, 0, 0, 0.05)'};
 
     svg {
       width: 13px;
       height: 13px;
       flex-shrink: 0;
+      color: ${p => p.$isBoosted ? '#ffffff' : '#60a5fa'};
+      stroke: ${p => p.$isBoosted ? '#ffffff' : '#60a5fa'};
       transition: transform 0.2s ease;
+    }
+
+    span {
+      color: ${p => p.$isBoosted ? '#ffffff' : '#60a5fa'};
+    }
+
+    &:hover {
+      background: ${p => p.$isBoosted ? '#2563EB' : 'rgba(59, 130, 246, 0.32)'};
+      border-color: #93c5fd;
+      color: #ffffff !important;
+      transform: translateY(-1px) scale(1.06);
+      box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);
+      svg {
+        color: #ffffff !important;
+        stroke: #ffffff !important;
+        transform: rotate(20deg);
+      }
+      span {
+        color: #ffffff !important;
+      }
+    }
+
+    [data-theme='light'] & {
+      background: ${p => p.$isBoosted ? '#3B82F6' : 'rgba(59, 130, 246, 0.12)'};
+      color: ${p => p.$isBoosted ? '#ffffff' : '#2563eb'};
+      border: 1.5px solid ${p => p.$isBoosted ? '#3B82F6' : 'rgba(59, 130, 246, 0.35)'};
+
+      svg {
+        color: ${p => p.$isBoosted ? '#ffffff' : '#2563eb'};
+        stroke: ${p => p.$isBoosted ? '#ffffff' : '#2563eb'};
+      }
+
+      span {
+        color: ${p => p.$isBoosted ? '#ffffff' : '#2563eb'};
+      }
+
+      &:hover {
+        background: ${p => p.$isBoosted ? '#2563EB' : 'rgba(59, 130, 246, 0.22)'};
+        border-color: #2563eb;
+        color: ${p => p.$isBoosted ? '#ffffff' : '#1d4ed8'};
+        svg {
+          color: ${p => p.$isBoosted ? '#ffffff' : '#1d4ed8'};
+          stroke: ${p => p.$isBoosted ? '#ffffff' : '#1d4ed8'};
+          transform: rotate(20deg);
+        }
+        span {
+          color: ${p => p.$isBoosted ? '#ffffff' : '#1d4ed8'};
+        }
+      }
     }
 
     [data-theme='dark'] & {
       background: ${p => p.$isBoosted ? '#3B82F6' : 'rgba(59, 130, 246, 0.16)'};
       color: ${p => p.$isBoosted ? '#ffffff' : '#60a5fa'};
       border-color: ${p => p.$isBoosted ? '#3B82F6' : 'rgba(96, 165, 250, 0.4)'};
-    }
 
-    &:hover {
-      background: ${p => p.$isBoosted ? '#2563EB' : 'rgba(59, 130, 246, 0.22)'};
-      border-color: #3b82f6;
-      color: ${p => p.$isBoosted ? '#ffffff' : '#1d4ed8'};
-      transform: translateY(-1px) scale(1.06);
-      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-      svg { transform: rotate(20deg); }
+      svg {
+        color: ${p => p.$isBoosted ? '#ffffff' : '#60a5fa'};
+        stroke: ${p => p.$isBoosted ? '#ffffff' : '#60a5fa'};
+      }
+
+      span {
+        color: ${p => p.$isBoosted ? '#ffffff' : '#60a5fa'};
+      }
+
+      &:hover {
+        background: ${p => p.$isBoosted ? '#2563EB' : 'rgba(59, 130, 246, 0.32)'};
+        border-color: #93c5fd;
+        color: #ffffff !important;
+        svg {
+          color: #ffffff !important;
+          stroke: #ffffff !important;
+          transform: rotate(20deg);
+        }
+        span {
+          color: #ffffff !important;
+        }
+      }
     }
   }
 
@@ -379,8 +532,10 @@ const SpeedButton = styled.button<{ $sender: 'me' | 'other'; $isBouncing?: boole
 const MicTypeBadge = styled.span<{ $sender: 'me' | 'other' }>`
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  opacity: 0.8;
+  gap: 4px;
+  opacity: 0.85;
+  white-space: nowrap;
+  flex-shrink: 0;
 
   &[data-sender='me'] {
     color: rgba(255, 255, 255, 0.9);
@@ -390,6 +545,7 @@ const MicTypeBadge = styled.span<{ $sender: 'me' | 'other' }>`
   svg {
     width: 12px;
     height: 12px;
+    flex-shrink: 0;
   }
 `;
 
@@ -408,26 +564,43 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
   const waveformRef = useRef<HTMLDivElement | null>(null);
 
   const coordinatorId = (msg as any).clientTempId || msg.id;
-
-  // Retain the local blob URL (if available) across upload completion so that
-  // transitioning from the temp upload message to the remote Cloudinary message never aborts playback.
-  const localBlobUrlRef = useRef<string | null>(
-    (msg.url && msg.url.startsWith('blob:')) ? msg.url : ((msg as any).localBlobUrl || null)
+  const isSelf = sender === 'me';
+  const hasLocalBlob = isSelf && Boolean(
+    (msg.url && msg.url.startsWith('blob:')) ||
+    (msg.isUploading && (msg as any).localBlobUrl)
   );
 
-  if (msg.url && msg.url.startsWith('blob:') && !localBlobUrlRef.current) {
-    localBlobUrlRef.current = msg.url;
-  }
-  if ((msg as any).localBlobUrl && !localBlobUrlRef.current) {
-    localBlobUrlRef.current = (msg as any).localBlobUrl;
+  // Retain the local blob URL (if available) strictly for the sender during upload
+  // Transitioning to remote Cloudinary message never aborts playback for the sender,
+  // but remote clients must never receive or attempt to load client-local blob URLs.
+  const localBlobUrlRef = useRef<string | null>(
+    hasLocalBlob ? ((msg.url && msg.url.startsWith('blob:')) ? msg.url : ((msg as any).localBlobUrl || null)) : null
+  );
+
+  if (hasLocalBlob && !localBlobUrlRef.current) {
+    if (msg.url && msg.url.startsWith('blob:')) {
+      localBlobUrlRef.current = msg.url;
+    } else if ((msg as any).localBlobUrl) {
+      localBlobUrlRef.current = (msg as any).localBlobUrl;
+    }
   }
 
+  if (!isSelf && localBlobUrlRef.current) {
+    localBlobUrlRef.current = null;
+  }
+
+  const [hasFallbackToMp3, setHasFallbackToMp3] = useState(false);
+
   const activeSrc = useMemo(() => {
-    if (localBlobUrlRef.current) {
+    if (isSelf && localBlobUrlRef.current) {
       return localBlobUrlRef.current;
     }
-    return sanitizeMediaUrl(msg.url || '');
-  }, [msg.url]);
+    const cleanUrl = sanitizeMediaUrl(msg.url || '');
+    if (hasFallbackToMp3 && cleanUrl && cleanUrl.includes('cloudinary.com') && /\.webm(\?|$)/i.test(cleanUrl)) {
+      return cleanUrl.replace(/\.webm(\?|$)/i, '.mp3$1');
+    }
+    return cleanUrl;
+  }, [isSelf, msg.url, hasFallbackToMp3]);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const isPlayingRef = useRef(isPlaying);
@@ -446,6 +619,23 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
   const [playbackSpeed, setPlaybackSpeed] = useState<1 | 1.5 | 2>(1);
   const [isSpeedBouncing, setIsSpeedBouncing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasLoadError, setHasLoadError] = useState(false);
+  const [isShaking, setIsShaking] = useState(false);
+  const shakeTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const triggerShake = useCallback(() => {
+    setIsShaking(true);
+    if (shakeTimerRef.current) clearTimeout(shakeTimerRef.current);
+    shakeTimerRef.current = setTimeout(() => {
+      setIsShaking(false);
+      shakeTimerRef.current = null;
+    }, 450);
+  }, []);
+
+  useEffect(() => {
+    setHasLoadError(false);
+    setHasFallbackToMp3(false);
+  }, [msg.url]);
 
   useEffect(() => {
     if (msg.duration && msg.duration > 0) {
@@ -564,21 +754,67 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
   };
 
   const handleAudioError = () => {
-    if (localBlobUrlRef.current && msg.url && !msg.url.startsWith('blob:')) {
+    if (msg.isUploading || !activeSrc) {
+      return;
+    }
+    if (localBlobUrlRef.current) {
       localBlobUrlRef.current = null;
-      if (audioRef.current) {
+      if (msg.url && !msg.url.startsWith('blob:') && audioRef.current) {
         audioRef.current.src = sanitizeMediaUrl(msg.url);
         try { audioRef.current.load(); } catch {}
+        return;
       }
+    }
+    // If WebM playback failed (e.g. on iOS Safari / Apple devices), try MP3 version from Cloudinary
+    if (!hasFallbackToMp3 && msg.url && msg.url.includes('cloudinary.com') && /\.webm(\?|$)/i.test(msg.url)) {
+      setHasFallbackToMp3(true);
       return;
     }
     setIsPlaying(false);
     setIsLoading(false);
+    setHasLoadError(true);
   };
+
+  // When MP3 fallback activates, load and play the MP3 source if user initiated playback
+  useEffect(() => {
+    if (hasFallbackToMp3 && audioRef.current) {
+      try {
+        audioRef.current.load();
+        if (isPlaying) {
+          audioRef.current.play().then(() => {
+            setIsPlaying(true);
+            setIsLoading(false);
+            setHasLoadError(false);
+          }).catch((err) => {
+            if (err?.name === 'AbortError') {
+              setIsPlaying(false);
+              setIsLoading(false);
+              return;
+            }
+            setIsPlaying(false);
+            setIsLoading(false);
+            setHasLoadError(true);
+            triggerShake();
+          });
+        }
+      } catch {
+        setIsPlaying(false);
+        setIsLoading(false);
+        setHasLoadError(true);
+        triggerShake();
+      }
+    }
+  }, [hasFallbackToMp3, isPlaying, triggerShake]);
 
   const togglePlayPause = (e: React.MouseEvent) => {
     if (isSelectModeActive) return;
     e.stopPropagation();
+
+    if (hasLoadError) {
+      triggerShake();
+      return;
+    }
+
     const audio = audioRef.current;
     if (!audio) return;
 
@@ -600,10 +836,20 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
           .then(() => {
             setIsPlaying(true);
             setIsLoading(false);
+            setHasLoadError(false);
           })
           .catch((err) => {
-            if (err?.name !== 'AbortError') {
-              console.warn('Audio playback error:', err);
+            if (err?.name === 'AbortError') {
+              setIsPlaying(false);
+              setIsLoading(false);
+              return;
+            }
+            console.warn('Audio playback error:', err);
+            if (!hasFallbackToMp3 && msg.url && msg.url.includes('cloudinary.com') && /\.webm(\?|$)/i.test(msg.url)) {
+              setHasFallbackToMp3(true);
+            } else if (!msg.isUploading && activeSrc) {
+              setHasLoadError(true);
+              triggerShake();
             }
             setIsPlaying(false);
             setIsLoading(false);
@@ -650,7 +896,7 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
   };
 
   const handleWaveformClick = (e: React.MouseEvent) => {
-    if (isSelectModeActive) return;
+    if (isSelectModeActive || hasLoadError) return;
     e.stopPropagation();
     seekToPosition(e.clientX);
   };
@@ -658,7 +904,7 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
   const pointerCleanupsRef = useRef<(() => void) | null>(null);
 
   const handleWaveformPointerDown = (e: React.PointerEvent) => {
-    if (isSelectModeActive) return;
+    if (isSelectModeActive || hasLoadError) return;
     if (e.pointerType !== 'touch') {
       e.stopPropagation();
     }
@@ -686,6 +932,10 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (shakeTimerRef.current) {
+        clearTimeout(shakeTimerRef.current);
+        shakeTimerRef.current = null;
+      }
       if (pointerCleanupsRef.current) {
         pointerCleanupsRef.current();
       }
@@ -724,11 +974,19 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
           $sender={sender}
           data-sender={sender}
           $isPlaying={isPlaying}
+          $hasError={hasLoadError}
+          $isShaking={isShaking}
           onClick={togglePlayPause}
-          title={isPlaying ? 'Pause' : 'Play voice message'}
-          aria-label={isPlaying ? 'Pause voice message' : 'Play voice message'}
+          title={hasLoadError ? 'Audio unavailable on server' : (isPlaying ? 'Pause' : 'Play voice message')}
+          aria-label={hasLoadError ? 'Audio unavailable on server' : (isPlaying ? 'Pause voice message' : 'Play voice message')}
         >
-          {isPlaying ? (
+          {hasLoadError ? (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+          ) : isPlaying ? (
             <svg viewBox="0 0 24 24" fill="currentColor">
               <rect x="6" y="5" width="4" height="14" rx="1.5" />
               <rect x="14" y="5" width="4" height="14" rx="1.5" />
@@ -741,54 +999,69 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
         </PlayPauseButton>
 
         <WaveformWrapper>
-          <WaveformBarsContainer
-            ref={waveformRef}
-            onClick={handleWaveformClick}
-            onPointerDown={handleWaveformPointerDown}
-            title="Seek audio position"
-            role="slider"
-            aria-label="Seek audio position"
-            aria-valuemin={0}
-            aria-valuemax={effectiveTotal}
-            aria-valuenow={currentTime}
-            aria-valuetext={displayTimer}
-            tabIndex={0}
-            data-quote-swipe-ignore="true"
-            onKeyDown={(e) => {
-              if (isSelectModeActive) return;
-              if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
-                e.preventDefault();
-                e.stopPropagation();
-                if (audioRef.current) {
-                  const newTime = Math.min(effectiveTotal, currentTime + 5);
-                  audioRef.current.currentTime = newTime;
-                  setCurrentTime(newTime);
+          {hasLoadError ? (
+            <UnavailableTrack $sender={sender} data-sender={sender} title="Audio file unavailable on server">
+              <UnavailableBadge $sender={sender} data-sender={sender}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                <span>Unavailable</span>
+              </UnavailableBadge>
+            </UnavailableTrack>
+          ) : (
+            <WaveformBarsContainer
+              ref={waveformRef}
+              onClick={handleWaveformClick}
+              onPointerDown={handleWaveformPointerDown}
+              title="Seek audio position"
+              role="slider"
+              aria-label="Seek audio position"
+              aria-valuemin={0}
+              aria-valuemax={effectiveTotal}
+              aria-valuenow={currentTime}
+              aria-valuetext={displayTimer}
+              tabIndex={0}
+              data-quote-swipe-ignore="true"
+              onKeyDown={(e) => {
+                if (isSelectModeActive) return;
+                if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (audioRef.current) {
+                    const newTime = Math.min(effectiveTotal, currentTime + 5);
+                    audioRef.current.currentTime = newTime;
+                    setCurrentTime(newTime);
+                  }
+                } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (audioRef.current) {
+                    const newTime = Math.max(0, currentTime - 5);
+                    audioRef.current.currentTime = newTime;
+                    setCurrentTime(newTime);
+                  }
                 }
-              } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
-                e.preventDefault();
-                e.stopPropagation();
-                if (audioRef.current) {
-                  const newTime = Math.max(0, currentTime - 5);
-                  audioRef.current.currentTime = newTime;
-                  setCurrentTime(newTime);
-                }
-              }
-            }}
-          >
-            {waveformBars.map((heightPct, idx) => (
-              <WaveformBar
-                key={idx}
-                $sender={sender}
-                data-sender={sender}
-                $isPlayed={idx <= activeBarIndex}
-                data-played={idx <= activeBarIndex ? 'true' : 'false'}
-                $heightPct={heightPct}
-              />
-            ))}
-          </WaveformBarsContainer>
+              }}
+            >
+              {waveformBars.map((heightPct, idx) => (
+                <WaveformBar
+                  key={idx}
+                  $sender={sender}
+                  data-sender={sender}
+                  $isPlayed={idx <= activeBarIndex}
+                  data-played={idx <= activeBarIndex ? 'true' : 'false'}
+                  $heightPct={heightPct}
+                />
+              ))}
+            </WaveformBarsContainer>
+          )}
 
           <InfoRow $sender={sender} data-sender={sender}>
-            <TimerText>{displayTimer}</TimerText>
+            <TimerText $hasError={hasLoadError}>
+              {displayTimer}
+            </TimerText>
 
             <RightControls>
               <MicTypeBadge $sender={sender} data-sender={sender} title="Voice message">
@@ -801,22 +1074,24 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
                 {msg.size ? formatMediaSize(msg.size) : null}
               </MicTypeBadge>
 
-              <SpeedButton
-                type="button"
-                $sender={sender}
-                data-sender={sender}
-                $isBouncing={isSpeedBouncing}
-                $isBoosted={playbackSpeed > 1}
-                onClick={handleSpeedCycle}
-                title={`Playback speed: ${playbackSpeed}x (Click to cycle 1x → 1.5x → 2x)`}
-                aria-label={`Playback speed: ${playbackSpeed}x. Click to cycle speed.`}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M12 14l3-3" />
-                  <path d="M3.34 19a10 10 0 1 1 17.32 0" />
-                </svg>
-                <span>{playbackSpeed}x</span>
-              </SpeedButton>
+              {!hasLoadError && (
+                <SpeedButton
+                  type="button"
+                  $sender={sender}
+                  data-sender={sender}
+                  $isBouncing={isSpeedBouncing}
+                  $isBoosted={playbackSpeed > 1}
+                  onClick={handleSpeedCycle}
+                  title={`Playback speed: ${playbackSpeed}x (Click to cycle 1x → 1.5x → 2x)`}
+                  aria-label={`Playback speed: ${playbackSpeed}x. Click to cycle speed.`}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M12 14l3-3" />
+                    <path d="M3.34 19a10 10 0 1 1 17.32 0" />
+                  </svg>
+                  <span>{playbackSpeed}x</span>
+                </SpeedButton>
+              )}
             </RightControls>
           </InfoRow>
         </WaveformWrapper>

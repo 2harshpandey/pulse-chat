@@ -172,7 +172,14 @@ export const AlbumDownloadToast = styled.div<{ $visible: boolean; $isError?: boo
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid ${p => p.$isError ? 'rgba(239, 68, 68, 0.45)' : 'rgba(56, 189, 248, 0.25)'};
-  white-space: nowrap;
+  max-width: min(calc(100vw - 48px), 640px);
+  width: max-content;
+  justify-content: center;
+  box-sizing: border-box;
+  white-space: normal;
+  word-break: break-word;
+  text-align: center;
+  line-height: 1.4;
 
   [data-theme='light'] & {
     background: ${p => p.$isError ? 'rgba(254, 242, 242, 0.96)' : 'rgba(255, 255, 255, 0.95)'};
@@ -193,8 +200,11 @@ export const AlbumDownloadToast = styled.div<{ $visible: boolean; $isError?: boo
 
   @media (max-width: 768px) {
     bottom: 82px;
-    padding: 8px 18px;
-    font-size: 0.85rem;
+    padding: 11px 18px;
+    font-size: 0.83rem;
+    width: calc(100vw - 32px);
+    max-width: calc(100vw - 32px);
+    border-radius: 24px;
   }
 `;
 

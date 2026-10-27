@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Message } from '../types';
-import type { UserProfile } from '../../UserContext';
+import type { UserProfile, PresenceActivity } from '../../UserContext';
 import { clearOverlayGuardHistoryEntry, resolveApiBaseUrl, isGroupStartMessage } from '../utils';
 import { transferManager } from '../TransferManager';
 import { INITIAL_HISTORY_BATCH_SIZE, INITIAL_FIRST_ITEM_INDEX } from '../constants';
@@ -105,7 +105,11 @@ export function useChatWebSocket({
 
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingCooldownRef = useRef(false);
-  const presenceActivityRef = useRef<'typing' | 'gif_selecting' | null>(null);
+  const presenceActivityRef = useRef<PresenceActivity | null>(null);
+  const activeUploadsCountRef = useRef<number>(0);
+  const currentSendingActivityRef = useRef<PresenceActivity | null>(null);
+  const stopSendingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activityStartedAtRef = useRef<number>(0);
 
   const appendMessageToWindowRef = useRef(appendMessageToWindow);
   useEffect(() => {
@@ -113,7 +117,7 @@ export function useChatWebSocket({
   }, [appendMessageToWindow]);
 
   const setPresenceActivity = useCallback(
-    (nextActivity: 'typing' | 'gif_selecting' | null) => {
+    (nextActivity: PresenceActivity | null) => {
       if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
       if (presenceActivityRef.current === nextActivity) return;
 
@@ -131,9 +135,54 @@ export function useChatWebSocket({
     [roomId]
   );
 
+  const startSendingActivity = useCallback(
+    (activity: PresenceActivity) => {
+      activeUploadsCountRef.current += 1;
+      currentSendingActivityRef.current = activity;
+      activityStartedAtRef.current = Date.now();
+
+      if (stopSendingTimeoutRef.current) {
+        clearTimeout(stopSendingTimeoutRef.current);
+        stopSendingTimeoutRef.current = null;
+      }
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+
+      setPresenceActivity(activity);
+    },
+    [setPresenceActivity]
+  );
+
+  const stopSendingActivity = useCallback(() => {
+    activeUploadsCountRef.current = Math.max(0, activeUploadsCountRef.current - 1);
+    if (activeUploadsCountRef.current === 0) {
+      if (stopSendingTimeoutRef.current) {
+        clearTimeout(stopSendingTimeoutRef.current);
+      }
+      const elapsed = Date.now() - activityStartedAtRef.current;
+      const minDuration = 800; // ensures smooth animation and visibility
+      const delay = Math.max(0, minDuration - elapsed);
+
+      stopSendingTimeoutRef.current = setTimeout(() => {
+        if (activeUploadsCountRef.current === 0) {
+          currentSendingActivityRef.current = null;
+          setPresenceActivity(null);
+          typingCooldownRef.current = false;
+        }
+      }, delay);
+    }
+  }, [setPresenceActivity]);
+
   const handleTyping = useCallback(() => {
     if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
     if (ws.current.bufferedAmount > 4096) return;
+
+    // Do not downgrade active file sending presence to generic typing
+    if (activeUploadsCountRef.current > 0 || currentSendingActivityRef.current !== null) {
+      return;
+    }
 
     if (!typingCooldownRef.current || presenceActivityRef.current !== 'typing') {
       typingCooldownRef.current = true;
@@ -142,7 +191,9 @@ export function useChatWebSocket({
 
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {
-      setPresenceActivity(null);
+      if (activeUploadsCountRef.current === 0 && currentSendingActivityRef.current === null) {
+        setPresenceActivity(null);
+      }
       typingTimeoutRef.current = null;
       typingCooldownRef.current = false;
     }, 3000);
@@ -190,8 +241,14 @@ export function useChatWebSocket({
           clearTimeout(typingTimeoutRef.current);
           typingTimeoutRef.current = null;
         }
+        if (stopSendingTimeoutRef.current) {
+          clearTimeout(stopSendingTimeoutRef.current);
+          stopSendingTimeoutRef.current = null;
+        }
         typingCooldownRef.current = false;
         presenceActivityRef.current = null;
+        activeUploadsCountRef.current = 0;
+        currentSendingActivityRef.current = null;
         console.log('WebSocket disconnected — scheduling reconnect');
         if (shouldReconnect) {
           reconnectTimerRef.current = setTimeout(() => {
@@ -224,14 +281,22 @@ export function useChatWebSocket({
           return;
         }
         if (messageData.type === 'username_taken') {
-          console.warn('Username collision during reconnect — retrying session in 2.5s');
+          console.warn('Username collision detected — terminating reconnect loop');
+          if (reconnectTimerRef.current) {
+            clearTimeout(reconnectTimerRef.current);
+            reconnectTimerRef.current = null;
+          }
           if (ws.current) {
+            ws.current.onclose = null;
             ws.current.close();
           }
-          if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
-          reconnectTimerRef.current = setTimeout(() => {
-            connect();
-          }, 2500);
+          setIsConnected(false);
+          sessionStorage.setItem('authError', messageData.message || 'This username is active in another session.');
+          if (overlayGuardPushed.current) {
+            clearOverlayGuardHistoryEntry();
+            overlayGuardPushed.current = false;
+          }
+          logout();
           return;
         }
         if (messageData.type === 'pinned_messages_update') {
@@ -488,8 +553,14 @@ export function useChatWebSocket({
             clearTimeout(typingTimeoutRef.current);
             typingTimeoutRef.current = null;
           }
+          if (stopSendingTimeoutRef.current) {
+            clearTimeout(stopSendingTimeoutRef.current);
+            stopSendingTimeoutRef.current = null;
+          }
           typingCooldownRef.current = false;
           presenceActivityRef.current = null;
+          activeUploadsCountRef.current = 0;
+          currentSendingActivityRef.current = null;
         }
 
         if (reconnectTimerRef.current) {
@@ -511,6 +582,7 @@ export function useChatWebSocket({
     return () => {
       shouldReconnect = false;
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      if (stopSendingTimeoutRef.current) clearTimeout(stopSendingTimeoutRef.current);
       if (ws.current) {
         const socket = ws.current;
         socket.onclose = null;
@@ -550,5 +622,7 @@ export function useChatWebSocket({
     lastPingAtRef,
     setPresenceActivity,
     handleTyping,
+    startSendingActivity,
+    stopSendingActivity,
   };
 }

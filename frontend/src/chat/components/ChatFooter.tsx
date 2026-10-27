@@ -224,10 +224,14 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
     };
   }, [replyingTo?.id, replyingTo?.url, replyingTo?.type, replyingTo?.duration]);
 
-  // Forward voice recorder errors to the unified bottom status toast
+  // Forward voice recorder errors that occur asynchronously to the unified bottom status toast
+  const lastReportedVoiceErrorRef = React.useRef<string | null>(null);
   React.useEffect(() => {
-    if (recorder.error) {
+    if (recorder.error && recorder.error !== lastReportedVoiceErrorRef.current) {
+      lastReportedVoiceErrorRef.current = recorder.error;
       onErrorToast?.(recorder.error);
+    } else if (!recorder.error) {
+      lastReportedVoiceErrorRef.current = null;
     }
   }, [recorder.error, onErrorToast]);
 
@@ -687,7 +691,10 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
                 onClick={async () => {
                   if (!isConnected) return;
                   audioCoordinator.stop();
-                  await recorder.startRecording();
+                  await recorder.startRecording((err) => {
+                    lastReportedVoiceErrorRef.current = err;
+                    onErrorToast?.(err);
+                  });
                 }}
                 disabled={!isConnected}
                 title="Record voice message"

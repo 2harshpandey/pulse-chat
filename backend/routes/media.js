@@ -57,20 +57,21 @@ const upload = multer({
 
 const isAudioMimeOrExt = (mimetype = '', filename = '') => {
   if (mimetype.startsWith('audio/')) return true;
-  return /\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i.test(filename || '');
+  if (/^voice[-_]message/i.test(filename || '')) return true;
+  return /\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|webm|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i.test(filename || '');
 };
 
 const getUploadResourceType = (mimetype = '', filename = '') => {
   if (mimetype.startsWith('image/')) return 'image';
-  if (mimetype.startsWith('video/')) return 'video';
   if (isAudioMimeOrExt(mimetype, filename)) return 'video';
+  if (mimetype.startsWith('video/')) return 'video';
   return 'raw';
 };
 
 const getMessageFileType = (mimetype = '', filename = '') => {
   if (mimetype.startsWith('image/')) return 'image';
-  if (mimetype.startsWith('video/')) return 'video';
   if (isAudioMimeOrExt(mimetype, filename)) return 'audio';
+  if (mimetype.startsWith('video/')) return 'video';
   return 'file';
 };
 
@@ -84,7 +85,9 @@ const uploadBufferToCloudinary = (file, originalName) => new Promise((resolve, r
   const resourceType = getUploadResourceType(file.mimetype || '', originalName);
   const publicId = `pulse-chat/${safeBase}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 
+  const isAudio = isAudioMimeOrExt(file.mimetype || '', originalName);
   const isVideo = resourceType === 'video';
+  const isActualVideo = isVideo && !isAudio;
   const uploadOptions = {
     resource_type: resourceType,
     public_id: resourceType === 'raw' && ext ? `${publicId}.${ext}` : publicId,
@@ -93,11 +96,11 @@ const uploadBufferToCloudinary = (file, originalName) => new Promise((resolve, r
     unique_filename: false,
     overwrite: false,
     filename_override: originalName,
-    // For videos, use async processing so Cloudinary returns the URL immediately
+    // For actual videos (not audio), use async processing so Cloudinary returns the URL immediately
     // without waiting for transcoding to complete. This prevents the HTTP connection
     // from being held open for 1-3+ minutes, which causes Azure/proxy 230s timeouts
     // that make the frontend think the upload failed ('Failed to fetch').
-    ...(isVideo ? { async: true } : {}),
+    ...(isActualVideo ? { async: true } : {}),
     // Explicit timeout: 8 minutes. Cloudinary SDK default is unset (relying on Node
     // HTTP defaults), which means proxy idle timeouts can fire first.
     timeout: 8 * 60 * 1000,
@@ -108,8 +111,8 @@ const uploadBufferToCloudinary = (file, originalName) => new Promise((resolve, r
     // async:true returns status:'pending' and may omit secure_url; we must construct it.
     if (!result?.secure_url && result?.public_id) {
       result.secure_url = cloudinary.url(result.public_id, { 
-        resource_type: result.resource_type || (isVideo ? 'video' : 'image'), 
-        format: result.format || ext || (isVideo ? 'mp4' : undefined),
+        resource_type: result.resource_type || (isAudio ? 'video' : isVideo ? 'video' : 'image'), 
+        format: result.format || ext || (isAudio ? (ext || 'mp3') : isVideo ? 'mp4' : undefined),
         secure: true 
       });
     }
@@ -133,7 +136,9 @@ const uploadFileStreamToCloudinary = (filePath, mimetype, originalName) => new P
   const resourceType = getUploadResourceType(mimetype || '', originalName);
   const publicId = `pulse-chat/${safeBase}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 
+  const isAudio = isAudioMimeOrExt(mimetype || '', originalName);
   const isVideo = resourceType === 'video';
+  const isActualVideo = isVideo && !isAudio;
   const uploadOptions = {
     resource_type: resourceType,
     public_id: resourceType === 'raw' && ext ? `${publicId}.${ext}` : publicId,
@@ -142,7 +147,7 @@ const uploadFileStreamToCloudinary = (filePath, mimetype, originalName) => new P
     unique_filename: false,
     overwrite: false,
     filename_override: originalName,
-    ...(isVideo ? { async: true } : {}),
+    ...(isActualVideo ? { async: true } : {}),
     timeout: 8 * 60 * 1000,
   };
 
@@ -150,8 +155,8 @@ const uploadFileStreamToCloudinary = (filePath, mimetype, originalName) => new P
     if (error) return reject(error);
     if (!result?.secure_url && result?.public_id) {
       result.secure_url = cloudinary.url(result.public_id, { 
-        resource_type: result.resource_type || (isVideo ? 'video' : 'image'), 
-        format: result.format || ext || (isVideo ? 'mp4' : undefined),
+        resource_type: result.resource_type || (isAudio ? 'video' : isVideo ? 'video' : 'image'), 
+        format: result.format || ext || (isAudio ? (ext || 'mp3') : isVideo ? 'mp4' : undefined),
         secure: true 
       });
     }

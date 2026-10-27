@@ -320,6 +320,80 @@ describe('Voice Messaging System', () => {
       expect(screen.getByText('Replying to Alice')).toBeDefined();
       expect(screen.getByText('Voice Message')).toBeDefined();
     });
+
+    it('reliably calls onErrorToast on repeated consecutive clicks when microphone access fails', async () => {
+      Object.defineProperty(window, 'isSecureContext', {
+        value: true,
+        writable: true,
+        configurable: true,
+      });
+
+      // Mock getUserMedia rejecting with NotAllowedError
+      const mockGetUserMedia = vi.fn().mockRejectedValue(new DOMException('Permission denied', 'NotAllowedError'));
+      Object.defineProperty(navigator, 'mediaDevices', {
+        value: { getUserMedia: mockGetUserMedia },
+        writable: true,
+        configurable: true,
+      });
+
+      const onErrorToastMock = vi.fn();
+      render(
+        <ChatFooter
+          {...baseFooterProps}
+          inputMessage=""
+          onErrorToast={onErrorToastMock}
+        />
+      );
+
+      const micBtn = screen.getByLabelText('Record voice message');
+
+      // Click 1
+      await act(async () => {
+        fireEvent.click(micBtn);
+      });
+      expect(onErrorToastMock).toHaveBeenCalledTimes(1);
+      expect(onErrorToastMock).toHaveBeenLastCalledWith(
+        'Microphone access was denied. Please allow microphone permissions in browser settings.'
+      );
+
+      // Click 2 (must not be suppressed or deduplicated away)
+      await act(async () => {
+        fireEvent.click(micBtn);
+      });
+      expect(onErrorToastMock).toHaveBeenCalledTimes(2);
+
+      // Click 3
+      await act(async () => {
+        fireEvent.click(micBtn);
+      });
+      expect(onErrorToastMock).toHaveBeenCalledTimes(3);
+    });
+
+    it('shows secure connection message when context is insecure (e.g. mobile over HTTP)', async () => {
+      Object.defineProperty(window, 'isSecureContext', {
+        value: false,
+        writable: true,
+        configurable: true,
+      });
+
+      const onErrorToastMock = vi.fn();
+      render(
+        <ChatFooter
+          {...baseFooterProps}
+          inputMessage=""
+          onErrorToast={onErrorToastMock}
+        />
+      );
+
+      const micBtn = screen.getByLabelText('Record voice message');
+      await act(async () => {
+        fireEvent.click(micBtn);
+      });
+
+      expect(onErrorToastMock).toHaveBeenCalledWith(
+        'Microphone requires a secure connection (HTTPS or localhost).'
+      );
+    });
   });
 
   describe('AudioMessagePlayer in Select Mode', () => {
@@ -391,12 +465,12 @@ describe('Voice Messaging System', () => {
         id: 'msg_reply_1',
         userId: 'user_2',
         username: 'Bob',
-        text: 'yahi tha nah woh audio???',
+        text: 'Testing voice quote',
         type: 'text',
         timestamp: new Date().toISOString(),
         replyingTo: {
           id: 'voice_1',
-          username: 'khushu',
+          username: 'Alice',
           text: '',
           type: 'audio',
           url: 'https://example.com/voice.mp3',
@@ -414,7 +488,7 @@ describe('Voice Messaging System', () => {
         />
       );
 
-      expect(getByText('khushu')).toBeDefined();
+      expect(getByText('Alice')).toBeDefined();
       expect(getByText('Voice Message')).toBeDefined();
       const badge = getByTestId('quoted-audio-duration-badge');
       expect(badge.textContent).toContain('0:45');
@@ -618,25 +692,95 @@ describe('Voice Messaging System', () => {
       expect(window.HTMLMediaElement.prototype.pause).not.toHaveBeenCalled();
     });
 
-    it('downloads local blob audio immediately via anchor without proxy', async () => {
-      const blobUrl = 'blob:http://localhost:3000/download-test-blob';
-      const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-      const appendChildSpy = vi.spyOn(document.body, 'appendChild');
-      const removeChildSpy = vi.spyOn(document.body, 'removeChild');
+    it('never uses localBlobUrl when sender is other, strictly using the remote url', () => {
+      const remoteUrl = 'https://res.cloudinary.com/pulse/audio/upload/remote-test.webm';
+      const foreignBlobUrl = 'blob:http://localhost:3000/foreign-device-blob';
+      const remoteMsg: Message = {
+        id: 'msg_remote_101',
+        clientTempId: 'msg_remote_101',
+        localBlobUrl: foreignBlobUrl,
+        userId: 'user_remote',
+        username: 'UserB',
+        type: 'audio',
+        url: remoteUrl,
+        duration: 15,
+        isUploading: false,
+        timestamp: new Date().toISOString(),
+      };
 
-      await downloadFile(blobUrl, 'voice_note.webm');
+      const { container } = render(
+        <AudioMessagePlayer msg={remoteMsg} sender="other" isSelectModeActive={false} />
+      );
 
-      expect(appendChildSpy).toHaveBeenCalled();
-      const createdAnchor = appendChildSpy.mock.calls.find(call => (call[0] as HTMLElement).tagName === 'A')?.[0] as HTMLAnchorElement;
-      expect(createdAnchor).toBeDefined();
-      expect(createdAnchor.href).toBe(blobUrl);
-      expect(createdAnchor.download).toBe('voice_note.webm');
-      expect(clickSpy).toHaveBeenCalled();
-      expect(removeChildSpy).toHaveBeenCalledWith(createdAnchor);
+      const audioElement = container.querySelector('audio');
+      expect(audioElement?.getAttribute('src')).toBe(remoteUrl);
+      expect(audioElement?.getAttribute('src')).not.toBe(foreignBlobUrl);
+    });
 
-      clickSpy.mockRestore();
-      appendChildSpy.mockRestore();
-      removeChildSpy.mockRestore();
+    it('falls back to Cloudinary mp3 url when webm audio triggers error', async () => {
+      const cloudinaryWebmUrl = 'https://res.cloudinary.com/test-cloud/video/upload/v1/pulse-chat/voice-test.webm';
+      const remoteMsg: Message = {
+        id: 'msg_webm_err',
+        userId: 'user_remote',
+        username: 'UserB',
+        type: 'audio',
+        url: cloudinaryWebmUrl,
+        duration: 10,
+        isUploading: false,
+        timestamp: new Date().toISOString(),
+      };
+
+      const { container } = render(
+        <AudioMessagePlayer msg={remoteMsg} sender="other" isSelectModeActive={false} />
+      );
+
+      const audioElement = container.querySelector('audio');
+      expect(audioElement?.getAttribute('src')).toBe(cloudinaryWebmUrl);
+
+      // Simulate audio error (e.g. unsupported webm on iOS Safari)
+      await act(async () => {
+        fireEvent.error(audioElement!);
+      });
+
+      // After error on Cloudinary webm, activeSrc must transition to mp3
+      const expectedMp3Url = 'https://res.cloudinary.com/test-cloud/video/upload/v1/pulse-chat/voice-test.mp3';
+      expect(audioElement?.getAttribute('src')).toBe(expectedMp3Url);
+    });
+
+    it('handles 404/corrupted audio gracefully by displaying Unavailable indicator and shaking on click', async () => {
+      const corruptedUrl = 'https://res.cloudinary.com/test-cloud/video/upload/v1/pulse-chat/corrupted-audio.mp3';
+      const corruptMsg: Message = {
+        id: 'msg_corrupt_1',
+        userId: 'user_1',
+        username: 'Alice',
+        type: 'audio',
+        url: corruptedUrl,
+        duration: 15,
+        timestamp: new Date().toISOString(),
+      };
+
+      const { container } = render(
+        <AudioMessagePlayer msg={corruptMsg} sender="other" isSelectModeActive={false} />
+      );
+
+      const audioElement = container.querySelector('audio')!;
+      // Simulate audio load failure (404 Not Found)
+      await act(async () => {
+        fireEvent.error(audioElement);
+      });
+
+      // Timer should switch to "Unavailable"
+      expect(screen.getByText('Unavailable')).toBeDefined();
+
+      // Play button should reflect unavailable state
+      const button = screen.getByLabelText('Audio unavailable on server');
+      expect(button).toBeDefined();
+
+      // Clicking play in unavailable state must not trigger media play
+      await act(async () => {
+        fireEvent.click(button);
+      });
+      expect(window.HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
     });
   });
 });

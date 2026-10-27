@@ -10,19 +10,50 @@ export function getAudioMimeType(): { mimeType: string; extension: string } {
   if (typeof window === 'undefined' || typeof MediaRecorder === 'undefined') {
     return { mimeType: 'audio/webm', extension: 'webm' };
   }
-  const candidates = [
-    { mimeType: 'audio/webm;codecs=opus', extension: 'webm' },
-    { mimeType: 'audio/webm', extension: 'webm' },
-    { mimeType: 'audio/ogg;codecs=opus', extension: 'ogg' },
-    { mimeType: 'audio/mp4', extension: 'mp4' },
-    { mimeType: 'audio/aac', extension: 'aac' },
-  ];
+  const isApple = typeof navigator !== 'undefined' && /iPad|iPhone|iPod|Macintosh/i.test(navigator.userAgent || '');
+  const candidates = isApple
+    ? [
+        { mimeType: 'audio/mp4', extension: 'mp4' },
+        { mimeType: 'audio/aac', extension: 'aac' },
+        { mimeType: 'audio/webm;codecs=opus', extension: 'webm' },
+        { mimeType: 'audio/webm', extension: 'webm' },
+        { mimeType: 'audio/ogg;codecs=opus', extension: 'ogg' },
+      ]
+    : [
+        { mimeType: 'audio/webm;codecs=opus', extension: 'webm' },
+        { mimeType: 'audio/webm', extension: 'webm' },
+        { mimeType: 'audio/mp4', extension: 'mp4' },
+        { mimeType: 'audio/aac', extension: 'aac' },
+        { mimeType: 'audio/ogg;codecs=opus', extension: 'ogg' },
+      ];
+
   for (const c of candidates) {
-    if (MediaRecorder.isTypeSupported(c.mimeType)) {
-      return c;
-    }
+    try {
+      if (typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(c.mimeType)) {
+        return c;
+      }
+    } catch {}
   }
-  return { mimeType: '', extension: 'webm' };
+  return { mimeType: '', extension: isApple ? 'mp4' : 'webm' };
+}
+
+export function isOriginSecureContext(): boolean {
+  if (typeof window === 'undefined') return true;
+  if (typeof window.isSecureContext === 'boolean') {
+    return window.isSecureContext;
+  }
+  try {
+    const { protocol, hostname } = window.location;
+    return (
+      protocol === 'https:' ||
+      protocol === 'wss:' ||
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '[::1]'
+    );
+  } catch {
+    return true;
+  }
 }
 
 export function useVoiceRecorder() {
@@ -90,21 +121,35 @@ export function useVoiceRecorder() {
     };
   }, [cleanupAudioHardware]);
 
-  const startRecording = useCallback(async (): Promise<boolean> => {
-    setError(null);
+  const startRecording = useCallback(async (onErrorHandler?: (msg: string) => void): Promise<boolean> => {
+    if (!isOriginSecureContext()) {
+      const errMsg = 'Microphone requires a secure connection (HTTPS or localhost).';
+      setTimedError(errMsg);
+      onErrorHandler?.(errMsg);
+      return false;
+    }
+
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setError('Voice recording is not supported on this browser or platform.');
+      const errMsg = 'Voice recording is not supported on this browser or platform.';
+      setTimedError(errMsg);
+      onErrorHandler?.(errMsg);
       return false;
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+      } catch (constraintErr) {
+        // Fallback for mobile browsers/devices where complex audio constraints fail
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
 
       streamRef.current = stream;
       recordedChunksRef.current = [];
@@ -120,6 +165,10 @@ export function useVoiceRecorder() {
         if (AudioCtx) {
           const ctx = new AudioCtx();
           audioContextRef.current = ctx;
+          // Safari/iOS requires explicit resume on user gesture
+          if (ctx.state === 'suspended') {
+            ctx.resume().catch(() => {});
+          }
           const source = ctx.createMediaStreamSource(stream);
           const analyser = ctx.createAnalyser();
           analyser.fftSize = 64;
@@ -159,8 +208,13 @@ export function useVoiceRecorder() {
       }
 
       const { mimeType } = getAudioMimeType();
-      const options = mimeType ? { mimeType } : undefined;
-      const mediaRecorder = new MediaRecorder(stream, options);
+      let mediaRecorder: MediaRecorder;
+      try {
+        mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      } catch {
+        // If the specified mimeType is rejected by browser constructor, construct default
+        mediaRecorder = new MediaRecorder(stream);
+      }
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (event: BlobEvent) => {
@@ -198,14 +252,19 @@ export function useVoiceRecorder() {
       return true;
     } catch (err: unknown) {
       cleanupAudioHardware();
-      const errName = err instanceof Error ? err.name : '';
-      if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
-        setTimedError('Microphone access was denied. Please allow microphone permissions in browser settings.');
+      const errName = (err && typeof err === 'object' && 'name' in err)
+        ? String((err as { name?: unknown }).name)
+        : (err instanceof Error ? err.name : '');
+      let errMsg = 'Unable to start recording. Please check your microphone settings.';
+      if (!isOriginSecureContext()) {
+        errMsg = 'Microphone requires a secure connection (HTTPS or localhost).';
+      } else if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
+        errMsg = 'Microphone access was denied. Please allow microphone permissions in browser settings.';
       } else if (errName === 'NotFoundError' || errName === 'DevicesNotFoundError') {
-        setTimedError('No microphone found on this device.');
-      } else {
-        setTimedError('Unable to start recording. Please check your microphone settings.');
+        errMsg = 'No microphone found on this device.';
       }
+      setTimedError(errMsg);
+      onErrorHandler?.(errMsg);
       return false;
     }
   }, [cleanupAudioHardware, setTimedError]);
@@ -273,7 +332,13 @@ export function useVoiceRecorder() {
       recorder.onstop = () => {
         const finalDuration = Math.max(1, durationRef.current);
         const { mimeType, extension } = getAudioMimeType();
-        const blobType = recordedChunksRef.current[0]?.type || mimeType || 'audio/webm';
+        let blobType = recordedChunksRef.current[0]?.type || mimeType || (extension === 'mp4' ? 'audio/mp4' : 'audio/webm');
+        if (blobType.startsWith('video/')) {
+          blobType = blobType.replace(/^video\//, 'audio/');
+        }
+        if (!blobType || blobType === 'application/octet-stream') {
+          blobType = extension === 'mp4' ? 'audio/mp4' : 'audio/webm';
+        }
         const audioBlob = new Blob(recordedChunksRef.current, { type: blobType });
 
         if (recordedChunksRef.current.length === 0 || audioBlob.size === 0) {

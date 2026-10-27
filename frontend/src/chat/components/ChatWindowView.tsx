@@ -56,10 +56,15 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
   const albumDownload = useAlbumDownload();
 
   const [statusErrorToast, setStatusErrorToast] = useState<string | null>(null);
+  const [statusToastKey, setStatusToastKey] = useState(0);
   const statusErrorToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const triggerStatusErrorToast = useCallback((msg: string) => {
-    if (statusErrorToastTimerRef.current) clearTimeout(statusErrorToastTimerRef.current);
+    if (statusErrorToastTimerRef.current) {
+      clearTimeout(statusErrorToastTimerRef.current);
+      statusErrorToastTimerRef.current = null;
+    }
+    setStatusToastKey(k => k + 1);
     setStatusErrorToast(msg);
     statusErrorToastTimerRef.current = setTimeout(() => {
       setStatusErrorToast(null);
@@ -210,6 +215,7 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
       </CopiedToast>
 
       <AlbumDownloadToast
+        key={statusToastKey}
         $visible={isStatusToastVisible}
         $isError={Boolean(statusErrorToast)}
         data-testid="album-download-toast"

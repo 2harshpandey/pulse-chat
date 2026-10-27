@@ -246,3 +246,14 @@ export const speedBounce = keyframes`
   100% { transform: scale(1); }
 `;
 
+export const soundwaveBar = keyframes`
+  0% { transform: scaleY(0.25); opacity: 0.45; }
+  50% { transform: scaleY(1); opacity: 1; }
+  100% { transform: scaleY(0.35); opacity: 0.6; }
+`;
+
+export const activityIconPulse = keyframes`
+  0%, 100% { transform: scale(1); opacity: 0.85; }
+  50% { transform: scale(1.12); opacity: 1; }
+`;
+

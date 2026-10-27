@@ -2,13 +2,23 @@ import React, { createContext, useState, ReactNode } from 'react';
 import { clearCachedMediaForUser } from './mediaCache';
 import { getCookie, setCookie, deleteCookie } from './chat/utils';
 
+export type PresenceActivity =
+  | 'typing'
+  | 'gif_selecting'
+  | 'sending_audio'
+  | 'sending_photo'
+  | 'sending_video'
+  | 'sending_file'
+  | 'sending_media'
+  | 'sending_gif';
+
 // This interface is now exported and includes all necessary fields
 export interface UserProfile {
   userId: string;
   username: string;
   roomId?: string;
   isTyping?: boolean; // Added for the typing indicator
-  activity?: 'typing' | 'gif_selecting';
+  activity?: PresenceActivity;
 }
 
 interface UserContextType {

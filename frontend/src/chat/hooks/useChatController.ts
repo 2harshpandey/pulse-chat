@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useContext, useMemo, useCallback } from 'react';
-import { UserContext } from '../../UserContext';
+import { UserContext, type PresenceActivity } from '../../UserContext';
 import { useTheme } from '../../ThemeContext';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { NEWER_LOAD_TRIGGER_PX, MAX_MESSAGES_WINDOW } from '../constants';
@@ -182,9 +182,19 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     fetchAndPrependOlderMessages: msgs.fetchAndPrependOlderMessages,
   });
 
-  const setPresenceActivityRef = useRef<(act: 'typing' | 'gif_selecting' | null) => void>(() => {});
-  const handlePresenceActivity = useCallback((act: 'typing' | 'gif_selecting' | null) => {
+  const setPresenceActivityRef = useRef<(act: PresenceActivity | null) => void>(() => {});
+  const handlePresenceActivity = useCallback((act: PresenceActivity | null) => {
     setPresenceActivityRef.current(act);
+  }, []);
+
+  const startSendingActivityRef = useRef<(act: PresenceActivity) => void>(() => {});
+  const handleStartSendingActivity = useCallback((act: PresenceActivity) => {
+    startSendingActivityRef.current(act);
+  }, []);
+
+  const stopSendingActivityRef = useRef<() => void>(() => {});
+  const handleStopSendingActivity = useCallback(() => {
+    stopSendingActivityRef.current();
   }, []);
 
   // Media Hook
@@ -201,6 +211,8 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     resetInputLayerHeight: viewport.resetInputLayerHeight,
     ws,
     setPresenceActivity: handlePresenceActivity,
+    startSendingActivity: handleStartSendingActivity,
+    stopSendingActivity: handleStopSendingActivity,
     messageInputRef,
   });
 
@@ -251,6 +263,8 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
   });
 
   setPresenceActivityRef.current = socket.setPresenceActivity;
+  startSendingActivityRef.current = socket.startSendingActivity;
+  stopSendingActivityRef.current = socket.stopSendingActivity;
 
   // Composer Hook
   const composer = useChatComposer({
@@ -273,6 +287,8 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     syncInputOverlayScroll: viewport.syncInputOverlayScroll,
     handleTyping: socket.handleTyping,
     setPresenceActivity: socket.setPresenceActivity,
+    startSendingActivity: socket.startSendingActivity,
+    stopSendingActivity: socket.stopSendingActivity,
     editingMessageId: msgs.editingMessageId,
     setEditingMessageId: msgs.setEditingMessageId,
     priorDraftBeforeEdit: msgs.priorDraftBeforeEdit,

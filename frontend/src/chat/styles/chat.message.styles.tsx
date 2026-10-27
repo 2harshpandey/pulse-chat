@@ -16,7 +16,9 @@ import {
   reactionsContentSlideUp,
   userRowFadeIn,
   reactionBounceIn,
-  countBump
+  countBump,
+  soundwaveBar,
+  activityIconPulse
 } from './chat.animations';
 import { MessageBubble } from './chat.layout.styles';
 
@@ -387,20 +389,82 @@ export const BouncingDots = styled.div`
   & > div:nth-child(2) { animation-delay: -0.16s; }
 `;
 
+export const SoundwaveBars = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 14px;
+  padding: 0 1px;
+
+  & > span {
+    display: inline-block;
+    width: 2.5px;
+    height: 14px;
+    background-color: var(--accent-indigo, #6366f1);
+    border-radius: 2px;
+    transform-origin: center bottom;
+    animation: ${soundwaveBar} 0.85s ease-in-out infinite alternate;
+  }
+
+  & > span:nth-child(1) { animation-delay: 0s; }
+  & > span:nth-child(2) { animation-delay: 0.2s; }
+  & > span:nth-child(3) { animation-delay: 0.4s; }
+  & > span:nth-child(4) { animation-delay: 0.15s; }
+`;
+
+export const ActivityIconWrapper = styled.span`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-indigo, #6366f1);
+  animation: ${activityIconPulse} 1.6s ease-in-out infinite;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+
+  svg {
+    width: 15px;
+    height: 15px;
+    stroke: currentColor;
+    display: block;
+  }
+`;
+
 export const TypingIndicatorContainer = styled.div`
-  height: 24px;
-  padding: 0 1rem;
-  font-style: italic;
-  color: var(--text-muted);
+  min-height: 26px;
+  padding: 2px 1rem;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
   display: flex;
   align-items: center;
   gap: 8px;
-  animation: ${slideIn} 0.3s ease-out forwards;
+  animation: ${slideIn} 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
   user-select: none;
-  transition: color 0.3s ease;
+  transition: color 0.3s ease, min-height 0.2s ease, opacity 0.2s ease;
+  overflow: hidden;
+
+  strong {
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .typing-part {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .typing-divider {
+    opacity: 0.45;
+    margin: 0 3px;
+    font-weight: 700;
+  }
 `;
 
 export const ReplyPreviewContainer = styled.div`

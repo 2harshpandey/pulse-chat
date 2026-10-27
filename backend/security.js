@@ -191,6 +191,7 @@ const getCloudinaryAttachmentUrl = (assetUrl, filename) => {
 
   try {
     const isRaw = parsedAsset.resourceType === 'raw';
+    const attachmentName = sanitizeDownloadFilename(filename, 'download');
     const transformation = isRaw ? undefined : [`fl_attachment:${attachmentName}`];
     return cloudinary.url(parsedAsset.publicId, {
       resource_type: parsedAsset.resourceType,

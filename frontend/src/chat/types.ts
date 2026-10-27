@@ -117,3 +117,5 @@ export interface TypingIndicatorProps {
   onlineUsers: import('../UserContext').UserProfile[];
   currentUserId: string;
 }
+
+export type { PresenceActivity } from '../UserContext';

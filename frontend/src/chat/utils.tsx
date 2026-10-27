@@ -1,6 +1,6 @@
 // --- PURE UTILITY FUNCTIONS ---
 import React from 'react';
-import type { DownloadProgressCallback, RouterHistoryState, Message } from './types';
+import type { DownloadProgressCallback, RouterHistoryState, Message, PresenceActivity } from './types';
 
 export const getCookie = (name: string): string | null => {
   if (typeof document === 'undefined') return null;
@@ -973,5 +973,49 @@ export const getHostnameFromUrl = (urlStr: string): string => {
   } catch {
     return '';
   }
+};
+
+export const getPresenceActivityForFile = (file: { name?: string; type?: string }): PresenceActivity => {
+  const name = file.name || '';
+  const type = file.type || '';
+  const isAudio =
+    type.startsWith('audio/') ||
+    /\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i.test(name);
+  if (isAudio) return 'sending_audio';
+
+  const isGif = type === 'image/gif' || /\.gif$/i.test(name);
+  if (isGif) return 'sending_gif';
+
+  const isImage =
+    type.startsWith('image/') ||
+    /\.(jpeg|jpg|png|svg|webp|avif|bmp|ico)$/i.test(name);
+  if (isImage) return 'sending_photo';
+
+  const isVideo =
+    type.startsWith('video/') ||
+    /\.(mp4|webm|mov|mkv|avi|wmv|m4v)$/i.test(name);
+  if (isVideo) return 'sending_video';
+
+  return 'sending_file';
+};
+
+export const getPresenceActivityForFiles = (files: File[]): PresenceActivity => {
+  if (files.length === 0) return 'sending_file';
+  if (files.length === 1) return getPresenceActivityForFile(files[0]);
+
+  const activities = files.map(getPresenceActivityForFile);
+  const first = activities[0];
+  if (activities.every((a) => a === first)) {
+    return first;
+  }
+  const allMedia = activities.every(
+    (a) =>
+      a === 'sending_photo' ||
+      a === 'sending_video' ||
+      a === 'sending_gif' ||
+      a === 'sending_audio'
+  );
+  if (allMedia) return 'sending_media';
+  return 'sending_file';
 };
 
