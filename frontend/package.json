@@ -41,6 +41,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.1",
+    "@testing-library/dom": "^10.4.2",
     "@types/jest": "^30.0.0",
     "@types/jszip": "^3.4.0",
     "@types/node": "^20.19.0",
@@ -62,7 +63,7 @@
     "lodash": ">=4.18.1",
     "jsonpath": ">=1.1.0",
     "bfj": ">=8.0.0",
-    "qs": ">=6.14.2",
+    "qs": ">=6.17.0",
     "resolve-url-loader": "^5.0.0",
     "@tootallnate/once": ">=3.0.1",
     "svgo": ">=2.8.1",
