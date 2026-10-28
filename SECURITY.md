@@ -6,10 +6,11 @@ We actively maintain and provide security patches for the following versions of 
 
 | Version | Supported          | Security Status                                        |
 | ------- | ------------------ | ------------------------------------------------------ |
-| 2.2.x   | :white_check_mark: | Active support; latest stable release.                 |
-| 2.1.x   | :x:                | End of life; please upgrade to the latest 2.2 release. |
-| 2.0.x   | :x:                | End of life; please upgrade to the latest 2.2 release. |
-| 1.x.x   | :x:                | End of life; please upgrade to the latest 2.2 release. |
+| 2.3.x   | :white_check_mark: | Active support; latest stable release.                 |
+| 2.2.x   | :white_check_mark: | Maintenance support.                                   |
+| 2.1.x   | :x:                | End of life; please upgrade to the latest 2.3 release. |
+| 2.0.x   | :x:                | End of life; please upgrade to the latest 2.3 release. |
+| 1.x.x   | :x:                | End of life; please upgrade to the latest 2.3 release. |
 
 ---
 
