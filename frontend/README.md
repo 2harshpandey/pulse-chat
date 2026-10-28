@@ -21,10 +21,10 @@ The frontend client for **Pulse Chat**, engineered with React 18, TypeScript, Vi
 
 In the `frontend` directory, you can run:
 
-### `npm start`
+### `npm run dev` or `npm start`
 Starts the Vite local development server with hot module replacement (HMR) and network hosting enabled:
 ```bash
-npm start
+npm run dev     # or: npm start
 ```
 Access the application at `http://localhost:3000`.
 

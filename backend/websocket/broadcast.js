@@ -92,7 +92,7 @@ const broadcast = (wss, roomId, message) => {
 };
 
 /**
- * Log-file watcher — safely reads the last ~32KB of pulse-activity.log and broadcasts to admins.
+ * Log-file watcher — safely reads the last ~1MB (up to 1,000 lines) of pulse-activity.log and broadcasts to admins.
  * Debounced and only runs if at least one admin client is actively connected.
  */
 let logDebounceTimer = null;

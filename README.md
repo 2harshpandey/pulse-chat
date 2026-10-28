@@ -394,7 +394,7 @@ npm run dev
 ```bash
 cd frontend
 npm install
-npm run start
+npm run dev     # or: npm start
 ```
 
 After both services are running, open the frontend development URL shown by Vite.

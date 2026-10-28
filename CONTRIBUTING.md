@@ -84,7 +84,7 @@ REACT_APP_API_URL=http://localhost:8080
 Start the frontend development server:
 
 ```bash
-npm start
+npm run dev     # or: npm start
 ```
 
 The app will be available at `http://localhost:3000` (or the URL output by Vite).
