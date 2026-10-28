@@ -187,9 +187,19 @@ export function useChatWebSocket({
   }, [setPresenceActivity]);
 
   const handleTyping = useCallback(
-    (activity?: PresenceActivity) => {
+    (activity?: PresenceActivity | null) => {
       if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
       if (ws.current.bufferedAmount > 4096) return;
+
+      if (activity === null) {
+        if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current);
+          typingTimeoutRef.current = null;
+        }
+        typingCooldownRef.current = false;
+        setPresenceActivity(null);
+        return;
+      }
 
       // Do not downgrade active file sending presence to generic typing
       if (activeUploadsCountRef.current > 0 || currentSendingActivityRef.current !== null) {

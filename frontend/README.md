@@ -63,6 +63,7 @@ Configure these in `frontend/.env` (or via deployment environment settings):
 
 - **Domain-Modular Structure**: Decomposed into focused domains: `/chat`, `/admin`, `/rooms`, `/auth`, `/home`, and `/errors`.
 - **Sliding Window Virtualization**: Handles tens of thousands of messages smoothly without memory bloat or UI stutter.
+- **Intelligent Realtime Presence**: Granular activity tracking (typing, live audio recording with soundwaves, media upload progress with bouncing dots, and GIF selection) with upload presence protection and flicker-free caption typing.
 - **Zero Layout Shift (CLS)**: Uses `ResizeObserver` on media bubbles and link previews to maintain stable scroll anchoring.
 - **Cross-Theme Parity**: Complete visual parity across light and dark modes with dedicated design tokens in `index.css`.
 - **Progressive Web App**: Fully installable standalone app on Android, iOS, Windows, and macOS.

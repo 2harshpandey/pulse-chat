@@ -21,7 +21,7 @@ interface ChatModalsProps {
   reactions: ReturnType<typeof useChatReactions>;
   media: ReturnType<typeof useChatMedia>;
   onSendFromPreview: () => void;
-  onCaptionTyping?: (activity?: PresenceActivity) => void;
+  onCaptionTyping?: (activity?: PresenceActivity | null) => void;
 }
 
 export const ChatModals: React.FC<ChatModalsProps> = ({
@@ -64,6 +64,9 @@ export const ChatModals: React.FC<ChatModalsProps> = ({
         onSend={onSendFromPreview}
         onTyping={() => {
           onCaptionTyping?.('typing');
+        }}
+        onTypingStop={() => {
+          onCaptionTyping?.(null);
         }}
         captionInputRef={media.previewCaptionInputRef as any}
       />

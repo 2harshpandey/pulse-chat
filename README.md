@@ -105,8 +105,13 @@ The messaging layer is built to support modern conversation patterns while prese
 - Contextual message action toolbar optimized for hover and touch interaction.
 - Selection mode with checkbox interface for multi-message workflows.
 - Bulk actions including delete, copy, edit, and report where relevant.
-- Typing indicators with animated dots and live activity state propagation.
-- GIF-selection presence distinct from normal typing activity.
+- **Intelligent Realtime Presence Engine**:
+  - **Granular Activity Types**: Distinguishes between standard text typing (`typing`), live voice recording (`recording_audio`), active media file transit (`sending_photo`, `sending_video`, `sending_audio`, `sending_file`, `sending_media`, `sending_gif`), and GIF picker discovery (`gif_selecting`).
+  - **Live Voice Recording Indicator**: Active voice note recording renders `[username] is recording an audio...` with live animated soundwave bars, transitioning to `[username] is sending an audio...` with bouncing dots only while the audio payload is actually transferring over the network.
+  - **Upload Presence Protection**: While media files are actively uploading in chunks, sending presence is strictly protected from race conditions or generic input resets, maintaining visibility until the transfer succeeds or fails (with a 1,000ms minimum visibility delay for smooth transitions).
+  - **Flicker-Free Caption Typing**: Writing a caption inside the media preview modal displays the user's standard typing indicator (`is typing...`) without false sending alerts; opening or auto-focusing the modal never emits premature typing events.
+  - **Instant Clear on Empty**: Deleting all typed characters in a caption or message input immediately clears typing presence across all room participants without waiting for debounce timeouts.
+  - **Multi-User Presence Aggregation**: Supports concurrent distinct presence activities across different participants, cleanly rendering singular, dual, and 3+ user groups separated by activity dividers (e.g., `Alex is recording an audio... · Sam is sending a photo... · Taylor is typing...`).
 
 ---
 

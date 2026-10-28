@@ -29,6 +29,7 @@ export interface FilePreviewModalProps {
   onClose: () => void;
   onSend: () => void;
   onTyping?: () => void;
+  onTypingStop?: () => void;
   captionInputRef?: React.RefObject<HTMLInputElement>;
 }
 
@@ -44,6 +45,7 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
   onClose,
   onSend,
   onTyping,
+  onTypingStop,
   captionInputRef,
 }) => {
   if (!isOpen || stagedFiles.length === 0) return null;
@@ -156,17 +158,19 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
           ref={captionInputRef}
           placeholder="Add a caption..."
           value={caption}
-          onFocus={() => onTyping?.()}
           onChange={(e) => {
-            onCaptionChange(e.target.value);
-            onTyping?.();
+            const val = e.target.value;
+            onCaptionChange(val);
+            if (val.trim()) {
+              onTyping?.();
+            } else {
+              onTypingStop?.();
+            }
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               onSend();
-            } else {
-              onTyping?.();
             }
           }}
         />

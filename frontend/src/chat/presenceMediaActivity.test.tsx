@@ -197,98 +197,122 @@ describe('Media and File Sending Presence Activity', () => {
   });
 
   describe('FilePreviewModal Caption Typing Presence', () => {
-    it('fires onTyping callback when user focuses or types in caption input', async () => {
+    it('does NOT trigger typing on focus or modal open, but triggers typing on text change', async () => {
       const { FilePreviewModal } = await import('./components/modals/FilePreviewModal');
       const { fireEvent } = await import('@testing-library/react');
       const stagedFile = new File(['dummy'], 'ClipToast-v1.1.0-portable.zip', { type: 'application/zip' });
       let typingTriggered = false;
+      let stopTriggered = false;
 
-      render(
-        <FilePreviewModal
-          isOpen={true}
-          stagedFiles={[stagedFile]}
-          previewActiveIndex={0}
-          onSelectActiveIndex={() => {}}
-          onRemoveFile={() => {}}
-          onAddMoreFiles={() => {}}
-          caption=""
-          onCaptionChange={() => {}}
-          onClose={() => {}}
-          onSend={() => {}}
-          onTyping={() => { typingTriggered = true; }}
-        />
-      );
+      const TestModal = () => {
+        const [caption, setCaption] = React.useState('');
+        return (
+          <FilePreviewModal
+            isOpen={true}
+            stagedFiles={[stagedFile]}
+            previewActiveIndex={0}
+            onSelectActiveIndex={() => {}}
+            onRemoveFile={() => {}}
+            onAddMoreFiles={() => {}}
+            caption={caption}
+            onCaptionChange={setCaption}
+            onClose={() => {}}
+            onSend={() => {}}
+            onTyping={() => { typingTriggered = true; }}
+            onTypingStop={() => { stopTriggered = true; }}
+          />
+        );
+      };
+
+      render(<TestModal />);
 
       const input = screen.getByPlaceholderText('Add a caption...');
+      // Focusing or auto-focusing on open MUST NOT trigger typing
       fireEvent.focus(input);
-      expect(typingTriggered).toBe(true);
+      expect(typingTriggered).toBe(false);
 
-      typingTriggered = false;
+      // Typing actual text triggers typing
       fireEvent.change(input, { target: { value: 'Important archive' } });
       expect(typingTriggered).toBe(true);
+
+      // Deleting all text triggers onTypingStop
+      fireEvent.change(input, { target: { value: '' } });
+      expect(stopTriggered).toBe(true);
     });
 
-    it('ChatModals emits standard typing presence when caption is typed in preview', async () => {
+    it('ChatModals emits standard typing presence when caption is typed and stops when cleared', async () => {
       const { ChatModals } = await import('./components/ChatModals');
       const { fireEvent } = await import('@testing-library/react');
       const stagedFile = new File(['image bytes'], 'photo.png', { type: 'image/png' });
-      let emittedActivity: string | undefined = undefined;
+      let emittedActivity: string | null | undefined = undefined;
 
-      const dummyMedia: any = {
-        showFilePreview: true,
-        stagedFiles: [stagedFile],
-        previewActiveIndex: 0,
-        previewCaption: '',
-        setPreviewActiveIndex: () => {},
-        setStagedFiles: () => {},
-        closeFilePreviewAndRestoreDraft: () => {},
-        handleRequestCloseFilePreview: () => {},
-        previewCaptionInputRef: { current: null },
-        notifyNativeFilePickerOpen: () => {},
-        addFileInputRef: { current: null },
-        setPreviewCaption: () => {},
+      const TestHost = () => {
+        const [caption, setCaption] = React.useState('');
+
+        const dummyMedia: any = {
+          showFilePreview: true,
+          stagedFiles: [stagedFile],
+          previewActiveIndex: 0,
+          previewCaption: caption,
+          setPreviewActiveIndex: () => {},
+          setStagedFiles: () => {},
+          closeFilePreviewAndRestoreDraft: () => {},
+          handleRequestCloseFilePreview: () => {},
+          previewCaptionInputRef: { current: null },
+          notifyNativeFilePickerOpen: () => {},
+          addFileInputRef: { current: null },
+          setPreviewCaption: setCaption,
+        };
+
+        const dummySelection: any = {
+          isDeleteConfirmationVisible: false,
+          selectedMessages: [],
+          canDeleteForEveryone: false,
+          setIsDeleteConfirmationVisible: () => {},
+          handleBulkDeleteForMe: () => {},
+          handleBulkDeleteForEveryone: () => {},
+          isReportModalVisible: false,
+          reportTargetMessage: null,
+          reportReason: '',
+          setReportReason: () => {},
+          reportError: null,
+          isSubmittingReport: false,
+          handleCloseReportModal: () => {},
+          handleSubmitReport: () => {},
+        };
+
+        const dummyReactions: any = {
+          fullEmojiPickerPosition: null,
+          messageIdForFullEmojiPickerRef: { current: null },
+          setFullEmojiPickerPosition: () => {},
+          handleReact: () => {},
+        };
+
+        return (
+          <ChatModals
+            isDark={true}
+            isMobileView={false}
+            fullEmojiPickerRef={{ current: null }}
+            selection={dummySelection}
+            reactions={dummyReactions}
+            media={dummyMedia}
+            onSendFromPreview={() => {}}
+            onCaptionTyping={(act) => { emittedActivity = act; }}
+          />
+        );
       };
 
-      const dummySelection: any = {
-        isDeleteConfirmationVisible: false,
-        selectedMessages: [],
-        canDeleteForEveryone: false,
-        setIsDeleteConfirmationVisible: () => {},
-        handleBulkDeleteForMe: () => {},
-        handleBulkDeleteForEveryone: () => {},
-        isReportModalVisible: false,
-        reportTargetMessage: null,
-        reportReason: '',
-        setReportReason: () => {},
-        reportError: null,
-        isSubmittingReport: false,
-        handleCloseReportModal: () => {},
-        handleSubmitReport: () => {},
-      };
-
-      const dummyReactions: any = {
-        fullEmojiPickerPosition: null,
-        messageIdForFullEmojiPickerRef: { current: null },
-        setFullEmojiPickerPosition: () => {},
-        handleReact: () => {},
-      };
-
-      render(
-        <ChatModals
-          isDark={true}
-          isMobileView={false}
-          fullEmojiPickerRef={{ current: null }}
-          selection={dummySelection}
-          reactions={dummyReactions}
-          media={dummyMedia}
-          onSendFromPreview={() => {}}
-          onCaptionTyping={(act) => { emittedActivity = act; }}
-        />
-      );
+      render(<TestHost />);
 
       const input = screen.getByPlaceholderText('Add a caption...');
+      fireEvent.focus(input);
+      expect(emittedActivity).toBeUndefined();
+
       fireEvent.change(input, { target: { value: 'Sunset view' } });
       expect(emittedActivity).toBe('typing');
+
+      fireEvent.change(input, { target: { value: '' } });
+      expect(emittedActivity).toBeNull();
     });
   });
 });
