@@ -28,6 +28,70 @@ const {
 let _broadcastToAdmins = () => {};
 const setBroadcast = (broadcastToAdmins) => { _broadcastToAdmins = broadcastToAdmins; };
 
+/**
+ * Resolves username collision during authentication (standard password or temp link).
+ * If the username is already registered to another active session in the room,
+ * verifies whether the incoming connection qualifies for re-authentication grace
+ * (e.g., reconnection during disconnect window, mobile file picker grace, or same IP).
+ * If allowed, clears the old disconnect timer and evicts the previous session from onlineUsers.
+ * If rejected, logs the audit event, broadcasts the security alert, and returns a 409 response.
+ *
+ * @param {Object} params
+ * @param {string} params.roomId
+ * @param {string} params.username
+ * @param {string} params.userId
+ * @param {string} params.ip
+ * @param {string} params.userAgent
+ * @param {Object} params.roomState - State object from getRoomState(roomId)
+ * @param {boolean} [params.viaTempLink=false] - Whether auth is via temp-link
+ * @param {Object} res - Express response object
+ * @returns {Promise<boolean>} - True if allowed/resolved; false if rejected with 409
+ */
+async function resolveUsernameCollision({ roomId, username, userId, ip, userAgent, roomState, viaTempLink = false }, res) {
+  if (!username) return true;
+
+  const { onlineUsers, pendingDisconnects, filePickerPresenceByUsername } = roomState;
+  const normalised = username.trim().toLowerCase();
+  const takenUser = Array.from(onlineUsers.values()).find(
+    u => u.username && u.username.trim().toLowerCase() === normalised && u.userId !== userId
+  );
+
+  if (!takenUser) {
+    return true;
+  }
+
+  const isPending = pendingDisconnects?.has(takenUser.userId);
+  const hasPickerGrace =
+    filePickerPresenceByUsername?.has(normalised) &&
+    filePickerPresenceByUsername.get(normalised).expiresAt > Date.now();
+  const existingFp = userFingerprints.get(takenUser.userId);
+  const sameIp = existingFp && existingFp.ips && existingFp.ips.has(ip);
+
+  if (isPending || hasPickerGrace || sameIp) {
+    const authType = viaTempLink ? 'temp-link re-auth' : 're-auth';
+    logger.info(`Allowing ${authType} for '${username}' (migrating userId from ${takenUser.userId} to ${userId})`);
+    if (isPending) {
+      clearTimeout(pendingDisconnects.get(takenUser.userId));
+      pendingDisconnects.delete(takenUser.userId);
+    }
+    onlineUsers.delete(takenUser.userId);
+    return true;
+  }
+
+  const details = { userId, username };
+  if (viaTempLink) details.viaTempLink = true;
+
+  await AuditLog.create({ roomId, type: 'join_failed_username_taken', details, ip, userAgent });
+  _broadcastToAdmins(roomId, 'audit_log', { roomId, type: 'join_failed_username_taken', details, ip, timestamp: new Date() });
+  const activityMsg = viaTempLink
+    ? `Temp link join attempt failed: Username '${username}' is already in use.`
+    : `Join attempt failed: Username '${username}' is already in use.`;
+  _broadcastToAdmins(roomId, 'activity', activityMsg);
+
+  res.status(409).json({ success: false, error: 'That username is already in use. Please choose a different one.' });
+  return false;
+}
+
 // --- Client Auth Verification ---
 router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req, res) => {
   const { password, username, userId, fingerprint, roomId = 'me' } = req.body;
@@ -81,32 +145,11 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
   if (isPasswordValid) {
     // If the client sends a username, verify it is not already in use.
     if (username) {
-      const normalised = username.trim().toLowerCase();
-      const takenUser = Array.from(onlineUsers.values()).find(
-        u => u.username && u.username.trim().toLowerCase() === normalised && u.userId !== userId
-      );
-      if (takenUser) {
-        const isPending = pendingDisconnects?.has(takenUser.userId);
-        const hasPickerGrace =
-          filePickerPresenceByUsername?.has(normalised) &&
-          filePickerPresenceByUsername.get(normalised).expiresAt > Date.now();
-        const existingFp = userFingerprints.get(takenUser.userId);
-        const sameIp = existingFp && existingFp.ips && existingFp.ips.has(ip);
-
-        if (isPending || hasPickerGrace || sameIp) {
-          logger.info(`Allowing re-auth for '${username}' (migrating userId from ${takenUser.userId} to ${userId})`);
-          if (isPending) {
-            clearTimeout(pendingDisconnects.get(takenUser.userId));
-            pendingDisconnects.delete(takenUser.userId);
-          }
-          onlineUsers.delete(takenUser.userId);
-        } else {
-          await AuditLog.create({ roomId, type: 'join_failed_username_taken', details: { userId, username }, ip, userAgent });
-          _broadcastToAdmins(roomId, 'audit_log', { roomId, type: 'join_failed_username_taken', details: { userId, username }, ip, timestamp: new Date() });
-          _broadcastToAdmins(roomId, 'activity', `Join attempt failed: Username '${username}' is already in use.`);
-          return res.status(409).json({ success: false, error: 'That username is already in use. Please choose a different one.' });
-        }
-      }
+      const roomState = { onlineUsers, pendingDisconnects, filePickerPresenceByUsername };
+      const allowed = await resolveUsernameCollision({
+        roomId, username, userId, ip, userAgent, roomState, viaTempLink: false
+      }, res);
+      if (!allowed) return;
     }
 
     // Store fingerprint data
@@ -187,32 +230,11 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
   }
 
   // Check username availability
-  const normalised = username.trim().toLowerCase();
-  const takenUser = Array.from(onlineUsers.values()).find(
-    u => u.username && u.username.trim().toLowerCase() === normalised && u.userId !== userId
-  );
-  if (takenUser) {
-    const isPending = pendingDisconnects?.has(takenUser.userId);
-    const hasPickerGrace =
-      filePickerPresenceByUsername?.has(normalised) &&
-      filePickerPresenceByUsername.get(normalised).expiresAt > Date.now();
-    const existingFp = userFingerprints.get(takenUser.userId);
-    const sameIp = existingFp && existingFp.ips && existingFp.ips.has(ip);
-
-    if (isPending || hasPickerGrace || sameIp) {
-      logger.info(`Allowing temp-link re-auth for '${username}' (migrating userId from ${takenUser.userId} to ${userId})`);
-      if (isPending) {
-        clearTimeout(pendingDisconnects.get(takenUser.userId));
-        pendingDisconnects.delete(takenUser.userId);
-      }
-      onlineUsers.delete(takenUser.userId);
-    } else {
-      await AuditLog.create({ roomId, type: 'join_failed_username_taken', details: { userId, username, viaTempLink: true }, ip, userAgent });
-      _broadcastToAdmins(roomId, 'audit_log', { roomId, type: 'join_failed_username_taken', details: { userId, username, viaTempLink: true }, ip, timestamp: new Date() });
-      _broadcastToAdmins(roomId, 'activity', `Temp link join attempt failed: Username '${username}' is already in use.`);
-      return res.status(409).json({ success: false, error: 'That username is already in use. Please choose a different one.' });
-    }
-  }
+  const roomState = { onlineUsers, pendingDisconnects, filePickerPresenceByUsername };
+  const allowed = await resolveUsernameCollision({
+    roomId, username, userId, ip, userAgent, roomState, viaTempLink: true
+  }, res);
+  if (!allowed) return;
 
   // Store fingerprint data
   if (fingerprint) {
@@ -254,7 +276,7 @@ router.get('/api/users/check-username', authLimiter, (req, res) => {
   }
   const normalised = username.trim().toLowerCase();
   const taken = Array.from(onlineUsers.values()).some(
-    u => u.username.trim().toLowerCase() === normalised && u.userId !== userId
+    u => u.username && u.username.trim().toLowerCase() === normalised && u.userId !== userId
   );
   res.json({ available: !taken });
 });
