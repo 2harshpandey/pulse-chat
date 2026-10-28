@@ -10,6 +10,7 @@ import {
   MediaGalleryModal,
   GifPickerModal,
 } from './index';
+import { revokeBlobUrl } from '../utils';
 
 import type { PresenceActivity } from '../types';
 
@@ -43,6 +44,8 @@ export const ChatModals: React.FC<ChatModalsProps> = ({
         onSelectActiveIndex={media.setPreviewActiveIndex}
         onRemoveFile={(idx: number) => {
           media.setStagedFiles((prev) => {
+            const removed = prev[idx];
+            if (removed) revokeBlobUrl(removed);
             const next = prev.filter((_, i) => i !== idx);
             if (next.length === 0) {
               media.closeFilePreviewAndRestoreDraft();

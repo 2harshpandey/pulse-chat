@@ -10,6 +10,7 @@ import {
   chooseReadableFilename,
   getMediaCacheLookupKey,
   getPresenceActivityForFiles,
+  revokeBlobUrl,
 } from '../utils';
 import { getCachedMediaBlob, setCachedMediaBlob } from '../../mediaCache';
 import { transferManager } from '../TransferManager';
@@ -195,6 +196,7 @@ export function useChatMedia({
 
   const closeFilePreviewAndRestoreDraft = useCallback(() => {
     setShowFilePreview(false);
+    stagedFiles.forEach(revokeBlobUrl);
     setStagedFiles([]);
     setStagedFile(null);
     setPreviewActiveIndex(0);
@@ -207,7 +209,7 @@ export function useChatMedia({
     }
     setPreviewCaption('');
     setPresenceActivity(null);
-  }, [preMediaDraft, setInputMessage, userId, setPresenceActivity]);
+  }, [preMediaDraft, setInputMessage, userId, setPresenceActivity, stagedFiles]);
 
   const handleRequestCloseFilePreview = useCallback(() => {
     if (stagedFiles.length > 0 || previewCaption) {

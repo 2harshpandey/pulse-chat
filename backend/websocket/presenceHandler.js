@@ -316,6 +316,11 @@ const handleSocketClose = ({ ws, wss, broadcastToAdmins, _broadcast, _broadcastO
       return;
     }
 
+    if (typingUsers.has(ws.userId)) {
+      typingUsers.delete(ws.userId);
+      _broadcastOnlineUsers(roomId);
+    }
+
     const user = onlineUsers.get(ws.userId);
     const filePickerGraceUntil = filePickerPresenceGrace.get(ws.userId) || 0;
     const disconnectDelayMs = filePickerGraceUntil > Date.now() ? 120000 : 10000;
