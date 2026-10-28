@@ -12,6 +12,8 @@ import {
 } from './index';
 import { getPresenceActivityForFiles } from '../utils';
 
+import type { PresenceActivity } from '../types';
+
 interface ChatModalsProps {
   isDark: boolean;
   isMobileView: boolean;
@@ -20,6 +22,7 @@ interface ChatModalsProps {
   reactions: ReturnType<typeof useChatReactions>;
   media: ReturnType<typeof useChatMedia>;
   onSendFromPreview: () => void;
+  onCaptionTyping?: (activity?: PresenceActivity) => void;
 }
 
 export const ChatModals: React.FC<ChatModalsProps> = ({
@@ -30,6 +33,7 @@ export const ChatModals: React.FC<ChatModalsProps> = ({
   reactions,
   media,
   onSendFromPreview,
+  onCaptionTyping,
 }) => {
   return (
     <>
@@ -60,6 +64,10 @@ export const ChatModals: React.FC<ChatModalsProps> = ({
         onCaptionChange={media.setPreviewCaption}
         onClose={media.handleRequestCloseFilePreview}
         onSend={onSendFromPreview}
+        onTyping={() => {
+          const act = getPresenceActivityForFiles(media.stagedFiles);
+          onCaptionTyping?.(act);
+        }}
         captionInputRef={media.previewCaptionInputRef as any}
       />
 

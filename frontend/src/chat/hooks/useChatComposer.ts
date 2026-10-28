@@ -37,7 +37,7 @@ interface UseChatComposerProps {
   syncInputLayerLayout: (textarea?: HTMLTextAreaElement | null, value?: string, shouldMaintainBottom?: boolean) => void;
   resetInputLayerHeight: () => void;
   syncInputOverlayScroll: () => void;
-  handleTyping: () => void;
+  handleTyping: (activity?: PresenceActivity) => void;
   setPresenceActivity: (act: PresenceActivity | null) => void;
   startSendingActivity: (act: PresenceActivity) => void;
   stopSendingActivity: () => void;

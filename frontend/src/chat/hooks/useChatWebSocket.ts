@@ -186,29 +186,34 @@ export function useChatWebSocket({
     }
   }, [setPresenceActivity]);
 
-  const handleTyping = useCallback(() => {
-    if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
-    if (ws.current.bufferedAmount > 4096) return;
+  const handleTyping = useCallback(
+    (activity?: PresenceActivity) => {
+      if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
+      if (ws.current.bufferedAmount > 4096) return;
 
-    // Do not downgrade active file sending presence to generic typing
-    if (activeUploadsCountRef.current > 0 || currentSendingActivityRef.current !== null) {
-      return;
-    }
-
-    if (!typingCooldownRef.current || presenceActivityRef.current !== 'typing') {
-      typingCooldownRef.current = true;
-      setPresenceActivity('typing');
-    }
-
-    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-    typingTimeoutRef.current = setTimeout(() => {
-      if (activeUploadsCountRef.current === 0 && currentSendingActivityRef.current === null) {
-        setPresenceActivity(null);
+      // Do not downgrade active file sending presence to generic typing
+      if (activeUploadsCountRef.current > 0 || currentSendingActivityRef.current !== null) {
+        return;
       }
-      typingTimeoutRef.current = null;
-      typingCooldownRef.current = false;
-    }, 3000);
-  }, [setPresenceActivity]);
+
+      const targetActivity = activity || 'typing';
+
+      if (!typingCooldownRef.current || presenceActivityRef.current !== targetActivity) {
+        typingCooldownRef.current = true;
+        setPresenceActivity(targetActivity);
+      }
+
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => {
+        if (activeUploadsCountRef.current === 0 && currentSendingActivityRef.current === null) {
+          setPresenceActivity(null);
+        }
+        typingTimeoutRef.current = null;
+        typingCooldownRef.current = false;
+      }, 3000);
+    },
+    [setPresenceActivity]
+  );
 
   useEffect(() => {
     if (!userProfile) return;

@@ -172,4 +172,37 @@ describe('Media and File Sending Presence Activity', () => {
       expect(screen.getByText(/is sending a file\.\.\./i)).toBeInTheDocument();
     });
   });
+
+  describe('FilePreviewModal Caption Typing Presence', () => {
+    it('fires onTyping callback when user focuses or types in caption input', async () => {
+      const { FilePreviewModal } = await import('./components/modals/FilePreviewModal');
+      const { fireEvent } = await import('@testing-library/react');
+      const stagedFile = new File(['dummy'], 'ClipToast-v1.1.0-portable.zip', { type: 'application/zip' });
+      let typingTriggered = false;
+
+      render(
+        <FilePreviewModal
+          isOpen={true}
+          stagedFiles={[stagedFile]}
+          previewActiveIndex={0}
+          onSelectActiveIndex={() => {}}
+          onRemoveFile={() => {}}
+          onAddMoreFiles={() => {}}
+          caption=""
+          onCaptionChange={() => {}}
+          onClose={() => {}}
+          onSend={() => {}}
+          onTyping={() => { typingTriggered = true; }}
+        />
+      );
+
+      const input = screen.getByPlaceholderText('Add a caption...');
+      fireEvent.focus(input);
+      expect(typingTriggered).toBe(true);
+
+      typingTriggered = false;
+      fireEvent.change(input, { target: { value: 'Important archive' } });
+      expect(typingTriggered).toBe(true);
+    });
+  });
 });

@@ -166,6 +166,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
         reactions={c.reactions}
         media={c.media}
         onSendFromPreview={c.composer.handleSendFromPreview}
+        onCaptionTyping={c.socket.handleTyping}
       />
     </>
   );
