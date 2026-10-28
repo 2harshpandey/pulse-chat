@@ -147,11 +147,11 @@ export const TypingIndicator = ({ onlineUsers, currentUserId }: TypingIndicatorP
 
   const groups: PresenceGroup[] = [
     {
-      key: 'sending_audio',
-      users: activeUsers.filter((u) => u.activity === 'sending_audio'),
-      singular: 'is sending audio...',
-      plural: 'are sending audio...',
-      many: 'Several people are sending audio...',
+      key: 'recording_audio',
+      users: activeUsers.filter((u) => u.activity === 'recording_audio'),
+      singular: 'is recording an audio...',
+      plural: 'are recording audio...',
+      many: 'Several people are recording audio...',
       icon: <MicIcon />,
       animation: (
         <SoundwaveBars aria-hidden="true">
@@ -160,6 +160,21 @@ export const TypingIndicator = ({ onlineUsers, currentUserId }: TypingIndicatorP
           <span />
           <span />
         </SoundwaveBars>
+      ),
+    },
+    {
+      key: 'sending_audio',
+      users: activeUsers.filter((u) => u.activity === 'sending_audio'),
+      singular: 'is sending an audio...',
+      plural: 'are sending audio...',
+      many: 'Several people are sending audio...',
+      icon: <MicIcon />,
+      animation: (
+        <BouncingDots aria-hidden="true">
+          <div />
+          <div />
+          <div />
+        </BouncingDots>
       ),
     },
     {

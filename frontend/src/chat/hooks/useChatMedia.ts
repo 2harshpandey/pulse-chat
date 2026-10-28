@@ -189,12 +189,8 @@ export function useChatMedia({
       }
       setShowFilePreview(true);
       gifPicker.setStagedGif(null);
-
-      // Broadcast media sending presence to chat members while preview is open
-      const activity = getPresenceActivityForFiles(compressedFiles);
-      setPresenceActivity(activity);
     },
-    [inputMessage, resetInputLayerHeight, setInputMessage, userId, gifPicker, setPresenceActivity]
+    [inputMessage, resetInputLayerHeight, setInputMessage, userId, gifPicker]
   );
 
   const closeFilePreviewAndRestoreDraft = useCallback(() => {

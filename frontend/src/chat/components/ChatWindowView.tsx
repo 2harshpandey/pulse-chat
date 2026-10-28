@@ -1,7 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import type { ChatController } from '../hooks/useChatController';
 import { compressImage } from '../hooks/useChatMedia';
-import { getPresenceActivityForFiles } from '../utils';
 import { PinnedMessageBanner } from './PinnedMessageBanner';
 import { ChatFooter } from './ChatFooter';
 import { MessagesList } from './MessagesList';
@@ -306,7 +305,7 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
         selectedMediaCount={selectedMediaMessages.length}
         onDownloadSelectedMedia={handleDownloadSelectedMedia}
         onSendVoiceNote={composer.handleSendVoiceNote}
-        onVoiceRecordingStart={() => socket.setPresenceActivity('sending_audio')}
+        onVoiceRecordingStart={() => socket.setPresenceActivity('recording_audio')}
         onVoiceRecordingStop={() => socket.setPresenceActivity(null)}
         onErrorToast={triggerStatusErrorToast}
         onCancelSelectMode={selection.handleCancelSelectMode}
@@ -376,11 +375,7 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
           media.markNativeFilePickerClosed();
           if (e.target.files) {
             const newFiles = await Promise.all(Array.from(e.target.files).map(compressImage));
-            media.setStagedFiles((prev) => {
-              const updated = [...prev, ...newFiles];
-              media.setPresenceActivity(getPresenceActivityForFiles(updated));
-              return updated;
-            });
+            media.setStagedFiles((prev) => [...prev, ...newFiles]);
           }
           if (e.target) e.target.value = '';
         }}

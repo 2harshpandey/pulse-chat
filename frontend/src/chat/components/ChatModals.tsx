@@ -10,7 +10,6 @@ import {
   MediaGalleryModal,
   GifPickerModal,
 } from './index';
-import { getPresenceActivityForFiles } from '../utils';
 
 import type { PresenceActivity } from '../types';
 
@@ -51,7 +50,6 @@ export const ChatModals: React.FC<ChatModalsProps> = ({
               if (media.previewActiveIndex >= next.length) {
                 media.setPreviewActiveIndex(next.length - 1);
               }
-              media.setPresenceActivity(getPresenceActivityForFiles(next));
             }
             return next;
           });
@@ -65,8 +63,7 @@ export const ChatModals: React.FC<ChatModalsProps> = ({
         onClose={media.handleRequestCloseFilePreview}
         onSend={onSendFromPreview}
         onTyping={() => {
-          const act = getPresenceActivityForFiles(media.stagedFiles);
-          onCaptionTyping?.(act);
+          onCaptionTyping?.('typing');
         }}
         captionInputRef={media.previewCaptionInputRef as any}
       />

@@ -657,6 +657,8 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
                   const result = await recorder.stopRecording();
                   if (result && result.file && result.file.size > 0 && result.duration > 0) {
                     onSendVoiceNote?.(result.file, result.duration, result.waveform);
+                  } else {
+                    onVoiceRecordingStop?.();
                   }
                 }}
                 title="Send voice message"

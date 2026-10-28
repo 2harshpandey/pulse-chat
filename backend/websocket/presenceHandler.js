@@ -274,6 +274,7 @@ const handleFilePickerClose = ({ ws }) => {
 const VALID_PRESENCE_ACTIVITIES = new Set([
   'typing',
   'gif_selecting',
+  'recording_audio',
   'sending_audio',
   'sending_photo',
   'sending_video',

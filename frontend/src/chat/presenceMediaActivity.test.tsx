@@ -66,13 +66,33 @@ describe('Media and File Sending Presence Activity', () => {
       expect(container.firstChild).toBeNull();
     });
 
-    it('renders sending audio with username and soundwave bars', () => {
+    it('renders recording audio with username and soundwave bars', () => {
+      const users: UserProfile[] = [
+        { userId: 'user_rec', username: 'Alex', isTyping: true, activity: 'recording_audio' },
+      ];
+      render(<TypingIndicator onlineUsers={users} currentUserId="me" />);
+      expect(screen.getByText('Alex')).toBeInTheDocument();
+      expect(screen.getByText(/is recording an audio\.\.\./i)).toBeInTheDocument();
+    });
+
+    it('handles multiple users recording audio with plural text', () => {
+      const users: UserProfile[] = [
+        { userId: 'u1', username: 'Alex', isTyping: true, activity: 'recording_audio' },
+        { userId: 'u2', username: 'Sam', isTyping: true, activity: 'recording_audio' },
+      ];
+      render(<TypingIndicator onlineUsers={users} currentUserId="me" />);
+      expect(screen.getByText('Alex')).toBeInTheDocument();
+      expect(screen.getByText('Sam')).toBeInTheDocument();
+      expect(screen.getByText(/are recording audio\.\.\./i)).toBeInTheDocument();
+    });
+
+    it('renders sending audio with username and bouncing dots', () => {
       const users: UserProfile[] = [
         { userId: 'user_a', username: 'Alex', isTyping: true, activity: 'sending_audio' },
       ];
       render(<TypingIndicator onlineUsers={users} currentUserId="me" />);
       expect(screen.getByText('Alex')).toBeInTheDocument();
-      expect(screen.getByText(/is sending audio\.\.\./i)).toBeInTheDocument();
+      expect(screen.getByText(/is sending an audio\.\.\./i)).toBeInTheDocument();
     });
 
     it('renders sending photo with username and photo icon', () => {
@@ -152,15 +172,18 @@ describe('Media and File Sending Presence Activity', () => {
 
     it('displays mixed activities for different users separated by divider', () => {
       const users: UserProfile[] = [
-        { userId: 'u1', username: 'Alex', isTyping: true, activity: 'sending_audio' },
-        { userId: 'u2', username: 'Sam', isTyping: true, activity: 'typing' },
+        { userId: 'u1', username: 'Alex', isTyping: true, activity: 'recording_audio' },
+        { userId: 'u2', username: 'Sam', isTyping: true, activity: 'sending_photo' },
+        { userId: 'u3', username: 'Taylor', isTyping: true, activity: 'typing' },
       ];
       render(<TypingIndicator onlineUsers={users} currentUserId="me" />);
       expect(screen.getByText('Alex')).toBeInTheDocument();
-      expect(screen.getByText(/is sending audio\.\.\./i)).toBeInTheDocument();
+      expect(screen.getByText(/is recording an audio\.\.\./i)).toBeInTheDocument();
       expect(screen.getByText('Sam')).toBeInTheDocument();
+      expect(screen.getByText(/is sending a photo\.\.\./i)).toBeInTheDocument();
+      expect(screen.getByText('Taylor')).toBeInTheDocument();
       expect(screen.getByText(/is typing\.\.\./i)).toBeInTheDocument();
-      expect(screen.getByText('·')).toBeInTheDocument();
+      expect(screen.getAllByText('·')).toHaveLength(2);
     });
 
     it('renders sending_media when user uploads mixed media files', () => {
@@ -203,6 +226,69 @@ describe('Media and File Sending Presence Activity', () => {
       typingTriggered = false;
       fireEvent.change(input, { target: { value: 'Important archive' } });
       expect(typingTriggered).toBe(true);
+    });
+
+    it('ChatModals emits standard typing presence when caption is typed in preview', async () => {
+      const { ChatModals } = await import('./components/ChatModals');
+      const { fireEvent } = await import('@testing-library/react');
+      const stagedFile = new File(['image bytes'], 'photo.png', { type: 'image/png' });
+      let emittedActivity: string | undefined = undefined;
+
+      const dummyMedia: any = {
+        showFilePreview: true,
+        stagedFiles: [stagedFile],
+        previewActiveIndex: 0,
+        previewCaption: '',
+        setPreviewActiveIndex: () => {},
+        setStagedFiles: () => {},
+        closeFilePreviewAndRestoreDraft: () => {},
+        handleRequestCloseFilePreview: () => {},
+        previewCaptionInputRef: { current: null },
+        notifyNativeFilePickerOpen: () => {},
+        addFileInputRef: { current: null },
+        setPreviewCaption: () => {},
+      };
+
+      const dummySelection: any = {
+        isDeleteConfirmationVisible: false,
+        selectedMessages: [],
+        canDeleteForEveryone: false,
+        setIsDeleteConfirmationVisible: () => {},
+        handleBulkDeleteForMe: () => {},
+        handleBulkDeleteForEveryone: () => {},
+        isReportModalVisible: false,
+        reportTargetMessage: null,
+        reportReason: '',
+        setReportReason: () => {},
+        reportError: null,
+        isSubmittingReport: false,
+        handleCloseReportModal: () => {},
+        handleSubmitReport: () => {},
+      };
+
+      const dummyReactions: any = {
+        fullEmojiPickerPosition: null,
+        messageIdForFullEmojiPickerRef: { current: null },
+        setFullEmojiPickerPosition: () => {},
+        handleReact: () => {},
+      };
+
+      render(
+        <ChatModals
+          isDark={true}
+          isMobileView={false}
+          fullEmojiPickerRef={{ current: null }}
+          selection={dummySelection}
+          reactions={dummyReactions}
+          media={dummyMedia}
+          onSendFromPreview={() => {}}
+          onCaptionTyping={(act) => { emittedActivity = act; }}
+        />
+      );
+
+      const input = screen.getByPlaceholderText('Add a caption...');
+      fireEvent.change(input, { target: { value: 'Sunset view' } });
+      expect(emittedActivity).toBe('typing');
     });
   });
 });

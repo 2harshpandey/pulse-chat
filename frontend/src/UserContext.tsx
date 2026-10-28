@@ -5,6 +5,7 @@ import { getCookie, setCookie, deleteCookie } from './chat/utils';
 export type PresenceActivity =
   | 'typing'
   | 'gif_selecting'
+  | 'recording_audio'
   | 'sending_audio'
   | 'sending_photo'
   | 'sending_video'
