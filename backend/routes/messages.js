@@ -92,14 +92,14 @@ router.get('/api/messages', apiLimiter, async (req, res) => {
         const halfSize = Math.floor(pageSize / 2);
         const frontendHiddenBefore = getRoomState(roomId).frontendHiddenBefore;
 
-        const olderQuery = { roomId, vanished: { $ne: true }, createdAt: { $lt: targetDate } };
+        const olderQuery = { roomId, vanished: { $ne: true }, type: { $ne: 'client_diagnostic' }, createdAt: { $lt: targetDate } };
         if (frontendHiddenBefore instanceof Date && !Number.isNaN(frontendHiddenBefore.getTime())) {
           olderQuery.createdAt.$gt = frontendHiddenBefore;
         }
 
         const [olderRows, newerRows] = await Promise.all([
           Message.find(olderQuery).sort({ createdAt: -1 }).limit(halfSize + 1).lean(),
-          Message.find({ roomId, vanished: { $ne: true }, createdAt: { $gt: targetDate } }).sort({ createdAt: 1 }).limit(halfSize + 1).lean()
+          Message.find({ roomId, vanished: { $ne: true }, type: { $ne: 'client_diagnostic' }, createdAt: { $gt: targetDate } }).sort({ createdAt: 1 }).limit(halfSize + 1).lean()
         ]);
 
         const hasMoreOlder = olderRows.length > halfSize;
@@ -144,7 +144,7 @@ router.get('/api/messages', apiLimiter, async (req, res) => {
 
     if (afterDate) {
       const frontendHiddenBefore = getRoomState(roomId).frontendHiddenBefore;
-      const query = { roomId, vanished: { $ne: true }, createdAt: { $gt: afterDate } };
+      const query = { roomId, vanished: { $ne: true }, type: { $ne: 'client_diagnostic' }, createdAt: { $gt: afterDate } };
       if (frontendHiddenBefore instanceof Date && !Number.isNaN(frontendHiddenBefore.getTime())) {
         query.createdAt.$gt = new Date(Math.max(afterDate.getTime(), frontendHiddenBefore.getTime()));
       }
