@@ -61,6 +61,8 @@ export interface ChatFooterProps {
   selectedMediaCount?: number;
   onDownloadSelectedMedia?: () => void;
   onSendVoiceNote?: (file: File, duration: number, waveform?: number[]) => void;
+  onVoiceRecordingStart?: () => void;
+  onVoiceRecordingStop?: () => void;
   onErrorToast?: (msg: string) => void;
 
   // Regular input mode props
@@ -130,6 +132,8 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
   selectedMediaCount,
   onDownloadSelectedMedia,
   onSendVoiceNote,
+  onVoiceRecordingStart,
+  onVoiceRecordingStop,
   onErrorToast,
   editingMessageId,
   editingMessageOriginalText,
@@ -496,7 +500,10 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
                 <RecordingCancelBtn
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
-                  onClick={recorder.cancelRecording}
+                  onClick={() => {
+                    recorder.cancelRecording();
+                    onVoiceRecordingStop?.();
+                  }}
                   title="Cancel recording"
                   aria-label="Cancel recording"
                 >
@@ -691,8 +698,10 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
                 onClick={async () => {
                   if (!isConnected) return;
                   audioCoordinator.stop();
+                  onVoiceRecordingStart?.();
                   await recorder.startRecording((err) => {
                     lastReportedVoiceErrorRef.current = err;
+                    onVoiceRecordingStop?.();
                     onErrorToast?.(err);
                   });
                 }}

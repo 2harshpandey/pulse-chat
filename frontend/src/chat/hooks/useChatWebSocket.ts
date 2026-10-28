@@ -118,9 +118,19 @@ export function useChatWebSocket({
   }, [appendMessageToWindow]);
 
   const setPresenceActivity = useCallback(
-    (nextActivity: PresenceActivity | null) => {
+    (nextActivity: PresenceActivity | null, force: boolean = false) => {
       if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
       if (presenceActivityRef.current === nextActivity) return;
+
+      // Prevent generic resets (e.g. from resetInput or typing timeouts)
+      // from wiping out an active media upload or active sending state unless forced
+      if (
+        nextActivity === null &&
+        !force &&
+        (activeUploadsCountRef.current > 0 || currentSendingActivityRef.current !== null)
+      ) {
+        return;
+      }
 
       try {
         if (nextActivity) {
@@ -151,7 +161,7 @@ export function useChatWebSocket({
         typingTimeoutRef.current = null;
       }
 
-      setPresenceActivity(activity);
+      setPresenceActivity(activity, true);
     },
     [setPresenceActivity]
   );
@@ -163,13 +173,13 @@ export function useChatWebSocket({
         clearTimeout(stopSendingTimeoutRef.current);
       }
       const elapsed = Date.now() - activityStartedAtRef.current;
-      const minDuration = 800; // ensures smooth animation and visibility
+      const minDuration = 1000; // ensures smooth animation and visibility to others
       const delay = Math.max(0, minDuration - elapsed);
 
       stopSendingTimeoutRef.current = setTimeout(() => {
         if (activeUploadsCountRef.current === 0) {
           currentSendingActivityRef.current = null;
-          setPresenceActivity(null);
+          setPresenceActivity(null, true);
           typingCooldownRef.current = false;
         }
       }, delay);

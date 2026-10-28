@@ -9,6 +9,7 @@ import {
   fetchBlobWithProgress,
   chooseReadableFilename,
   getMediaCacheLookupKey,
+  getPresenceActivityForFiles,
 } from '../utils';
 import { getCachedMediaBlob, setCachedMediaBlob } from '../../mediaCache';
 import { transferManager } from '../TransferManager';
@@ -188,8 +189,12 @@ export function useChatMedia({
       }
       setShowFilePreview(true);
       gifPicker.setStagedGif(null);
+
+      // Broadcast media sending presence to chat members while preview is open
+      const activity = getPresenceActivityForFiles(compressedFiles);
+      setPresenceActivity(activity);
     },
-    [inputMessage, resetInputLayerHeight, setInputMessage, userId, gifPicker]
+    [inputMessage, resetInputLayerHeight, setInputMessage, userId, gifPicker, setPresenceActivity]
   );
 
   const closeFilePreviewAndRestoreDraft = useCallback(() => {
@@ -205,7 +210,8 @@ export function useChatMedia({
       setPreMediaDraft('');
     }
     setPreviewCaption('');
-  }, [preMediaDraft, setInputMessage, userId]);
+    setPresenceActivity(null);
+  }, [preMediaDraft, setInputMessage, userId, setPresenceActivity]);
 
   const handleRequestCloseFilePreview = useCallback(() => {
     if (stagedFiles.length > 0 || previewCaption) {
@@ -644,5 +650,6 @@ export function useChatMedia({
     handleRequestDownload,
     handleResumeUpload,
     handleCancelUpload,
+    setPresenceActivity,
   };
 }

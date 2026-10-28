@@ -162,5 +162,14 @@ describe('Media and File Sending Presence Activity', () => {
       expect(screen.getByText(/is typing\.\.\./i)).toBeInTheDocument();
       expect(screen.getByText('·')).toBeInTheDocument();
     });
+
+    it('renders sending_media when user uploads mixed media files', () => {
+      const users: UserProfile[] = [
+        { userId: 'u_mixed', username: 'Jordan', isTyping: true, activity: 'sending_media' },
+      ];
+      render(<TypingIndicator onlineUsers={users} currentUserId="me" />);
+      expect(screen.getByText('Jordan')).toBeInTheDocument();
+      expect(screen.getByText(/is sending a file\.\.\./i)).toBeInTheDocument();
+    });
   });
 });

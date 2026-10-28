@@ -10,6 +10,7 @@ import {
   MediaGalleryModal,
   GifPickerModal,
 } from './index';
+import { getPresenceActivityForFiles } from '../utils';
 
 interface ChatModalsProps {
   isDark: boolean;
@@ -42,8 +43,11 @@ export const ChatModals: React.FC<ChatModalsProps> = ({
             const next = prev.filter((_, i) => i !== idx);
             if (next.length === 0) {
               media.closeFilePreviewAndRestoreDraft();
-            } else if (media.previewActiveIndex >= next.length) {
-              media.setPreviewActiveIndex(next.length - 1);
+            } else {
+              if (media.previewActiveIndex >= next.length) {
+                media.setPreviewActiveIndex(next.length - 1);
+              }
+              media.setPresenceActivity(getPresenceActivityForFiles(next));
             }
             return next;
           });
