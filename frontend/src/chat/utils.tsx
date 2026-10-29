@@ -9,15 +9,95 @@ export const getCookie = (name: string): string | null => {
   return match ? decodeURIComponent(match[2]) : null;
 };
 
-export const setCookie = (name: string, value: string, days = 365): void => {
+export const setCookie = (name: string, value: string, days = 30): void => {
   if (typeof document === 'undefined') return;
   const expires = new Date(Date.now() + days * 864e5).toUTCString();
-  document.cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Lax`;
+  document.cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Strict`;
 };
 
 export const deleteCookie = (name: string): void => {
   if (typeof document === 'undefined') return;
-  document.cookie = `${encodeURIComponent(name)}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax`;
+  document.cookie = `${encodeURIComponent(name)}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Strict`;
+};
+
+export const getSessionToken = (roomId?: string): string | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    let token: string | null = null;
+    if (roomId) {
+      token =
+        localStorage.getItem(`pulseSessionToken_${roomId}`) ||
+        sessionStorage.getItem(`pulseSessionToken_${roomId}`) ||
+        getCookie(`pulseSessionToken_${roomId}`);
+    }
+    if (!token) {
+      token =
+        localStorage.getItem('pulseSessionToken') ||
+        sessionStorage.getItem('pulseSessionToken') ||
+        getCookie('pulseSessionToken');
+    }
+    if (token) {
+      try {
+        if (roomId) {
+          if (!sessionStorage.getItem(`pulseSessionToken_${roomId}`)) {
+            sessionStorage.setItem(`pulseSessionToken_${roomId}`, token);
+          }
+          if (!localStorage.getItem(`pulseSessionToken_${roomId}`)) {
+            localStorage.setItem(`pulseSessionToken_${roomId}`, token);
+          }
+        }
+        if (!sessionStorage.getItem('pulseSessionToken')) {
+          sessionStorage.setItem('pulseSessionToken', token);
+        }
+        if (!localStorage.getItem('pulseSessionToken')) {
+          localStorage.setItem('pulseSessionToken', token);
+        }
+      } catch (_) {}
+      return token;
+    }
+  } catch (_) {}
+  return null;
+};
+
+export const setSessionToken = (token: string, roomId?: string): void => {
+  if (typeof window === 'undefined' || !token) return;
+  try {
+    localStorage.setItem('pulseSessionToken', token);
+    sessionStorage.setItem('pulseSessionToken', token);
+    setCookie('pulseSessionToken', token, 30);
+    if (roomId) {
+      localStorage.setItem(`pulseSessionToken_${roomId}`, token);
+      sessionStorage.setItem(`pulseSessionToken_${roomId}`, token);
+      setCookie(`pulseSessionToken_${roomId}`, token, 30);
+    }
+  } catch (_) {}
+};
+
+export const removeSessionToken = (roomId?: string): void => {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem('pulseSessionToken');
+    sessionStorage.removeItem('pulseSessionToken');
+    deleteCookie('pulseSessionToken');
+    if (roomId) {
+      localStorage.removeItem(`pulseSessionToken_${roomId}`);
+      sessionStorage.removeItem(`pulseSessionToken_${roomId}`);
+      deleteCookie(`pulseSessionToken_${roomId}`);
+    } else {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('pulseSessionToken_')) {
+          localStorage.removeItem(key);
+        }
+      }
+      for (let i = sessionStorage.length - 1; i >= 0; i--) {
+        const key = sessionStorage.key(i);
+        if (key && key.startsWith('pulseSessionToken_')) {
+          sessionStorage.removeItem(key);
+        }
+      }
+    }
+  } catch (_) {}
 };
 
 export const getUserId = (): string => {
@@ -335,7 +415,7 @@ export const buildDownloadProxyUrl = (resourceUrl: string, filename?: string): s
   if (typeof window !== 'undefined') {
     const roomId = sessionStorage.getItem('pulse_room_id') || localStorage.getItem('pulse_room_id') || sessionStorage.getItem('pulseRoomId') || localStorage.getItem('pulseRoomId');
     if (roomId) params.set('roomId', roomId);
-    const sessionToken = sessionStorage.getItem('pulseSessionToken');
+    const sessionToken = getSessionToken(roomId || undefined);
     if (sessionToken) params.set('sessionToken', sessionToken);
     const userId = sessionStorage.getItem('pulse_user_id') || localStorage.getItem('pulse_user_id') || sessionStorage.getItem('pulseUserId') || localStorage.getItem('pulseUserId');
     if (userId) params.set('userId', userId);
@@ -372,9 +452,9 @@ export const fetchBlobWithProgress = async (
   onProgress?.(0);
   const headers: Record<string, string> = {};
   if (typeof window !== 'undefined' && (resourceUrl.includes('/api/download') || resourceUrl.startsWith('/'))) {
-    const sessionToken = sessionStorage.getItem('pulseSessionToken');
-    if (sessionToken) headers['x-session-token'] = sessionToken;
     const roomId = sessionStorage.getItem('pulse_room_id') || localStorage.getItem('pulse_room_id') || sessionStorage.getItem('pulseRoomId') || localStorage.getItem('pulseRoomId');
+    const sessionToken = getSessionToken(roomId || undefined);
+    if (sessionToken) headers['x-session-token'] = sessionToken;
     if (roomId) headers['x-room-id'] = roomId;
     const userId = sessionStorage.getItem('pulse_user_id') || localStorage.getItem('pulse_user_id') || sessionStorage.getItem('pulseUserId') || localStorage.getItem('pulseUserId');
     if (userId) headers['x-user-id'] = userId;

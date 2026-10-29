@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { UserProfile } from '../../UserContext';
 import { useTheme } from '../../ThemeContext';
 import { resolveApiBaseUrl } from '../../chat/utils';
-import { getUserId, setCookie, collectFingerprint } from '../AuthStyledComponents';
+import { getUserId, setCookie, collectFingerprint, setSessionToken } from '../AuthStyledComponents';
 
 interface UseAuthControllerProps {
   onAuthSuccess: (profile: UserProfile) => void;
@@ -108,9 +108,7 @@ export const useAuthController = ({
         if (resp.ok) {
           const data = await resp.json();
           if (data.sessionToken) {
-            // Issue 3: Store session token ONLY in sessionStorage (tab-lifetime), never in
-            // localStorage (permanent). This eliminates the XSS token-theft escalation path.
-            sessionStorage.setItem('pulseSessionToken', data.sessionToken);
+            setSessionToken(data.sessionToken, data.roomId || roomId);
           }
           localStorage.setItem('pulseUsername', username.trim());
           localStorage.setItem(`pulseUsername_${roomId}`, username.trim());
@@ -141,11 +139,10 @@ export const useAuthController = ({
         });
         if (resp.ok) {
           const data = await resp.json().catch(() => ({}));
-          if (data.sessionToken) {
-            // Issue 3: sessionStorage only — not localStorage
-            sessionStorage.setItem('pulseSessionToken', data.sessionToken);
-          }
           const resolvedRoomId = data.roomId || roomId;
+          if (data.sessionToken) {
+            setSessionToken(data.sessionToken, resolvedRoomId);
+          }
           localStorage.setItem('pulseUsername', username.trim());
           localStorage.setItem(`pulseUsername_${resolvedRoomId}`, username.trim());
           if (resolvedRoomId) {

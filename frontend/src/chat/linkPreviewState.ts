@@ -1,6 +1,6 @@
 import type { LinkPreviewData } from './types';
 import { MAX_LINK_PREVIEW_CACHE_ENTRIES } from './constants';
-import { resolveApiBaseUrl } from './utils';
+import { resolveApiBaseUrl, getSessionToken } from './utils';
 
 export const linkPreviewCache = new Map<string, LinkPreviewData | null>();
 export const linkPreviewInFlight = new Map<string, Promise<LinkPreviewData | null>>();
@@ -35,9 +35,7 @@ export const fetchLinkPreviewData = (url: string, roomId?: string): Promise<Link
       const headers: Record<string, string> = {
         'x-room-id': currentRoomId,
       };
-      const sessionToken = typeof sessionStorage !== 'undefined'
-        ? (sessionStorage.getItem('pulseSessionToken'))
-        : null;
+      const sessionToken = getSessionToken(currentRoomId);
       if (sessionToken) headers['x-session-token'] = sessionToken;
       const userId = typeof sessionStorage !== 'undefined'
         ? (sessionStorage.getItem('pulseUserId') || localStorage.getItem('pulseUserId') || sessionStorage.getItem('pulse_user_id') || localStorage.getItem('pulse_user_id'))

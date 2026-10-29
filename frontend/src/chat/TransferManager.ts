@@ -1,5 +1,5 @@
 import { setCachedMediaBlob, removeCachedMediaBlob, getCachedMediaForUser, clearOtherSessions } from '../mediaCache';
-import { buildDownloadProxyUrl } from './utils';
+import { buildDownloadProxyUrl, getSessionToken } from './utils';
 
 // We use sessionStorage to maintain a unique session ID.
 // When the tab is closed, this session ID is lost.
@@ -75,7 +75,7 @@ class TransferManager {
 
     // Check status
     try {
-      const sessionToken = sessionStorage.getItem('pulseSessionToken');
+      const sessionToken = getSessionToken(roomId);
       const statusHeaders: Record<string, string> = {};
       if (sessionToken) statusHeaders['x-session-token'] = sessionToken;
       if (roomId) statusHeaders['x-room-id'] = roomId;
@@ -140,7 +140,7 @@ class TransferManager {
           formData.append('userId', userId);
           formData.append('roomId', roomId);
           formData.append('text', messageObj?.text || '');
-          const sessionToken = sessionStorage.getItem('pulseSessionToken');
+          const sessionToken = getSessionToken(roomId);
           if (sessionToken) {
             formData.append('sessionToken', sessionToken);
           }
@@ -166,7 +166,6 @@ class TransferManager {
               const chunkHeaders: Record<string, string> = {};
               if (roomId) chunkHeaders['x-room-id'] = roomId;
               if (userId) chunkHeaders['x-user-id'] = userId;
-              const sessionToken = sessionStorage.getItem('pulseSessionToken');
               if (sessionToken) {
                 chunkHeaders['x-session-token'] = sessionToken;
               }
@@ -323,11 +322,10 @@ class TransferManager {
 
       if (!response || (!response.ok && response.status !== 206)) {
         const proxyUrl = buildDownloadProxyUrl(url, filename);
-        const proxyHeaders = new Headers(headers);
-        const sessionToken = sessionStorage.getItem('pulseSessionToken');
-        if (sessionToken) proxyHeaders.set('x-session-token', sessionToken);
         const roomId = sessionStorage.getItem('pulse_room_id') || localStorage.getItem('pulse_room_id') || sessionStorage.getItem('pulseRoomId') || localStorage.getItem('pulseRoomId');
         if (roomId) proxyHeaders.set('x-room-id', roomId);
+        const sessionToken = getSessionToken(roomId || undefined);
+        if (sessionToken) proxyHeaders.set('x-session-token', sessionToken);
         const userId = sessionStorage.getItem('pulse_user_id') || localStorage.getItem('pulse_user_id') || sessionStorage.getItem('pulseUserId') || localStorage.getItem('pulseUserId');
         if (userId) proxyHeaders.set('x-user-id', userId);
         response = await fetch(proxyUrl, { headers: proxyHeaders, signal: abortController.signal });

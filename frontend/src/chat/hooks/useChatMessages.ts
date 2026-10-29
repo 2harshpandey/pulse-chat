@@ -17,6 +17,7 @@ import {
   sanitizeMediaUrl,
   findMessageElement,
   isGroupStartMessage,
+  getSessionToken,
 } from '../utils';
 import { albumDownloadManager } from '../albumDownloadManager';
 
@@ -312,7 +313,7 @@ export function useChatMessages({
     if (userId) {
       headers['x-user-id'] = userId;
     }
-    const sessionToken = sessionStorage.getItem('pulseSessionToken');
+    const sessionToken = getSessionToken(roomId);
     if (sessionToken) {
       headers['x-session-token'] = sessionToken;
     }

@@ -304,6 +304,8 @@ if (!process.env.SESSION_SECRET && !process.env.ADMIN_SECRET) {
 const SESSION_SECRET = process.env.SESSION_SECRET
   || crypto.createHash('sha256').update(process.env.ADMIN_SECRET).digest('hex');
 
+const SESSION_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
 const createSignedSessionToken = (userId, roomId) => {
   const payload = Buffer.from(JSON.stringify({
     userId: String(userId || '').trim(),
@@ -327,6 +329,13 @@ const verifySignedSessionToken = (token) => {
     if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) return null;
     const data = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
     if (!data.userId || !data.roomId) return null;
+    if (typeof data.iat === 'number') {
+      const now = Date.now();
+      // Tokens expire after 30 days of inactivity; also guard against clock skew beyond 5 minutes
+      if (now - data.iat > SESSION_TOKEN_TTL_MS || data.iat > now + 300000) {
+        return null;
+      }
+    }
     return data;
   } catch {
     return null;
@@ -388,6 +397,7 @@ module.exports = {
   verifyPassword,
   generateSessionToken,
   verifySignedSessionToken,
+  SESSION_TOKEN_TTL_MS,
   batchDeleteCloudinaryAssets,
 };
 

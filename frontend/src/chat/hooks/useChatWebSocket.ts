@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Message } from '../types';
 import type { UserProfile, PresenceActivity } from '../../UserContext';
-import { clearOverlayGuardHistoryEntry, resolveApiBaseUrl, isGroupStartMessage } from '../utils';
+import { clearOverlayGuardHistoryEntry, resolveApiBaseUrl, isGroupStartMessage, getSessionToken, setSessionToken } from '../utils';
 import { transferManager } from '../TransferManager';
 import { INITIAL_HISTORY_BATCH_SIZE, INITIAL_FIRST_ITEM_INDEX } from '../constants';
 import { initTelemetryContext, updateTelemetryWs } from '../telemetry';
@@ -256,7 +256,7 @@ export function useChatWebSocket({
         reconnectDelayRef.current = 600;
         presenceActivityRef.current = null;
         initTelemetryContext(ws.current, roomId, effectiveUserId, userProfile?.username);
-        const sessionToken = sessionStorage.getItem('pulseSessionToken');
+        const sessionToken = getSessionToken(roomId);
         ws.current?.send(
           JSON.stringify({
             type: 'user_join',
@@ -325,8 +325,7 @@ export function useChatWebSocket({
         }
         if (messageData.type === 'auth_success') {
           if (messageData.sessionToken) {
-            // Issue 3: sessionStorage only \u2014 never persist to localStorage
-            sessionStorage.setItem('pulseSessionToken', messageData.sessionToken);
+            setSessionToken(messageData.sessionToken, roomId);
           }
           return;
         }
@@ -340,7 +339,7 @@ export function useChatWebSocket({
           return;
         }
         if (messageData.type === 'username_taken') {
-          console.warn('Username collision detected — terminating reconnect loop');
+          console.warn('Username collision detected - terminating reconnect loop');
           if (reconnectTimerRef.current) {
             clearTimeout(reconnectTimerRef.current);
             reconnectTimerRef.current = null;

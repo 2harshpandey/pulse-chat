@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Gif } from '../types';
+import { getSessionToken } from '../utils';
 
 interface UseChatGifPickerOptions {
   apiBase: string;
@@ -51,7 +52,7 @@ export function useChatGifPicker({
         const headers: Record<string, string> = {};
         if (roomId) headers['x-room-id'] = roomId;
         if (userId) headers['x-user-id'] = userId;
-        const sessionToken = sessionStorage.getItem('pulseSessionToken');
+        const sessionToken = getSessionToken(roomId);
         if (sessionToken) headers['x-session-token'] = sessionToken;
 
         const res = await fetch(url, { headers });

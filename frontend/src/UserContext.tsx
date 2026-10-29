@@ -1,6 +1,6 @@
 import React, { createContext, useState, ReactNode } from 'react';
 import { clearCachedMediaForUser } from './mediaCache';
-import { getCookie, setCookie, deleteCookie } from './chat/utils';
+import { getCookie, setCookie, deleteCookie, removeSessionToken } from './chat/utils';
 
 export type PresenceActivity =
   | 'typing'
@@ -80,14 +80,14 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const logout = () => {
     const userId = localStorage.getItem('pulseUserId') || getCookie('pulseUserId') || '';
+    const currentRoomId = profile?.roomId || localStorage.getItem('pulseRoomId') || undefined;
     if (userId) {
       void clearCachedMediaForUser(userId);
     }
     try {
       localStorage.removeItem('pulseUsername');
       localStorage.removeItem('pulseRoomId');
-      localStorage.removeItem('pulseSessionToken');
-      sessionStorage.removeItem('pulseSessionToken');
+      removeSessionToken(currentRoomId);
       sessionStorage.removeItem('chatCleared');
       deleteCookie('pulseUsername');
       deleteCookie('pulseRoomId');

@@ -10,6 +10,7 @@ import {
   normalizeMessageId,
   findMessageElement,
   isGroupStartMessage,
+  getSessionToken,
 } from '../utils';
 import { sendClientDiagnostic } from '../telemetry';
 
@@ -368,7 +369,7 @@ export function useChatMessageNavigation({
             if (userId) {
               headers['x-user-id'] = userId;
             }
-            const sessionToken = sessionStorage.getItem('pulseSessionToken');
+            const sessionToken = getSessionToken(roomId);
             if (sessionToken) {
               headers['x-session-token'] = sessionToken;
             }

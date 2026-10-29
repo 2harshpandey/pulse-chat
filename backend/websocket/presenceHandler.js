@@ -144,6 +144,17 @@ const handleUserJoin = async ({
     }
   }
 
+  // Rolling expiration: refresh signed session tokens older than 12 hours on active visits
+  if (activeSessionToken && typeof activeSessionToken === 'string' && activeSessionToken.startsWith('pls.')) {
+    const tokenData = verifySignedSessionToken(activeSessionToken);
+    if (tokenData && typeof tokenData.iat === 'number' && (Date.now() - tokenData.iat > 12 * 60 * 60 * 1000)) {
+      activeSessionToken = generateSessionToken(userId, roomId);
+      if (existingSession) {
+        existingSession.sessionToken = activeSessionToken;
+      }
+    }
+  }
+
   if (requiresPassword) {
     let isAuthorized = Boolean(activeSessionToken);
 
@@ -466,6 +477,10 @@ const handleUserLogout = ({ ws, parsedMessage, broadcastToAdmins, _broadcast, _b
       pendingDisconnects.delete(logoutUserId);
     }
     logger.info(`User '${logoutUsername}' logged out explicitly from room ${roomId}.`);
+    User.updateOne(
+      { roomId: String(roomId), userId: String(logoutUserId) },
+      { $unset: { sessionToken: 1 } }
+    ).catch(err => logger.error('Failed to clear sessionToken on logout:', err));
     broadcastToAdmins(roomId, 'user_logged_out', { userId: logoutUserId, username: logoutUsername });
     broadcastToAdmins(roomId, 'logged_in_users', toSafeLoggedInUserList(loggedInUsers));
     broadcastToAdmins(roomId, 'activity', `User '${logoutUsername}' logged out.`);

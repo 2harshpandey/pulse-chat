@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import type { Message } from '../types';
+import { getSessionToken } from '../utils';
 
 interface UseChatSearchProps {
   messages: Message[];
@@ -179,7 +180,7 @@ export function useChatSearch({
     if (userId) {
       headers['x-user-id'] = userId;
     }
-    const sessionToken = sessionStorage.getItem('pulseSessionToken');
+    const sessionToken = getSessionToken(roomId);
     if (sessionToken) {
       headers['x-session-token'] = sessionToken;
     }
