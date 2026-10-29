@@ -90,7 +90,7 @@ const isRoomAccessAllowed = async (rawRoomId, req) => {
   }
 
   // Check if requesting user has an active authenticated session using canonical room state
-  const rawSessionToken = req.headers['x-session-token'] || req.query.sessionToken || req.body?.sessionToken;
+  const rawSessionToken = req.headers['x-session-token'] || req.body?.sessionToken;
   const sessionToken = typeof rawSessionToken === 'string' && rawSessionToken.trim() ? rawSessionToken.trim() : null;
 
   if (typeof userId === 'string' && userId.trim() && sessionToken) {
@@ -139,8 +139,8 @@ const isRoomAccessAllowed = async (rawRoomId, req) => {
     } catch (_) {}
   }
 
-  // Alternatively check if room password was passed directly
-  const roomPassword = req.headers['x-room-password'] || req.query.password || req.body?.password || req.body?.joinPassword;
+  // Alternatively check if room password was passed directly (via header or request body)
+  const roomPassword = req.headers['x-room-password'] || req.body?.password || req.body?.joinPassword;
   if (roomPassword && typeof roomPassword === 'string') {
     if (roomId === 'me' && process.env.CLIENT_PASSWORD && timingSafeEqualStr(roomPassword, process.env.CLIENT_PASSWORD)) {
       return true;
