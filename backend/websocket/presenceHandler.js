@@ -126,13 +126,19 @@ const handleUserJoin = async ({
   // Cross-restart or multi-instance fallback: verify signed token or check database User record
   if (!activeSessionToken && sessionTokenProvided) {
     const verified = verifySignedSessionToken(sessionTokenProvided);
-    if (verified && verified.userId === userId && verified.roomId === roomId) {
+    if (verified && verified.userId === userId && (verified.roomId === roomId || (cleanRoomId && verified.roomId === cleanRoomId))) {
       activeSessionToken = sessionTokenProvided;
+      if (existingSession) {
+        existingSession.sessionToken = activeSessionToken;
+      }
     } else {
       try {
         const dbUser = await User.findOne({ roomId: String(roomId), userId: String(userId) }).lean();
         if (dbUser && dbUser.sessionToken && timingSafeEqualStr(sessionTokenProvided, dbUser.sessionToken)) {
           activeSessionToken = sessionTokenProvided;
+          if (existingSession) {
+            existingSession.sessionToken = activeSessionToken;
+          }
         }
       } catch (_) {}
     }
@@ -352,9 +358,10 @@ const handleUserJoin = async ({
     });
   } else {
     const s = loggedInUsers.get(userId);
-    if (!s.sessionToken && activeSessionToken) {
+    if (activeSessionToken) {
       s.sessionToken = activeSessionToken;
     }
+    s.username = username;
     s.ip = ws.clientIp;
     s.userAgent = ws.clientUa;
   }

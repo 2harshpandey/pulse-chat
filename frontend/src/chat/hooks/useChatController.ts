@@ -33,8 +33,9 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
   const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
-
-  const userIdRef = useRef<string>(getUserId());
+  const activeUserId = userContext?.profile?.userId || getUserId();
+  const userIdRef = useRef<string>(activeUserId);
+  userIdRef.current = activeUserId;
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null!);
   const inputOverlayRef = useRef<HTMLDivElement>(null);
@@ -94,7 +95,7 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
 
   // Messages Hook
   const msgs = useChatMessages({
-    userId: userIdRef.current,
+    userId: activeUserId,
     roomId,
     apiBase,
     chatContainerRef,
@@ -111,7 +112,7 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
 
   // Reactions Hook
   const reactions = useChatReactions({
-    userId: userIdRef.current,
+    userId: activeUserId,
     userProfile: userContext?.profile,
     roomId,
     ws,
@@ -121,7 +122,7 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
 
   // Selection Hook
   const selection = useChatSelection({
-    userId: userIdRef.current,
+    userId: activeUserId,
     roomId,
     ws,
     messages: msgs.messages,
@@ -138,7 +139,7 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     isAtBottomRef: viewport.isAtBottomRef,
     apiBase,
     roomId,
-    userId: userIdRef.current,
+    userId: activeUserId,
     filterVisibleMessages: msgs.filterVisibleMessages,
     normalizeMessage: msgs.normalizeMessage,
   });
@@ -147,7 +148,7 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
   const nav = useChatMessageNavigation({
     apiBase,
     roomId,
-    userId: userIdRef.current,
+    userId: activeUserId,
     messagesRef: msgs.messagesRef,
     setMessages: msgs.setMessages,
     historyLoaded: msgs.historyLoaded,
@@ -203,7 +204,7 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
   const media = useChatMedia({
     messages: msgs.messages,
     setMessages: msgs.setMessages,
-    userId: userIdRef.current,
+    userId: activeUserId,
     apiBase,
     roomId,
     isLoggedIn: Boolean(userContext?.profile),
@@ -221,7 +222,7 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
   // WebSocket Hook
   const socket = useChatWebSocket({
     ws,
-    userId: userIdRef.current,
+    userId: activeUserId,
     roomId,
     tempToken,
     userProfile: userContext?.profile,
@@ -273,7 +274,7 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     inputMessage,
     setInputMessage,
     inputMessageRef,
-    userId: userIdRef.current,
+    userId: activeUserId,
     roomId,
     userProfile: userContext?.profile,
     ws,

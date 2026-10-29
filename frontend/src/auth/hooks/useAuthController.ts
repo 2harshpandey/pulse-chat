@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { UserProfile } from '../../UserContext';
 import { useTheme } from '../../ThemeContext';
 import { resolveApiBaseUrl } from '../../chat/utils';
-import { getUserId, collectFingerprint } from '../AuthStyledComponents';
+import { getUserId, setCookie, collectFingerprint } from '../AuthStyledComponents';
 
 interface UseAuthControllerProps {
   onAuthSuccess: (profile: UserProfile) => void;
@@ -99,10 +99,11 @@ export const useAuthController = ({
       if (isTempLink) {
         let token = new URLSearchParams(window.location.search).get('token') || tempToken || '';
         token = token.trim();
+        const submittingUserId = getUserId();
         const resp = await fetch(`${apiBase}/api/auth/verify-temp`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token, username: username.trim(), userId: getUserId(), fingerprint, roomId }),
+          body: JSON.stringify({ token, username: username.trim(), userId: submittingUserId, fingerprint, roomId }),
         });
         if (resp.ok) {
           const data = await resp.json();
@@ -119,7 +120,10 @@ export const useAuthController = ({
           if (routerState?.autoJoin) {
             navigate(location.pathname, { replace: true, state: {} });
           }
-          onAuthSuccess({ userId: getUserId(), username: username.trim(), roomId: data.roomId });
+          const verifiedUserId = data.userId || submittingUserId;
+          localStorage.setItem('pulseUserId', verifiedUserId);
+          setCookie('pulseUserId', verifiedUserId, 30);
+          onAuthSuccess({ userId: verifiedUserId, username: username.trim(), roomId: data.roomId });
         } else {
           const d = await resp.json().catch(() => ({}));
           if (resp.status === 429) {
@@ -129,10 +133,11 @@ export const useAuthController = ({
           }
         }
       } else {
+        const submittingUserId = getUserId();
         const resp = await fetch(`${apiBase}/api/auth/verify`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password, username: username.trim(), userId: getUserId(), fingerprint, roomId }),
+          body: JSON.stringify({ password, username: username.trim(), userId: submittingUserId, fingerprint, roomId }),
         });
         if (resp.ok) {
           const data = await resp.json().catch(() => ({}));
@@ -149,7 +154,10 @@ export const useAuthController = ({
           if (routerState?.autoJoin) {
             navigate(location.pathname, { replace: true, state: {} });
           }
-          onAuthSuccess({ userId: getUserId(), username: username.trim(), roomId: resolvedRoomId });
+          const verifiedUserId = data.userId || submittingUserId;
+          localStorage.setItem('pulseUserId', verifiedUserId);
+          setCookie('pulseUserId', verifiedUserId, 30);
+          onAuthSuccess({ userId: verifiedUserId, username: username.trim(), roomId: resolvedRoomId });
         } else {
           const d = await resp.json().catch(() => ({}));
           if (resp.status === 409) {

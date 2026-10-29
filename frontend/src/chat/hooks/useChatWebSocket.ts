@@ -243,9 +243,10 @@ export function useChatWebSocket({
         ? apiBase.replace(/^http/, 'ws')
         : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`;
 
-      let wsUrl = `${wsUrlBase}?userId=${userId}`;
-      if (tempToken) wsUrl += `&token=${tempToken}`;
-      else if (roomId) wsUrl += `&roomId=${roomId}`;
+      const effectiveUserId = userProfile?.userId || userId;
+      let wsUrl = `${wsUrlBase}?userId=${encodeURIComponent(effectiveUserId)}`;
+      if (tempToken) wsUrl += `&token=${encodeURIComponent(tempToken)}`;
+      else if (roomId) wsUrl += `&roomId=${encodeURIComponent(roomId)}`;
 
       ws.current = new WebSocket(wsUrl);
 
@@ -254,10 +255,16 @@ export function useChatWebSocket({
         lastPingAtRef.current = Date.now();
         reconnectDelayRef.current = 600;
         presenceActivityRef.current = null;
-        initTelemetryContext(ws.current, roomId, userId, userProfile?.username);
+        initTelemetryContext(ws.current, roomId, effectiveUserId, userProfile?.username);
         const sessionToken = sessionStorage.getItem('pulseSessionToken');
         ws.current?.send(
-          JSON.stringify({ type: 'user_join', ...(userProfile || {}), userId, roomId, sessionToken })
+          JSON.stringify({
+            type: 'user_join',
+            ...(userProfile || {}),
+            userId: effectiveUserId,
+            roomId,
+            sessionToken,
+          })
         );
       };
 

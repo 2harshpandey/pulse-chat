@@ -84,17 +84,11 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       void clearCachedMediaForUser(userId);
     }
     try {
-      // Issue 15: Also remove pulseUserId to prevent ghost sessions on next page load.
-      // Previously, userId was left behind causing initialProfile() to partially restore state.
-      localStorage.removeItem('pulseUserId');
       localStorage.removeItem('pulseUsername');
       localStorage.removeItem('pulseRoomId');
-      // Issue 3: Remove sessionToken from localStorage — it should live only in sessionStorage.
       localStorage.removeItem('pulseSessionToken');
       sessionStorage.removeItem('pulseSessionToken');
       sessionStorage.removeItem('chatCleared');
-      // Issue 15: Clear userId cookie in addition to username/roomId cookies
-      deleteCookie('pulseUserId');
       deleteCookie('pulseUsername');
       deleteCookie('pulseRoomId');
     } catch (_) {}
