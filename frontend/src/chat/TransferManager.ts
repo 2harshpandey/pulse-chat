@@ -322,6 +322,7 @@ class TransferManager {
 
       if (!response || (!response.ok && response.status !== 206)) {
         const proxyUrl = buildDownloadProxyUrl(url, filename);
+        const proxyHeaders = new Headers(headers);
         const roomId = sessionStorage.getItem('pulse_room_id') || localStorage.getItem('pulse_room_id') || sessionStorage.getItem('pulseRoomId') || localStorage.getItem('pulseRoomId');
         if (roomId) proxyHeaders.set('x-room-id', roomId);
         const sessionToken = getSessionToken(roomId || undefined);
