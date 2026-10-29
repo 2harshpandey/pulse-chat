@@ -344,7 +344,7 @@ export function useChatViewport({
       setIsScrollToBottomVisible(!atBottom);
     }
 
-    if (!atBottom) {
+    if (!atBottom && initialHistoryBottomStabilized.current) {
       suppressInitialBottomPinRef.current = true;
     }
     if (atBottom) {

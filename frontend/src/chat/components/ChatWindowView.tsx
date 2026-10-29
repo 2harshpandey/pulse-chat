@@ -111,13 +111,31 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
           ref={chatContainerRef as any}
           onScroll={handleMessagesContainerScroll}
           onWheel={(e) => {
-            if (e.deltaY < 0 && chatContainerRef.current && chatContainerRef.current.scrollTop <= 150) {
-              if (
-                !msgs.isLoadingOlderRef.current &&
-                msgs.hasMoreOlderMessages &&
-                !search.suppressOlderMessageLoadRef.current
-              ) {
-                void msgs.loadOlderMessages();
+            if (e.deltaY < 0) {
+              viewport.suppressInitialBottomPinRef.current = true;
+              viewport.initialHistoryBottomStabilized.current = true;
+            }
+            if (
+              e.deltaY < 0 &&
+              chatContainerRef.current &&
+              chatContainerRef.current.scrollTop <= 150 &&
+              msgs.historyLoaded &&
+              viewport.hasInitialScrolled.current &&
+              viewport.initialHistoryBottomStabilized.current &&
+              !msgs.isLoadingOlderRef.current &&
+              msgs.hasMoreOlderMessages &&
+              !search.suppressOlderMessageLoadRef.current
+            ) {
+              void msgs.loadOlderMessages();
+            }
+          }}
+          onTouchMove={() => {
+            if (chatContainerRef.current) {
+              const scroller = chatContainerRef.current;
+              const distanceFromBottom = scroller.scrollHeight - (scroller.scrollTop + scroller.clientHeight);
+              if (distanceFromBottom > 80) {
+                viewport.suppressInitialBottomPinRef.current = true;
+                viewport.initialHistoryBottomStabilized.current = true;
               }
             }
           }}

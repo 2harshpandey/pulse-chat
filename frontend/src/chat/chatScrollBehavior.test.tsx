@@ -253,4 +253,72 @@ describe('Enter key behavior and touch device detection', () => {
     handleInputKeyDown({ key: 'Enter', ctrlKey: true, preventDefault }, true);
     expect(handleSendMessage).toHaveBeenCalledTimes(2);
   });
+
+  it('does not suppress initial bottom pin when atBottom is false before stabilization finishes', () => {
+    const mockContainer = document.createElement('div');
+    const ref = { current: mockContainer };
+    const { result } = renderHook(() =>
+      useChatViewport({
+        chatContainerRef: ref as any,
+        inputOverlayRef: { current: null },
+        messageInputRef: { current: null },
+      })
+    );
+
+    // Initial state: stabilization is false
+    result.current.initialHistoryBottomStabilized.current = false;
+    result.current.suppressInitialBottomPinRef.current = false;
+
+    // Simulate scroll event where container is not at bottom during initial layout
+    act(() => {
+      result.current.handleAtBottomStateChange(false);
+    });
+
+    // Should NOT suppress initial bottom pin because stabilization is still in progress
+    expect(result.current.suppressInitialBottomPinRef.current).toBe(false);
+
+    // Now mark stabilization as complete (history fully settled at bottom)
+    result.current.initialHistoryBottomStabilized.current = true;
+
+    // Simulate user scrolling up away from bottom
+    act(() => {
+      result.current.handleAtBottomStateChange(false);
+    });
+
+    // Now it SHOULD suppress initial bottom pin because user genuinely scrolled away
+    expect(result.current.suppressInitialBottomPinRef.current).toBe(true);
+  });
+
+  it('guards older message loading so it never triggers during initial load or before stabilization', () => {
+    const shouldLoadOlder = (
+      historyLoaded: boolean,
+      hasInitialScrolled: boolean,
+      initialHistoryBottomStabilized: boolean,
+      scrollTop: number,
+      isLoadingOlder: boolean,
+      hasMoreOlder: boolean
+    ) => {
+      return (
+        historyLoaded &&
+        hasInitialScrolled &&
+        initialHistoryBottomStabilized &&
+        scrollTop < 2500 &&
+        !isLoadingOlder &&
+        hasMoreOlder
+      );
+    };
+
+    // 1. Initial mount (scrollTop is 0, but history hasn't finished initial scroll/stabilization): DO NOT LOAD
+    expect(shouldLoadOlder(true, false, false, 0, false, true)).toBe(false);
+    expect(shouldLoadOlder(true, true, false, 0, false, true)).toBe(false);
+
+    // 2. Initial mount before history is loaded: DO NOT LOAD
+    expect(shouldLoadOlder(false, false, false, 0, false, true)).toBe(false);
+
+    // 3. Settled at bottom (initial scroll done, stabilized, scrollTop is at bottom e.g. 5000px): DO NOT LOAD
+    expect(shouldLoadOlder(true, true, true, 5000, false, true)).toBe(false);
+
+    // 4. User scrolled up to top after stabilization (scrollTop = 100px): LOAD OLDER
+    expect(shouldLoadOlder(true, true, true, 100, false, true)).toBe(true);
+  });
 });

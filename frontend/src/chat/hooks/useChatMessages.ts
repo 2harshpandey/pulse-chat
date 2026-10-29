@@ -633,6 +633,7 @@ export function useChatMessages({
           hasMoreNewerMessagesRef.current = false;
 
           setHistoryLoaded(true);
+          setHistorySessionId(prev => prev + 1);
           scrollToBottom('auto', true);
         }
       } catch (_) {

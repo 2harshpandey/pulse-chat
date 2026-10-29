@@ -441,31 +441,89 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
 
   // Initial scroll to bottom
   useLayoutEffect(() => {
-    if (msgs.messages.length > 0 && !viewport.hasInitialScrolled.current) {
+    if (
+      msgs.messages.length > 0 &&
+      (!viewport.hasInitialScrolled.current || !viewport.initialHistoryBottomStabilized.current)
+    ) {
+      if (viewport.suppressInitialBottomPinRef.current) return;
       viewport.hasInitialScrolled.current = true;
       const scroller = chatContainerRef.current;
-      if (scroller) scroller.scrollTop = scroller.scrollHeight;
+      if (scroller) {
+        scroller.scrollTop = scroller.scrollHeight;
+        viewport.isAtBottomRef.current = true;
+      }
     }
-  }, [msgs.messages.length, viewport.hasInitialScrolled]);
+  }, [
+    msgs.messages,
+    msgs.historySessionId,
+    viewport.hasInitialScrolled,
+    viewport.initialHistoryBottomStabilized,
+    viewport.suppressInitialBottomPinRef,
+  ]);
 
   useEffect(() => {
-    if (!msgs.historyLoaded) return;
-    if (viewport.initialHistoryBottomStabilized.current) return;
-    viewport.initialHistoryBottomStabilized.current = true;
+    if (!msgs.historyLoaded || msgs.messages.length === 0) return;
+    viewport.initialHistoryBottomStabilized.current = false;
+    viewport.suppressInitialBottomPinRef.current = false;
 
-    const timer = setTimeout(() => {
+    const pinToBottom = () => {
       if (viewport.shouldSuppressProgrammaticScroll()) return;
       if (viewport.suppressInitialBottomPinRef.current) return;
-      const scroller = chatContainerRef.current;
-      if (scroller) scroller.scrollTop = scroller.scrollHeight;
-    }, 120);
+      const el = chatContainerRef.current;
+      if (el) {
+        el.scrollTop = el.scrollHeight;
+        viewport.isAtBottomRef.current = true;
+        viewport.lastAtBottomStateRef.current = true;
+        viewport.setIsScrollToBottomVisible(false);
+      }
+    };
 
-    return () => clearTimeout(timer);
+    pinToBottom();
+
+    let lastScrollHeight = chatContainerRef.current?.scrollHeight || 0;
+    let resizeObserver: ResizeObserver | null = null;
+
+    const setupObserver = () => {
+      const el = chatContainerRef.current;
+      if (el && !resizeObserver && typeof ResizeObserver !== 'undefined') {
+        try {
+          resizeObserver = new ResizeObserver(() => {
+            if (chatContainerRef.current && chatContainerRef.current.scrollHeight !== lastScrollHeight) {
+              lastScrollHeight = chatContainerRef.current.scrollHeight;
+              pinToBottom();
+            }
+          });
+          resizeObserver.observe(el);
+        } catch (_) {}
+      }
+    };
+
+    setupObserver();
+
+    // Multi-interval stabilization: keeps the list pinned to bottom
+    // as images, avatars, emojis, and media elements load/render.
+    const delays = [20, 60, 120, 250, 450, 750, 1100, 1600];
+    const timers = delays.map((delay) =>
+      window.setTimeout(() => {
+        setupObserver();
+        pinToBottom();
+      }, delay)
+    );
+
+    const finalizeTimer = window.setTimeout(() => {
+      pinToBottom();
+      viewport.initialHistoryBottomStabilized.current = true;
+    }, 1900);
+
+    return () => {
+      timers.forEach(window.clearTimeout);
+      window.clearTimeout(finalizeTimer);
+      resizeObserver?.disconnect();
+    };
   }, [
+    msgs.historySessionId,
     msgs.historyLoaded,
-    viewport.initialHistoryBottomStabilized,
     viewport.shouldSuppressProgrammaticScroll,
-    viewport.suppressInitialBottomPinRef,
   ]);
 
   // Scroll anchor / metrics correction
@@ -612,6 +670,9 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
       }
     }
     if (
+      msgs.historyLoaded &&
+      viewport.hasInitialScrolled.current &&
+      viewport.initialHistoryBottomStabilized.current &&
       target.scrollTop < 2500 &&
       !msgs.isLoadingOlderRef.current &&
       msgs.hasMoreOlderMessages &&

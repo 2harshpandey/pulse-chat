@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import EmojiPicker, { EmojiStyle, Theme } from 'emoji-picker-react';
+import { useParams } from 'react-router-dom';
 import Auth from './Auth';
+import { UserContext } from './UserContext';
 import { getInputDraftKey } from './chat/constants';
 import { clearOverlayGuardHistoryEntry } from './chat/utils';
 import {
@@ -21,12 +23,13 @@ import {
 } from './chat/components';
 import { useChatController } from './chat/hooks';
 
-function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {}) {
-  const c = useChatController({ isMe, isTempLink });
+interface ChatProps {
+  isMe?: boolean;
+  isTempLink?: boolean;
+}
 
-  if (!c.userContext?.profile) {
-    return <Auth onAuthSuccess={c.userContext?.login ?? (() => {})} tempToken={c.tempToken || null} roomId={c.roomId} />;
-  }
+function ChatAuthenticated({ isMe, isTempLink }: ChatProps) {
+  const c = useChatController({ isMe, isTempLink });
 
   return (
     <>
@@ -172,6 +175,24 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
         allMessages={c.msgs.messages}
       />
     </>
+  );
+}
+
+function Chat({ isMe, isTempLink }: ChatProps = {}) {
+  const userContext = useContext(UserContext);
+  const { token: tempToken, roomId: urlRoomId } = useParams<{ token?: string; roomId?: string }>();
+  const roomId = isMe ? 'me' : (urlRoomId || userContext?.profile?.roomId || 'me');
+
+  if (!userContext?.profile) {
+    return <Auth onAuthSuccess={userContext?.login ?? (() => {})} tempToken={tempToken || null} roomId={roomId} />;
+  }
+
+  return (
+    <ChatAuthenticated
+      key={`${userContext.profile.userId}_${roomId}`}
+      isMe={isMe}
+      isTempLink={isTempLink}
+    />
   );
 }
 
