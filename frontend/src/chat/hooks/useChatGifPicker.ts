@@ -3,6 +3,8 @@ import type { Gif } from '../types';
 
 interface UseChatGifPickerOptions {
   apiBase: string;
+  roomId?: string;
+  userId?: string;
   setPresenceActivity: (act: 'typing' | 'gif_selecting' | null) => void;
   messageInputRef: React.RefObject<HTMLTextAreaElement | null>;
   isDesktopInteraction: boolean;
@@ -11,6 +13,8 @@ interface UseChatGifPickerOptions {
 
 export function useChatGifPicker({
   apiBase,
+  roomId,
+  userId,
   setPresenceActivity,
   messageInputRef,
   isDesktopInteraction,
@@ -44,7 +48,13 @@ export function useChatGifPicker({
           ? `${apiBase}/api/gifs/search?q=${encodeURIComponent(q)}`
           : `${apiBase}/api/gifs/trending`;
 
-        const res = await fetch(url);
+        const headers: Record<string, string> = {};
+        if (roomId) headers['x-room-id'] = roomId;
+        if (userId) headers['x-user-id'] = userId;
+        const sessionToken = sessionStorage.getItem('pulseSessionToken');
+        if (sessionToken) headers['x-session-token'] = sessionToken;
+
+        const res = await fetch(url, { headers });
         if (!res.ok) {
           const errBody = await res.json().catch(() => ({}));
           throw new Error(errBody?.error || `Failed to fetch GIFs (HTTP ${res.status})`);
@@ -67,7 +77,7 @@ export function useChatGifPicker({
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [showGifPicker, gifSearchTerm, gifFetchKey, apiBase]);
+  }, [showGifPicker, gifSearchTerm, gifFetchKey, apiBase, roomId, userId]);
 
   const setPresenceActivityRef = useRef(setPresenceActivity);
   useEffect(() => {

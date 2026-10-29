@@ -251,11 +251,13 @@ export function useChatWebSocket({
 
       ws.current.onopen = () => {
         setIsConnected(true);
+        lastPingAtRef.current = Date.now();
         reconnectDelayRef.current = 600;
         presenceActivityRef.current = null;
         initTelemetryContext(ws.current, roomId, userId, userProfile?.username);
+        const sessionToken = sessionStorage.getItem('pulseSessionToken');
         ws.current?.send(
-          JSON.stringify({ type: 'user_join', ...(userProfile || {}), userId, roomId })
+          JSON.stringify({ type: 'user_join', ...(userProfile || {}), userId, roomId, sessionToken })
         );
       };
 
@@ -277,7 +279,6 @@ export function useChatWebSocket({
         presenceActivityRef.current = null;
         activeUploadsCountRef.current = 0;
         currentSendingActivityRef.current = null;
-        console.log('WebSocket disconnected — scheduling reconnect');
         if (shouldReconnect) {
           reconnectTimerRef.current = setTimeout(() => {
             reconnectDelayRef.current = Math.min(reconnectDelayRef.current * 1.5, 10000);
@@ -294,9 +295,32 @@ export function useChatWebSocket({
       };
 
       ws.current.onmessage = async (event: MessageEvent) => {
-        const messageData = JSON.parse(event.data);
+        let messageData: any;
+        try {
+          messageData = JSON.parse(event.data);
+        } catch (parseErr) {
+          console.warn('[WebSocket] Malformed non-JSON frame received:', parseErr);
+          return;
+        }
+        if (!messageData || typeof messageData !== 'object') return;
         if (messageData.type === 'ping') {
           lastPingAtRef.current = Date.now();
+          if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+            try {
+              ws.current.send(JSON.stringify({ type: 'pong' }));
+            } catch (_) {}
+          }
+          return;
+        }
+        if (messageData.type === 'pong') {
+          lastPingAtRef.current = Date.now();
+          return;
+        }
+        if (messageData.type === 'auth_success') {
+          if (messageData.sessionToken) {
+            // Issue 3: sessionStorage only \u2014 never persist to localStorage
+            sessionStorage.setItem('pulseSessionToken', messageData.sessionToken);
+          }
           return;
         }
         if (messageData.type === 'force_logout') {
@@ -325,6 +349,27 @@ export function useChatWebSocket({
             overlayGuardPushed.current = false;
           }
           logout();
+          return;
+        }
+        if (messageData.type === 'error') {
+          console.warn('[WebSocket Error Frame]', messageData.message);
+          if (typeof messageData.message === 'string' && /authentication required/i.test(messageData.message)) {
+            if (reconnectTimerRef.current) {
+              clearTimeout(reconnectTimerRef.current);
+              reconnectTimerRef.current = null;
+            }
+            if (ws.current) {
+              ws.current.onclose = null;
+              ws.current.close();
+            }
+            setIsConnected(false);
+            sessionStorage.setItem('authError', messageData.message);
+            if (overlayGuardPushed.current) {
+              clearOverlayGuardHistoryEntry();
+              overlayGuardPushed.current = false;
+            }
+            logout();
+          }
           return;
         }
         if (messageData.type === 'pinned_messages_update') {
@@ -459,6 +504,10 @@ export function useChatWebSocket({
             normalizedUpdate.text === 'This message has been deleted by an admin.'
           ) {
             setPinnedMessages(prev => prev.filter(p => p.id !== normalizedUpdate.id));
+          } else {
+            setPinnedMessages(prev =>
+              prev.map(p => (p.id === normalizedUpdate.id ? { ...p, ...normalizedUpdate } : p))
+            );
           }
         } else if (messageData.type === 'bulk_update') {
           const updatedMessages = messageData.messages.map(normalizeMessage);
@@ -504,9 +553,11 @@ export function useChatWebSocket({
               )
               .map((m: any) => m.id)
           );
-          if (deletedOrVanishedIds.size > 0) {
-            setPinnedMessages(prev => prev.filter(p => !deletedOrVanishedIds.has(p.id)));
-          }
+          setPinnedMessages(prev =>
+            prev
+              .filter(p => !deletedOrVanishedIds.has(p.id))
+              .map(p => (updatedMap.has(p.id) ? { ...p, ...(updatedMap.get(p.id) as Message) } : p))
+          );
         } else if (messageData.type === 'bulk_delete') {
           const deletedIds = new Set(messageData.messageIds);
           setMessages(prev => prev.filter(m => !deletedIds.has(m.id)));
@@ -527,27 +578,34 @@ export function useChatWebSocket({
             void playNotificationSound(isJoinNotification ? 'join' : 'message');
           }
           if (messageData.clientTempId) {
-            setMessages(prev => prev.map(m => {
-              if (m.id === messageData.clientTempId || (m as any).clientTempId === messageData.clientTempId) {
-                return {
-                  ...normalized,
-                  clientTempId: messageData.clientTempId,
-                  localBlobUrl: (m as any).localBlobUrl || (normalized as any).localBlobUrl,
-                };
-              }
-              if (m.replyingTo && (m.replyingTo.id === messageData.clientTempId || (m.replyingTo as any).clientTempId === messageData.clientTempId)) {
-                return {
-                  ...m,
-                  replyingTo: {
-                    ...m.replyingTo,
-                    id: normalized.id,
-                    url: normalized.url || m.replyingTo.url,
-                    type: normalized.type !== 'system_notification' ? normalized.type : m.replyingTo.type,
-                  }
-                };
-              }
-              return m;
-            }));
+            setMessages(prev => {
+              let matched = false;
+              const updated = prev.map(m => {
+                if (m.id === messageData.clientTempId || (m as any).clientTempId === messageData.clientTempId) {
+                  matched = true;
+                  return {
+                    ...normalized,
+                    clientTempId: messageData.clientTempId,
+                    localBlobUrl: (m as any).localBlobUrl || (normalized as any).localBlobUrl,
+                  };
+                }
+                if (m.replyingTo && (m.replyingTo.id === messageData.clientTempId || (m.replyingTo as any).clientTempId === messageData.clientTempId)) {
+                  const isGroup = Boolean(m.replyingTo.isGroup || m.replyingTo.type === 'group');
+                  return {
+                    ...m,
+                    replyingTo: {
+                      ...m.replyingTo,
+                      id: normalized.id,
+                      url: isGroup ? undefined : (normalized.url || m.replyingTo.url),
+                      type: isGroup ? 'group' : (normalized.type !== 'system_notification' ? normalized.type : m.replyingTo.type),
+                    }
+                  };
+                }
+                return m;
+              });
+              return matched ? updated : [...updated, normalized];
+            });
+            return;
           }
           appendMessageToWindowRef.current(normalized);
         }
@@ -567,7 +625,7 @@ export function useChatWebSocket({
         const socketIsAlive =
           ws.current !== null &&
           ws.current.readyState === WebSocket.OPEN &&
-          Date.now() - lastPingAtRef.current < 25000;
+          Date.now() - lastPingAtRef.current < 35000;
 
         if (socketIsAlive) return;
 
@@ -634,8 +692,9 @@ export function useChatWebSocket({
     if (!isConnected) return;
     const interval = setInterval(() => {
       if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-        if (Date.now() - lastPingAtRef.current > 25000) {
+        if (Date.now() - lastPingAtRef.current > 35000) {
           console.warn('Frontend Heartbeat: Dead connection detected. Closing socket to force reconnect.');
+          lastPingAtRef.current = Date.now();
           ws.current.close();
         }
       }

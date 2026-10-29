@@ -25,13 +25,15 @@ interface UseChatOverlayGuardProps {
   closeEmojiPicker: (restoreKeyboard?: boolean) => void;
   fullEmojiPickerPosition: DOMRect | null;
   setFullEmojiPickerPosition: React.Dispatch<React.SetStateAction<DOMRect | null>>;
-  messageIdForFullEmojiPickerRef: React.MutableRefObject<string | null>;
+  messageIdForFullEmojiPickerRef: React.MutableRefObject<{ messageId: string; isAlbum?: boolean } | string | null>;
   isPlusMenuOpen: boolean;
   setIsPlusMenuOpen: React.Dispatch<React.SetStateAction<boolean>>;
   isSearchActive: boolean;
   setChatSearchQuery: React.Dispatch<React.SetStateAction<string>>;
   setActiveSearchQuery: React.Dispatch<React.SetStateAction<string>>;
   handleCloseSearch: () => void;
+  mediaGallery?: { items: any[]; initialIndex: number } | null;
+  closeMediaGallery?: () => void;
 }
 
 export function useChatOverlayGuard({
@@ -65,6 +67,8 @@ export function useChatOverlayGuard({
   setChatSearchQuery,
   setActiveSearchQuery,
   handleCloseSearch,
+  mediaGallery,
+  closeMediaGallery,
 }: UseChatOverlayGuardProps) {
   const overlayGuardPushed = useRef(false);
 
@@ -74,6 +78,7 @@ export function useChatOverlayGuard({
     isDeleteConfirmationVisible,
     isReportModalVisible,
     lightboxUrl,
+    isMediaGalleryOpen: !!mediaGallery,
     isUserListVisible,
     replyingTo,
     showGifPicker,
@@ -90,6 +95,7 @@ export function useChatOverlayGuard({
       isDeleteConfirmationVisible,
       isReportModalVisible,
       lightboxUrl,
+      isMediaGalleryOpen: !!mediaGallery,
       isUserListVisible,
       replyingTo,
       showGifPicker,
@@ -104,6 +110,7 @@ export function useChatOverlayGuard({
     isDeleteConfirmationVisible,
     isReportModalVisible,
     lightboxUrl,
+    mediaGallery,
     isUserListVisible,
     replyingTo,
     showGifPicker,
@@ -126,6 +133,7 @@ export function useChatOverlayGuard({
       isSelectModeActive ||
       hasSelectedMessages ||
       !!lightboxUrl ||
+      !!mediaGallery ||
       isUserListVisible ||
       !!replyingTo ||
       showGifPicker ||
@@ -147,6 +155,7 @@ export function useChatOverlayGuard({
     isSelectModeActive,
     selectedMessageCount,
     lightboxUrl,
+    mediaGallery,
     isUserListVisible,
     replyingTo,
     showGifPicker,
@@ -169,6 +178,7 @@ export function useChatOverlayGuard({
         isDeleteConfirmationVisible: curDel,
         isReportModalVisible: curRep,
         lightboxUrl: curLight,
+        isMediaGalleryOpen: curMediaGallery,
         isUserListVisible: curUsers,
         replyingTo: curReply,
         showGifPicker: curGif,
@@ -195,6 +205,8 @@ export function useChatOverlayGuard({
         closeEmojiPicker(true);
       } else if (curPlus) {
         setIsPlusMenuOpen(false);
+      } else if (curMediaGallery) {
+        closeMediaGallery?.();
       } else if (curLight) {
         setLightboxUrl(null);
       } else if (curUsers) {
@@ -213,6 +225,7 @@ export function useChatOverlayGuard({
   }, [
     closeEmojiPicker,
     closeGifPicker,
+    closeMediaGallery,
     handleCloseSearch,
     isLoggedIn,
     isSearchActive,

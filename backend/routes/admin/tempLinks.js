@@ -1,9 +1,10 @@
 const express = require('express');
 const crypto = require('crypto');
+const mongoose = require('mongoose');
 const logger = require('../../logger');
 const TempLink = require('../../models/tempLink');
 const AuditLog = require('../../models/auditLog');
-const { adminLimiter, adminAuth } = require('../../middleware');
+const { adminLimiter, adminAuth, extractIp } = require('../../middleware');
 
 module.exports = (wss, broadcasts) => {
   const { broadcastToAdmins } = broadcasts;
@@ -20,6 +21,8 @@ module.exports = (wss, broadcasts) => {
         roomId,
         type: 'temp_link_created',
         details: { token: token.substring(0, 8) + '...', expiresAt },
+        ip: extractIp(req),
+        userAgent: req.headers['user-agent'] || '',
       });
       broadcastToAdmins(roomId, 'temp_link_created', tempLink);
       broadcastToAdmins(roomId, 'activity', `Temporary access link created. Expires at ${expiresAt.toLocaleTimeString()}.`);
@@ -44,6 +47,9 @@ module.exports = (wss, broadcasts) => {
 
   router.post('/api/admin/temp-links/:id/revoke', adminLimiter, adminAuth, async (req, res) => {
     const roomId = req.roomId;
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ error: 'Invalid link ID.' });
+    }
     try {
       const link = await TempLink.findOneAndUpdate(
         { _id: req.params.id, roomId },
@@ -56,6 +62,8 @@ module.exports = (wss, broadcasts) => {
         roomId,
         type: 'temp_link_revoked',
         details: { token: link.token.substring(0, 8) + '...' },
+        ip: extractIp(req),
+        userAgent: req.headers['user-agent'] || '',
       });
       broadcastToAdmins(roomId, 'temp_link_revoked', link);
       broadcastToAdmins(roomId, 'activity', `Temporary access link revoked.`);

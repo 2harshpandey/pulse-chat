@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { VideoPlayer } from '../../VideoPlayer';
 import { sanitizeMediaUrl, getBlobUrl } from '../../utils';
 import {
@@ -15,7 +15,10 @@ import {
   FilePreviewCaptionInput,
   FilePreviewSendBtn,
   FilePreviewNoPreview,
+  CropHeaderBtn,
+  CropDoneBtn,
 } from '../../Chat.styles';
+import { PhotoCropper } from './PhotoCropper';
 
 export interface FilePreviewModalProps {
   isOpen: boolean;
@@ -31,6 +34,7 @@ export interface FilePreviewModalProps {
   onTyping?: () => void;
   onTypingStop?: () => void;
   captionInputRef?: React.RefObject<HTMLInputElement>;
+  onUpdateFile?: (index: number, newFile: File) => void;
 }
 
 export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
@@ -47,8 +51,16 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
   onTyping,
   onTypingStop,
   captionInputRef,
+  onUpdateFile,
 }) => {
-  if (!isOpen || stagedFiles.length === 0) return null;
+  const [isCropping, setIsCropping] = useState(false);
+  const [canDone, setCanDone] = useState(false);
+  const getCroppedFnRef = useRef<(() => Promise<File | null>) | null>(null);
+
+  const handleCropChange = useCallback((isAdjusted: boolean, getCropped: () => Promise<File | null>) => {
+    setCanDone(isAdjusted);
+    getCroppedFnRef.current = getCropped;
+  }, []);
 
   const activeFile = stagedFiles[previewActiveIndex] || stagedFiles[0];
   const isImg = activeFile?.type.startsWith('image/');
@@ -56,6 +68,33 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
   const ext = activeFile?.name.split('.').pop()?.toUpperCase() || '';
   const sizeKB = activeFile ? activeFile.size / 1024 : 0;
   const sizeLabel = sizeKB >= 1024 ? `${(sizeKB / 1024).toFixed(1)} MB` : `${Math.round(sizeKB)} KB`;
+
+  // Reset isCropping when changing active file
+  useEffect(() => {
+    setIsCropping(false);
+    setCanDone(false);
+  }, [previewActiveIndex]);
+
+  if (!isOpen || stagedFiles.length === 0) return null;
+
+  const handleApplyCrop = async () => {
+    if (!getCroppedFnRef.current) return;
+    const cropped = await getCroppedFnRef.current();
+    if (!cropped) return;
+
+    if (onUpdateFile) {
+      onUpdateFile(previewActiveIndex, cropped);
+    }
+
+    setIsCropping(false);
+    setCanDone(false);
+  };
+
+  const handleRemoveFile = (idx: number) => {
+    setIsCropping(false);
+    setCanDone(false);
+    onRemoveFile(idx);
+  };
 
   return (
     <StyledFilePreviewModal>
@@ -67,10 +106,43 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
           </svg>
         </FilePreviewModalClose>
         <FilePreviewModalFilename>{activeFile?.name}</FilePreviewModalFilename>
+
+        {isImg && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
+            <CropHeaderBtn
+              type="button"
+              $active={isCropping}
+              title={isCropping ? 'Cancel crop' : 'Crop photo'}
+              aria-label={isCropping ? 'Cancel crop' : 'Crop photo'}
+              onClick={() => setIsCropping(!isCropping)}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 2v14a2 2 0 0 0 2 2h14" />
+                <path d="M18 22V8a2 2 0 0 0-2-2H2" />
+              </svg>
+            </CropHeaderBtn>
+
+            {isCropping && (
+              <CropDoneBtn
+                type="button"
+                disabled={!canDone}
+                title={canDone ? 'Apply crop' : 'No crop changes made'}
+                onClick={handleApplyCrop}
+              >
+                Done
+              </CropDoneBtn>
+            )}
+          </div>
+        )}
       </FilePreviewModalHeader>
 
-      <FilePreviewModalBody>
-        {isImg ? (
+      <FilePreviewModalBody style={isCropping ? { padding: '10px 16px', overflow: 'hidden' } : undefined}>
+        {isImg && isCropping ? (
+          <PhotoCropper
+            file={activeFile}
+            onCropChange={handleCropChange}
+          />
+        ) : isImg ? (
           <img
             src={sanitizeMediaUrl(getBlobUrl(activeFile))}
             alt="File preview"
@@ -125,7 +197,7 @@ export const FilePreviewModal: React.FC<FilePreviewModalProps> = ({
                 <FilePreviewRemoveBtn
                   onClick={(e) => {
                     e.stopPropagation();
-                    onRemoveFile(idx);
+                    handleRemoveFile(idx);
                   }}
                 >
                   &times;

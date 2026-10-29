@@ -201,17 +201,19 @@ export function useChatMessages({
           updatedReply.id = target.id;
           changed = true;
         }
-        if (target.url && (!m.replyingTo.url || m.replyingTo.url.startsWith('blob:'))) {
-          updatedReply.url = target.url;
-          changed = true;
-        }
-        if (target.type && target.type !== 'system_notification' && m.replyingTo.type !== target.type) {
-          updatedReply.type = target.type;
-          changed = true;
-        }
-        if (target.text && !target.isDeleted && m.replyingTo.text !== target.text) {
-          updatedReply.text = target.text;
-          changed = true;
+        if (!m.replyingTo.isGroup && m.replyingTo.type !== 'group') {
+          if (target.url && (!m.replyingTo.url || m.replyingTo.url.startsWith('blob:'))) {
+            updatedReply.url = target.url;
+            changed = true;
+          }
+          if (target.type && target.type !== 'system_notification' && m.replyingTo.type !== target.type) {
+            updatedReply.type = target.type;
+            changed = true;
+          }
+          if (target.text && !target.isDeleted && m.replyingTo.text !== target.text) {
+            updatedReply.text = target.text;
+            changed = true;
+          }
         }
         if (target.deletedBy && updatedReply.deletedBy !== target.deletedBy) {
           updatedReply.deletedBy = target.deletedBy;
@@ -224,7 +226,11 @@ export function useChatMessages({
   }, []);
 
   const filterVisibleMessages = useCallback((allMsgs: Message[]): Message[] => {
-    const clearTs = Number(localStorage.getItem(`pulseClearTimestamp_${userId}`) || '0');
+    const roomKey = roomId || 'me';
+    const clearTs = Number(
+      localStorage.getItem(`pulseClearTimestamp_${userId}_${roomKey}`) ||
+      '0'
+    );
     const deletedForMeIds = getDeletedForMeIds(userId);
     const filtered = (clearTs > 0
       ? allMsgs.filter(m => m.type === 'system_notification' || new Date(m.timestamp).getTime() > clearTs)
@@ -232,7 +238,7 @@ export function useChatMessages({
     ).filter(m => !deletedForMeIds.has(m.id) && (m.type as string) !== 'client_diagnostic');
     const deletedIds = new Set(filtered.filter(m => m.isDeleted).map(m => m.id));
     return markDeletedReplyTargets(filtered, deletedIds);
-  }, [markDeletedReplyTargets, userId]);
+  }, [markDeletedReplyTargets, userId, roomId]);
 
   // Append message to sliding window
   const appendMessageToWindow = useCallback((msg: Message) => {
@@ -250,7 +256,17 @@ export function useChatMessages({
     }
 
     const current = messagesRef.current;
-    if (msg.id && current.some((m) => m.id === msg.id || (Boolean((m as any).clientTempId && (msg as any).clientTempId) && (m as any).clientTempId === (msg as any).clientTempId))) return;
+    const tempId = (msg as any).clientTempId;
+    if (
+      msg.id &&
+      current.some(
+        (m) =>
+          m.id === msg.id ||
+          (Boolean(tempId) && (m.id === tempId || (m as any).clientTempId === tempId))
+      )
+    ) {
+      return;
+    }
     if (msg.id && getDeletedForMeIds(userId).has(msg.id)) return;
 
     const prevMsg = current.length > 0 ? current[current.length - 1] : null;
@@ -291,12 +307,24 @@ export function useChatMessages({
     setMessages(nextMessages);
   }, [getMessageCursor, isAtBottomRef, setNewMessagesWhileScrolledUp, userId]);
 
+  const getAuthHeaders = useCallback((): Record<string, string> => {
+    const headers: Record<string, string> = { 'x-room-id': roomId };
+    if (userId) {
+      headers['x-user-id'] = userId;
+    }
+    const sessionToken = sessionStorage.getItem('pulseSessionToken');
+    if (sessionToken) {
+      headers['x-session-token'] = sessionToken;
+    }
+    return headers;
+  }, [roomId, userId]);
+
   // Prepend older messages
   const fetchAndPrependOlderMessages = useCallback(async (beforeCursor: string, limitOverride?: number) => {
     const before = encodeURIComponent(beforeCursor);
     const limit = limitOverride || HISTORY_PAGE_SIZE;
     const res = await fetch(`${apiBase}/api/messages?before=${before}&limit=${limit}`, {
-      headers: { 'x-room-id': roomId }
+      headers: getAuthHeaders(),
     });
     if (!res.ok) throw new Error('Failed to fetch older messages');
 
@@ -349,7 +377,6 @@ export function useChatMessages({
         let nextMessages = [...patchedOlder, ...patchedPrev];
 
         if (nextMessages.length > MAX_MESSAGES_WINDOW) {
-          const evictCount = nextMessages.length - MAX_MESSAGES_WINDOW;
           const lastKept = nextMessages[MAX_MESSAGES_WINDOW - 1];
           const newNewestCursor = getMessageCursor(lastKept) || newestLoadedAtRef.current;
           newestLoadedAtRef.current = newNewestCursor;
@@ -381,7 +408,7 @@ export function useChatMessages({
     hasMoreOlderMessagesRef.current = hasMore;
 
     return { prependedCount, hasMore, nextCursor };
-  }, [apiBase, chatContainerRef, filterVisibleMessages, getMessageCursor, markDeletedReplyTargets, normalizeMessage, roomId]);
+  }, [apiBase, chatContainerRef, filterVisibleMessages, getAuthHeaders, getMessageCursor, markDeletedReplyTargets, normalizeMessage, roomId]);
 
   const loadOlderMessages = useCallback(async () => {
     if (!historyLoaded || isLoadingOlderRef.current || !hasMoreOlderMessagesRef.current || !oldestLoadedAtRef.current) return;
@@ -416,7 +443,7 @@ export function useChatMessages({
     const after = encodeURIComponent(afterCursor);
     const limit = limitOverride || HISTORY_PAGE_SIZE;
     const res = await fetch(`${apiBase}/api/messages?after=${after}&limit=${limit}`, {
-      headers: { 'x-room-id': roomId }
+      headers: getAuthHeaders(),
     });
     if (!res.ok) throw new Error('Failed to fetch newer messages');
 
@@ -482,7 +509,7 @@ export function useChatMessages({
 
     setHasMoreNewerMessages(serverHasMore);
     hasMoreNewerMessagesRef.current = serverHasMore;
-  }, [apiBase, filterVisibleMessages, getMessageCursor, markDeletedReplyTargets, normalizeMessage, roomId]);
+  }, [apiBase, filterVisibleMessages, getAuthHeaders, getMessageCursor, markDeletedReplyTargets, normalizeMessage, roomId]);
 
   const loadNewerMessages = useCallback(async () => {
     if (!historyLoaded || isLoadingNewerRef.current || !hasMoreNewerMessagesRef.current || !newestLoadedAtRef.current) return;
@@ -504,7 +531,7 @@ export function useChatMessages({
   const jumpToLatestMessages = useCallback(async () => {
     try {
       const res = await fetch(`${apiBase}/api/messages?limit=${INITIAL_HISTORY_BATCH_SIZE}`, {
-        headers: { 'x-room-id': roomId }
+        headers: getAuthHeaders(),
       });
       if (!res.ok) return;
       const payload = await res.json();
@@ -553,7 +580,72 @@ export function useChatMessages({
     } catch (err) {
       console.error('Failed to jump to latest messages:', err);
     }
-  }, [apiBase, filterVisibleMessages, getMessageCursor, markDeletedReplyTargets, normalizeMessage, roomId, scrollToBottom, setFirstItemIndex, setNewMessagesWhileScrolledUp, syncBottomStateFromScroller]);
+  }, [apiBase, filterVisibleMessages, getAuthHeaders, getMessageCursor, markDeletedReplyTargets, normalizeMessage, roomId, scrollToBottom, setFirstItemIndex, setNewMessagesWhileScrolledUp, syncBottomStateFromScroller]);
+
+  // Concurrent initial history prefetch over HTTP on room mount
+  useEffect(() => {
+    if (!roomId || !apiBase) return;
+    let isCancelled = false;
+
+    const prefetchInitialHistory = async () => {
+      try {
+        const res = await fetch(`${apiBase}/api/messages?limit=${INITIAL_HISTORY_BATCH_SIZE}`, {
+          headers: getAuthHeaders(),
+        });
+        if (!res.ok || isCancelled) return;
+        const payload = await res.json();
+        if (isCancelled) return;
+
+        const rawBatch: any[] = Array.isArray(payload)
+          ? payload
+          : (Array.isArray(payload.messages) ? payload.messages : []);
+        const serverHasMore: boolean = Boolean(payload.hasMore);
+        const normalized = filterVisibleMessages(rawBatch.map(normalizeMessage));
+        const deletedIds = new Set(normalized.filter((m) => m.isDeleted).map((m) => m.id));
+        const patched = markDeletedReplyTargets(normalized, deletedIds);
+
+        if (!isCancelled && messagesRef.current.length === 0 && patched.length > 0) {
+          groupStartMessageIdsRef.current.clear();
+          for (let i = 0; i < patched.length; i++) {
+            const current = patched[i];
+            const prev = i > 0 ? patched[i - 1] : null;
+            if (isGroupStartMessage(current, prev)) {
+              groupStartMessageIdsRef.current.add(current.id);
+            }
+          }
+
+          setFirstItemIndex(INITIAL_FIRST_ITEM_INDEX);
+          firstItemIndexRef.current = INITIAL_FIRST_ITEM_INDEX;
+          messagesRef.current = patched;
+          setMessages(patched);
+
+          const oldest = patched.length > 0 ? (payload.oldestCreatedAt || getMessageCursor(patched[0])) : null;
+          oldestLoadedAtRef.current = oldest;
+          setOldestLoadedAt(oldest);
+
+          const newest = patched.length > 0 ? getMessageCursor(patched[patched.length - 1]) : null;
+          newestLoadedAtRef.current = newest;
+          setNewestLoadedAt(newest);
+
+          setHasMoreOlderMessages(serverHasMore);
+          hasMoreOlderMessagesRef.current = serverHasMore;
+          setHasMoreNewerMessages(false);
+          hasMoreNewerMessagesRef.current = false;
+
+          setHistoryLoaded(true);
+          scrollToBottom('auto', true);
+        }
+      } catch (_) {
+        // Fall back seamlessly to WebSocket history
+      }
+    };
+
+    void prefetchInitialHistory();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [roomId, apiBase, getAuthHeaders, filterVisibleMessages, normalizeMessage, markDeletedReplyTargets, getMessageCursor, setFirstItemIndex, scrollToBottom]);
 
 
   const handleSetReply = useCallback((message: Message) => {

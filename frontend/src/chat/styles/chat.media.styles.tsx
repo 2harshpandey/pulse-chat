@@ -89,11 +89,10 @@ const mediaFrameStyles = css`
   }
 `;
 
-/* Absolutely-positioned download button that appears over images and videos */
+
+/* Overlay button for media actions (download, react, reply) that appears over images and videos */
 export const MediaDownloadOverlayBtn = styled.button`
-  position: absolute;
-  top: 8px;
-  left: 8px;
+  position: relative;
   width: 36px;
   height: 36px;
   border-radius: 50%;
@@ -107,10 +106,11 @@ export const MediaDownloadOverlayBtn = styled.button`
   justify-content: center;
   cursor: pointer;
   opacity: 1;
-  transition: background 0.15s;
-  z-index: 4;
+  transition: background 0.15s, transform 0.15s;
+  flex-shrink: 0;
   svg { width: 15px; height: 15px; }
-  &:hover { background: rgba(0, 0, 0, 0.72); }
+  &:hover { background: rgba(0, 0, 0, 0.72); transform: scale(1.05); }
+  &:active { transform: scale(0.95); }
   &:disabled { cursor: default; }
   @media (max-width: 768px) { width: 32px; height: 32px; }
 `;
@@ -334,6 +334,127 @@ export const FilePreviewModalFilename = styled.div`
   overflow: hidden;
   text-overflow: ellipsis;
   opacity: 0.85;
+`;
+
+export const CropHeaderBtn = styled.button<{ $active?: boolean }>`
+  background: ${(props) => (props.$active ? 'rgba(255, 255, 255, 0.2)' : 'none')};
+  border: 1px solid ${(props) => (props.$active ? 'rgba(255, 255, 255, 0.35)' : 'transparent')};
+  color: ${(props) => (props.$active ? '#60a5fa' : 'white')};
+  cursor: pointer;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  &:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: scale(1.08);
+  }
+  &:active {
+    transform: scale(0.92);
+  }
+  svg {
+    width: 20px;
+    height: 20px;
+  }
+`;
+
+export const CropDoneBtn = styled.button`
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  border: none;
+  background: #2563eb;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);
+  &:hover:not(:disabled) {
+    background: #1d4ed8;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.5);
+  }
+  &:active:not(:disabled) {
+    transform: scale(0.96);
+  }
+  &:disabled {
+    background: rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.35);
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+`;
+
+export const CropToolbar = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 8px 18px;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 30px;
+  margin-top: 10px;
+  user-select: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  z-index: 10;
+  max-width: 95vw;
+  flex-wrap: wrap;
+
+  @media (max-width: 480px) {
+    gap: 6px;
+    padding: 6px 10px;
+  }
+`;
+
+export const CropToolActionBtn = styled.button`
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+  &:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.16);
+    transform: scale(1.05);
+  }
+  &:active:not(:disabled) {
+    transform: scale(0.94);
+  }
+  &:disabled {
+    opacity: 0.32;
+    cursor: not-allowed;
+  }
+  @media (max-width: 480px) {
+    padding: 6px 8px;
+    font-size: 0.8rem;
+    gap: 3px;
+  }
+`;
+
+export const CropToolbarDivider = styled.div`
+  width: 1px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.18);
+  margin: 0 4px;
+  flex-shrink: 0;
+  @media (max-width: 480px) {
+    display: none;
+  }
 `;
 
 export const FilePreviewModalBody = styled.div`
@@ -631,19 +752,21 @@ export const LightboxImage = styled.img<{ $isZoomed: boolean; $isInteracting: bo
 
 export const LightboxToolbar = styled.div`
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: 16px;
+  right: 16px;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px;
+  padding: 6px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.74);
+  background: rgba(15, 23, 42, 0.78);
   border: 1px solid rgba(148, 163, 184, 0.35);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+  z-index: 25;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
 
-  @media (max-width: 1024px), (pointer: coarse), (any-pointer: coarse) {
+  @media (hover: none) and (pointer: coarse) {
     display: none;
   }
 `;
@@ -895,7 +1018,11 @@ export const MediaGalleryHeader = styled.div`
   justify-content: space-between;
   flex-shrink: 0;
   z-index: 10;
-  background: linear-gradient(180deg, rgba(0,0,0,0.6) 0%, transparent 100%);
+  background: rgba(10, 15, 29, 0.75);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
 `;
 
 export const MediaGalleryInfo = styled.div`
@@ -1015,6 +1142,7 @@ export const MediaGalleryNavBtn = styled.button<{ $direction: 'left' | 'right' }
 `;
 
 export const MediaGallerySlide = styled.div`
+  position: relative;
   width: 100%;
   height: 100%;
   display: flex;
@@ -1049,7 +1177,7 @@ export const MediaGalleryVideoWrapper = styled.div`
   align-items: center;
   justify-content: center;
   border-radius: 8px;
-  overflow: hidden;
+  overflow: visible;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
   background: #000;
   cursor: default;
@@ -1066,7 +1194,10 @@ export const MediaGalleryBottom = styled.div`
   align-items: center;
   gap: 8px;
   padding: 10px 1rem 16px;
-  background: linear-gradient(0deg, rgba(0,0,0,0.7) 0%, transparent 100%);
+  background: rgba(10, 15, 29, 0.75);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   flex-shrink: 0;
   z-index: 10;
 `;

@@ -11,6 +11,7 @@ import {
   getLinkPreviewFallback,
   fetchLinkPreviewData
 } from './linkPreviewState';
+import { safeHref } from './renderMessage';
 
 export const LinkPreviewSkeleton = ({ sender }: { sender: 'me' | 'other' }) => (
   <LinkPreviewCard
@@ -111,7 +112,7 @@ export const LinkPreview: React.FC<{ url: string; sender: 'me' | 'other' }> = Re
   return (
     <LinkPreviewCard
       $sender={sender}
-      href={url}
+      href={safeHref(url)}
       target="_blank"
       rel="noopener noreferrer"
       onClick={(e) => e.stopPropagation()}

@@ -367,7 +367,6 @@ describe('Album Download Manager and Quoted Message Locating', () => {
     it('returns direct requested message ID when target is not loaded in memory', () => {
       const resolveReplyNavigationTargetId = (
         requestedId: string,
-        sourceId: string,
         inMemoryMessages: any[]
       ) => {
         const inMemory = inMemoryMessages.find((m) => m.id === requestedId);
@@ -376,13 +375,12 @@ describe('Album Download Manager and Quoted Message Locating', () => {
       };
 
       const requestedId = 'oldest-jul-9-msg';
-      const sourceId = 'recent-reply-msg';
       const inMemoryMessages = [
         { id: 'recent-1', text: 'j', username: 'Harsh', isDeleted: true },
         { id: 'recent-reply-msg', text: 'reply', username: 'Harsh' },
       ];
 
-      const resolved = resolveReplyNavigationTargetId(requestedId, sourceId, inMemoryMessages);
+      const resolved = resolveReplyNavigationTargetId(requestedId, inMemoryMessages);
       expect(resolved).toBe(requestedId);
     });
   });

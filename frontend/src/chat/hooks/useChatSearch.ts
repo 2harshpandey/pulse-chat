@@ -7,6 +7,7 @@ interface UseChatSearchProps {
   isAtBottomRef: React.MutableRefObject<boolean>;
   apiBase: string;
   roomId: string;
+  userId?: string;
   filterVisibleMessages: (msgs: Message[]) => Message[];
   normalizeMessage: (msg: any) => Message;
 }
@@ -17,6 +18,7 @@ export function useChatSearch({
   isAtBottomRef,
   apiBase,
   roomId,
+  userId,
   filterVisibleMessages,
   normalizeMessage,
 }: UseChatSearchProps) {
@@ -173,9 +175,17 @@ export function useChatSearch({
     let cancelled = false;
     setIsSearchLoading(true);
     setSearchResults(null);
+    const headers: Record<string, string> = { 'x-room-id': roomId };
+    if (userId) {
+      headers['x-user-id'] = userId;
+    }
+    const sessionToken = sessionStorage.getItem('pulseSessionToken');
+    if (sessionToken) {
+      headers['x-session-token'] = sessionToken;
+    }
     fetch(
       `${apiBase}/api/messages/search?q=${encodeURIComponent(activeSearchQuery.trim())}`,
-      { headers: { 'x-room-id': roomId } }
+      { headers }
     )
       .then(res => {
         if (!res.ok) throw new Error('Search failed');
@@ -197,7 +207,7 @@ export function useChatSearch({
         if (!cancelled) setIsSearchLoading(false);
       });
     return () => { cancelled = true; };
-  }, [activeSearchQuery, apiBase, roomId, normalizeMessage, filterVisibleMessages]);
+  }, [activeSearchQuery, apiBase, roomId, userId, normalizeMessage, filterVisibleMessages]);
 
   const captureScrollBeforeSearch = useCallback(() => {
     if (!activeSearchQuery) {

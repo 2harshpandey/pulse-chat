@@ -1,9 +1,9 @@
 import React from 'react';
 import type { Message } from './types';
 import {
-  sanitizeMediaUrl, isGiphyUrl, withCloudinaryTransform, getMediaGatePreviewUrl,
-  formatMediaSize, getFileContainerLabel, buildDownloadProxyUrl,
-  fetchBlobWithProgress, downloadFile, wrapEmojis, getDisplayFilename, EMOJI_SEQUENCE_RE,
+  sanitizeMediaUrl, getMediaGatePreviewUrl,
+  formatMediaSize, getFileContainerLabel,
+  downloadFile, wrapEmojis, getDisplayFilename, EMOJI_SEQUENCE_RE,
 } from './utils';
 import {
   MediaContent, MediaImageWrapper, MediaVideoWrapperDiv, MediaLoadGate, MediaLoadPreview,
@@ -12,9 +12,7 @@ import {
   MessageText, DownloadProgressRing, VideoPlayerWrapper,
 } from './ChatStyledComponents';
 import { VideoPlayer } from './VideoPlayer';
-import { MediaDisplay } from './MediaDisplay';
 import { AudioMessagePlayer } from './components/message/AudioMessagePlayer';
-import { transferManager } from './TransferManager';
 import type { TransferInfo } from './TransferManager';
 
 // --- URL Detection helpers ---
@@ -108,10 +106,14 @@ export const safeHref = (url: string): string => {
 };
 
 export const renderTextWithLinks = (text: string, sender: 'me' | 'other'): React.ReactNode => {
-  const isStandalone = text.replace(EMOJI_SEQUENCE_RE, '').trim().length === 0;
+  const hasEmoji = Boolean(text.match(EMOJI_SEQUENCE_RE));
+  const isStandalone = hasEmoji && text.replace(EMOJI_SEQUENCE_RE, '').trim().length === 0;
 
   const parts = text.split(CANDIDATE_URL_RE);
-  if (parts.length === 1) return wrapEmojis(text, isStandalone);
+  if (parts.length === 1) {
+    const wrapped = wrapEmojis(text, isStandalone);
+    return wrapped.length === 1 ? wrapped[0] : <>{wrapped}</>;
+  }
   const result: React.ReactNode[] = [];
   parts.forEach((part, i) => {
     if (i % 2 === 0) { if (part) result.push(...wrapEmojis(part, isStandalone)); return; }
@@ -157,7 +159,7 @@ export const detectFirstUrl = (text: string): string | null => {
 
 export const renderMessageContent = (
   msg: Message,
-  openLightbox: (url: string) => void,
+  openLightbox: (url: string, canonicalUrl?: string) => void,
   onMediaPointerDown?: () => void,
   sender: 'me' | 'other' = 'other',
   onVideoFullscreenEnter?: () => void,
@@ -174,6 +176,7 @@ export const renderMessageContent = (
   onCancelUpload?: (messageId: string) => void,
   onMediaLoad?: () => void,
   isSelectModeActive: boolean = false,
+  onMediaError?: (messageId: string, url?: string) => void,
 ) => {
   const isAudio = msg.type === 'audio' || Boolean(
     (!msg.type || msg.type === 'file') && (
@@ -258,7 +261,7 @@ export const renderMessageContent = (
     }
   };
 
-  const handleLoadMediaPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+  const handleLoadMediaPointerDown = () => {
     // Keep pointer events bubbling so swipe-to-quote can start from gated media.
     onMediaPointerDown?.();
   };
@@ -295,7 +298,23 @@ export const renderMessageContent = (
             </>
           ) : msg.url ? (
             <>
-              <img onLoad={onMediaLoad} src={sanitizeMediaUrl(resolvedMediaUrl)} alt={displayFilename} onClick={() => { if (isSelectModeActive) return; const u = sanitizeMediaUrl(resolvedMediaUrl); if (u) openLightbox(u); }} onPointerDown={() => onMediaPointerDown?.()} onDoubleClick={(e) => e.preventDefault()} onContextMenu={(e) => e.preventDefault()} />
+              <img
+                onLoad={onMediaLoad}
+                onError={(e) => {
+                  const fallback = sanitizeMediaUrl(msg.url);
+                  const img = e.currentTarget;
+                  if (fallback && img.src !== fallback) {
+                    img.src = fallback;
+                  }
+                  onMediaError?.(msg.id, msg.url);
+                }}
+                src={sanitizeMediaUrl(resolvedMediaUrl)}
+                alt={displayFilename}
+                onClick={() => { if (isSelectModeActive) return; const u = sanitizeMediaUrl(resolvedMediaUrl); if (u) openLightbox(u, msg.url); }}
+                onPointerDown={() => onMediaPointerDown?.()}
+                onDoubleClick={(e) => e.preventDefault()}
+                onContextMenu={(e) => e.preventDefault()}
+              />
               {msg.isUploading && (
                 <MediaLoadGate
                   type="button"
@@ -391,6 +410,7 @@ export const renderMessageContent = (
             <VideoPlayerWrapper>
               <VideoPlayer
                 src={sanitizeMediaUrl(resolvedMediaUrl) || ''}
+                fallbackUrl={sanitizeMediaUrl(msg.url) || undefined}
                 onPointerDown={() => onMediaPointerDown?.()}
                 onFullscreenEnter={onVideoFullscreenEnter}
                 isUploading={msg.isUploading}

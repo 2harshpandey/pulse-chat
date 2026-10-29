@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { groupMessages, isMediaMessage } from './components/MessagesList';
 import type { Message } from './types';
 
@@ -433,5 +433,411 @@ describe('Media grouping logic (WhatsApp / Telegram style)', () => {
       vi.restoreAllMocks();
     });
   });
+
+  describe('Quoting grouped media album preview', () => {
+    it('renders MediaAlbumIcon and "5 media" in MessageQuotedPreview when replying to a group', async () => {
+      const React = await import('react');
+      const { render, cleanup } = await import('@testing-library/react');
+      cleanup();
+      const { MessageQuotedPreview } = await import('./components/message/MessageQuotedPreview');
+
+      const message: Message = {
+        id: 'reply-1',
+        userId: 'bob',
+        username: 'Bob',
+        type: 'text',
+        text: 'Awesome album!',
+        timestamp: new Date().toISOString(),
+        replyingTo: {
+          id: 'group-head-1',
+          username: 'Alice',
+          text: '',
+          type: 'group',
+          isGroup: true,
+          mediaCount: 5,
+        },
+      };
+
+      const { getByText, getByTestId, queryByRole } = render(
+        React.createElement(MessageQuotedPreview, {
+          msg: message,
+          currentUserId: 'bob',
+          sender: 'me',
+          quotedPreviewThumbUrl: '',
+          scrollToMessage: () => {},
+        })
+      );
+
+      // Should show username and "5 media"
+      expect(getByText('Alice')).not.toBeNull();
+      expect(getByText('5 media')).not.toBeNull();
+
+      // Should render the group media album badge on the right
+      expect(getByTestId('quoted-group-media-badge')).not.toBeNull();
+
+      // Should NOT render any image thumbnail
+      expect(queryByRole('img')).toBeNull();
+      cleanup();
+    });
+
+    it('renders MediaAlbumIcon and "5 media • caption" when group reply has caption', async () => {
+      const React = await import('react');
+      const { render, cleanup } = await import('@testing-library/react');
+      cleanup();
+      const { MessageQuotedPreview } = await import('./components/message/MessageQuotedPreview');
+
+      const message: Message = {
+        id: 'reply-2',
+        userId: 'bob',
+        username: 'Bob',
+        type: 'text',
+        text: 'Love these pictures',
+        timestamp: new Date().toISOString(),
+        replyingTo: {
+          id: 'group-head-2',
+          username: 'Alice',
+          text: 'Trip to Tokyo',
+          type: 'group',
+          isGroup: true,
+          mediaCount: 5,
+        },
+      };
+
+      const { getByText, getByTestId } = render(
+        React.createElement(MessageQuotedPreview, {
+          msg: message,
+          currentUserId: 'bob',
+          sender: 'me',
+          quotedPreviewThumbUrl: '',
+          scrollToMessage: () => {},
+        })
+      );
+
+      expect(getByText('5 media')).not.toBeNull();
+      expect(getByText(/Trip to Tokyo/)).not.toBeNull();
+      expect(getByTestId('quoted-group-media-badge')).not.toBeNull();
+      cleanup();
+    });
+
+    it('resolves group info via quotedGroupInfo and displays SVG and count even if replyingTo had single media type', async () => {
+      const React = await import('react');
+      const { render, cleanup } = await import('@testing-library/react');
+      cleanup();
+      const { MessageQuotedPreview } = await import('./components/message/MessageQuotedPreview');
+
+      const message: Message = {
+        id: 'reply-3',
+        userId: 'bob',
+        username: 'Bob',
+        type: 'text',
+        text: 'Nice shots!',
+        timestamp: new Date().toISOString(),
+        replyingTo: {
+          id: 'photo-1',
+          username: 'Alice',
+          text: '',
+          type: 'image',
+          url: 'https://example.com/photo-1.jpg',
+        },
+      };
+
+      const { getByText, getByTestId } = render(
+        React.createElement(MessageQuotedPreview, {
+          msg: message,
+          currentUserId: 'bob',
+          sender: 'me',
+          quotedPreviewThumbUrl: 'https://example.com/photo-1.jpg',
+          scrollToMessage: () => {},
+          quotedGroupInfo: {
+            count: 4,
+            primaryId: 'photo-1',
+            caption: 'Mountain hike',
+          },
+        })
+      );
+
+      // Should recognize group info and show "4 media" + "Mountain hike"
+      expect(getByText('4 media')).not.toBeNull();
+      expect(getByText(/Mountain hike/)).not.toBeNull();
+      expect(getByTestId('quoted-group-media-badge')).not.toBeNull();
+      cleanup();
+    });
+
+    it('passes groupReplyTarget to handleSetReply on double-click in MediaGroupItem', async () => {
+      const React = await import('react');
+      const { render, fireEvent, cleanup } = await import('@testing-library/react');
+      cleanup();
+      const { MediaGroupItem } = await import('./components/message/MediaGroupItem');
+      const vi = (await import('vitest')).vi;
+
+      const groupMsgs = [
+        createMsg('g1', 'alice', 'image', 0, { text: 'Family trip' }),
+        createMsg('g2', 'alice', 'image', 1),
+        createMsg('g3', 'alice', 'image', 2),
+      ];
+
+      const handleSetReplyMock = vi.fn();
+
+      const { container } = render(
+        React.createElement(MediaGroupItem, {
+          messages: groupMsgs,
+          primaryMessage: groupMsgs[0],
+          showUsername: true,
+          isPinned: false,
+          currentUserId: 'bob',
+          activeDeleteMenu: null,
+          deleteMenuRef: { current: null },
+          handleSetReply: handleSetReplyMock,
+          handleReact: () => {},
+          openDeleteMenu: () => {},
+          openMediaGallery: () => {},
+          loadedMediaSrcById: {},
+          scrollToMessage: () => {},
+          isSelectModeActive: false,
+          isSelected: false,
+          handleToggleSelectMessage: () => {},
+          setActiveDeleteMenu: () => {},
+          handleCopy: () => {},
+          handleOpenReport: () => {},
+          handleCancelSelectMode: () => {},
+          isMobileView: false,
+          selectedMessages: [],
+          onOpenReactionPicker: () => {},
+          setReactionsPopup: () => {},
+          handleOpenFullEmojiPicker: () => {},
+          reactionPickerData: null,
+        })
+      );
+
+      // MessageRow is the root element rendered in MediaGroupItem
+      const row = container.querySelector('[data-message-id="g1"]');
+      expect(row).not.toBeNull();
+
+      fireEvent.doubleClick(row!, { target: row! });
+      expect(handleSetReplyMock).toHaveBeenCalledTimes(1);
+      const repliedTarget = handleSetReplyMock.mock.calls[0][0];
+      expect(repliedTarget.type).toBe('group');
+      expect(repliedTarget.isGroup).toBe(true);
+      expect(repliedTarget.mediaCount).toBe(3);
+      expect(repliedTarget.text).toBe('Family trip');
+      cleanup();
+    });
+  });
+
+  describe('Grouped media album reactions and individual media badging', () => {
+    it('aggregates album and item reactions with correct thumbnail metadata', async () => {
+      const React = await import('react');
+      const { render, fireEvent, cleanup } = await import('@testing-library/react');
+      cleanup();
+      const { MediaGroupItem } = await import('./components/message/MediaGroupItem');
+
+      let capturedPopup: any = null;
+
+      const groupMsgs: Message[] = [
+        {
+          id: 'photo-1',
+          userId: 'alice',
+          username: 'Alice',
+          type: 'image',
+          url: 'https://example.com/p1.jpg',
+          timestamp: new Date().toISOString(),
+          // Reaction to whole album from outside (isAlbum: true)
+          reactions: {
+            '😢': [{ userId: 'bob', username: 'Bob', isAlbum: true }],
+          },
+        },
+        {
+          id: 'photo-2',
+          userId: 'alice',
+          username: 'Alice',
+          type: 'image',
+          url: 'https://example.com/p2.jpg',
+          timestamp: new Date().toISOString(),
+          // Reaction made to individual photo inside gallery
+          reactions: {
+            '😂': [{ userId: 'bob', username: 'Bob' }],
+          },
+        },
+      ];
+
+      const { container } = render(
+        React.createElement(MediaGroupItem, {
+          messages: groupMsgs,
+          primaryMessage: groupMsgs[0],
+          showUsername: true,
+          isPinned: false,
+          currentUserId: 'bob',
+          activeDeleteMenu: null,
+          deleteMenuRef: { current: null },
+          handleSetReply: () => {},
+          handleReact: () => {},
+          openDeleteMenu: () => {},
+          openMediaGallery: () => {},
+          loadedMediaSrcById: { 'photo-2': 'blob:photo2-thumb' },
+          scrollToMessage: () => {},
+          isSelectModeActive: false,
+          isSelected: false,
+          handleToggleSelectMessage: () => {},
+          setActiveDeleteMenu: () => {},
+          handleCopy: () => {},
+          handleOpenReport: () => {},
+          handleCancelSelectMode: () => {},
+          isMobileView: false,
+          selectedMessages: [],
+          onOpenReactionPicker: () => {},
+          setReactionsPopup: (popup) => {
+            capturedPopup = popup;
+          },
+          handleOpenFullEmojiPicker: () => {},
+          reactionPickerData: null,
+        })
+      );
+
+      // Both reactions should appear in the combined reactions pill in chat
+      const reactionPill = container.querySelector('[data-testid="reactions-container"]');
+      expect(reactionPill).not.toBeNull();
+
+      fireEvent.click(reactionPill!);
+      expect(capturedPopup).not.toBeNull();
+      expect(capturedPopup.reactions['😢']).toBeDefined();
+      expect(capturedPopup.reactions['😂']).toBeDefined();
+
+      const sources = capturedPopup.reactionSources;
+      expect(sources).toHaveLength(2);
+
+      // Album reaction from outside: no mediaThumbUrl
+      const albumReaction = sources.find((s: any) => s.emoji === '😢');
+      expect(albumReaction).toBeDefined();
+      expect(albumReaction.isAlbum).toBe(true);
+      expect(albumReaction.mediaThumbUrl).toBeUndefined();
+
+      // Individual photo reaction: has mediaThumbUrl
+      const itemReaction = sources.find((s: any) => s.emoji === '😂');
+      expect(itemReaction).toBeDefined();
+      expect(itemReaction.isAlbum).toBe(false);
+      expect(itemReaction.mediaThumbUrl).toBe('blob:photo2-thumb');
+
+      cleanup();
+    });
+
+    it('renders reaction badge on bottom-right corner of active media in MediaGalleryModal', async () => {
+      const React = await import('react');
+      const { render, fireEvent, cleanup } = await import('@testing-library/react');
+      cleanup();
+      const { MediaGalleryModal } = await import('./components/modals/MediaGalleryModal');
+
+      const mockItems: Message[] = [
+        {
+          id: 'photo-1',
+          userId: 'alice',
+          username: 'Alice',
+          type: 'image',
+          url: 'https://example.com/p1.jpg',
+          timestamp: new Date().toISOString(),
+          reactions: {
+            '😂': [{ userId: 'bob', username: 'Bob' }],
+          },
+        },
+      ];
+
+      const { getByTitle } = render(
+        React.createElement(MediaGalleryModal, {
+          isOpen: true,
+          items: mockItems,
+          initialIndex: 0,
+          onClose: () => {},
+          currentUserId: 'bob',
+          onSetReactionsPopup: () => {},
+        })
+      );
+
+      const cornerBadge = getByTitle('View reactions on this media');
+      expect(cornerBadge).not.toBeNull();
+      // When zoomed in, reaction badge should disappear
+      const zoomInBtn = getByTitle('Zoom in');
+      fireEvent.click(zoomInBtn);
+      expect(cornerBadge.style.visibility).toBe('hidden');
+      expect(cornerBadge.style.opacity).toBe('0');
+
+      // When zoomed back out to normal state, reaction badge should reappear
+      const zoomOutBtn = getByTitle('Zoom out');
+      fireEvent.click(zoomOutBtn);
+      expect(cornerBadge.style.visibility).toBe('visible');
+      expect(cornerBadge.style.opacity).toBe('1');
+
+      cleanup();
+    });
+
+    it('renders reaction, reply, and download buttons in separate header for normal single-sent media without counter or thumbs', async () => {
+      const React = await import('react');
+      const { render, fireEvent, cleanup } = await import('@testing-library/react');
+      cleanup();
+      const { MediaGalleryModal } = await import('./components/modals/MediaGalleryModal');
+
+      const singleMediaItem: Message = {
+        id: 'single-photo-99',
+        userId: 'other_user',
+        username: 'Other User',
+        type: 'image',
+        url: 'https://example.com/single.jpg',
+        originalName: 'single-photo.jpg',
+        timestamp: new Date().toISOString(),
+        reactions: {
+          '🔥': [{ userId: 'me_user', username: 'Me' }],
+        },
+      };
+
+      let repliedMessage: Message | null = null;
+      let reactedMessageId: string | null = null;
+      let closed = false;
+
+      const { getByTitle, queryByText } = render(
+        React.createElement(MediaGalleryModal, {
+          isOpen: true,
+          items: [singleMediaItem],
+          initialIndex: 0,
+          onClose: () => {
+            closed = true;
+          },
+          currentUserId: 'me_user',
+          onSetReply: (msg) => {
+            repliedMessage = msg;
+          },
+          onOpenReactionPicker: (id) => {
+            reactedMessageId = id;
+          },
+          onRequestDownload: vi.fn(),
+        })
+      );
+
+      // Verify no "1 / 1" counter is displayed for single media
+      expect(queryByText('1 / 1')).toBeNull();
+
+      // Verify reply button exists and functions
+      const replyBtn = getByTitle('Reply to message');
+      expect(replyBtn).not.toBeNull();
+      fireEvent.click(replyBtn);
+      expect(repliedMessage).toEqual(singleMediaItem);
+      expect(closed).toBe(true);
+
+      // Verify reaction button exists and functions
+      const reactBtn = getByTitle('React to message');
+      expect(reactBtn).not.toBeNull();
+      fireEvent.click(reactBtn);
+      expect(reactedMessageId).toBe('single-photo-99');
+
+      // Verify download button exists
+      const downloadBtn = getByTitle('Download');
+      expect(downloadBtn).not.toBeNull();
+
+      // Verify corner reaction badge is present
+      const cornerBadge = getByTitle('View reactions on this media');
+      expect(cornerBadge).not.toBeNull();
+
+      cleanup();
+    });
+  });
 });
+
+
 

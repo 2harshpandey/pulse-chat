@@ -91,6 +91,7 @@ const userReportSchema = new mongoose.Schema({
 
 userReportSchema.index({ roomId: 1, reportedUserId: 1, reportedAt: -1 });
 userReportSchema.index({ roomId: 1, reporterUserId: 1, reportedAt: -1 });
+userReportSchema.index({ roomId: 1, reportedAt: -1 });
 
 const UserReport = mongoose.model('UserReport', userReportSchema);
 

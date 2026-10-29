@@ -27,6 +27,9 @@ const messageEventSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 messageEventSchema.index({ roomId: 1, createdAt: -1 });
+messageEventSchema.index({ roomId: 1, type: 1, createdAt: -1 });
+messageEventSchema.index({ roomId: 1, messageId: 1 });
+messageEventSchema.index({ roomId: 1, 'message.id': 1 });
 
 const MessageEvent = mongoose.model('MessageEvent', messageEventSchema);
 

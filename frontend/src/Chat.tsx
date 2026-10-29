@@ -144,6 +144,7 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
             roomId={c.roomId}
             onClearChat={c.composer.handleClearChat}
             onLogout={() => {
+              localStorage.removeItem(getInputDraftKey(c.userIdRef.current, c.roomId));
               localStorage.removeItem(getInputDraftKey(c.userIdRef.current));
               if (c.ws.current && c.ws.current.readyState === WebSocket.OPEN) {
                 c.ws.current.send(JSON.stringify({ type: 'user_logout', userId: c.userIdRef.current, roomId: c.roomId }));
@@ -167,6 +168,8 @@ function Chat({ isMe, isTempLink }: { isMe?: boolean; isTempLink?: boolean } = {
         media={c.media}
         onSendFromPreview={c.composer.handleSendFromPreview}
         onCaptionTyping={c.socket.handleTyping}
+        onSetReply={c.msgs.handleSetReply}
+        allMessages={c.msgs.messages}
       />
     </>
   );

@@ -4,18 +4,81 @@ const express = require('express');
 const http = require('http');
 const https = require('https');
 const dns = require('dns');
+const net = require('net');
 const axios = require('axios');
 const logger = require('../logger');
 const { isPrivateOrInternalIp } = require('../security');
-const { apiLimiter } = require('../middleware');
+const { apiLimiter, getClientIp } = require('../middleware');
+// Issue 6: Tighter, dedicated rate limiter for link-preview — this endpoint fetches
+// external URLs on behalf of the user and can amplify DoS/enumeration if abused.
+const rateLimit = require('express-rate-limit');
+const previewLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { ip: false, default: true },
+  keyGenerator: getClientIp,
+  message: { error: 'Too many link preview requests. Please slow down.' },
+  skip: (req) => req.method === 'OPTIONS',
+});
+const { isRoomAccessAllowed } = require('./messages');
 
 const router = express.Router();
 
-router.get('/api/link-preview', apiLimiter, async (req, res) => {
+const linkPreviewCache = new Map(); // url -> { timestamp: number, data: object }
+const PREVIEW_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const MAX_PREVIEW_CACHE_SIZE = 500;
+
+const getFromPreviewCache = (key) => {
+  const item = linkPreviewCache.get(key);
+  if (item && (Date.now() - item.timestamp < PREVIEW_CACHE_TTL_MS)) {
+    return item.data;
+  }
+  if (item) linkPreviewCache.delete(key);
+  return null;
+};
+
+const setToPreviewCache = (key, data) => {
+  if (linkPreviewCache.size >= MAX_PREVIEW_CACHE_SIZE) {
+    const oldestKey = linkPreviewCache.keys().next().value;
+    linkPreviewCache.delete(oldestKey);
+  }
+  linkPreviewCache.set(key, { timestamp: Date.now(), data });
+};
+
+// Issue 10: Normalize URL before using as a cache key to prevent:
+//   (a) cache-busting via arbitrary query params (utm_source, tracking tokens, etc.)
+//   (b) cache poisoning via protocol variant races (http vs https same domain)
+// We keep origin + pathname only; preview content almost never differs by query param.
+const getPreviewCacheKey = (rawUrl) => {
   try {
+    const u = new URL(rawUrl);
+    return `https://${u.host}${u.pathname}`;
+  } catch {
+    return rawUrl;
+  }
+};
+
+router.get('/api/link-preview', previewLimiter, async (req, res) => {
+  try {
+    const rawRoomId = req.headers['x-room-id'] || req.query.roomId;
+    const roomId = typeof rawRoomId === 'string' && rawRoomId.trim() ? rawRoomId.trim() : 'me';
+    const allowed = await isRoomAccessAllowed(roomId, req);
+    if (!allowed) {
+      return res.status(401).json({ error: 'Access denied: room authentication required.' });
+    }
+
     const { url } = req.query;
     if (!url || typeof url !== 'string') return res.status(400).json({ error: 'URL parameter required' });
     if (!/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'Invalid URL' });
+
+    // Use normalized key for cache lookup to prevent cache poisoning (Issue 10)
+    const cacheKey = getPreviewCacheKey(url);
+    const cached = getFromPreviewCache(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
 
     let parsedUrlFallback;
     try { parsedUrlFallback = new URL(url); } catch { return res.status(400).json({ error: 'Invalid URL' }); }
@@ -52,17 +115,27 @@ router.get('/api/link-preview', apiLimiter, async (req, res) => {
     if (isYouTube) {
       try {
         const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
-        const oembedRes = await axios.get(oembedUrl, { timeout: 3000 });
+        const oembedRes = await axios.get(oembedUrl, { timeout: 3000, maxRedirects: 0 });
         if (oembedRes.data && oembedRes.data.title) {
-          return res.json({
+          const rawThumb = typeof oembedRes.data.thumbnail_url === 'string' ? oembedRes.data.thumbnail_url.trim() : null;
+          let safeThumb = null;
+          if (rawThumb) {
+            try {
+              const u = new URL(rawThumb);
+              if (u.protocol === 'http:' || u.protocol === 'https:') safeThumb = u.href;
+            } catch (_) {}
+          }
+          const ytResult = {
             title: oembedRes.data.title,
             description: oembedRes.data.author_name ? `By ${oembedRes.data.author_name}` : null,
-            image: oembedRes.data.thumbnail_url,
+            image: safeThumb,
             favicon: 'https://www.youtube.com/favicon.ico',
             hostname: hostnameFallback,
             siteName: 'YouTube',
             url: url
-          });
+          };
+          setToPreviewCache(url, ytResult);
+          return res.json(ytResult);
         }
       } catch {
         // OEmbed failed, fallback to manual parsing
@@ -110,10 +183,23 @@ router.get('/api/link-preview', apiLimiter, async (req, res) => {
 
         const rawHostname = parsedUrl.hostname;
 
-        let resolvedIp;
-        try { ({ address: resolvedIp } = await dns.promises.lookup(rawHostname, { family: 4 })); }
-        catch { throw new Error('Could not resolve hostname'); }
-        if (isPrivateOrInternalIp(resolvedIp)) throw new Error('Invalid URL');
+        let resolvedAddresses;
+        try {
+          resolvedAddresses = await dns.promises.lookup(rawHostname, { all: true });
+        } catch {
+          throw new Error('Could not resolve hostname');
+        }
+        if (!Array.isArray(resolvedAddresses) || resolvedAddresses.length === 0) {
+          throw new Error('Could not resolve hostname');
+        }
+        for (const record of resolvedAddresses) {
+          if (isPrivateOrInternalIp(record.address)) {
+            throw new Error('Invalid URL');
+          }
+        }
+        const pinnedRecord = resolvedAddresses[0];
+        const pinnedIp = pinnedRecord.address;
+        const pinnedFamily = pinnedRecord.family || (net.isIPv6(pinnedIp) ? 6 : 4);
 
         const isHttps = parsedUrl.protocol === 'https:';
         const reqModule = isHttps ? https : http;
@@ -121,9 +207,13 @@ router.get('/api/link-preview', apiLimiter, async (req, res) => {
         const requestOptions = {
           protocol: parsedUrl.protocol,
           hostname: rawHostname,
+          servername: rawHostname,
           port: parsedUrl.port || (isHttps ? 443 : 80),
           path: `${parsedUrl.pathname}${parsedUrl.search}`,
           method: 'GET',
+          lookup: (_hostname, _options, callback) => {
+            callback(null, pinnedIp, pinnedFamily);
+          },
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
@@ -138,70 +228,87 @@ router.get('/api/link-preview', apiLimiter, async (req, res) => {
         };
 
         const result = await new Promise((resolve, reject) => {
+          let reqInstance;
           const timeout = setTimeout(() => {
-            reqInstance.destroy();
+            if (reqInstance) reqInstance.destroy();
             reject(new Error('Request timeout'));
           }, 5000);
 
-          const reqInstance = reqModule.request(requestOptions, (response) => {
-            const status = response.statusCode || 0;
+          try {
+            reqInstance = reqModule.request(requestOptions, (response) => {
+              try {
+                const status = response.statusCode || 0;
 
-            if ([301, 302, 303, 307, 308].includes(status)) {
-              clearTimeout(timeout);
-              response.resume();
-              const locationHeader = response.headers.location;
-              if (!locationHeader) {
-                return reject(new Error('Redirect with no location header'));
-              }
-              const nextUrl = new URL(locationHeader, currentUrl).href;
-              return resolve({ redirected: true, nextUrl });
-            }
+                if ([301, 302, 303, 307, 308].includes(status)) {
+                  clearTimeout(timeout);
+                  response.resume();
+                  const locationHeader = response.headers.location;
+                  if (!locationHeader) {
+                    return reject(new Error('Redirect with no location header'));
+                  }
+                  let nextUrl;
+                  try {
+                    nextUrl = new URL(locationHeader, currentUrl).href;
+                  } catch {
+                    return reject(new Error('Invalid redirect URL'));
+                  }
+                  return resolve({ redirected: true, nextUrl });
+                }
 
-            if (status < 200 || status >= 400) {
-              clearTimeout(timeout);
-              response.resume();
-              return reject(new Error(`HTTP ${status}`));
-            }
+                if (status < 200 || status >= 400) {
+                  clearTimeout(timeout);
+                  response.resume();
+                  return reject(new Error(`HTTP ${status}`));
+                }
 
-            const contentType = response.headers['content-type'] || '';
-            if (!contentType.includes('text/html') && !contentType.includes('application/xhtml+xml')) {
-              clearTimeout(timeout);
-              response.resume();
-              return reject(new Error('URL does not point to HTML content'));
-            }
+                const contentType = response.headers['content-type'] || '';
+                if (!contentType.includes('text/html') && !contentType.includes('application/xhtml+xml')) {
+                  clearTimeout(timeout);
+                  response.resume();
+                  return reject(new Error('URL does not point to HTML content'));
+                }
 
-            let body = '';
-            let bytesRead = 0;
-            const MAX_BYTES = 512 * 1024;
+                let body = '';
+                let bytesRead = 0;
+                const MAX_BYTES = 512 * 1024;
 
-            response.setEncoding('utf8');
-            response.on('data', (chunk) => {
-              body += chunk;
-              bytesRead += Buffer.byteLength(chunk, 'utf8');
-              if (bytesRead >= MAX_BYTES || body.includes('</head>')) {
+                response.setEncoding('utf8');
+                response.on('data', (chunk) => {
+                  body += chunk;
+                  bytesRead += Buffer.byteLength(chunk, 'utf8');
+                  if (bytesRead >= MAX_BYTES || body.includes('</head>')) {
+                    clearTimeout(timeout);
+                    response.destroy();
+                    resolve({ redirected: false, parsedUrl, html: body });
+                  }
+                });
+
+                response.on('end', () => {
+                  clearTimeout(timeout);
+                  resolve({ redirected: false, parsedUrl, html: body });
+                });
+
+                response.on('error', (err) => {
+                  clearTimeout(timeout);
+                  reject(err);
+                });
+              } catch (resErr) {
                 clearTimeout(timeout);
-                response.destroy();
-                resolve({ redirected: false, parsedUrl, html: body });
+                try { response.resume(); } catch (_) {}
+                reject(resErr);
               }
             });
 
-            response.on('end', () => {
-              clearTimeout(timeout);
-              resolve({ redirected: false, parsedUrl, html: body });
-            });
-
-            response.on('error', (err) => {
+            reqInstance.on('error', (err) => {
               clearTimeout(timeout);
               reject(err);
             });
-          });
 
-          reqInstance.on('error', (err) => {
+            reqInstance.end();
+          } catch (initErr) {
             clearTimeout(timeout);
-            reject(err);
-          });
-
-          reqInstance.end();
+            reject(initErr);
+          }
         });
 
         if (result.redirected) {
@@ -240,37 +347,58 @@ router.get('/api/link-preview', apiLimiter, async (req, res) => {
           .trim();
       };
 
+      const extractAttr = (tag, attrName) => {
+        const regex = new RegExp(`(?:^|\\s)${attrName}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i');
+        const m = tag.match(regex);
+        return m ? (m[1] !== undefined ? m[1] : (m[2] !== undefined ? m[2] : m[3])) : null;
+      };
+
+      const metaMap = new Map();
+      const metaTags = html.match(/<meta\s+[^>]*>/gi) || [];
+      for (const tag of metaTags) {
+        const prop = extractAttr(tag, 'property') || extractAttr(tag, 'name') || extractAttr(tag, 'itemprop');
+        const content = extractAttr(tag, 'content');
+        if (prop && content !== null && content !== undefined) {
+          const key = prop.toLowerCase().trim();
+          if (!metaMap.has(key)) {
+            metaMap.set(key, decode(content));
+          }
+        }
+      }
+
       const getMeta = (...keys) => {
         for (const key of keys) {
-          const regex = new RegExp(`<meta[^>]+(?:(?:name|property|itemprop)=["']${key}["'][^>]+content=["']([^"']*)["']|content=["']([^"']*)["'][^>]+(?:name|property|itemprop)=["']${key}["'])`, 'i');
-          const m = html.match(regex);
-          const val = m ? (m[1] || m[2]) : null;
-          if (val) return decode(val);
+          const val = metaMap.get(key.toLowerCase());
+          if (val) return val;
         }
         return null;
       };
 
       const getFavicon = () => {
         const linkTags = html.match(/<link[^>]+>/gi) || [];
+        const extractHref = (tag) => {
+          const href = extractAttr(tag, 'href');
+          return href ? decode(href) : null;
+        };
         // 1. High-res apple touch icons
         for (const tag of linkTags) {
           if (/rel=["'][^"']*apple-touch-icon[^"']*["']/i.test(tag)) {
-            const hrefMatch = tag.match(/href=["']([^"']+)["']/i);
-            if (hrefMatch && hrefMatch[1]) return decode(hrefMatch[1]);
+            const href = extractHref(tag);
+            if (href) return href;
           }
         }
         // 2. Standard icons or shortcut icons
         for (const tag of linkTags) {
           if (/rel=["'][^"']*\bicon\b[^"']*["']/i.test(tag) || /rel=["'][^"']*shortcut\s+icon[^"']*["']/i.test(tag)) {
-            const hrefMatch = tag.match(/href=["']([^"']+)["']/i);
-            if (hrefMatch && hrefMatch[1]) return decode(hrefMatch[1]);
+            const href = extractHref(tag);
+            if (href) return href;
           }
         }
         // 3. image_src link
         for (const tag of linkTags) {
           if (/rel=["'][^"']*image_src[^"']*["']/i.test(tag)) {
-            const hrefMatch = tag.match(/href=["']([^"']+)["']/i);
-            if (hrefMatch && hrefMatch[1]) return decode(hrefMatch[1]);
+            const href = extractHref(tag);
+            if (href) return href;
           }
         }
         return null;
@@ -287,7 +415,10 @@ router.get('/api/link-preview', apiLimiter, async (req, res) => {
       
       const rawFavicon = getFavicon();
       favicon = rawFavicon ? (() => {
-        try { return new URL(rawFavicon, finalParsedUrl).href; } catch { return null; }
+        try {
+          const u = new URL(rawFavicon, finalParsedUrl);
+          return (u.protocol === 'http:' || u.protocol === 'https:') ? u.href : null;
+        } catch { return null; }
       })() : null;
 
       let rawImage = getMeta('og:image', 'og:image:url', 'og:image:secure_url', 'twitter:image', 'twitter:image:src', 'image');
@@ -331,7 +462,10 @@ router.get('/api/link-preview', apiLimiter, async (req, res) => {
       }
 
       image = rawImage ? (() => {
-        try { return new URL(rawImage, finalParsedUrl).href; } catch { return null; }
+        try {
+          const u = new URL(rawImage, finalParsedUrl);
+          return (u.protocol === 'http:' || u.protocol === 'https:') ? u.href : null;
+        } catch { return null; }
       })() : null;
 
       if (!favicon && finalParsedUrl) {
@@ -354,7 +488,9 @@ router.get('/api/link-preview', apiLimiter, async (req, res) => {
 
     const hostname = finalParsedUrl ? finalParsedUrl.hostname.replace(/^www\./, '') : parsedUrlFallback.hostname.replace(/^www\./, '');
 
-    res.json({ title, description, image, favicon, hostname, siteName });
+    const result = { title, description, image, favicon, hostname, siteName };
+    setToPreviewCache(cacheKey, result);
+    res.json(result);
   } catch (error) {
     logger.error('Link preview fetch error:', { message: error.message });
     res.status(500).json({ error: 'Failed to fetch preview' });

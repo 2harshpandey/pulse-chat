@@ -3,7 +3,7 @@
 > **A production-grade, real-time, scalable web messaging application engineered for high-fidelity conversations, dynamic multi-room routing, rich media exchange, secure moderation, and a premium responsive user experience.**
 
 [![Live Site](https://img.shields.io/badge/Live-pulsechat.tech-2563eb?style=for-the-badge)](https://pulsechat.tech)
-[![Version](https://img.shields.io/badge/Version-v2.3.0-f59e0b?style=for-the-badge)](#overview)
+[![Version](https://img.shields.io/badge/Version-v3.0.0-10b981?style=for-the-badge)](#overview)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 [![Frontend](https://img.shields.io/badge/Frontend-React%2018%20%2B%20TypeScript-61dafb?style=for-the-badge)](#technology-stack)
 [![Backend](https://img.shields.io/badge/Backend-Node.js%20%2B%20Express-111827?style=for-the-badge)](#technology-stack)
@@ -45,11 +45,11 @@
 
 The application is designed around five engineering priorities:
 
-1. **Realtime reliability** — persistent WebSocket communication, heartbeat health checks, reconnection awareness, and ordered history delivery.
-2. **Multi-room isolation** — dynamic routing, private aliases, distinct moderation boundaries, and secure joining mechanisms.
-3. **Security-first interaction** — strict validation, ReDoS/NoSQL injection prevention, rate limiting, URL sanitation, and robust device fingerprinting.
-4. **High-performance UI** — virtualized rendering, adaptive overscan, optimized media previews, lock-solid scrolling mechanics, and premium micro-interactions.
-5. **Operational control** — admin telemetry, live audit streams, blocking workflows, invite controls, report intake, and message event history.
+1. **Realtime reliability**: persistent WebSocket communication, heartbeat health checks, reconnection awareness, and ordered history delivery.
+2. **Multi-room isolation**: dynamic routing, private aliases, distinct moderation boundaries, and secure joining mechanisms.
+3. **Security-first interaction**: strict validation, ReDoS/NoSQL injection prevention, rate limiting, URL sanitation, and robust device fingerprinting.
+4. **High-performance UI**: virtualized rendering, adaptive overscan, optimized media previews, lock-solid scrolling mechanics, and premium micro-interactions.
+5. **Operational control**: admin telemetry, live audit streams, blocking workflows, invite controls, report intake, and message event history.
 
 ---
 
@@ -121,7 +121,11 @@ Pulse Chat provides lightweight engagement tools designed for clarity and real-t
 
 - **Emoji Reactions**: A beautifully animated, sliding bottom-sheet emoji picker optimized for touch, ensuring reactions can be added quickly without disrupting flow.
 - One reaction per user enforcement with toggle and replace behavior.
-- Reaction detail popup with per-emoji tabs, reaction counts, and aggregate “All” view.
+- **Granular Per-Media Reactions**: Individual photos inside grouped media albums can receive their own distinct reactions. In the fullscreen gallery viewer, the reaction badge floats on the bottom-right corner of the image (`right: -10px`, `bottom: -14px`), styled consistently with message bubble reactions.
+- **Zoom-Aware Reaction Visibility**: Floating reaction badges in the gallery modal automatically hide when zooming into an image (`zoom > 1`) and seamlessly reappear upon resetting or zooming back out.
+- **Aggregated Album Reaction Pills**: Grouped media albums display an aggregated reaction summary pill in the chat feed. Clicking the pill opens a segmented detail popup with dedicated tabs distinguishing reactions per individual photo.
+- **Quick Action Controls for Single Media**: Standalone sent media messages feature header controls for instant emoji reactions, quoting (reply), and safe downloads directly from the viewer.
+- Reaction detail popup with per-emoji tabs, reaction counts, and aggregate "All" view.
 - Self-reaction removal directly from the popup participant list.
 - Persistent reactions stored securely in the database with safe map serialization for client delivery.
 
@@ -155,15 +159,29 @@ The media layer supports rich file exchange while applying strict safety and per
   - Attachment add and remove controls.
   - Caption input per send batch.
   - Thumbnail strip navigation.
+- **Interactive In-Browser Photo Cropper**:
+  - Client-side image cropping interface integrated directly into the file preview modal before sending.
+  - 8 interactive drag handles (corners and midpoints) for flexible freeform and aspect-ratio cropping.
+  - Compositional rule-of-thirds grid overlay.
+  - 90-degree clockwise and counter-clockwise rotation tools.
+  - History state management with Undo, Redo, and Reset operations, including `Ctrl+Z` and `Ctrl+Y` keyboard shortcuts.
+  - High-performance canvas rasterization generating clean Blobs for upload without quality loss.
 - Inline media rendering with consistent frame sizing and intelligent constraints to prevent scroll jitter or horizontal stretching.
-- Image lightbox with zoom controls, wheel scaling, and polished overlay behavior.
 
 ### Consecutive media grouping & albums
 
 - **WhatsApp / Telegram Style Mosaic Albums**: Consecutive media messages (photos and videos) sent within close proximity by the same user automatically merge into clean responsive albums (1-tile, 2-tile, 3-tile, 4-tile layouts).
 - **Overflow Counter Badge**: Albums with more than 4 items render an interactive `+N` badge indicating remaining media.
+- **Album Reply Quoting**: Quoting an album or grouped media item generates an SVG album stack icon with a badge "X media" preview and caption snippet with direct jump navigation.
 - **On-Demand Media Load Gating**: Grouped and individual media tiles feature on-demand "Tap to load" gating with size badges and lightweight blurred placeholder frames (~1 KB), preventing heavy background preloading and eliminating memory pressure during fast scrolling.
-- **Full-Screen Media Gallery Modal**: Tapping any photo/video opens a mobile-optimized gallery lightbox with touch swipe navigation, thumbnail carousel strip, download buttons, and automatic full-resolution loading.
+- **Full-Screen Media Gallery Modal & Advanced Zoom Engine**:
+  - Fullscreen gallery lightbox with touch swipe navigation, thumbnail carousel strip, download buttons, and automatic full-resolution loading.
+  - **Quick Double-Tap Zoom and Restore**: Rapid double-tap zooms directly to 2.5x centered on the focal point with boundary clamping; double-tapping again smoothly restores to the default 1.0x unzoomed view. Includes touch gesture debounce to eliminate synthetic browser click conflicts.
+  - **Desktop Mouse Double-Click**: Full double-click to zoom and restore support on both frame and image elements.
+  - Non-passive wheel event handling (`passive: false`) eliminating browser wheel intervention errors in Chrome and Firefox.
+  - Dedicated desktop zoom toolbar featuring Zoom In (`+`), Zoom Out (`-`), and Reset (`1:1`) buttons for mouse/desktop users.
+  - Multi-touch pinch-to-zoom and pan support with smooth boundary clamping.
+  - Header action bar with quick Reply, React, and Download controls.
 - **Single-Click Album ZIP Downloads with Live Cancellation**: Download an entire mosaic album or selection as a compressed `.zip` archive on demand, featuring live percentage progress, duplicate filename prevention, and real-time abort cancellation via status toasts and context menus.
 
 ### Custom video player
@@ -229,6 +247,10 @@ Security is treated as a primary system requirement rather than an afterthought.
 
 ### Application safeguards
 
+- **Session Token Verification**: All incoming WebSocket messages and sensitive REST routes enforce strict session token authentication, preventing unauthorized impersonation or socket hijacking.
+- **WebSocket Abuse & DoS Protection**: Per-connection frame rate limiting (50 frames per second burst cap) and automated 25-second timeouts on unauthenticated socket connections.
+- **Streaming Database Cursors**: Admin message and audit log exports utilize streaming database cursors (`.cursor()`), preventing Node.js process out-of-memory crashes on large history collections.
+- **Memory Hygiene & Stale State Pruning**: Automated periodic sweeps clean up disconnected sockets, expired typing states, and dangling promises.
 - **CodeQL CWE-20 Incomplete URL Substring Sanitization Mitigation**: Completely eliminates loose string `.includes()` checks on URLs and hostnames. Hostnames are parsed via standard `URL` objects and validated against strict domain and subdomain boundaries (`.endsWith()`).
 - **Query Injection Prevention**: Complete immunization against NoSQL injections by strictly casting query parameters (e.g., `roomId`) and leveraging `$eq` MongoDB operators.
 - **ReDoS Prevention**: Escaped and sanitized regex workflows using strict `escapeRegExp` helpers, preventing Denial of Service attacks on search endpoints.
@@ -474,6 +496,9 @@ The optimized output is generated in the frontend build directory.
 ## Operational Notes
 
 - WebSocket connections use heartbeat behavior to detect stale sessions.
+- Winston logger records 12-hour AM/PM timestamps in Indian Standard Time (`YYYY-MM-DD hh:mm:ss AM/PM IST`).
+- Dynamic WebSocket packet logging replaces ambiguous message notifications with specific event labels in real time.
+- Rate limits on WebSocket frames (50 frames per second burst cap) and unauthenticated connection timeouts (25 seconds) mitigate DoS and resource starvation.
 - Chat history is loaded initially and then extended through pagination with sliding window virtualization to preserve memory.
 - Large message lists are virtualized via `react-virtuoso` with ResizeObserver tracking to eliminate layout shift (CLS).
 - Off-screen video auto-pause conserves system resources and network bandwidth.
@@ -486,10 +511,10 @@ The optimized output is generated in the frontend build directory.
 
 ## Community & Governance
 
-- **[Contributing Guide](CONTRIBUTING.md)** — Guidelines for local development setup, code conventions, and submitting pull requests.
-- **[Contributors](CONTRIBUTORS.md)** — Recognition of project creators and community contributors.
-- **[Code of Conduct](CODE_OF_CONDUCT.md)** — Contributor Covenant standards for an inclusive, welcoming community.
-- **[Security Policy](SECURITY.md)** — Vulnerability reporting channels, response process, and security safeguards.
+- **[Contributing Guide](CONTRIBUTING.md)**: Guidelines for local development setup, code conventions, and submitting pull requests.
+- **[Contributors](CONTRIBUTORS.md)**: Recognition of project creators and community contributors.
+- **[Code of Conduct](CODE_OF_CONDUCT.md)**: Contributor Covenant standards for an inclusive, welcoming community.
+- **[Security Policy](SECURITY.md)**: Vulnerability reporting channels, response process, and security safeguards.
 
 ---
 

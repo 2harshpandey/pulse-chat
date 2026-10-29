@@ -228,14 +228,14 @@ export const resolveAudioDuration = async (url?: string | null, id?: string | nu
   });
 };
 
-export const EMOJI_SEQUENCE_RE = /(?:[\u2600-\u27BF]|[\uD83C-\uDBFF][\uDC00-\uDFFF])(?:\uFE0F|\u200D(?:[\u2600-\u27BF]|[\uD83C-\uDBFF][\uDC00-\uDFFF]))*/g;
+export const EMOJI_SEQUENCE_RE = /(?:\u{1F3F4}[\u{E0060}-\u{E007F}]+[\u{E007F}]|[\u{1F1E6}-\u{1F1FF}]{2}|(?:(?![\u00A9\u00AE\u2122](?!\uFE0F))\p{Extended_Pictographic})(?:[\uFE0E\uFE0F]|\p{Emoji_Modifier})*(?:\u200D\p{Extended_Pictographic}(?:[\uFE0E\uFE0F]|\p{Emoji_Modifier})*)*|[0-9#*]\uFE0F?\u20E3|\p{Emoji_Modifier})/gu;
 
 export const wrapEmojis = (value: string, isStandalone: boolean = false): React.ReactNode[] => {
   const result: React.ReactNode[] = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;
-  EMOJI_SEQUENCE_RE.lastIndex = 0;
-  while ((match = EMOJI_SEQUENCE_RE.exec(value)) !== null) {
+  const re = new RegExp(EMOJI_SEQUENCE_RE.source, EMOJI_SEQUENCE_RE.flags);
+  while ((match = re.exec(value)) !== null) {
     if (match.index > lastIndex) {
       result.push(value.slice(lastIndex, match.index));
     }
@@ -243,6 +243,9 @@ export const wrapEmojis = (value: string, isStandalone: boolean = false): React.
       <span key={`emoji-${match.index}`} className={isStandalone ? "emoji-standalone" : "emoji-inline"}>{match[0]}</span>
     );
     lastIndex = match.index + match[0].length;
+    if (match[0].length === 0) {
+      re.lastIndex++;
+    }
   }
   if (lastIndex < value.length) {
     result.push(value.slice(lastIndex));
@@ -329,6 +332,14 @@ export const buildDownloadProxyUrl = (resourceUrl: string, filename?: string): s
   const endpoint = `${apiBase}/api/download`;
   const params = new URLSearchParams({ url: resourceUrl });
   if (filename) params.set('filename', filename);
+  if (typeof window !== 'undefined') {
+    const roomId = sessionStorage.getItem('pulse_room_id') || localStorage.getItem('pulse_room_id') || sessionStorage.getItem('pulseRoomId') || localStorage.getItem('pulseRoomId');
+    if (roomId) params.set('roomId', roomId);
+    const sessionToken = sessionStorage.getItem('pulseSessionToken');
+    if (sessionToken) params.set('sessionToken', sessionToken);
+    const userId = sessionStorage.getItem('pulse_user_id') || localStorage.getItem('pulse_user_id') || sessionStorage.getItem('pulseUserId') || localStorage.getItem('pulseUserId');
+    if (userId) params.set('userId', userId);
+  }
   return `${endpoint}?${params.toString()}`;
 };
 
@@ -336,14 +347,42 @@ export const buildDownloadProxyUrl = (resourceUrl: string, filename?: string): s
  * Fetches a URL as a blob and reports incremental transfer progress when
  * content-length is available.
  */
+export const inferMimeTypeFromUrl = (url: string): string => {
+  if (!url) return 'application/octet-stream';
+  if (/\.png($|\?)/i.test(url)) return 'image/png';
+  if (/\.webp($|\?)/i.test(url)) return 'image/webp';
+  if (/\.gif($|\?)/i.test(url)) return 'image/gif';
+  if (/\.(jpg|jpeg)($|\?)/i.test(url)) return 'image/jpeg';
+  if (/\.svg($|\?)/i.test(url)) return 'image/svg+xml';
+  if (/\.(mp4|m4v)($|\?)/i.test(url)) return 'video/mp4';
+  if (/\.webm($|\?)/i.test(url)) return 'video/webm';
+  if (/\.mov($|\?)/i.test(url)) return 'video/quicktime';
+  if (/\.mp3($|\?)/i.test(url)) return 'audio/mpeg';
+  if (/\.ogg($|\?)/i.test(url)) return 'audio/ogg';
+  if (/\.wav($|\?)/i.test(url)) return 'audio/wav';
+  if (/\.m4a($|\?)/i.test(url)) return 'audio/mp4';
+  return 'application/octet-stream';
+};
+
 export const fetchBlobWithProgress = async (
   resourceUrl: string,
   onProgress?: DownloadProgressCallback,
   abortSignal?: AbortSignal,
 ): Promise<Blob> => {
   onProgress?.(0);
+  const headers: Record<string, string> = {};
+  if (typeof window !== 'undefined' && (resourceUrl.includes('/api/download') || resourceUrl.startsWith('/'))) {
+    const sessionToken = sessionStorage.getItem('pulseSessionToken');
+    if (sessionToken) headers['x-session-token'] = sessionToken;
+    const roomId = sessionStorage.getItem('pulse_room_id') || localStorage.getItem('pulse_room_id') || sessionStorage.getItem('pulseRoomId') || localStorage.getItem('pulseRoomId');
+    if (roomId) headers['x-room-id'] = roomId;
+    const userId = sessionStorage.getItem('pulse_user_id') || localStorage.getItem('pulse_user_id') || sessionStorage.getItem('pulseUserId') || localStorage.getItem('pulseUserId');
+    if (userId) headers['x-user-id'] = userId;
+  }
+
   const response = await fetch(resourceUrl, {
     method: 'GET',
+    headers,
     mode: 'cors',
     credentials: 'omit',
     cache: 'no-store',
@@ -353,6 +392,11 @@ export const fetchBlobWithProgress = async (
 
   const contentLength = response.headers.get('content-length');
   const total = contentLength ? parseInt(contentLength, 10) : 0;
+  const headerContentType = response.headers.get('content-type');
+  const inferredType = inferMimeTypeFromUrl(resourceUrl);
+  const finalContentType = (headerContentType && !headerContentType.includes('application/octet-stream'))
+    ? headerContentType
+    : inferredType;
 
   if (total > 0 && response.body) {
     const reader = response.body.getReader();
@@ -365,14 +409,15 @@ export const fetchBlobWithProgress = async (
       received += (value?.length ?? 0);
       onProgress?.(Math.max(0, Math.min(1, received / total)));
     }
-    const blob = new Blob(chunks);
+    const blob = new Blob(chunks, { type: finalContentType });
     if (!blob || blob.size === 0) throw new Error('Empty blob');
     onProgress?.(1);
     return blob;
   }
 
-  const blob = await response.blob();
-  if (!blob || blob.size === 0) throw new Error('Empty blob');
+  const rawBlob = await response.blob();
+  if (!rawBlob || rawBlob.size === 0) throw new Error('Empty blob');
+  const blob = rawBlob.type ? rawBlob : new Blob([rawBlob], { type: finalContentType });
   onProgress?.(1);
   return blob;
 };
@@ -573,10 +618,15 @@ export const downloadAlbumAsZip = async (
     const usedNames = new Set<string>();
     const totalCount = mediaItems.length;
     let completedCount = 0;
+    let nextIndex = 0;
+    const CONCURRENCY_LIMIT = 3;
 
-    await Promise.all(
-      mediaItems.map(async (msg, index) => {
-        if (!msg.url || options?.signal?.aborted) return;
+    const worker = async () => {
+      while (nextIndex < totalCount) {
+        if (options?.signal?.aborted) return;
+        const index = nextIndex++;
+        const msg = mediaItems[index];
+        if (!msg.url || options?.signal?.aborted) continue;
         const fileUrl = msg.url;
         const isAudio = msg.type === 'audio' || Boolean(
           (!msg.type || msg.type === 'file') && (
@@ -630,8 +680,14 @@ export const downloadAlbumAsZip = async (
         zip.file(uniqueName, blob);
         completedCount++;
         options?.onProgress?.(0.05 + (completedCount / totalCount) * 0.75);
-      })
+      }
+    };
+
+    const workers = Array.from(
+      { length: Math.min(CONCURRENCY_LIMIT, totalCount) },
+      () => worker()
     );
+    await Promise.all(workers);
 
     if (options?.signal?.aborted) return;
 

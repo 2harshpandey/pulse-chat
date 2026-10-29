@@ -138,6 +138,7 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     isAtBottomRef: viewport.isAtBottomRef,
     apiBase,
     roomId,
+    userId: userIdRef.current,
     filterVisibleMessages: msgs.filterVisibleMessages,
     normalizeMessage: msgs.normalizeMessage,
   });
@@ -146,6 +147,7 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
   const nav = useChatMessageNavigation({
     apiBase,
     roomId,
+    userId: userIdRef.current,
     messagesRef: msgs.messagesRef,
     setMessages: msgs.setMessages,
     historyLoaded: msgs.historyLoaded,
@@ -284,7 +286,6 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     skipNextInputLayoutSyncRef: viewport.skipNextInputLayoutSyncRef,
     syncInputLayerLayout: viewport.syncInputLayerLayout,
     resetInputLayerHeight: viewport.resetInputLayerHeight,
-    syncInputOverlayScroll: viewport.syncInputOverlayScroll,
     handleTyping: socket.handleTyping,
     setPresenceActivity: socket.setPresenceActivity,
     startSendingActivity: socket.startSendingActivity,
@@ -335,7 +336,6 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     scrollToLoadedMessage: nav.scrollToLoadedMessage,
     setNewMessagesWhileScrolledUp: viewport.setNewMessagesWhileScrolledUp,
     clearQuoteJumpSuppression: viewport.clearQuoteJumpSuppression,
-    lastPingAtRef: socket.lastPingAtRef,
     setHasMoreOlderMessages: msgs.setHasMoreOlderMessages,
     setOldestLoadedAt: msgs.setOldestLoadedAt,
     setFirstItemIndex: msgs.setFirstItemIndex,
@@ -373,6 +373,8 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     setChatSearchQuery: search.setChatSearchQuery,
     setActiveSearchQuery: search.setActiveSearchQuery,
     handleCloseSearch: search.handleCloseSearch,
+    mediaGallery: media.mediaGallery,
+    closeMediaGallery: media.closeMediaGallery,
   });
 
   // Hide global home button
@@ -514,7 +516,6 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
 
   const selectedMediaMessages = useMemo(() => {
     if (selection.selectedMessages.length === 0) return [];
-    const idSet = new Set(selection.selectedMessages);
     const pool = new Map<string, Message>();
     msgs.messages.forEach((m) => pool.set(m.id, m));
     search.filteredMessages.forEach((m) => pool.set(m.id, m));
@@ -583,7 +584,7 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
         );
       } finally {
         msgs.setIsJumpingToPinned(false);
-        msgs.setCurrentPinnedIndex((prev) => {
+        msgs.setCurrentPinnedIndex(() => {
           if (activePins.length <= 1) return 0;
           return (safeIndex + 1) % activePins.length;
         });

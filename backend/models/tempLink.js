@@ -32,6 +32,14 @@ const tempLinkSchema = new mongoose.Schema({
     username: String,
     joinedAt: { type: Date, default: Date.now },
   }],
+  maxUses: {
+    type: Number,
+    default: 1,
+  },
+  useCount: {
+    type: Number,
+    default: 0,
+  },
 }, { timestamps: true });
 
 // Auto-expire documents 24 hours after expiry for cleanup

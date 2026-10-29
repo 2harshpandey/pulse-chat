@@ -8,6 +8,7 @@ const BlockedUser = require('./models/blockedUser');
 const LoginLockdown = require('./models/loginLockdown');
 const Room = require('./models/room');
 const AuditLog = require('./models/auditLog');
+const { timingSafeEqualStr, verifyPassword } = require('./security');
 
 let _broadcastToAdmins = () => {};
 const setBroadcast = (fn) => { if (typeof fn === 'function') _broadcastToAdmins = fn; };
@@ -24,19 +25,49 @@ const setBroadcast = (fn) => { if (typeof fn === 'function') _broadcastToAdmins 
 //  2. Wraps the result with ipKeyGenerator() so express-rate-limit can
 //     apply IPv6 subnet masking (avoids ERR_ERL_KEY_GEN_IPV6).
 const getClientIp = (req) => {
-  const raw = req.ip || req.socket?.remoteAddress || 'unknown';
+  // After app.set('trust proxy', 1), req.ip is the authoritative value
+  // cleaned and validated by Express. Do NOT manually re-read X-Forwarded-For
+  // as that allows IP spoofing by injecting values into the header chain.
+  let raw = '';
+  try {
+    raw = req.ip;
+  } catch (_) {}
+  // Fallback only to socket address (safe — not user-controlled)
+  if (!raw) {
+    raw = req.socket?.remoteAddress || '127.0.0.1';
+  }
   // Handle bare IPv4+port:     "1.2.3.4:5678"  → "1.2.3.4"
   // Handle bracketed IPv6+port: "[::1]:5678"   → "::1"
-  const cleaned = raw
+  let cleaned = String(raw || '127.0.0.1')
     .replace(/^\[(.+)\]:\d+$/, '$1')  // [IPv6]:port  → IPv6
     .replace(/^(\d+\.\d+\.\d+\.\d+):\d+$/, '$1'); // IPv4:port → IPv4
-  return ipKeyGenerator(cleaned);
+  if (!cleaned || cleaned === 'unknown' || cleaned === 'undefined') {
+    cleaned = '127.0.0.1';
+  }
+  try {
+    return ipKeyGenerator(cleaned);
+  } catch (_) {
+    return '127.0.0.1';
+  }
 };
 
 // Clean IP for use inside route/WS handlers (not for rate-limiter key generation).
 const extractIp = (req) => {
-  const raw = req.ip || req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
-  return raw.replace(/^\[(.+)\]:\d+$/, '$1').replace(/^(\d+\.\d+\.\d+\.\d+):\d+$/, '$1');
+  // After app.set('trust proxy', 1), req.ip is the authoritative value.
+  // Do NOT manually re-read X-Forwarded-For — that allows spoofing.
+  // For raw WebSocket IncomingMessage objects where req.ip may be undefined,
+  // fall back only to the socket's direct remote address (never user-controlled).
+  let raw = '';
+  try {
+    raw = req.ip;
+  } catch (_) {}
+  if (!raw) {
+    raw = req.socket?.remoteAddress || '127.0.0.1';
+  }
+  const cleaned = String(raw || '127.0.0.1')
+    .replace(/^\[(.+)\]:\d+$/, '$1')
+    .replace(/^(\d+\.\d+\.\d+\.\d+):\d+$/, '$1');
+  return (cleaned && cleaned !== 'undefined' && cleaned !== 'unknown') ? cleaned : '127.0.0.1';
 };
 
 // --- Rate Limiters ---
@@ -48,6 +79,7 @@ const authLimiter = rateLimit({
   skipSuccessfulRequests: true, // Successful logins & room entries do not consume rate limit quota
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { ip: false, default: true },
   keyGenerator: getClientIp,
   message: { error: 'Too many login attempts. Please wait a few minutes before trying again.' },
   handler: (req, res, _next, options) => {
@@ -77,6 +109,7 @@ const uploadLimiter = rateLimit({
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { ip: false, default: true },
   keyGenerator: getClientIp,
   message: { error: 'Too many uploads, please try again later.' },
 });
@@ -86,6 +119,7 @@ const chunkUploadLimiter = rateLimit({
   max: 300,                 // 300 chunks per minute (allows fast chunked uploads)
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { ip: false, default: true },
   keyGenerator: getClientIp,
   message: { error: 'Too many uploads, please try again later.' },
 });
@@ -95,6 +129,7 @@ const apiLimiter = rateLimit({
   max: 120,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { ip: false, default: true },
   keyGenerator: getClientIp,
   message: { error: 'Too many requests, please try again later.' },
 });
@@ -104,12 +139,35 @@ const adminLimiter = rateLimit({
   max: 1200,
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { ip: false, default: true },
   keyGenerator: getClientIp,
   message: { error: 'Too many requests, please try again later.' },
 });
 
+const diagnosticLimiter = rateLimit({
+  windowMs: 60 * 1000,      // 1 minute
+  max: 30,                  // 30 diagnostic telemetry reports per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { ip: false, default: true },
+  keyGenerator: getClientIp,
+  message: { error: 'Too many diagnostic reports, please try again later.' },
+});
+
 // --- Password Attempt Rate Limiting ---
 const passwordAttemptLocks = new Map(); // key: { count, lockUntil }
+
+// Periodic cleanup of expired password attempt locks to prevent memory accumulation
+if (typeof setInterval !== 'undefined') {
+  setInterval(() => {
+    const now = Date.now();
+    for (const [k, v] of passwordAttemptLocks.entries()) {
+      if (v.lockUntil <= now && (!v.lastAttempt || now - v.lastAttempt > 10 * 60 * 1000)) {
+        passwordAttemptLocks.delete(k);
+      }
+    }
+  }, 10 * 60 * 1000).unref();
+}
 
 const checkPasswordRateLimit = (req, res, next) => {
   const ip = extractIp(req);
@@ -199,15 +257,33 @@ const resetPasswordAttempts = (key) => {
 
 // Middleware for admin authentication
 const adminAuth = async (req, res, next) => {
-  const password = req.headers['x-admin-password'];
-  const roomId = req.headers['x-room-id'] || 'me';
+  const password = typeof req.headers['x-admin-password'] === 'string' ? req.headers['x-admin-password'] : '';
+  const rawRoomId = req.headers['x-room-id'];
+  const roomId = typeof rawRoomId === 'string' && rawRoomId.trim() ? rawRoomId.trim() : 'me';
+  const ip = extractIp(req);
+  const key = `${ip}_${roomId}`;
+  req.passwordRateLimitKey = key;
+
+
+  // Check lockout
+  const record = passwordAttemptLocks.get(key);
+  if (record && record.lockUntil > Date.now()) {
+    const remaining = Math.ceil((record.lockUntil - Date.now()) / 1000);
+    return res.status(429).json({ error: `Too many failed admin attempts. Locked out for ${remaining} seconds.` });
+  }
+
+  const handleFailure = () => {
+    recordFailedPasswordAttempt(key, req);
+    res.status(401).json({ error: 'Unauthorized' });
+  };
 
   if (!password) {
-    return res.status(401).json({ error: 'Unauthorized' });
+    return handleFailure();
   }
 
   // Super Admin Impersonation: Global password unlocks any room
-  if (password === process.env.ADMIN_PASSWORD) {
+  if (process.env.ADMIN_PASSWORD && timingSafeEqualStr(password, process.env.ADMIN_PASSWORD)) {
+    resetPasswordAttempts(key);
     if (roomId === 'me' || roomId === 'global') {
       req.roomId = roomId;
       req.isSuperAdmin = true;
@@ -231,11 +307,12 @@ const adminAuth = async (req, res, next) => {
 
   try {
     const room = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] });
-    if (room && room.adminPassword === password) {
+    if (room && verifyPassword(password, room.adminPassword)) {
+      resetPasswordAttempts(key);
       req.roomId = room.id;
       return next();
     }
-    res.status(401).json({ error: 'Unauthorized' });
+    handleFailure();
   } catch (error) {
     logger.error('Error in adminAuth middleware:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -247,7 +324,7 @@ const adminSecretAuth = (req, res, next) => {
   const receivedSecret = req.headers['x-admin-secret'];
   const expectedSecret = process.env.ADMIN_SECRET;
 
-  if (receivedSecret && expectedSecret && receivedSecret === expectedSecret) {
+  if (receivedSecret && expectedSecret && timingSafeEqualStr(receivedSecret, expectedSecret)) {
     next();
   } else {
     logger.warn('Unauthorized attempt to access a secret-protected admin route.');
@@ -274,11 +351,22 @@ const generateDeviceHash = (components) => {
 // Check if a user is blocked by any fingerprint match (single indexed query)
 const isUserBlocked = async (roomId, userId, ip, userAgent, deviceFingerprint) => {
   if (!roomId) roomId = 'me';
-  roomId = String(roomId);
-  // Type-guard: reject non-string values to prevent NoSQL injection via query objects
-  if (typeof userId !== 'string') return { blocked: false };
+  roomId = String(roomId).trim();
 
-  const conditions = [{ userId: { $eq: userId } }];
+  let canonicalRoomId = roomId;
+  if (roomId !== 'me' && roomId !== 'global') {
+    try {
+      const room = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] }).lean();
+      if (room) canonicalRoomId = room.id;
+    } catch (_) {}
+  }
+  const roomIds = (canonicalRoomId !== roomId) ? [canonicalRoomId, roomId] : [canonicalRoomId];
+
+  const conditions = [];
+
+  if (typeof userId === 'string' && userId.trim()) {
+    conditions.push({ userId: { $eq: userId.trim() } });
+  }
 
   if (ip && ip !== 'unknown' && typeof ip === 'string') {
     conditions.push({ 'fingerprints.ips': { $eq: ip } });
@@ -291,15 +379,19 @@ const isUserBlocked = async (roomId, userId, ip, userAgent, deviceFingerprint) =
     }
   }
 
+  if (conditions.length === 0) {
+    return { blocked: false };
+  }
+
   const blockedUser = await BlockedUser.findOne({
-    roomId,
+    roomId: { $in: roomIds },
     isBlocked: true,
     $or: conditions,
   }).lean();
 
   if (blockedUser) {
     let reason = 'User is blocked';
-    if (blockedUser.userId === userId) {
+    if (typeof userId === 'string' && userId.trim() && blockedUser.userId === userId.trim()) {
       reason = 'User ID is blocked';
     } else if (ip && blockedUser.fingerprints?.ips?.includes(ip)) {
       reason = 'IP address is blocked';
@@ -315,8 +407,18 @@ const isUserBlocked = async (roomId, userId, ip, userAgent, deviceFingerprint) =
 // Check if login lockdown is active
 const isLoginLocked = async (roomId) => {
   if (!roomId) roomId = 'me';
-  roomId = String(roomId);
-  const lockdown = await LoginLockdown.findOne({ roomId, isActive: true }).sort({ createdAt: -1 });
+  roomId = String(roomId).trim();
+
+  let canonicalRoomId = roomId;
+  if (roomId !== 'me' && roomId !== 'global') {
+    try {
+      const room = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] }).lean();
+      if (room) canonicalRoomId = room.id;
+    } catch (_) {}
+  }
+  const roomIds = (canonicalRoomId !== roomId) ? [canonicalRoomId, roomId] : [canonicalRoomId];
+
+  const lockdown = await LoginLockdown.findOne({ roomId: { $in: roomIds }, isActive: true }).sort({ createdAt: -1 });
   if (!lockdown) return { locked: false };
 
   // Check if lockdown has expired
@@ -339,17 +441,34 @@ const toClientMessage = (msg) => {
   return { ...plain, reactions: filterValidReactions(plain.reactions) };
 };
 
+// Strips sensitive bearer session tokens before transmitting logged-in user lists to admin clients
+const toSafeLoggedInUserList = (loggedInUsers) => {
+  if (!loggedInUsers) return [];
+  const list = loggedInUsers instanceof Map ? Array.from(loggedInUsers.values()) : Array.from(loggedInUsers);
+  return list.map(({ sessionToken, ...safeInfo }) => safeInfo);
+};
+
+const isPasswordLocked = (key) => {
+  const record = passwordAttemptLocks.get(key);
+  if (record && record.lockUntil > Date.now()) {
+    return Math.ceil((record.lockUntil - Date.now()) / 1000);
+  }
+  return 0;
+};
+
 module.exports = {
-  getClientIp,
   extractIp,
   authLimiter,
   uploadLimiter,
   chunkUploadLimiter,
   apiLimiter,
   adminLimiter,
+  diagnosticLimiter,
   checkPasswordRateLimit,
   recordFailedPasswordAttempt,
   resetPasswordAttempts,
+  isPasswordLocked,
+  toSafeLoggedInUserList,
   adminAuth,
   adminSecretAuth,
   generateDeviceHash,

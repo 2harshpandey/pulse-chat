@@ -106,6 +106,11 @@ export const useAuthController = ({
         });
         if (resp.ok) {
           const data = await resp.json();
+          if (data.sessionToken) {
+            // Issue 3: Store session token ONLY in sessionStorage (tab-lifetime), never in
+            // localStorage (permanent). This eliminates the XSS token-theft escalation path.
+            sessionStorage.setItem('pulseSessionToken', data.sessionToken);
+          }
           localStorage.setItem('pulseUsername', username.trim());
           localStorage.setItem(`pulseUsername_${roomId}`, username.trim());
           if (data.roomId) {
@@ -130,12 +135,21 @@ export const useAuthController = ({
           body: JSON.stringify({ password, username: username.trim(), userId: getUserId(), fingerprint, roomId }),
         });
         if (resp.ok) {
+          const data = await resp.json().catch(() => ({}));
+          if (data.sessionToken) {
+            // Issue 3: sessionStorage only — not localStorage
+            sessionStorage.setItem('pulseSessionToken', data.sessionToken);
+          }
+          const resolvedRoomId = data.roomId || roomId;
           localStorage.setItem('pulseUsername', username.trim());
-          localStorage.setItem(`pulseUsername_${roomId}`, username.trim());
+          localStorage.setItem(`pulseUsername_${resolvedRoomId}`, username.trim());
+          if (resolvedRoomId) {
+            localStorage.setItem('pulseRoomId', resolvedRoomId);
+          }
           if (routerState?.autoJoin) {
             navigate(location.pathname, { replace: true, state: {} });
           }
-          onAuthSuccess({ userId: getUserId(), username: username.trim() });
+          onAuthSuccess({ userId: getUserId(), username: username.trim(), roomId: resolvedRoomId });
         } else {
           const d = await resp.json().catch(() => ({}));
           if (resp.status === 409) {

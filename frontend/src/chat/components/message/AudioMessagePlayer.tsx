@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import styled, { css, keyframes } from 'styled-components';
 import type { Message } from '../../types';
-import { sanitizeMediaUrl, downloadFile, formatMediaSize, audioDurationCache, setAudioDurationCache, isCloudinaryUrl } from '../../utils';
+import { sanitizeMediaUrl, formatMediaSize, audioDurationCache, setAudioDurationCache, isCloudinaryUrl } from '../../utils';
 import { renderTextWithLinks } from '../../renderMessage';
 import { MessageText } from '../../ChatStyledComponents';
 import { speedBounce } from '../../styles/chat.animations';
@@ -619,7 +619,6 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
   });
   const [playbackSpeed, setPlaybackSpeed] = useState<1 | 1.5 | 2>(1);
   const [isSpeedBouncing, setIsSpeedBouncing] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
   const [hasLoadError, setHasLoadError] = useState(false);
   const [isShaking, setIsShaking] = useState(false);
   const shakeTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -717,7 +716,6 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
         setCurrentTime(0);
       }
     }
-    setIsLoading(false);
   };
 
   const handleTimeUpdate = () => {
@@ -781,7 +779,6 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
       return;
     }
     setIsPlaying(false);
-    setIsLoading(false);
     setHasLoadError(true);
   };
 
@@ -793,7 +790,6 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
         if (isPlaying) {
           audioRef.current.play().then(() => {
             setIsPlaying(true);
-            setIsLoading(false);
             setHasLoadError(false);
             sendClientDiagnostic('audio_play', {
               messageId: msg.id,
@@ -804,18 +800,15 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
           }).catch((err) => {
             if (err?.name === 'AbortError') {
               setIsPlaying(false);
-              setIsLoading(false);
               return;
             }
             setIsPlaying(false);
-            setIsLoading(false);
             setHasLoadError(true);
             triggerShake();
           });
         }
       } catch {
         setIsPlaying(false);
-        setIsLoading(false);
         setHasLoadError(true);
         triggerShake();
       }
@@ -845,7 +838,6 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
       });
     } else {
       audioCoordinator.play(coordinatorId, handleCoordinatorPause);
-      setIsLoading(true);
 
       if (audio.readyState === 0) {
         try { audio.load(); } catch {}
@@ -856,7 +848,6 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
         playPromise
           .then(() => {
             setIsPlaying(true);
-            setIsLoading(false);
             setHasLoadError(false);
             sendClientDiagnostic('audio_play', {
               messageId: msg.id,
@@ -867,7 +858,6 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
           .catch((err) => {
             if (err?.name === 'AbortError') {
               setIsPlaying(false);
-              setIsLoading(false);
               return;
             }
             console.warn('Audio playback error:', err);
@@ -878,11 +868,9 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
               triggerShake();
             }
             setIsPlaying(false);
-            setIsLoading(false);
           });
       } else {
         setIsPlaying(true);
-        setIsLoading(false);
         sendClientDiagnostic('audio_play', {
           messageId: msg.id,
           currentTime: Math.round(audio.currentTime),

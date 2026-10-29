@@ -5,10 +5,19 @@ const logger = winston.createLogger({
   format: winston.format.combine(
     winston.format.timestamp({
       format: () => {
-        // Always display in IST (UTC+5:30) regardless of server timezone
+        // Always display in IST (UTC+5:30) with 12-hour AM/PM format regardless of server timezone
         const now = new Date();
         const ist = new Date(now.getTime() + 5.5 * 60 * 60 * 1000);
-        return ist.toISOString().replace('T', ' ').substring(0, 19) + ' IST';
+        const pad = (n) => String(n).padStart(2, '0');
+        const year = ist.getUTCFullYear();
+        const month = pad(ist.getUTCMonth() + 1);
+        const day = pad(ist.getUTCDate());
+        const rawHours = ist.getUTCHours();
+        const ampm = rawHours >= 12 ? 'PM' : 'AM';
+        const hours12 = pad(rawHours % 12 || 12);
+        const minutes = pad(ist.getUTCMinutes());
+        const seconds = pad(ist.getUTCSeconds());
+        return `${year}-${month}-${day} ${hours12}:${minutes}:${seconds} ${ampm} IST`;
       }
     }),
     winston.format.errors({ stack: true }),

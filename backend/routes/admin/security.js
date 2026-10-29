@@ -4,39 +4,38 @@ const fs = require('fs');
 const logger = require('../../logger');
 const LoginLockdown = require('../../models/loginLockdown');
 const AuditLog = require('../../models/auditLog');
-const { adminLimiter, adminAuth } = require('../../middleware');
+const { adminLimiter, adminAuth, extractIp } = require('../../middleware');
 
 module.exports = (wss, broadcasts) => {
   const { broadcastToAdmins } = broadcasts;
   const router = express.Router();
 
   // --- Server Activity Log (Strictly super admin only) ---
-  router.get('/api/admin/server-logs', adminLimiter, adminAuth, (req, res) => {
+  router.get('/api/admin/server-logs', adminLimiter, adminAuth, async (req, res) => {
     if (!req.isSuperAdmin || (req.roomId !== 'me' && req.roomId !== 'global')) {
       return res.status(403).json({ error: 'Server logs are only available to the super admin panel.' });
     }
     const logFilePath = path.join(__dirname, '..', '..', 'pulse-activity.log');
-    if (!fs.existsSync(logFilePath)) {
-      return res.type('text/plain').send('');
-    }
-    fs.stat(logFilePath, (statErr, stats) => {
-      if (statErr || !stats) {
-        return res.status(500).send('Could not read server logs.');
+    try {
+      let stats;
+      try {
+        stats = await fs.promises.stat(logFilePath);
+      } catch (err) {
+        if (err.code === 'ENOENT') {
+          return res.type('text/plain').send('');
+        }
+        throw err;
       }
       const bufferSize = Math.min(stats.size, 1048576);
       if (bufferSize === 0) {
         return res.type('text/plain').send('');
       }
       const buffer = Buffer.alloc(bufferSize);
-      let fd;
+      const fileHandle = await fs.promises.open(logFilePath, 'r');
       try {
-        fd = fs.openSync(logFilePath, 'r');
-        fs.readSync(fd, buffer, 0, bufferSize, stats.size - bufferSize);
-      } catch (readErr) {
-        logger.error('Failed to read log file:', readErr);
-        return res.status(500).send('Could not read server logs.');
+        await fileHandle.read(buffer, 0, bufferSize, stats.size - bufferSize);
       } finally {
-        if (fd) fs.closeSync(fd);
+        await fileHandle.close();
       }
       let rawText = buffer.toString('utf8');
       if (stats.size > bufferSize) {
@@ -47,7 +46,10 @@ module.exports = (wss, broadcasts) => {
       }
       const lines = rawText.split('\n').filter(Boolean).slice(-1000).join('\n');
       res.type('text/plain').send(lines);
-    });
+    } catch (err) {
+      logger.error('Failed to read server logs asynchronously:', err);
+      return res.status(500).send('Could not read server logs.');
+    }
   });
 
   // --- Login Lockdown ---
@@ -81,19 +83,27 @@ module.exports = (wss, broadcasts) => {
         case 'indefinite':
           endTime = null;
           break;
-        case 'custom':
-          if (!customMinutes || customMinutes <= 0) {
-            return res.status(400).json({ error: 'Custom duration in minutes is required.' });
+        case 'custom': {
+          const minutes = Number(customMinutes);
+          if (!Number.isFinite(minutes) || minutes <= 0 || minutes > 525600) {
+            return res.status(400).json({ error: 'Custom duration must be a valid number of minutes (1 to 525600).' });
           }
-          endTime = new Date(now.getTime() + customMinutes * 60 * 1000);
+          endTime = new Date(now.getTime() + minutes * 60 * 1000);
           break;
+        }
         default:
           return res.status(400).json({ error: 'Invalid lockdown type.' });
       }
 
       const lockdown = await LoginLockdown.create({ roomId, type, endTime, isActive: true });
 
-      await AuditLog.create({ roomId, type: 'lockdown_enabled', details: { type, endTime } });
+      await AuditLog.create({
+        roomId,
+        type: 'lockdown_enabled',
+        details: { type, endTime },
+        ip: extractIp(req),
+        userAgent: req.headers['user-agent'] || '',
+      });
       broadcastToAdmins(roomId, 'lockdown_update', lockdown);
       broadcastToAdmins(
         roomId,
@@ -113,7 +123,13 @@ module.exports = (wss, broadcasts) => {
     try {
       await LoginLockdown.updateMany({ roomId, isActive: true }, { isActive: false });
 
-      await AuditLog.create({ roomId, type: 'lockdown_disabled', details: {} });
+      await AuditLog.create({
+        roomId,
+        type: 'lockdown_disabled',
+        details: {},
+        ip: extractIp(req),
+        userAgent: req.headers['user-agent'] || '',
+      });
       broadcastToAdmins(roomId, 'lockdown_update', { isActive: false });
       broadcastToAdmins(roomId, 'activity', `Login lockdown has been disabled.`);
 
@@ -145,7 +161,7 @@ module.exports = (wss, broadcasts) => {
     const isSuperPanel = req.isSuperAdmin && (req.roomId === 'me' || req.roomId === 'global');
     try {
       const query = isSuperPanel ? {} : { roomId: req.roomId };
-      const logs = await AuditLog.find(query).sort({ timestamp: -1 }).limit(200);
+      const logs = await AuditLog.find(query).sort({ timestamp: -1 }).limit(200).lean();
       res.json(logs);
     } catch (error) {
       logger.error('Failed to fetch audit logs:', error);

@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Message } from '../../types';
+import type { Message, ReactionsPopupData } from '../../types';
 import { QUICK_REACTIONS } from '../../constants';
 import {
   MobileReactionPicker,
@@ -19,13 +19,7 @@ interface MessageReactionsProps {
   handleReact: (messageId: string, emoji: string) => void;
   handleCancelSelectMode: () => void;
   handleOpenFullEmojiPicker: (rect: DOMRect, messageId: string) => void;
-  setReactionsPopup: (
-    popup: {
-      messageId: string;
-      reactions: { [emoji: string]: { userId: string; username: string }[] };
-      rect: DOMRect;
-    } | null
-  ) => void;
+  setReactionsPopup: (popup: ReactionsPopupData | null) => void;
 }
 
 export const MessageReactions: React.FC<MessageReactionsProps> = React.memo(({
@@ -94,6 +88,7 @@ export const MessageReactions: React.FC<MessageReactionsProps> = React.memo(({
         return (
           <ReactionsContainer
             $sender={sender}
+            data-testid="reactions-container"
             onClick={(e) =>
               setReactionsPopup({
                 messageId: msg.id,

@@ -49,6 +49,9 @@ const roomSchema = new mongoose.Schema({
 
 // Create text index on 'id' and 'name' for public room search
 roomSchema.index({ id: 'text', name: 'text' });
+roomSchema.index({ isPrivate: 1, createdAt: -1 });
+roomSchema.index({ creatorIp: 1 });
+roomSchema.index({ creatorFingerprint: 1 });
 
 const Room = mongoose.model('Room', roomSchema);
 

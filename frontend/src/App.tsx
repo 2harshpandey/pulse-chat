@@ -1,6 +1,6 @@
 import React from 'react';
 import styled, { keyframes } from 'styled-components';
-import { Routes, Route, useLocation, useParams, useNavigate } from 'react-router-dom';
+import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import Home from './Home';
 
 const Rooms = React.lazy(() => import('./Rooms'));
@@ -78,10 +78,14 @@ const fallbackShimmer = keyframes`
 const FallbackPage = styled.div`
   position: fixed; inset: 0;
   display: flex; flex-direction: column;
-  align-items: center; justify-content: center;
-  gap: 1.75rem; padding: 2rem;
-  background: var(--bg-primary); overflow: hidden;
+  align-items: center; justify-content: flex-start;
+  gap: 1.5rem; padding: 3rem 1.5rem 4rem;
+  background: var(--bg-primary);
+  overflow-y: auto; overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
   text-align: center;
+  z-index: 99999;
 `;
 const FallbackOrb = styled.div<{ $x: string; $y: string; $color: string; $size: number }>`
   position: absolute;
@@ -93,7 +97,7 @@ const FallbackOrb = styled.div<{ $x: string; $y: string; $color: string; $size: 
   [data-theme='dark'] & { opacity: 0.2; }
 `;
 const FallbackCode = styled.h1`
-  font-size: clamp(7rem, 18vw, 12rem);
+  font-size: clamp(4.5rem, 12vw, 8rem);
   font-weight: 900; letter-spacing: -4px;
   line-height: 1; margin: 0;
   background: linear-gradient(135deg, var(--accent-blue), var(--accent-indigo), #ec4899);
@@ -108,20 +112,25 @@ const FallbackTitle = styled.p`
   color: var(--text-heading); margin: 0;
   position: relative; z-index: 1;
 `;
-const FallbackDesc = styled.p`
+const FallbackDesc = styled.div`
   font-size: 1rem; color: var(--text-secondary);
-  margin: 0; max-width: 400px; line-height: 1.6;
+  margin: 0; max-width: 650px; width: 100%; line-height: 1.6;
   position: relative; z-index: 1;
 `;
 const FallbackButton = styled.a`
   position: relative; z-index: 1;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 0.85rem 2.25rem;
   border-radius: 12px; font-size: 1rem;
   font-weight: 600; color: #fff;
   background: linear-gradient(135deg, var(--accent-blue), var(--accent-indigo));
   cursor: pointer; text-decoration: none;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+  flex-shrink: 0;
+  margin-top: 0.5rem;
+  margin-bottom: 2rem;
   &:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(59,130,246,0.35); }
   &:active { transform: translateY(0); }
 `;
@@ -157,9 +166,26 @@ class RouteErrorBoundary extends React.Component<
             The application encountered an unexpected error. Refreshing the page
             usually fixes this.
             {this.state.error && (
-              <div style={{ marginTop: '1rem', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', textAlign: 'left', fontSize: '0.8rem', overflowX: 'auto', color: '#f87171' }}>
-                <strong style={{ display: 'block', marginBottom: '0.5rem' }}>{this.state.error.toString()}</strong>
-                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+              <div
+                style={{
+                  marginTop: '1.25rem',
+                  padding: '1rem',
+                  background: 'rgba(0, 0, 0, 0.35)',
+                  border: '1px solid rgba(248, 113, 113, 0.3)',
+                  borderRadius: '10px',
+                  textAlign: 'left',
+                  fontSize: '0.82rem',
+                  maxHeight: '280px',
+                  overflowY: 'auto',
+                  overflowX: 'auto',
+                  color: '#f87171',
+                  boxShadow: 'inset 0 2px 8px rgba(0, 0, 0, 0.3)',
+                }}
+              >
+                <strong style={{ display: 'block', marginBottom: '0.5rem', wordBreak: 'break-word' }}>
+                  {this.state.error.toString()}
+                </strong>
+                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'monospace' }}>
                   {this.state.info?.componentStack || this.state.error.stack}
                 </pre>
               </div>

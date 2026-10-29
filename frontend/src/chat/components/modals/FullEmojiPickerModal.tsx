@@ -24,7 +24,7 @@ export const FullEmojiPickerModal: React.FC<FullEmojiPickerModalProps> = ({
   return (
     <>
       <div
-        style={{ position: 'fixed', inset: 0, zIndex: 99, background: 'rgba(0,0,0,0.3)' }}
+        style={{ position: 'fixed', inset: 0, zIndex: 1199, background: 'rgba(0,0,0,0.3)' }}
         onPointerDown={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -32,7 +32,7 @@ export const FullEmojiPickerModal: React.FC<FullEmojiPickerModalProps> = ({
         }}
       />
       {isMobileView ? (
-        <MobileEmojiPanel>
+        <MobileEmojiPanel style={{ zIndex: 1200 }}>
           <EmojiPicker
             onEmojiClick={onEmojiSelect}
             theme={isDark ? Theme.DARK : Theme.LIGHT}
@@ -50,7 +50,7 @@ export const FullEmojiPickerModal: React.FC<FullEmojiPickerModalProps> = ({
             bottom: '10px',
             left: '50%',
             transform: 'translateX(-50%)',
-            zIndex: 100,
+            zIndex: 1200,
           }}
         >
           <EmojiPicker

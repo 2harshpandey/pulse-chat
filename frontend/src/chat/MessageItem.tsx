@@ -37,14 +37,13 @@ export const MessageItem = React.memo(({
   handleReact,
   openDeleteMenu,
   openLightbox,
+  openMediaGallery,
   isMediaLoaded,
   onRequestMediaLoad,
   isMediaLoadInProgress,
   mediaLoadProgress,
   loadedMediaSrc,
   onRequestDownload,
-  deleteForMe,
-  deleteForEveryone,
   scrollToMessage,
   isSelectModeActive,
   isSelected,
@@ -59,12 +58,12 @@ export const MessageItem = React.memo(({
   setReactionsPopup,
   selectedMessages,
   handleOpenFullEmojiPicker,
-  reactionPickerData,
   editingMessageId,
-  handleCancelEdit,
   onVideoFullscreenEnter,
   onResumeUpload,
-  onCancelUpload
+  onCancelUpload,
+  onMediaError,
+  quotedGroupInfo,
 }: MessageItemProps) => {
   const isEditing = editingMessageId === msg.id;
   const quotedPreviewThumbUrl = msg.replyingTo && !msg.replyingTo.isDeleted && (msg.replyingTo.type === 'image' || msg.replyingTo.type === 'video')
@@ -228,6 +227,17 @@ export const MessageItem = React.memo(({
     void downloadFile(targetMsg.url, fallbackName, undefined, undefined, !isVideo && !isAudio);
   }, []);
 
+  const handleOpenMedia = useCallback(
+    (url: string) => {
+      if (openMediaGallery) {
+        openMediaGallery([msg], 0);
+      } else {
+        openLightbox(url);
+      }
+    },
+    [openMediaGallery, openLightbox, msg]
+  );
+
   return (
     <React.Fragment>
       <MessageRow
@@ -311,6 +321,7 @@ export const MessageItem = React.memo(({
               sender={sender}
               quotedPreviewThumbUrl={quotedPreviewThumbUrl}
               scrollToMessage={scrollToMessage}
+              quotedGroupInfo={quotedGroupInfo}
             />
             {isDeleted ? (
               <>
@@ -346,7 +357,7 @@ export const MessageItem = React.memo(({
                 {msg.type === 'text' && !msg.url && msg.text && (() => { const _u = detectFirstUrl(msg.text); return _u ? <LinkPreview url={_u} sender={sender} /> : null; })()}
                 {renderMessageContent(
                   messageWithResolvedSize,
-                  openLightbox,
+                  handleOpenMedia,
                   undefined,
                   sender,
                   handleVideoFullscreenEnterForMessage,
@@ -362,7 +373,8 @@ export const MessageItem = React.memo(({
                   onResumeUpload,
                   onCancelUpload,
                   undefined,
-                  isSelectModeActive
+                  isSelectModeActive,
+                  onMediaError
                 )}
                 <FooterContainer $sender={sender}>
                   <Timestamp $sender={sender}>{msg.edited && <span>(edited) </span>}{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Timestamp>

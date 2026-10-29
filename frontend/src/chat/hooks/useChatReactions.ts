@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import type { Message } from '../types';
+import type { Message, ReactionsPopupData } from '../types';
 import type { UserProfile } from '../../UserContext';
 import { normalizeReactionEmoji, filterValidReactions } from '../constants';
 
@@ -24,15 +24,12 @@ export function useChatReactions({
     messageId: string;
     rect: DOMRect;
     sender: 'me' | 'other';
+    isAlbum?: boolean;
   } | null>(null);
   const reactionPickerRef = useRef<HTMLDivElement>(null!);
-  const [reactionsPopup, setReactionsPopup] = useState<{
-    messageId: string;
-    reactions: { [emoji: string]: { userId: string; username: string }[] };
-    rect: DOMRect;
-  } | null>(null);
+  const [reactionsPopup, setReactionsPopup] = useState<ReactionsPopupData | null>(null);
   const [fullEmojiPickerPosition, setFullEmojiPickerPosition] = useState<DOMRect | null>(null);
-  const messageIdForFullEmojiPickerRef = useRef<string | null>(null);
+  const messageIdForFullEmojiPickerRef = useRef<{ messageId: string; isAlbum?: boolean } | null>(null);
   const scrollAtReactionPickerRef = useRef<number | null>(null);
 
   // Track scroll position for reaction picker to close if scrolled away
@@ -44,22 +41,58 @@ export function useChatReactions({
     }
   }, [reactionPickerData, chatContainerRef]);
 
+  // Close reaction picker when clicking anywhere else on the screen or pressing Escape
+  useEffect(() => {
+    if (!reactionPickerData) return;
+
+    const handlePointerDown = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+
+      // Ignore clicks inside the reaction picker itself
+      if (reactionPickerRef.current && reactionPickerRef.current.contains(target)) {
+        return;
+      }
+
+      // Ignore clicks on reaction trigger buttons
+      if (target.closest?.('.react-action-button') || target.closest?.('[data-reaction-btn="true"]')) {
+        return;
+      }
+
+      setReactionPickerData(null);
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setReactionPickerData(null);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [reactionPickerData]);
+
   const handleReact = useCallback(
-    (messageId: string, emoji: string) => {
+    (messageId: string, emoji: string, isAlbum?: boolean) => {
       const canonicalEmoji = normalizeReactionEmoji(emoji);
       if (!canonicalEmoji || !ws.current || ws.current.readyState !== WebSocket.OPEN || !userProfile || !messageId) {
         return;
       }
       const username = userProfile?.username || '';
+      const isAlbumReaction = Boolean(isAlbum);
 
       const applyReactionUpdate = (prevList: Message[]) =>
         prevList.map((m) => {
           if (m.id !== messageId) return m;
-          const reactions: Record<string, { userId: string; username: string }[]> = filterValidReactions(m.reactions);
+          const reactions: Record<string, { userId: string; username: string; isAlbum?: boolean }[]> = filterValidReactions(m.reactions);
           let previousEmoji: string | null = null;
           for (const [e, users] of Object.entries(reactions)) {
             if (Array.isArray(users)) {
-              const idx = users.findIndex((r: any) => r.userId === userId);
+              const idx = users.findIndex((r: any) => r.userId === userId && Boolean(r.isAlbum) === isAlbumReaction);
               if (idx > -1) {
                 previousEmoji = e;
                 users.splice(idx, 1);
@@ -70,7 +103,9 @@ export function useChatReactions({
           }
           if (previousEmoji !== canonicalEmoji) {
             if (!Array.isArray(reactions[canonicalEmoji])) reactions[canonicalEmoji] = [];
-            reactions[canonicalEmoji].push({ userId, username });
+            const entry: any = { userId, username };
+            if (isAlbumReaction) entry.isAlbum = true;
+            reactions[canonicalEmoji].push(entry);
           }
           return { ...m, reactions };
         });
@@ -78,7 +113,14 @@ export function useChatReactions({
       setMessages((prev) => applyReactionUpdate(prev));
 
       try {
-        ws.current.send(JSON.stringify({ type: 'react', messageId, userId, emoji: canonicalEmoji, roomId }));
+        ws.current.send(JSON.stringify({
+          type: 'react',
+          messageId,
+          userId,
+          emoji: canonicalEmoji,
+          roomId,
+          isAlbum: isAlbumReaction,
+        }));
       } catch (e) {
         console.error('Failed to send reaction:', e);
       }
@@ -87,19 +129,24 @@ export function useChatReactions({
     [roomId, userId, userProfile, ws, setMessages]
   );
 
-  const handleOpenReactionPicker = useCallback((messageId: string, rect: DOMRect, sender: 'me' | 'other') => {
+  const handleOpenReactionPicker = useCallback((
+    messageId: string,
+    rect: DOMRect,
+    sender: 'me' | 'other',
+    isAlbum?: boolean
+  ) => {
     setReactionPickerData((prev) => {
-      if (prev?.messageId === messageId) return null;
-      return { messageId, rect, sender };
+      if (prev?.messageId === messageId && prev?.isAlbum === isAlbum) return null;
+      return { messageId, rect, sender, isAlbum };
     });
   }, []);
 
-  const handleOpenFullEmojiPicker = useCallback((rect: DOMRect, messageId: string) => {
+  const handleOpenFullEmojiPicker = useCallback((rect: DOMRect, messageId: string, isAlbum?: boolean) => {
     if (document.activeElement instanceof HTMLElement) {
       document.activeElement.blur();
     }
     setFullEmojiPickerPosition(rect);
-    messageIdForFullEmojiPickerRef.current = messageId;
+    messageIdForFullEmojiPickerRef.current = { messageId, isAlbum };
     setReactionPickerData(null);
   }, []);
 

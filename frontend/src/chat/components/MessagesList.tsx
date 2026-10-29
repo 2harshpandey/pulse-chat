@@ -111,7 +111,7 @@ export interface MessagesListProps {
   pinnedMessages: any[];
   currentUserId: string;
   handleSetReply: (message: Message) => void;
-  handleReact: (messageId: string, emoji: string) => void;
+  handleReact: (messageId: string, emoji: string, isAlbum?: boolean) => void;
   handleOpenDeleteMenu: (messageId: string) => void;
   openLightbox: (url: string) => void;
   openMediaGallery?: (items: Message[], initialIndex: number) => void;
@@ -143,14 +143,15 @@ export interface MessagesListProps {
   handleCancelSelectMode: () => void;
   isMobileView: boolean;
   selectedMessages: string[];
-  onOpenReactionPicker: (messageId: string, rect: DOMRect, sender: 'me' | 'other') => void;
+  onOpenReactionPicker: (messageId: string, rect: DOMRect, sender: 'me' | 'other', isAlbum?: boolean) => void;
   setReactionsPopup: (data: any) => void;
-  handleOpenFullEmojiPicker: (rect: DOMRect, messageId: string) => void;
-  reactionPickerData: { messageId: string; rect: DOMRect; sender: 'me' | 'other' } | null;
+  handleOpenFullEmojiPicker: (rect: DOMRect, messageId: string, isAlbum?: boolean) => void;
+  reactionPickerData: { messageId: string; rect: DOMRect; sender: 'me' | 'other'; isAlbum?: boolean } | null;
   editingMessageId: string | null;
   handleSetEditingMessageId: (id: string | null) => void;
   handleCancelEdit: () => void;
   onVideoFullscreenEnter: (messageId: string) => void;
+  onMediaLoadError?: (messageId: string, url?: string) => void;
 }
 
 export const MessagesList = React.memo(function MessagesList({
@@ -193,6 +194,7 @@ export const MessagesList = React.memo(function MessagesList({
   handleSetEditingMessageId,
   handleCancelEdit,
   onVideoFullscreenEnter,
+  onMediaLoadError,
 }: MessagesListProps) {
   const pinnedMessageIdSet = useMemo(
     () =>
@@ -211,6 +213,26 @@ export const MessagesList = React.memo(function MessagesList({
   );
 
   const groupedItems = useMemo(() => groupMessages(messages), [messages]);
+
+  const messageIdToGroupInfo = useMemo(() => {
+    const map = new Map<string, { count: number; primaryId: string; caption?: string }>();
+    for (const item of groupedItems) {
+      if (item.type === 'group' && item.messages.length > 1) {
+        const count = item.messages.length;
+        const primaryId = item.primaryMessage.id;
+        const captionList = item.messages
+          .map((m) => m.text?.trim())
+          .filter((t): t is string => Boolean(t && t.length > 0));
+        const caption = Array.from(new Set(captionList)).join('\n');
+        for (const m of item.messages) {
+          if (m.id) map.set(m.id, { count, primaryId, caption });
+          if (m._id) map.set(m._id, { count, primaryId, caption });
+          if ((m as any).clientTempId) map.set((m as any).clientTempId, { count, primaryId, caption });
+        }
+      }
+    }
+    return map;
+  }, [groupedItems]);
 
   React.useEffect(() => {
     messages.forEach((m) => {
@@ -231,6 +253,7 @@ export const MessagesList = React.memo(function MessagesList({
     <>
       {groupedItems.map((item, index, displayArr) => {
         const msg = item.type === 'single' ? item.message : item.primaryMessage;
+        const quotedGroupInfo = msg.replyingTo?.id ? messageIdToGroupInfo.get(msg.replyingTo.id) : undefined;
         if (msg.type === 'system_notification') {
           return (
             <div key={msg.id || index} style={{ display: 'flex', justifyContent: 'center', padding: '0.4rem 0' }}>
@@ -336,6 +359,8 @@ export const MessagesList = React.memo(function MessagesList({
                 setReactionsPopup={setReactionsPopup}
                 handleOpenFullEmojiPicker={handleOpenFullEmojiPicker}
                 reactionPickerData={reactionPickerData}
+                onMediaLoadError={onMediaLoadError}
+                quotedGroupInfo={quotedGroupInfo}
               />
             </div>
           );
@@ -371,6 +396,7 @@ export const MessagesList = React.memo(function MessagesList({
               handleReact={handleReact}
               openDeleteMenu={handleOpenDeleteMenu}
               openLightbox={openLightbox}
+              openMediaGallery={openMediaGallery}
               isMediaLoaded={loadedMediaMessageSet.has(msg.id)}
               onRequestMediaLoad={onRequestMediaLoad}
               isMediaLoadInProgress={Object.prototype.hasOwnProperty.call(mediaLoadProgressById, msg.id)}
@@ -402,6 +428,8 @@ export const MessagesList = React.memo(function MessagesList({
               handleSetEditingMessageId={handleSetEditingMessageId}
               handleCancelEdit={handleCancelEdit}
               onVideoFullscreenEnter={onVideoFullscreenEnter}
+              onMediaError={onMediaLoadError}
+              quotedGroupInfo={quotedGroupInfo}
             />
           </div>
         );

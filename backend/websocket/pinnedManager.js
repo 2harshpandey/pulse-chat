@@ -44,7 +44,7 @@ const loadPinnedMessages = async (roomId) => {
       const isHidden = hiddenBefore && pin.createdAt && new Date(pin.createdAt) < hiddenBefore;
 
       if (isExpired || isDeletedOrVanished || isHidden) {
-        await Message.updateOne({ id: pin.id }, { $set: { pinned: null } });
+        await Message.updateOne({ roomId, id: pin.id }, { $set: { pinned: null } });
         await MessageEvent.updateMany({ roomId, $or: [{ messageId: pin.id }, { 'message.id': pin.id }] }, { $set: { 'message.pinned': null } });
       } else {
         validPins.push(toClientMessage(pin));
@@ -77,7 +77,7 @@ const startPinExpirationWatcher = (wss) => {
         if (isExpired || isDeletedOrVanished || isHidden) {
           changed = true;
           try {
-            await Message.updateOne({ id: msg.id }, { $set: { pinned: null } });
+            await Message.updateOne({ roomId, id: msg.id }, { $set: { pinned: null } });
             await MessageEvent.updateMany({ roomId, $or: [{ messageId: msg.id }, { 'message.id': msg.id }] }, { $set: { 'message.pinned': null } });
           } catch (e) {
             logger.error('Failed to unpin expired/deleted message:', e);
@@ -91,7 +91,7 @@ const startPinExpirationWatcher = (wss) => {
         broadcastPinnedMessages(wss, roomId);
       }
     }
-  }, 30000);
+  }, 30000).unref();
 };
 
 /**

@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
-import type { Message } from '../types';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { isDesktopInteractionDevice, quoteLog } from '../constants';
 
 const checkIsMobile = () =>

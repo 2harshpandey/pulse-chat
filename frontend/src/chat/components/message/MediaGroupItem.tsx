@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import type { Message } from '../../types';
+import type { Message, ReactionsPopupData, ReactionSourceEntry } from '../../types';
 import { filterValidReactions } from '../../constants';
 import {
   getMessageElementId,
@@ -8,6 +8,7 @@ import {
   normalizeMessageId,
   formatMediaSize,
   getMediaGatePreviewUrl,
+  withCloudinaryTransform,
 } from '../../utils';
 import { useAlbumDownload } from '../../albumDownloadManager';
 import {
@@ -84,7 +85,7 @@ export interface MediaGroupItemProps {
   activeDeleteMenu: string | null;
   deleteMenuRef: React.RefObject<HTMLDivElement>;
   handleSetReply: (message: Message) => void;
-  handleReact: (messageId: string, emoji: string) => void;
+  handleReact: (messageId: string, emoji: string, isAlbum?: boolean) => void;
   openDeleteMenu: (messageId: string) => void;
   openMediaGallery: (items: Message[], initialIndex: number) => void;
   loadedMediaSrcById: Record<string, string>;
@@ -108,16 +109,12 @@ export interface MediaGroupItemProps {
   handleCancelSelectMode: () => void;
   isMobileView: boolean;
   selectedMessages: string[];
-  onOpenReactionPicker: (messageId: string, rect: DOMRect, sender: 'me' | 'other') => void;
-  setReactionsPopup: (
-    popup: {
-      messageId: string;
-      reactions: { [emoji: string]: { userId: string; username: string }[] };
-      rect: DOMRect;
-    } | null
-  ) => void;
-  handleOpenFullEmojiPicker: (rect: DOMRect, messageId: string) => void;
+  onOpenReactionPicker: (messageId: string, rect: DOMRect, sender: 'me' | 'other', isAlbum?: boolean) => void;
+  setReactionsPopup: (popup: ReactionsPopupData | null) => void;
+  handleOpenFullEmojiPicker: (rect: DOMRect, messageId: string, isAlbum?: boolean) => void;
   reactionPickerData: { messageId: string; rect: DOMRect; sender: 'me' | 'other' } | null;
+  onMediaLoadError?: (messageId: string, url?: string) => void;
+  quotedGroupInfo?: { count: number; primaryId: string; caption?: string };
 }
 
 export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
@@ -150,7 +147,8 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
   onOpenReactionPicker,
   setReactionsPopup,
   handleOpenFullEmojiPicker,
-  reactionPickerData,
+  onMediaLoadError,
+  quotedGroupInfo,
 }) => {
   const messageBubbleRef = useRef<HTMLDivElement>(null!);
   const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; right?: number; left?: number } | null>(null);
@@ -176,38 +174,6 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
     if (activeDeleteMenu !== primaryMessage.id) setMenuPos(null);
   }, [activeDeleteMenu, primaryMessage.id]);
 
-  const {
-    messageRowRef,
-    lastSelectModeExitTimeRef,
-    handleLongPressStart,
-    handleLongPressMove,
-    handleLongPressEnd,
-    handleLongPressCancel,
-  } = useMessageGestures({
-    msg: primaryMessage,
-    isMobileView,
-    isSelectModeActive,
-    handleSetReply,
-    handleToggleSelectMessage,
-  });
-
-  const validReactions = useMemo(() => filterValidReactions(primaryMessage.reactions), [primaryMessage.reactions]);
-
-  const currentUserReaction = useMemo(() => {
-    for (const [emoji, users] of Object.entries(validReactions)) {
-      if (users.some((r: { userId: string }) => r.userId === currentUserId)) {
-        return emoji;
-      }
-    }
-    return null;
-  }, [validReactions, currentUserId]);
-
-  // Determine grid tiles and overflow count
-  const count = messages.length;
-  const isOverflow = count > 4;
-  const displayItems = isOverflow ? messages.slice(0, 4) : messages;
-  const overflowCount = count - 4; // shows +X number which are other (e.g. 5 total -> +1 other)
-
   // Find unique caption text across the grouped messages
   const combinedCaption = useMemo(() => {
     const list = messages
@@ -216,9 +182,126 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
     return Array.from(new Set(list)).join('\n');
   }, [messages]);
 
+  // Unified reply target representing the entire media group album
+  const groupReplyTarget = useMemo<Message>(() => ({
+    ...primaryMessage,
+    type: 'group' as any,
+    isGroup: true,
+    mediaCount: messages.length,
+    text: combinedCaption || undefined,
+  }), [primaryMessage, messages.length, combinedCaption]);
+
+  const {
+    messageRowRef,
+    lastSelectModeExitTimeRef,
+    handleLongPressStart,
+    handleLongPressMove,
+    handleLongPressEnd,
+    handleLongPressCancel,
+  } = useMessageGestures({
+    msg: groupReplyTarget,
+    isMobileView,
+    isSelectModeActive,
+    handleSetReply,
+    handleToggleSelectMessage,
+  });
+
+  // Combine all reactions across primaryMessage (whole album) and all individual media items
+  const { combinedReactions, reactionSources, currentUserReaction } = useMemo(() => {
+    const combined: { [emoji: string]: { userId: string; username: string }[] } = {};
+    const sources: ReactionSourceEntry[] = [];
+
+    const addReactionEntry = (
+      user: { userId: string; username: string; isAlbum?: boolean },
+      emoji: string,
+      msgId: string,
+      isWholeAlbum: boolean,
+      thumbUrl?: string,
+      isVideo?: boolean
+    ) => {
+      if (!combined[emoji]) combined[emoji] = [];
+      if (!combined[emoji].some((existing) => existing.userId === user.userId)) {
+        combined[emoji].push({ userId: user.userId, username: user.username });
+      }
+      sources.push({
+        userId: user.userId,
+        username: user.username,
+        emoji,
+        messageId: msgId,
+        isAlbum: isWholeAlbum,
+        mediaThumbUrl: isWholeAlbum ? undefined : thumbUrl,
+        isVideo: isWholeAlbum ? false : isVideo,
+      });
+    };
+
+    // 1. Reactions on primaryMessage that are explicitly album-level reactions
+    const primaryValid = filterValidReactions(primaryMessage.reactions);
+    for (const [emoji, users] of Object.entries(primaryValid)) {
+      if (!Array.isArray(users)) continue;
+      for (const u of users) {
+        if (u.isAlbum) {
+          addReactionEntry(u, emoji, primaryMessage.id, true);
+        }
+      }
+    }
+
+    // 2. Reactions on individual media items in messages
+    messages.forEach((item) => {
+      const itemIsVideo =
+        item.type === 'video' || Boolean(item.url?.match(/\.(mp4|webm|mov)$/i));
+      const thumb =
+        loadedMediaSrcById[item.id] ||
+        (item.url ? withCloudinaryTransform(item.url, 'f_auto,q_35,w_96,h_96,c_fill') : '') ||
+        item.url;
+      const itemValid = filterValidReactions(item.reactions);
+      for (const [emoji, users] of Object.entries(itemValid)) {
+        if (!Array.isArray(users)) continue;
+        for (const u of users) {
+          if (item.id === primaryMessage.id && u.isAlbum) continue;
+          addReactionEntry(u, emoji, item.id, false, thumb, itemIsVideo);
+        }
+      }
+    });
+
+    // 3. Fallback for legacy reactions on primaryMessage without isAlbum flag
+    for (const [emoji, users] of Object.entries(primaryValid)) {
+      if (!Array.isArray(users)) continue;
+      for (const u of users) {
+        if (u.isAlbum === undefined) {
+          const alreadyAdded = sources.some(
+            (s) => s.userId === u.userId && s.emoji === emoji && s.messageId === primaryMessage.id
+          );
+          if (!alreadyAdded) {
+            addReactionEntry(u, emoji, primaryMessage.id, true);
+          }
+        }
+      }
+    }
+
+    // Check if current user has reacted anywhere in this group
+    let myReaction: string | null = null;
+    for (const [emoji, users] of Object.entries(combined)) {
+      if (users.some((u) => u.userId === currentUserId)) {
+        myReaction = emoji;
+        break;
+      }
+    }
+
+    return {
+      combinedReactions: combined,
+      reactionSources: sources,
+      currentUserReaction: myReaction,
+    };
+  }, [primaryMessage, messages, loadedMediaSrcById, currentUserId]);
+
+  // Determine grid tiles and overflow count
+  const count = messages.length;
+  const isOverflow = count > 4;
+  const displayItems = isOverflow ? messages.slice(0, 4) : messages;
+  const overflowCount = count - 4; // shows +X number which are other (e.g. 5 total -> +1 other)
+
   const {
     isDownloading: isAlbumDownloading,
-    progress: albumProgress,
     startDownload: startAlbumDownload,
     cancelDownload: cancelAlbumDownload,
   } = useAlbumDownload(primaryMessage.id);
@@ -253,7 +336,7 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
               return;
             }
             e.preventDefault();
-            handleSetReply(primaryMessage);
+            handleSetReply(groupReplyTarget);
           }
         }}
         onMouseDown={handleLongPressStart}
@@ -311,6 +394,7 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
               sender={sender}
               quotedPreviewThumbUrl={quotedPreviewThumbUrl}
               scrollToMessage={scrollToMessage}
+              quotedGroupInfo={quotedGroupInfo}
             />
 
             {!isMobileView && (
@@ -318,7 +402,7 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
                 msgId={primaryMessage.id}
                 sender={sender}
                 isDeleted={false}
-                onOpenReactionPicker={onOpenReactionPicker}
+                onOpenReactionPicker={(id, rect, s) => onOpenReactionPicker(id, rect, s, true)}
                 openDeleteMenu={openDeleteMenu}
                 setMenuPos={setMenuPos}
               />
@@ -454,6 +538,14 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
                             src={itemSrc}
                             alt={item.originalName || `Media ${idx + 1}`}
                             loading="lazy"
+                            onError={(e) => {
+                              const fallback = sanitizeMediaUrl(item.url);
+                              const img = e.currentTarget;
+                              if (fallback && img.src !== fallback) {
+                                img.src = fallback;
+                              }
+                              onMediaLoadError?.(item.id, item.url);
+                            }}
                             onContextMenu={(e) => e.preventDefault()}
                             onDragStart={(e) => e.preventDefault()}
                           />
@@ -513,12 +605,22 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
               sender={sender}
               isDeleted={false}
               selectedMessages={selectedMessages}
-              validReactions={validReactions}
+              validReactions={combinedReactions}
               currentUserReaction={currentUserReaction}
-              handleReact={handleReact}
+              handleReact={(id, emoji) => handleReact(id, emoji, true)}
               handleCancelSelectMode={handleCancelSelectMode}
-              handleOpenFullEmojiPicker={handleOpenFullEmojiPicker}
-              setReactionsPopup={setReactionsPopup}
+              handleOpenFullEmojiPicker={(rect, id) => handleOpenFullEmojiPicker(rect, id, true)}
+              setReactionsPopup={(popup) => {
+                if (!popup) {
+                  setReactionsPopup(null);
+                  return;
+                }
+                setReactionsPopup({
+                  ...popup,
+                  reactions: combinedReactions,
+                  reactionSources,
+                });
+              }}
             />
           </MessageBubble>
         </div>
@@ -526,7 +628,7 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
 
       {activeDeleteMenu === primaryMessage.id && (
         <MessageActionMenuPortal
-          msg={primaryMessage}
+          msg={groupReplyTarget}
           menuPos={menuPos}
           deleteMenuRef={deleteMenuRef}
           currentUserId={currentUserId}

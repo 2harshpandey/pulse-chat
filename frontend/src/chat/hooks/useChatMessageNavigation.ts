@@ -8,7 +8,6 @@ import {
 } from '../constants';
 import {
   normalizeMessageId,
-  getMessageElementId,
   findMessageElement,
   isGroupStartMessage,
 } from '../utils';
@@ -17,6 +16,7 @@ import { sendClientDiagnostic } from '../telemetry';
 export interface UseChatMessageNavigationProps {
   apiBase: string;
   roomId: string;
+  userId?: string;
   messagesRef: React.MutableRefObject<Message[]>;
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   historyLoaded: boolean;
@@ -62,6 +62,7 @@ export interface UseChatMessageNavigationProps {
 export function useChatMessageNavigation({
   apiBase,
   roomId,
+  userId,
   messagesRef,
   setMessages,
   historyLoaded,
@@ -363,8 +364,16 @@ export function useChatMessageNavigation({
 
         void (async () => {
           try {
+            const headers: Record<string, string> = { 'x-room-id': roomId };
+            if (userId) {
+              headers['x-user-id'] = userId;
+            }
+            const sessionToken = sessionStorage.getItem('pulseSessionToken');
+            if (sessionToken) {
+              headers['x-session-token'] = sessionToken;
+            }
             const res = await fetch(`${apiBase}/api/messages?around=${encodeURIComponent(targetId)}&limit=50`, {
-              headers: { 'x-room-id': roomId },
+              headers,
             });
             if (res.ok) {
               const data = await res.json();
@@ -488,6 +497,7 @@ export function useChatMessageNavigation({
       resetSearch,
       resolveReplyNavigationTargetId,
       roomId,
+      userId,
       scrollToLoadedMessage,
       setActiveSearchQuery,
       setChatSearchQuery,

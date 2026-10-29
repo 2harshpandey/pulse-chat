@@ -3,7 +3,6 @@ import { describe, it, expect, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useChatViewport, IS_AT_BOTTOM_THRESHOLD_PX } from './hooks/useChatViewport';
 import { isTouchDevice } from './constants';
-import type { Message } from './types';
 
 describe('Chat scroll behavior & auto-scroll rules', () => {
   it('defines IS_AT_BOTTOM_THRESHOLD_PX as 60px to prevent false negative at-bottom drops', () => {

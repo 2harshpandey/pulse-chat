@@ -30,6 +30,7 @@ export interface LightboxModalProps {
   onPointerMove?: (e: React.PointerEvent<HTMLDivElement>) => void;
   onPointerUp?: (e: React.PointerEvent<HTMLDivElement>) => void;
   onPointerCancel?: (e: React.PointerEvent<HTMLDivElement>) => void;
+  onDoubleClick?: (e: React.MouseEvent<HTMLElement>) => void;
   onImageLoad?: (e: React.SyntheticEvent<HTMLImageElement>) => void;
   frameRef?: React.RefObject<HTMLDivElement>;
   imageRef?: React.RefObject<HTMLImageElement>;
@@ -49,6 +50,7 @@ export const LightboxModal: React.FC<LightboxModalProps> = ({
   onPointerMove,
   onPointerUp,
   onPointerCancel,
+  onDoubleClick,
   onImageLoad,
   frameRef,
   imageRef,
@@ -78,6 +80,7 @@ export const LightboxModal: React.FC<LightboxModalProps> = ({
         ref={frameRef}
         $isZoomed={isZoomed}
         onClick={(e) => e.stopPropagation()}
+        onDoubleClick={onDoubleClick}
         onWheel={onWheel}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -90,6 +93,7 @@ export const LightboxModal: React.FC<LightboxModalProps> = ({
           alt="Photo viewer"
           draggable={false}
           onDragStart={(e) => e.preventDefault()}
+          onDoubleClick={onDoubleClick}
           onLoad={onImageLoad}
           $isZoomed={isZoomed}
           $isInteracting={isInteracting}

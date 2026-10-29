@@ -1,17 +1,14 @@
-import React from 'react';
+import React, { useState, useLayoutEffect } from 'react';
 import { ReactionPicker, ReactionEmoji, ReactionsPopup } from '../Chat.styles';
 import { QUICK_REACTIONS } from '../constants';
+import type { ReactionsPopupData } from '../types';
 
 interface ReactionsOverlayProps {
-  reactionPickerData: { messageId: string; rect: DOMRect; sender: 'me' | 'other' } | null;
+  reactionPickerData: { messageId: string; rect: DOMRect; sender: 'me' | 'other'; isAlbum?: boolean } | null;
   reactionPickerRef: React.RefObject<HTMLDivElement | null>;
-  onReact: (messageId: string, emoji: string) => void;
-  onOpenFullEmojiPicker: (rect: DOMRect, messageId: string) => void;
-  reactionsPopup: {
-    messageId: string;
-    reactions: { [emoji: string]: { userId: string; username: string }[] };
-    rect: DOMRect;
-  } | null;
+  onReact: (messageId: string, emoji: string, isAlbum?: boolean) => void;
+  onOpenFullEmojiPicker: (rect: DOMRect, messageId: string, isAlbum?: boolean) => void;
+  reactionsPopup: ReactionsPopupData | null;
   currentUserId: string;
   onCloseReactionsPopup: () => void;
 }
@@ -25,6 +22,17 @@ export const ReactionsOverlay: React.FC<ReactionsOverlayProps> = ({
   currentUserId,
   onCloseReactionsPopup,
 }) => {
+  const [measuredWidth, setMeasuredWidth] = useState<number>(340);
+
+  useLayoutEffect(() => {
+    if (reactionPickerRef.current) {
+      const w = reactionPickerRef.current.offsetWidth;
+      if (w > 0 && Math.abs(w - measuredWidth) > 2) {
+        setMeasuredWidth(w);
+      }
+    }
+  }, [reactionPickerData, measuredWidth, reactionPickerRef]);
+
   return (
     <>
       {reactionPickerData && (
@@ -32,22 +40,36 @@ export const ReactionsOverlay: React.FC<ReactionsOverlayProps> = ({
           ref={reactionPickerRef as any}
           $sender={reactionPickerData.sender}
           style={(() => {
-            const pickerWidth = 280;
-            let top = reactionPickerData.rect.top - 60;
-            let left = reactionPickerData.rect.left;
+            const pickerWidth = Math.max(340, reactionPickerRef.current?.offsetWidth || measuredWidth);
+            const margin = 12;
 
-            if (top < 0) {
+            let top = reactionPickerData.rect.top - 60;
+            if (top < 10) {
               top = reactionPickerData.rect.bottom + 10;
             }
+            if (top + 60 > window.innerHeight) {
+              top = Math.max(10, reactionPickerData.rect.top - 60);
+            }
 
-            if (reactionPickerData.sender === 'me') {
+            // Align to right edge if sender is 'me', or if button is on the right half of the screen (e.g. MediaGalleryModal actions)
+            let left: number;
+            if (
+              reactionPickerData.sender === 'me' ||
+              reactionPickerData.rect.left > window.innerWidth / 2 ||
+              reactionPickerData.rect.right > window.innerWidth - 180
+            ) {
               left = reactionPickerData.rect.right - pickerWidth;
+            } else {
+              left = reactionPickerData.rect.left;
             }
 
-            if (left + pickerWidth > window.innerWidth) {
-              left = window.innerWidth - pickerWidth - 10;
+            // Strictly clamp inside screen boundaries so it is never cut off
+            if (left + pickerWidth > window.innerWidth - margin) {
+              left = window.innerWidth - pickerWidth - margin;
             }
-            if (left < 10) left = 10;
+            if (left < margin) {
+              left = margin;
+            }
 
             return { top: `${top}px`, left: `${left}px` };
           })()}
@@ -57,7 +79,7 @@ export const ReactionsOverlay: React.FC<ReactionsOverlayProps> = ({
               key={emoji}
               onClick={(e) => {
                 e.stopPropagation();
-                onReact(reactionPickerData.messageId, emoji);
+                onReact(reactionPickerData.messageId, emoji, reactionPickerData.isAlbum);
               }}
             >
               {emoji}
@@ -68,7 +90,11 @@ export const ReactionsOverlay: React.FC<ReactionsOverlayProps> = ({
             data-is-plus-icon="true"
             onClick={(e) => {
               e.stopPropagation();
-              onOpenFullEmojiPicker(e.currentTarget.getBoundingClientRect(), reactionPickerData.messageId);
+              onOpenFullEmojiPicker(
+                e.currentTarget.getBoundingClientRect(),
+                reactionPickerData.messageId,
+                reactionPickerData.isAlbum
+              );
             }}
           >
             +
@@ -81,9 +107,10 @@ export const ReactionsOverlay: React.FC<ReactionsOverlayProps> = ({
           popupData={reactionsPopup}
           currentUserId={currentUserId}
           onClose={onCloseReactionsPopup}
-          onRemoveReaction={(emoji) => {
+          onRemoveReaction={(emoji, targetMessageId, isAlbum) => {
             if (reactionsPopup) {
-              onReact(reactionsPopup.messageId, emoji);
+              const msgId = targetMessageId || reactionsPopup.messageId;
+              onReact(msgId, emoji, isAlbum);
             }
             onCloseReactionsPopup();
           }}

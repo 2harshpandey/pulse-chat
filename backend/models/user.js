@@ -22,11 +22,15 @@ const userSchema = new mongoose.Schema({
     type: [Date],
     default: [],
   },
+  sessionToken: {
+    type: String,
+    default: null,
+  },
 }, { timestamps: true });
 
 userSchema.index({ roomId: 1, userId: 1 }, { unique: true });
+userSchema.index({ roomId: 1, userId: 1, sessionToken: 1 });
 userSchema.index({ roomId: 1, lastSeen: -1 });
-userSchema.index({ roomId: 1, joinHistory: -1 });
 
 const User = mongoose.model('User', userSchema);
 

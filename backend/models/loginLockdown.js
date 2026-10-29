@@ -29,7 +29,7 @@ const loginLockdownSchema = new mongoose.Schema({
   },
 }, { timestamps: true });
 
-loginLockdownSchema.index({ roomId: 1, isActive: 1 });
+loginLockdownSchema.index({ roomId: 1, isActive: 1, createdAt: -1 });
 
 const LoginLockdown = mongoose.model('LoginLockdown', loginLockdownSchema);
 

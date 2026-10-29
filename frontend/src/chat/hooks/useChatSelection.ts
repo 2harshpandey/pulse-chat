@@ -73,7 +73,7 @@ export function useChatSelection({
 
   const deleteForEveryone = useCallback(
     (messageId: string) => {
-      if (!ws.current) return;
+      if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
       const msgObj = messages.find((m) => m.id === messageId);
       if (msgObj && msgObj.isDeleted) return;
       ws.current.send(JSON.stringify({ type: 'delete_for_everyone', messageId, roomId }));
@@ -157,12 +157,12 @@ export function useChatSelection({
   }, [overlayGuardPushed, selectedMessages, userId, setMessages]);
 
   const handleBulkDeleteForEveryone = useCallback(() => {
+    const socket = ws.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
     selectedMessages.forEach((id) => {
       const msgObj = messages.find((m) => m.id === id);
       if (msgObj && msgObj.isDeleted) return;
-      if (ws.current) {
-        ws.current.send(JSON.stringify({ type: 'delete_for_everyone', messageId: id, roomId }));
-      }
+      socket.send(JSON.stringify({ type: 'delete_for_everyone', messageId: id, roomId }));
     });
     if (overlayGuardPushed.current) {
       clearOverlayGuardHistoryEntry();

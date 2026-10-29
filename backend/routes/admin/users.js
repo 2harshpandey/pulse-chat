@@ -5,7 +5,7 @@ const BlockedUser = require('../../models/blockedUser');
 const UserReport = require('../../models/userReport');
 const AuditLog = require('../../models/auditLog');
 const { getRoomState, userFingerprints } = require('../../state');
-const { adminLimiter, adminAuth } = require('../../middleware');
+const { adminLimiter, adminAuth, extractIp, toSafeLoggedInUserList } = require('../../middleware');
 const { WebSocket } = require('ws');
 
 module.exports = (wss, broadcasts) => {
@@ -14,21 +14,25 @@ module.exports = (wss, broadcasts) => {
 
   router.get('/api/admin/users', adminLimiter, adminAuth, async (req, res) => {
     const roomId = req.roomId;
-    const users = await User.find({ roomId }).sort({ createdAt: 1 }).lean();
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 500, 1), 1000);
+    const users = await User.find({ roomId }).sort({ createdAt: -1 }).limit(limit).lean();
     res.json(users);
   });
 
   router.get('/api/admin/logged-in-users', adminLimiter, adminAuth, (req, res) => {
     const roomId = req.roomId;
     const { loggedInUsers } = getRoomState(roomId);
-    const users = Array.from(loggedInUsers.values());
-    res.json(users);
+    res.json(toSafeLoggedInUserList(loggedInUsers));
   });
 
   router.post('/api/admin/force-logout/:userId', adminLimiter, adminAuth, async (req, res) => {
-    const { userId } = req.params;
+    const rawUserId = req.params.userId;
+    if (!rawUserId || typeof rawUserId !== 'string' || !rawUserId.trim()) {
+      return res.status(400).json({ error: 'Valid userId parameter is required.' });
+    }
+    const userId = rawUserId.trim();
     const roomId = req.roomId;
-    const { loggedInUsers, onlineUsers, typingUsers, pendingDisconnects } = getRoomState(roomId);
+    const { loggedInUsers, onlineUsers, typingUsers, typingTimeouts, pendingDisconnects } = getRoomState(roomId);
 
     const targetUser = loggedInUsers.get(userId) || onlineUsers.get(userId);
     const username = targetUser?.username || 'Unknown';
@@ -45,12 +49,22 @@ module.exports = (wss, broadcasts) => {
     onlineUsers.delete(userId);
     loggedInUsers.delete(userId);
     typingUsers.delete(userId);
+    if (typingTimeouts && typingTimeouts.has(userId)) {
+      clearTimeout(typingTimeouts.get(userId));
+      typingTimeouts.delete(userId);
+    }
     if (pendingDisconnects.has(userId)) {
       clearTimeout(pendingDisconnects.get(userId));
       pendingDisconnects.delete(userId);
     }
 
-    await AuditLog.create({ roomId, type: 'user_force_logged_out', details: { userId, username } });
+    await AuditLog.create({
+      roomId,
+      type: 'user_force_logged_out',
+      details: { userId, username },
+      ip: extractIp(req),
+      userAgent: req.headers['user-agent'] || '',
+    });
     broadcastToAdmins(roomId, 'user_force_logged_out', { userId, username });
     broadcastToAdmins(roomId, 'activity', `User '${username}' was force-logged out by admin.`);
     broadcastOnlineUsers(roomId);
@@ -60,7 +74,7 @@ module.exports = (wss, broadcasts) => {
 
   router.post('/api/admin/force-logout-all', adminLimiter, adminAuth, async (req, res) => {
     const roomId = req.roomId;
-    const { loggedInUsers, onlineUsers, typingUsers, pendingDisconnects } = getRoomState(roomId);
+    const { loggedInUsers, onlineUsers, typingUsers, typingTimeouts, pendingDisconnects } = getRoomState(roomId);
 
     const affectedUsers = [];
     wss.clients.forEach((client) => {
@@ -76,24 +90,35 @@ module.exports = (wss, broadcasts) => {
     onlineUsers.clear();
     loggedInUsers.clear();
     typingUsers.clear();
+    if (typingTimeouts) {
+      typingTimeouts.forEach((t) => clearTimeout(t));
+      typingTimeouts.clear();
+    }
     pendingDisconnects.forEach((t) => clearTimeout(t));
     pendingDisconnects.clear();
 
-    await AuditLog.create({ roomId, type: 'force_logged_out_all', details: { count: affectedUsers.length, users: affectedUsers } });
+    await AuditLog.create({
+      roomId,
+      type: 'force_logged_out_all',
+      details: { count: affectedUsers.length, users: affectedUsers },
+      ip: extractIp(req),
+      userAgent: req.headers['user-agent'] || '',
+    });
     broadcastToAdmins(roomId, 'activity', `Admin force-logged out ALL ${affectedUsers.length} user(s).`);
     broadcastOnlineUsers(roomId);
     res.json({ success: true, message: `Force-logged out ${affectedUsers.length} user(s).` });
   });
 
   router.post('/api/admin/block-user', adminLimiter, adminAuth, async (req, res) => {
-    const { userId, username, reason } = req.body;
+    const { userId: rawUserId, username, reason } = req.body;
     const roomId = req.roomId;
-    if (!userId || typeof userId !== 'string') {
-      return res.status(400).json({ error: 'userId is required and must be a string.' });
+    if (!rawUserId || typeof rawUserId !== 'string' || !rawUserId.trim()) {
+      return res.status(400).json({ error: 'userId is required and must be a non-empty string.' });
     }
+    const userId = rawUserId.trim();
 
     try {
-      const { loggedInUsers, onlineUsers, typingUsers } = getRoomState(roomId);
+      const { loggedInUsers, onlineUsers, typingUsers, typingTimeouts } = getRoomState(roomId);
       // Gather all known fingerprints for this user
       const fp = userFingerprints.get(userId);
       const userInfo = loggedInUsers.get(userId) || onlineUsers.get(userId);
@@ -125,8 +150,8 @@ module.exports = (wss, broadcasts) => {
       // Also scan active WebSocket connections for this user's IP/UA
       wss.clients.forEach((client) => {
         if (client.userId === userId && !client.isAdmin && client.roomId === roomId) {
-          const wsIp = client._socket?.remoteAddress || '';
-          const wsUa = client.upgradeReq?.headers?.['user-agent'] || '';
+          const wsIp = client.clientIp || client._socket?.remoteAddress || '';
+          const wsUa = client.clientUa || '';
           if (wsIp && !fingerprints.ips.includes(wsIp)) fingerprints.ips.push(wsIp);
           if (wsUa && !fingerprints.userAgents.includes(wsUa)) fingerprints.userAgents.push(wsUa);
         }
@@ -140,23 +165,41 @@ module.exports = (wss, broadcasts) => {
         blockedUser.unblockedAt = null;
         blockedUser.username = username || blockedUser.username;
         blockedUser.reason = reason || '';
-        // Merge fingerprints
-        const mergedIps = new Set([...blockedUser.fingerprints.ips, ...fingerprints.ips]);
-        const mergedUAs = new Set([...blockedUser.fingerprints.userAgents, ...fingerprints.userAgents]);
-        const mergedHashes = new Set([...blockedUser.fingerprints.deviceHashes, ...fingerprints.deviceHashes]);
+        // Merge fingerprints defensively
+        const existingIps = Array.isArray(blockedUser.fingerprints?.ips) ? blockedUser.fingerprints.ips : [];
+        const existingUAs = Array.isArray(blockedUser.fingerprints?.userAgents) ? blockedUser.fingerprints.userAgents : [];
+        const existingHashes = Array.isArray(blockedUser.fingerprints?.deviceHashes) ? blockedUser.fingerprints.deviceHashes : [];
+
+        const mergedIps = new Set([...existingIps, ...fingerprints.ips]);
+        const mergedUAs = new Set([...existingUAs, ...fingerprints.userAgents]);
+        const mergedHashes = new Set([...existingHashes, ...fingerprints.deviceHashes]);
         blockedUser.fingerprints = {
-          ...fingerprints,
           ips: Array.from(mergedIps),
           userAgents: Array.from(mergedUAs),
           deviceHashes: Array.from(mergedHashes),
+          screenResolution: fingerprints.screenResolution || blockedUser.fingerprints?.screenResolution || '',
+          platform: fingerprints.platform || blockedUser.fingerprints?.platform || '',
+          language: fingerprints.language || blockedUser.fingerprints?.language || '',
+          timezone: fingerprints.timezone || blockedUser.fingerprints?.timezone || '',
         };
         await blockedUser.save();
       } else {
+        let priorFp = null;
+        if (!fingerprints.screenResolution) {
+          const priorBlock = await BlockedUser.findOne({ userId: { $eq: userId }, 'fingerprints.screenResolution': { $exists: true, $ne: '' } });
+          if (priorBlock?.fingerprints) priorFp = priorBlock.fingerprints;
+        }
         blockedUser = await BlockedUser.create({
           roomId,
           userId,
           username: username || 'Unknown',
-          fingerprints,
+          fingerprints: {
+            ...fingerprints,
+            screenResolution: fingerprints.screenResolution || priorFp?.screenResolution || '',
+            platform: fingerprints.platform || priorFp?.platform || '',
+            language: fingerprints.language || priorFp?.language || '',
+            timezone: fingerprints.timezone || priorFp?.timezone || '',
+          },
           reason: reason || '',
         });
       }
@@ -171,8 +214,18 @@ module.exports = (wss, broadcasts) => {
       onlineUsers.delete(userId);
       loggedInUsers.delete(userId);
       typingUsers.delete(userId);
+      if (typingTimeouts && typingTimeouts.has(userId)) {
+        clearTimeout(typingTimeouts.get(userId));
+        typingTimeouts.delete(userId);
+      }
 
-      await AuditLog.create({ roomId, type: 'user_blocked', details: { userId, username: username || 'Unknown', reason } });
+      await AuditLog.create({
+        roomId,
+        type: 'user_blocked',
+        details: { userId, username: username || 'Unknown', reason },
+        ip: extractIp(req),
+        userAgent: req.headers['user-agent'] || '',
+      });
       broadcastToAdmins(roomId, 'user_blocked', blockedUser);
       broadcastToAdmins(roomId, 'activity', `User '${username || 'Unknown'}' has been blocked.`);
       broadcastOnlineUsers(roomId);
@@ -185,7 +238,11 @@ module.exports = (wss, broadcasts) => {
   });
 
   router.post('/api/admin/unblock-user/:userId', adminLimiter, adminAuth, async (req, res) => {
-    const { userId } = req.params;
+    const rawUserId = req.params.userId;
+    if (!rawUserId || typeof rawUserId !== 'string' || !rawUserId.trim()) {
+      return res.status(400).json({ error: 'Valid userId parameter is required.' });
+    }
+    const userId = rawUserId.trim();
     const roomId = req.roomId;
     try {
       const blockedUser = await BlockedUser.findOneAndUpdate(
@@ -195,7 +252,13 @@ module.exports = (wss, broadcasts) => {
       );
       if (!blockedUser) return res.status(404).json({ error: 'Blocked user not found.' });
 
-      await AuditLog.create({ roomId, type: 'user_unblocked', details: { userId, username: blockedUser.username } });
+      await AuditLog.create({
+        roomId,
+        type: 'user_unblocked',
+        details: { userId, username: blockedUser.username },
+        ip: extractIp(req),
+        userAgent: req.headers['user-agent'] || '',
+      });
       broadcastToAdmins(roomId, 'user_unblocked', blockedUser);
       broadcastToAdmins(roomId, 'activity', `User '${blockedUser.username}' has been unblocked.`);
 
@@ -209,7 +272,7 @@ module.exports = (wss, broadcasts) => {
   router.get('/api/admin/blocked-users', adminLimiter, adminAuth, async (req, res) => {
     const roomId = req.roomId;
     try {
-      const blocked = await BlockedUser.find({ roomId }).sort({ blockedAt: -1 });
+      const blocked = await BlockedUser.find({ roomId }).sort({ blockedAt: -1 }).limit(500).lean();
       res.json(blocked);
     } catch (error) {
       logger.error('Failed to fetch blocked users:', error);

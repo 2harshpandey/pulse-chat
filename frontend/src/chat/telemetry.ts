@@ -60,14 +60,59 @@ export const sendClientDiagnostic = (
   dispatchDiagnostic(event, details);
 };
 
+const isTestEnv = (): boolean => {
+  if (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') return true;
+  if (typeof import.meta !== 'undefined' && (import.meta as any).env?.MODE === 'test') return true;
+  if (typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent)) return true;
+  return false;
+};
+
 const dispatchDiagnostic = (event: string, details?: Record<string, any>) => {
+  if (isTestEnv()) return;
+
   try {
+    let roomId = context.roomId;
+    if (!roomId || roomId === 'unknown') {
+      if (typeof window !== 'undefined') {
+        const pathMatch = window.location.pathname.match(/\/room\/([^/?#]+)/i);
+        roomId =
+          pathMatch?.[1] ||
+          sessionStorage.getItem('pulse_room_id') ||
+          localStorage.getItem('pulse_room_id') ||
+          sessionStorage.getItem('pulseRoomId') ||
+          localStorage.getItem('pulseRoomId') ||
+          'global';
+      } else {
+        roomId = 'global';
+      }
+    }
+
+    let userId = context.userId;
+    if (!userId && typeof window !== 'undefined') {
+      userId =
+        sessionStorage.getItem('pulse_user_id') ||
+        localStorage.getItem('pulse_user_id') ||
+        sessionStorage.getItem('pulseUserId') ||
+        localStorage.getItem('pulseUserId') ||
+        '';
+    }
+
+    let username = context.username;
+    if (!username && typeof window !== 'undefined') {
+      username =
+        sessionStorage.getItem('username') ||
+        localStorage.getItem('username') ||
+        sessionStorage.getItem('pulse_username') ||
+        localStorage.getItem('pulse_username') ||
+        '';
+    }
+
     const payload = {
       type: 'client_diagnostic',
       event,
-      roomId: context.roomId,
-      userId: context.userId,
-      username: context.username,
+      roomId,
+      userId,
+      username,
       details: details || {},
       timestamp: Date.now(),
     };

@@ -4,6 +4,7 @@ import { resolveReplyTargetId, resolveAudioDuration, audioDurationCache, setAudi
 import { quoteLog } from '../../constants';
 import { QuotedMessageContainer, QuotedMediaThumb } from '../../ChatStyledComponents';
 import { formatAudioDuration } from './AudioMessagePlayer';
+import { MediaAlbumIcon } from './MediaAlbumIcon';
 
 interface MessageQuotedPreviewProps {
   msg: Message;
@@ -17,6 +18,7 @@ interface MessageQuotedPreviewProps {
     force?: boolean,
     replyingToPayload?: any
   ) => Promise<void> | void;
+  quotedGroupInfo?: { count: number; primaryId: string; caption?: string };
 }
 
 export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.memo(({
@@ -25,6 +27,7 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
   sender,
   quotedPreviewThumbUrl,
   scrollToMessage,
+  quotedGroupInfo,
 }) => {
   const [thumbLoadError, setThumbLoadError] = React.useState(false);
   const [isLocating, setIsLocating] = React.useState(false);
@@ -90,6 +93,21 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
 
   if (!msg.replyingTo) return null;
 
+  const isGroupReply = Boolean(
+    quotedGroupInfo ||
+    msg.replyingTo?.isGroup ||
+    msg.replyingTo?.type === 'group' ||
+    (typeof msg.replyingTo?.mediaCount === 'number' && msg.replyingTo.mediaCount > 1)
+  );
+
+  const groupMediaCount =
+    quotedGroupInfo?.count ||
+    msg.replyingTo?.mediaCount ||
+    2;
+
+  const rawCaption = (quotedGroupInfo?.caption || msg.replyingTo?.text || '').trim();
+  const displayCaption = rawCaption && !/^\d+\s+media$/i.test(rawCaption) ? rawCaption : '';
+
   return (
     <QuotedMessageContainer
       $sender={sender}
@@ -143,6 +161,13 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
                   : (msg.replyingTo.deletedBy === currentUserId
                       ? 'You deleted this message.'
                       : 'This message has been deleted.'))
+              : isGroupReply ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                    <MediaAlbumIcon size={13} style={{ opacity: 0.9, flexShrink: 0 }} />
+                    <span style={{ fontWeight: 600 }}>{groupMediaCount} media</span>
+                    {displayCaption ? <span>• {displayCaption}</span> : null}
+                  </span>
+                )
               : (msg.replyingTo.text ||
                  (msg.replyingTo.type === 'video' ? 'Video' :
                   msg.replyingTo.type === 'image' ? 'Photo' :
@@ -182,7 +207,25 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
           )}
         </div>
       </div>
-      {!msg.replyingTo.isDeleted && msg.replyingTo.type === 'audio' && (
+      {!msg.replyingTo.isDeleted && isGroupReply && (
+        <div
+          data-testid="quoted-group-media-badge"
+          style={{
+            width: '40px',
+            height: '40px',
+            borderRadius: '6px',
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: sender === 'me' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(59, 130, 246, 0.18)',
+            color: sender === 'me' ? '#ffffff' : 'var(--accent-primary, #3b82f6)',
+          }}
+        >
+          <MediaAlbumIcon size={20} />
+        </div>
+      )}
+      {!msg.replyingTo.isDeleted && !isGroupReply && msg.replyingTo.type === 'audio' && (
         <div
           style={{
             width: '40px',
@@ -204,7 +247,7 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
           </svg>
         </div>
       )}
-      {!msg.replyingTo.isDeleted && (msg.replyingTo.url || quotedPreviewThumbUrl) && (msg.replyingTo.type === 'image' || msg.replyingTo.type === 'video') && (
+      {!msg.replyingTo.isDeleted && !isGroupReply && (msg.replyingTo.url || quotedPreviewThumbUrl) && (msg.replyingTo.type === 'image' || msg.replyingTo.type === 'video') && (
         quotedPreviewThumbUrl && !thumbLoadError ? (
           <QuotedMediaThumb>
             <img

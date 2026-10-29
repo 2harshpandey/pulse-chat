@@ -6,11 +6,12 @@ We actively maintain and provide security patches for the following versions of 
 
 | Version | Supported          | Security Status                                        |
 | ------- | ------------------ | ------------------------------------------------------ |
-| 2.3.x   | :white_check_mark: | Active support; latest stable release.                 |
-| 2.2.x   | :white_check_mark: | Maintenance support.                                   |
-| 2.1.x   | :x:                | End of life; please upgrade to the latest 2.3 release. |
-| 2.0.x   | :x:                | End of life; please upgrade to the latest 2.3 release. |
-| 1.x.x   | :x:                | End of life; please upgrade to the latest 2.3 release. |
+| 3.0.x   | :white_check_mark: | Active support; latest major stable release.           |
+| 2.3.x   | :white_check_mark: | Maintenance support.                                   |
+| 2.2.x   | :x:                | End of life; please upgrade to the latest 3.0 release. |
+| 2.1.x   | :x:                | End of life; please upgrade to the latest 3.0 release. |
+| 2.0.x   | :x:                | End of life; please upgrade to the latest 3.0 release. |
+| 1.x.x   | :x:                | End of life; please upgrade to the latest 3.0 release. |
 
 ---
 
@@ -56,8 +57,11 @@ When a security report is received:
 
 Pulse Chat implements defense-in-depth measures across all tiers:
 
+- **Session Token Verification:** All incoming WebSocket messages and sensitive REST routes enforce strict session token authentication, preventing unauthorized impersonation or socket hijacking.
+- **WebSocket Abuse & DoS Protection:** Per-connection frame rate limiting (50 frames per second burst cap) and automated 25-second timeouts on unauthenticated socket connections.
 - **Injection Immunization:** All MongoDB queries use explicit `$eq` operators and type validation to prevent NoSQL query injection.
-- **Strict URL & SSRF Validation (CWE-20):** Link preview extraction and download proxies parse URLs through standard WHATWG `URL` objects, validating hostname suffixes and blocking internal/private IP ranges.
+- **Strict URL & SSRF Validation (CWE-20):** Link preview extraction and download proxies parse URLs through standard WHATWG `URL` objects, validating hostname suffixes, enforcing DNS pinning, and blocking internal/private IP ranges.
 - **ReDoS Prevention:** User search queries and regex patterns are escaped using strict regex sanitization routines.
 - **Multi-Tier Rate Limiting:** Layered protections on HTTP authentication, room joining, media uploads, and administrative endpoints.
+- **Memory Hygiene & Stale State Pruning:** Automated periodic sweeps clean up disconnected sockets, expired typing states, and dangling promises.
 - **Device & IP Fingerprinting:** Real-time abuse mitigation leveraging device hashes and IP tracking with instant moderation enforcement.

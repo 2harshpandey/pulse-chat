@@ -5,6 +5,7 @@ import { MAX_MESSAGE_LENGTH, quoteLog } from '../constants';
 import { isGiphyUrl, resolveReplyTargetId, audioDurationCache, setAudioDurationCache, subscribeAudioDuration, resolveAudioDuration } from '../utils';
 import { CANDIDATE_URL_RE, renderTextWithLinks } from '../renderMessage';
 import { FilmIcon, FileIcon } from '../TypingIndicator';
+import { MediaAlbumIcon } from './message/MediaAlbumIcon';
 import {
   Footer,
   SelectModeFooter,
@@ -177,6 +178,19 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
   isDark,
 }) => {
   const recorder = useVoiceRecorder();
+
+  const stagedFilePreviewUrl = React.useMemo(() => {
+    if (!stagedFile) return '';
+    return URL.createObjectURL(stagedFile);
+  }, [stagedFile]);
+
+  React.useEffect(() => {
+    return () => {
+      if (stagedFilePreviewUrl) {
+        URL.revokeObjectURL(stagedFilePreviewUrl);
+      }
+    };
+  }, [stagedFilePreviewUrl]);
 
   const [replyAudioDuration, setReplyAudioDuration] = React.useState<number | null>(() => {
     if (replyingTo?.type === 'audio') {
@@ -367,103 +381,141 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
             </EditPreviewContainer>
           )}
 
-          {replyingTo && (
-            <ReplyPreviewContainer
-              ref={replyPreviewRef}
-              onClick={() => {
-                const replyTargetId = resolveReplyTargetId(replyingTo);
-                quoteLog('reply-preview click', {
-                  rawReplyingTo: replyingTo,
-                  resolvedReplyTargetId: replyTargetId,
-                });
-                if (replyTargetId) onScrollToMessage(replyTargetId, undefined, 'auto', true, replyingTo);
-              }}
-            >
-              {replyingTo.type === 'video' && replyingTo.url ? (
-                <video src={replyingTo.url} style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover' }} />
-              ) : (replyingTo.type === 'image' || replyingTo.type === 'video') && replyingTo.url ? (
-                <FilePreviewImage src={replyingTo.url} alt="Reply preview" />
-              ) : replyingTo.type === 'audio' ? (
-                <div style={{
-                  width: '40px',
-                  height: '40px',
-                  borderRadius: '6px',
-                  background: 'rgba(59, 130, 246, 0.15)',
-                  color: '#3b82f6',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexShrink: 0
-                }}>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                    <line x1="12" y1="19" x2="12" y2="23" />
-                    <line x1="8" y1="23" x2="16" y2="23" />
-                  </svg>
-                </div>
-              ) : null}
-              <ReplyText>
-                <p>Replying to {replyingTo.username}</p>
-                <span style={replyingTo.isDeleted ? { fontStyle: 'italic', opacity: 0.7 } : undefined}>
-                  {(() => {
-                    if (replyingTo.isDeleted) {
-                      return replyingTo.deletedBy === 'admin'
-                        ? 'This message has been deleted by an admin.'
-                        : replyingTo.deletedBy === currentUserId
-                        ? 'You deleted this message.'
-                        : 'This message has been deleted.';
-                    }
-                    if (replyingTo.text) return replyingTo.text;
-                    if (isGiphyUrl(replyingTo.url)) return 'GIF';
-                    if (replyingTo.type === 'image') return 'Image';
-                    if (replyingTo.type === 'video') return 'Video';
-                    if (replyingTo.type === 'audio') {
-                      return (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                          <span>{replyingTo.text || 'Voice Message'}</span>
-                          {Boolean(replyAudioDuration && replyAudioDuration > 0) && (
-                            <span style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '3px',
-                              padding: '1px 6px',
-                              borderRadius: '9999px',
-                              fontSize: '0.72rem',
-                              fontWeight: 600,
-                              background: 'rgba(59, 130, 246, 0.15)',
-                              color: '#3b82f6',
-                            }}>
-                              <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor">
-                                <polygon points="5 3 19 12 5 21 5 3" />
-                              </svg>
-                              {formatAudioDuration(replyAudioDuration!)}
-                            </span>
-                          )}
-                        </span>
-                      );
-                    }
-                    return 'Message';
-                  })()}
-                </span>
-              </ReplyText>
-              <CancelPreviewButton
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCancelReply();
+          {replyingTo && (() => {
+            const isGroupReply = Boolean(
+              replyingTo.isGroup ||
+              replyingTo.type === 'group' ||
+              (typeof replyingTo.mediaCount === 'number' && replyingTo.mediaCount > 1)
+            );
+            const groupMediaCount = replyingTo.mediaCount || 2;
+            const replyCaption = replyingTo.text?.trim() || '';
+            const displayCaption = replyCaption && !/^\d+\s+media$/i.test(replyCaption) ? replyCaption : '';
+
+            return (
+              <ReplyPreviewContainer
+                ref={replyPreviewRef}
+                onClick={() => {
+                  const replyTargetId = resolveReplyTargetId(replyingTo);
+                  quoteLog('reply-preview click', {
+                    rawReplyingTo: replyingTo,
+                    resolvedReplyTargetId: replyTargetId,
+                  });
+                  if (replyTargetId) onScrollToMessage(replyTargetId, undefined, 'auto', true, replyingTo);
                 }}
               >
-                &times;
-              </CancelPreviewButton>
-            </ReplyPreviewContainer>
-          )}
+                {isGroupReply ? (
+                  <div
+                    data-testid="reply-preview-group-badge"
+                    style={{
+                      width: '40px',
+                      height: '40px',
+                      borderRadius: '6px',
+                      background: 'rgba(59, 130, 246, 0.15)',
+                      color: '#3b82f6',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <MediaAlbumIcon size={22} />
+                  </div>
+                ) : replyingTo.type === 'video' && replyingTo.url ? (
+                  <video src={replyingTo.url} style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover' }} />
+                ) : (replyingTo.type === 'image' || replyingTo.type === 'video') && replyingTo.url ? (
+                  <FilePreviewImage src={replyingTo.url} alt="Reply preview" />
+                ) : replyingTo.type === 'audio' ? (
+                  <div style={{
+                    width: '40px',
+                    height: '40px',
+                    borderRadius: '6px',
+                    background: 'rgba(59, 130, 246, 0.15)',
+                    color: '#3b82f6',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                      <line x1="12" y1="19" x2="12" y2="23" />
+                      <line x1="8" y1="23" x2="16" y2="23" />
+                    </svg>
+                  </div>
+                ) : null}
+                <ReplyText>
+                  <p>Replying to {replyingTo.username}</p>
+                  <span style={replyingTo.isDeleted ? { fontStyle: 'italic', opacity: 0.7 } : undefined}>
+                    {(() => {
+                      if (replyingTo.isDeleted) {
+                        return replyingTo.deletedBy === 'admin'
+                          ? 'This message has been deleted by an admin.'
+                          : replyingTo.deletedBy === currentUserId
+                          ? 'You deleted this message.'
+                          : 'This message has been deleted.';
+                      }
+                      if (isGroupReply) {
+                        return (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                            <MediaAlbumIcon size={14} style={{ opacity: 0.85, flexShrink: 0 }} />
+                            <span style={{ fontWeight: 600 }}>{groupMediaCount} media</span>
+                            {displayCaption ? <span>• {displayCaption}</span> : null}
+                          </span>
+                        );
+                      }
+                      if (replyingTo.text) return replyingTo.text;
+                      if (isGiphyUrl(replyingTo.url)) return 'GIF';
+                      if (replyingTo.type === 'image') return 'Image';
+                      if (replyingTo.type === 'video') return 'Video';
+                      if (replyingTo.type === 'audio') {
+                        return (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                            <span>{replyingTo.text || 'Voice Message'}</span>
+                            {Boolean(replyAudioDuration && replyAudioDuration > 0) && (
+                              <span style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                padding: '1px 6px',
+                                borderRadius: '9999px',
+                                fontSize: '0.72rem',
+                                fontWeight: 600,
+                                background: 'rgba(59, 130, 246, 0.15)',
+                                color: '#3b82f6',
+                              }}>
+                                <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor">
+                                  <polygon points="5 3 19 12 5 21 5 3" />
+                                </svg>
+                                {formatAudioDuration(replyAudioDuration!)}
+                              </span>
+                            )}
+                          </span>
+                        );
+                      }
+                      return 'Message';
+                    })()}
+                  </span>
+                </ReplyText>
+                <CancelPreviewButton
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCancelReply();
+                  }}
+                >
+                  &times;
+                </CancelPreviewButton>
+              </ReplyPreviewContainer>
+            );
+          })()}
+
 
           {stagedFile && !showFilePreview && (
             <FilePreviewContainer>
               {stagedFile.type.startsWith('image/') ? (
-                <FilePreviewImage src={URL.createObjectURL(stagedFile)} alt="Preview" />
+                <FilePreviewImage src={stagedFilePreviewUrl} alt="Preview" />
               ) : stagedFile.type.startsWith('video/') ? (
-                <video src={URL.createObjectURL(stagedFile)} style={{ width: '50px', height: '50px', borderRadius: '8px', objectFit: 'cover' }} />
+                <video src={stagedFilePreviewUrl} style={{ width: '50px', height: '50px', borderRadius: '8px', objectFit: 'cover' }} />
               ) : (
                 <div style={{ width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#e2e8f0', borderRadius: '8px', flexShrink: 0 }}>
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4a5568" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

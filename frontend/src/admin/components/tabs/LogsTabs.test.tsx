@@ -145,11 +145,43 @@ describe('LogsCopyButton and Logs Tabs', () => {
       expect(copySpy).toHaveBeenCalledTimes(1);
       const copiedContent = copySpy.mock.calls[0][0];
       expect(copiedContent).toContain('IST');
+      expect(copiedContent).toMatch(/\b(AM|PM)\s+IST/);
       expect(copiedContent).toContain('A new client connected!');
 
       await waitFor(() => {
         expect(screen.getByText('Copied!')).toBeInTheDocument();
       });
+    });
+
+    it('formats server log lines with AM or PM beside IST', async () => {
+      const { formatServerLogLine } = await import('../../utils');
+
+      // Test 1: UTC ISO date conversion to IST with AM/PM
+      const isoLog = JSON.stringify({
+        level: 'info',
+        message: 'Test ISO',
+        timestamp: '2026-10-24T19:02:13.000Z',
+      });
+      const formattedIso = formatServerLogLine(isoLog);
+      expect(formattedIso).toMatch(/\d{2}:\d{2}:\d{2}\s+(AM|PM)\s+IST/);
+
+      // Test 2: Existing 24h IST log without AM/PM is converted
+      const oldIstLog = JSON.stringify({
+        level: 'info',
+        message: 'Reconnected',
+        timestamp: '2026-10-29 13:55:18 IST',
+      });
+      const formattedOldIst = formatServerLogLine(oldIstLog);
+      expect(formattedOldIst).toContain('2026-10-29 01:55:18 PM IST');
+
+      // Test 3: Log already with AM/PM IST remains unchanged
+      const newIstLog = JSON.stringify({
+        level: 'info',
+        message: 'User joined',
+        timestamp: '2026-10-29 02:30:00 PM IST',
+      });
+      const formattedNew = formatServerLogLine(newIstLog);
+      expect(formattedNew).toContain('2026-10-29 02:30:00 PM IST');
     });
 
     it('disables copy button while server logs are loading', () => {

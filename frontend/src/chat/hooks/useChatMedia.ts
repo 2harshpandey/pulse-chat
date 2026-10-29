@@ -9,49 +9,78 @@ import {
   fetchBlobWithProgress,
   chooseReadableFilename,
   getMediaCacheLookupKey,
-  getPresenceActivityForFiles,
   revokeBlobUrl,
+  inferMimeTypeFromUrl,
 } from '../utils';
-import { getCachedMediaBlob, setCachedMediaBlob } from '../../mediaCache';
+import { getCachedMediaBlob, setCachedMediaBlob, removeCachedMediaBlob } from '../../mediaCache';
 import { transferManager } from '../TransferManager';
 import { useChatLightbox } from './useChatLightbox';
 import { useChatGifPicker } from './useChatGifPicker';
 
 export const compressImage = (file: File): Promise<File> => {
   return new Promise((resolve) => {
-    if (!file.type.startsWith('image/') || file.type === 'image/gif') return resolve(file);
+    if (
+      !file.type.startsWith('image/') ||
+      file.type === 'image/gif' ||
+      file.type === 'image/svg+xml' ||
+      file.type === 'image/x-icon'
+    ) {
+      return resolve(file);
+    }
     const img = new Image();
-    img.src = URL.createObjectURL(file);
+    const objectUrl = URL.createObjectURL(file);
+    img.src = objectUrl;
     img.onload = () => {
-      URL.revokeObjectURL(img.src);
-      const canvas = document.createElement('canvas');
+      URL.revokeObjectURL(objectUrl);
       const MAX_WIDTH = 1920;
       const MAX_HEIGHT = 1080;
-      let width = img.width;
-      let height = img.height;
+      let width = img.naturalWidth || img.width;
+      let height = img.naturalHeight || img.height;
+
+      // If already within resolution limits and <= 2MB, preserve original without lossy re-encoding
+      if (width <= MAX_WIDTH && height <= MAX_HEIGHT && file.size <= 2 * 1024 * 1024) {
+        return resolve(file);
+      }
 
       if (width > height) {
         if (width > MAX_WIDTH) {
-          height *= MAX_WIDTH / width;
+          height = Math.round(height * (MAX_WIDTH / width));
           width = MAX_WIDTH;
         }
       } else {
         if (height > MAX_HEIGHT) {
-          width *= MAX_HEIGHT / height;
+          width = Math.round(width * (MAX_HEIGHT / height));
           height = MAX_HEIGHT;
         }
       }
+
+      const canvas = document.createElement('canvas');
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext('2d');
-      ctx?.drawImage(img, 0, 0, width, height);
-      canvas.toBlob((blob) => {
-        if (!blob) return resolve(file);
-        resolve(new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() }));
-      }, 'image/jpeg', 0.8);
+      if (!ctx) return resolve(file);
+
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // Preserve PNG/WebP transparency; only encode lossy JPEG for other image types
+      const isPng = file.type === 'image/png';
+      const isWebp = file.type === 'image/webp';
+      const outputMime = isPng ? 'image/png' : isWebp ? 'image/webp' : 'image/jpeg';
+      const quality = isPng ? undefined : 0.82;
+
+      canvas.toBlob(
+        (blob) => {
+          if (!blob || blob.size >= file.size) {
+            return resolve(file);
+          }
+          resolve(new File([blob], file.name, { type: outputMime, lastModified: Date.now() }));
+        },
+        outputMime,
+        quality
+      );
     };
     img.onerror = () => {
-      URL.revokeObjectURL(img.src);
+      URL.revokeObjectURL(objectUrl);
       resolve(file);
     };
   });
@@ -110,6 +139,8 @@ export function useChatMedia({
   // Sub-hook: GIF Picker
   const gifPicker = useChatGifPicker({
     apiBase,
+    roomId,
+    userId,
     setPresenceActivity,
     messageInputRef,
     isDesktopInteraction,
@@ -185,13 +216,13 @@ export function useChatMedia({
       setPreviewCaption(carriedCaption);
       if (carriedCaption) {
         setInputMessage('');
-        localStorage.removeItem(getInputDraftKey(userId));
+        localStorage.removeItem(getInputDraftKey(userId, roomId));
         resetInputLayerHeight();
       }
       setShowFilePreview(true);
       gifPicker.setStagedGif(null);
     },
-    [inputMessage, resetInputLayerHeight, setInputMessage, userId, gifPicker]
+    [inputMessage, resetInputLayerHeight, setInputMessage, userId, roomId, gifPicker]
   );
 
   const closeFilePreviewAndRestoreDraft = useCallback(() => {
@@ -204,12 +235,12 @@ export function useChatMedia({
 
     if (preMediaDraft) {
       setInputMessage(preMediaDraft);
-      localStorage.setItem(getInputDraftKey(userId), preMediaDraft);
+      localStorage.setItem(getInputDraftKey(userId, roomId), preMediaDraft);
       setPreMediaDraft('');
     }
     setPreviewCaption('');
     setPresenceActivity(null);
-  }, [preMediaDraft, setInputMessage, userId, setPresenceActivity, stagedFiles]);
+  }, [preMediaDraft, setInputMessage, userId, roomId, setPresenceActivity, stagedFiles]);
 
   const handleRequestCloseFilePreview = useCallback(() => {
     if (stagedFiles.length > 0 || previewCaption) {
@@ -345,7 +376,13 @@ export function useChatMedia({
         .then((cachedBlob) => {
           if (isCancelled || !cachedBlob || cachedBlob.size <= 0) return;
 
-          const objectUrl = URL.createObjectURL(cachedBlob);
+          let finalBlob = cachedBlob;
+          if (!cachedBlob.type || cachedBlob.type === 'application/octet-stream') {
+            const expectedType = inferMimeTypeFromUrl(safeUrl);
+            finalBlob = new Blob([cachedBlob], { type: expectedType });
+          }
+
+          const objectUrl = URL.createObjectURL(finalBlob);
           const previousBlobUrl = mediaBlobUrlMapRef.current.get(message.id);
           if (previousBlobUrl && previousBlobUrl !== objectUrl) {
             URL.revokeObjectURL(previousBlobUrl);
@@ -411,7 +448,12 @@ export function useChatMedia({
           if (abortController.signal.aborted) return;
 
           if (cachedBlob && cachedBlob.size > 0) {
-            const objectUrl = URL.createObjectURL(cachedBlob);
+            let finalBlob = cachedBlob;
+            if (!cachedBlob.type || cachedBlob.type === 'application/octet-stream') {
+              const expectedType = inferMimeTypeFromUrl(safeUrl);
+              finalBlob = new Blob([cachedBlob], { type: expectedType });
+            }
+            const objectUrl = URL.createObjectURL(finalBlob);
             const previousBlobUrl = mediaBlobUrlMapRef.current.get(messageId);
             if (previousBlobUrl) URL.revokeObjectURL(previousBlobUrl);
             mediaBlobUrlMapRef.current.set(messageId, objectUrl);
@@ -527,7 +569,10 @@ export function useChatMedia({
                   isUploading: false,
                   id: uploadedFileData.id,
                 };
-                ws.current?.send(JSON.stringify({ ...finalMessage, clientTempId: messageId }));
+                if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+                  const { localBlobUrl: _omittedBlob, ...broadcastPayload } = finalMessage as any;
+                  ws.current.send(JSON.stringify({ ...broadcastPayload, clientTempId: messageId, roomId }));
+                }
                 return finalMessage;
               }
               if (m.replyingTo && m.replyingTo.id === messageId) {
@@ -570,6 +615,34 @@ export function useChatMedia({
     };
   }, []);
 
+  const handleMediaError = useCallback(
+    (messageId: string, mediaUrl?: string) => {
+      if (!messageId) return;
+
+      const currentBlobUrl = mediaBlobUrlMapRef.current.get(messageId);
+      if (currentBlobUrl) {
+        try {
+          URL.revokeObjectURL(currentBlobUrl);
+        } catch (_) {}
+        mediaBlobUrlMapRef.current.delete(messageId);
+      }
+
+      setLoadedMediaSrcById((prev) => {
+        if (!Object.prototype.hasOwnProperty.call(prev, messageId)) return prev;
+        const { [messageId]: _discard, ...rest } = prev;
+        return rest;
+      });
+
+      setLoadedMediaMessageIds((prev) => prev.filter((id) => id !== messageId));
+
+      const safeUrl = mediaUrl ? sanitizeMediaUrl(mediaUrl) : '';
+      if (safeUrl) {
+        void removeCachedMediaBlob(userId, messageId, safeUrl).catch(() => {});
+      }
+    },
+    [userId]
+  );
+
   return {
     stagedFile,
     setStagedFile,
@@ -583,24 +656,25 @@ export function useChatMedia({
     setPreviewActiveIndex,
     previewCaption,
     setPreviewCaption,
-    preMediaDraft,
-    setPreMediaDraft,
     fileInputRef,
     addFileInputRef,
     previewCaptionInputRef,
     isDragging,
+    preMediaDraft,
+    setPreMediaDraft,
     // GIF Picker delegation
-    stagedGif: gifPicker.stagedGif,
-    setStagedGif: gifPicker.setStagedGif,
     showGifPicker: gifPicker.showGifPicker,
     setShowGifPicker: gifPicker.setShowGifPicker,
-    gifResults: gifPicker.gifResults,
     gifSearchTerm: gifPicker.gifSearchTerm,
     setGifSearchTerm: gifPicker.setGifSearchTerm,
+    isLoadingGifs: gifPicker.isLoadingGifs,
     gifError: gifPicker.gifError,
     setGifError: gifPicker.setGifError,
+    gifResults: gifPicker.gifResults,
+    setGifResults: gifPicker.setGifResults,
+    stagedGif: gifPicker.stagedGif,
+    setStagedGif: gifPicker.setStagedGif,
     setGifFetchKey: gifPicker.setGifFetchKey,
-    isLoadingGifs: gifPicker.isLoadingGifs,
     gifPickerRef: gifPicker.gifPickerRef,
     gifSearchInputRef: gifPicker.gifSearchInputRef,
     gifPickerOpenedAtRef: gifPicker.gifPickerOpenedAtRef,
@@ -617,7 +691,20 @@ export function useChatMedia({
     canZoomOutLightbox: lightbox.canZoomOutLightbox,
     lightboxFrameRef: lightbox.lightboxFrameRef,
     lightboxImageRef: lightbox.lightboxImageRef,
-    openLightbox: lightbox.openLightbox,
+    openLightbox: (url: string, canonicalUrl?: string) => {
+      const match = messages.find(
+        (m) =>
+          (m.url && sanitizeMediaUrl(m.url) === sanitizeMediaUrl(url)) ||
+          (m.url && canonicalUrl && sanitizeMediaUrl(m.url) === sanitizeMediaUrl(canonicalUrl)) ||
+          m.id === canonicalUrl ||
+          m.id === url
+      );
+      if (match) {
+        lightbox.openMediaGallery([match], 0);
+      } else {
+        lightbox.openLightbox(url, canonicalUrl);
+      }
+    },
     closeLightbox: lightbox.closeLightbox,
     handleLightboxZoomIn: lightbox.handleLightboxZoomIn,
     handleLightboxZoomOut: lightbox.handleLightboxZoomOut,
@@ -626,6 +713,8 @@ export function useChatMedia({
     handleLightboxPointerMove: lightbox.handleLightboxPointerMove,
     handleLightboxPointerUp: lightbox.handleLightboxPointerUp,
     handleLightboxPointerCancel: lightbox.handleLightboxPointerCancel,
+    handleLightboxDoubleClick: lightbox.handleLightboxDoubleClick,
+    handleLightboxDoubleTap: lightbox.handleLightboxDoubleTap,
     handleLightboxImageLoad: lightbox.handleLightboxImageLoad,
     mediaGallery: lightbox.mediaGallery,
     openMediaGallery: lightbox.openMediaGallery,
@@ -648,6 +737,7 @@ export function useChatMedia({
     handleRequestDownload,
     handleResumeUpload,
     handleCancelUpload,
+    handleMediaError,
     setPresenceActivity,
   };
 }

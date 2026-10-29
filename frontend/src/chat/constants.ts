@@ -5,7 +5,10 @@ export const MAX_MESSAGE_LENGTH = 65536;
 
 export const GIF_FETCH_LIMIT = 80;
 
-export const getInputDraftKey = (userId: string): string => `pulseInputDraft_${userId}`;
+export const getInputDraftKey = (userId: string, roomId?: string): string => {
+  const cleanRoom = typeof roomId === 'string' && roomId.trim() ? roomId.trim() : '';
+  return cleanRoom ? `pulseInputDraft_${cleanRoom}_${userId}` : `pulseInputDraft_${userId}`;
+};
 
 export const isDesktopInteractionDevice = (): boolean => {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
@@ -108,9 +111,7 @@ export const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'
 
 export type QuickReaction = typeof QUICK_REACTIONS[number];
 
-const QUICK_REACTION_SET = new Set<string>(QUICK_REACTIONS);
-
-export type ReactionUser = { userId: string; username: string };
+export type ReactionUser = { userId: string; username: string; isAlbum?: boolean };
 export type ReactionMap = Record<string, ReactionUser[]>;
 
 export const normalizeReactionEmoji = (emoji: unknown): string | null => {
@@ -136,7 +137,11 @@ export const filterValidReactions = (rawReactions: unknown): ReactionMap => {
       .map((user: any): ReactionUser | null => {
         if (typeof user === 'string') return { userId: user, username: user };
         if (!user || typeof user !== 'object' || typeof user.userId !== 'string') return null;
-        return { userId: user.userId, username: typeof user.username === 'string' ? user.username : user.userId };
+        return {
+          userId: user.userId,
+          username: typeof user.username === 'string' ? user.username : user.userId,
+          ...(user.isAlbum ? { isAlbum: true } : {}),
+        };
       })
       .filter((user): user is ReactionUser => Boolean(user));
 

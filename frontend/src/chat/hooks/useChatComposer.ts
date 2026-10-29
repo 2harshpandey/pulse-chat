@@ -36,7 +36,6 @@ interface UseChatComposerProps {
   skipNextInputLayoutSyncRef: React.MutableRefObject<boolean>;
   syncInputLayerLayout: (textarea?: HTMLTextAreaElement | null, value?: string, shouldMaintainBottom?: boolean) => void;
   resetInputLayerHeight: () => void;
-  syncInputOverlayScroll: () => void;
   handleTyping: (activity?: PresenceActivity | null) => void;
   setPresenceActivity: (act: PresenceActivity | null) => void;
   startSendingActivity: (act: PresenceActivity) => void;
@@ -87,7 +86,6 @@ interface UseChatComposerProps {
   scrollToLoadedMessage: (id: string, behavior?: 'auto' | 'smooth', force?: boolean) => boolean;
   setNewMessagesWhileScrolledUp: React.Dispatch<React.SetStateAction<number>>;
   clearQuoteJumpSuppression: () => void;
-  lastPingAtRef: React.MutableRefObject<number>;
   setHasMoreOlderMessages: (hasMore: boolean) => void;
   setOldestLoadedAt: (cursor: string | null) => void;
   setFirstItemIndex: (valOrUpdater: number | ((prev: number) => number)) => void;
@@ -109,7 +107,6 @@ export function useChatComposer({
   skipNextInputLayoutSyncRef,
   syncInputLayerLayout,
   resetInputLayerHeight,
-  syncInputOverlayScroll,
   handleTyping,
   setPresenceActivity,
   startSendingActivity,
@@ -159,7 +156,6 @@ export function useChatComposer({
   scrollToLoadedMessage,
   setNewMessagesWhileScrolledUp,
   clearQuoteJumpSuppression,
-  lastPingAtRef,
   setHasMoreOlderMessages,
   setOldestLoadedAt,
   setFirstItemIndex,
@@ -168,9 +164,37 @@ export function useChatComposer({
   const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
   const plusMenuRef = useRef<HTMLDivElement>(null!);
   const plusButtonRef = useRef<HTMLButtonElement>(null!);
+  const pendingWsQueueRef = useRef<string[]>([]);
+  const isWsConnectingListenerAttachedRef = useRef<boolean>(false);
+  const createdBlobUrlsRef = useRef<Set<string>>(new Set());
+
+  const registerBlobUrl = useCallback((url: string): string => {
+    createdBlobUrlsRef.current.add(url);
+    if (createdBlobUrlsRef.current.size > 20) {
+      const oldest = createdBlobUrlsRef.current.values().next().value;
+      if (oldest) {
+        createdBlobUrlsRef.current.delete(oldest);
+        try {
+          URL.revokeObjectURL(oldest);
+        } catch (_) {}
+      }
+    }
+    return url;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      createdBlobUrlsRef.current.forEach((url) => {
+        try {
+          URL.revokeObjectURL(url);
+        } catch (_) {}
+      });
+      createdBlobUrlsRef.current.clear();
+    };
+  }, []);
+
   const {
     emojiPickerPosition,
-    setEmojiPickerPosition,
     emojiPickerRef,
     emojiButtonRef,
     keyboardWasOpenBeforeEmojiRef,
@@ -184,6 +208,7 @@ export function useChatComposer({
 
   useChatDrafts({
     userId,
+    roomId,
     userProfile,
     inputMessage,
     setInputMessage,
@@ -303,14 +328,57 @@ export function useChatComposer({
     stagedFiles,
   ]);
 
+  // Safe WebSocket payload transmission: handles open sockets and flushes when connecting in strict FIFO order
+  const safeSend = useCallback((payload: any) => {
+    const data = typeof payload === 'string' ? payload : JSON.stringify(payload);
+    const socket = ws.current;
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      try {
+        while (pendingWsQueueRef.current.length > 0) {
+          const queued = pendingWsQueueRef.current.shift();
+          if (queued) socket.send(queued);
+        }
+        socket.send(data);
+        return true;
+      } catch (e) {
+        console.warn('Failed to send WebSocket payload immediately:', e);
+      }
+    } else if (socket && socket.readyState === WebSocket.CONNECTING) {
+      pendingWsQueueRef.current.push(data);
+      if (!isWsConnectingListenerAttachedRef.current) {
+        isWsConnectingListenerAttachedRef.current = true;
+        const cleanup = () => {
+          isWsConnectingListenerAttachedRef.current = false;
+          socket.removeEventListener('open', onOpen);
+          socket.removeEventListener('close', cleanup);
+          socket.removeEventListener('error', cleanup);
+        };
+        const onOpen = () => {
+          try {
+            while (pendingWsQueueRef.current.length > 0) {
+              const queued = pendingWsQueueRef.current.shift();
+              if (queued) socket.send(queued);
+            }
+          } catch (_) {}
+          cleanup();
+        };
+        socket.addEventListener('open', onOpen);
+        socket.addEventListener('close', cleanup);
+        socket.addEventListener('error', cleanup);
+      }
+      return false;
+    }
+    return false;
+  }, [ws]);
+
   // Send from preview modal
   const handleSendFromPreview = async () => {
     if (stagedFiles.length === 0) {
       console.warn('[Composer] handleSendFromPreview aborted: no staged files');
       return;
     }
-    if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
-      console.warn('[Composer] handleSendFromPreview aborted: WebSocket not connected/open', {
+    if (!ws.current || (ws.current.readyState !== WebSocket.OPEN && ws.current.readyState !== WebSocket.CONNECTING)) {
+      console.warn('[Composer] handleSendFromPreview aborted: WebSocket not connected/connecting', {
         wsExists: Boolean(ws.current),
         readyState: ws.current?.readyState,
       });
@@ -328,18 +396,45 @@ export function useChatComposer({
     let replyContext: ReplyContext | undefined = undefined;
     if (replyingTo) {
       const { type } = replyingTo;
-      if (type === 'system_notification') { setReplyingTo(null); return; }
-      let replyText = replyingTo.text || 'Message';
-      if (!replyingTo.text) {
-        if (isGiphyUrl(replyingTo.url)) replyText = 'GIF';
-        else if (replyingTo.type === 'image') replyText = 'Image';
-        else if (replyingTo.type === 'video') replyText = 'Video';
-        else if (replyingTo.type === 'audio') replyText = 'Voice Message';
+      if (type === 'system_notification') {
+        setReplyingTo(null);
+      } else {
+        const isGroupReply = Boolean(
+          replyingTo.isGroup ||
+          replyingTo.type === 'group' ||
+          (typeof replyingTo.mediaCount === 'number' && replyingTo.mediaCount > 1)
+        );
+        const groupCount = replyingTo.mediaCount || 2;
+        let replyText = replyingTo.text || '';
+        if (isGroupReply) {
+          if (!replyText || replyText.trim().length === 0) {
+            replyText = `${groupCount} media`;
+          }
+        } else if (!replyText) {
+          if (isGiphyUrl(replyingTo.url)) replyText = 'GIF';
+          else if (replyingTo.type === 'image') replyText = 'Image';
+          else if (replyingTo.type === 'video') replyText = 'Video';
+          else if (replyingTo.type === 'audio') replyText = 'Voice Message';
+          else if (replyingTo.type === 'file') replyText = replyingTo.originalName || 'File';
+          else if (replyingTo.type === 'poll') replyText = replyingTo.poll?.question || 'Poll';
+          else replyText = 'Message';
+        }
+        const resolvedReplyDuration = replyingTo.duration ||
+          (replyingTo.id ? audioDurationCache.get(replyingTo.id) : undefined) ||
+          (replyingTo.url ? audioDurationCache.get(replyingTo.url) : undefined);
+        replyContext = {
+          id: replyingTo.id,
+          username: replyingTo.username,
+          text: replyText,
+          type: isGroupReply ? 'group' : type,
+          url: isGroupReply ? undefined : replyingTo.url,
+          duration: resolvedReplyDuration,
+          isDeleted: replyingTo.isDeleted,
+          deletedBy: replyingTo.deletedBy,
+          isGroup: isGroupReply ? true : undefined,
+          mediaCount: isGroupReply ? groupCount : undefined,
+        };
       }
-      const resolvedReplyDuration = replyingTo.duration ||
-        (replyingTo.id ? audioDurationCache.get(replyingTo.id) : undefined) ||
-        (replyingTo.url ? audioDurationCache.get(replyingTo.url) : undefined);
-      replyContext = { id: replyingTo.id, username: replyingTo.username, text: replyText, type, url: replyingTo.url, duration: resolvedReplyDuration, isDeleted: replyingTo.isDeleted, deletedBy: replyingTo.deletedBy };
     }
 
     const caption = previewCaption.trim();
@@ -359,7 +454,7 @@ export function useChatComposer({
         ? 'audio'
         : 'file';
 
-      const fileUrl = URL.createObjectURL(file);
+      const fileUrl = registerBlobUrl(URL.createObjectURL(file));
       let audioDuration: number | undefined = undefined;
       if (isAudio) {
         audioDuration = (await resolveAudioDuration(fileUrl, tempId)) || undefined;
@@ -407,13 +502,14 @@ export function useChatComposer({
           setMessages(prev => prev.map(m => {
             if (m.id === tempId) return finalMessage;
             if (m.replyingTo && m.replyingTo.id === tempId) {
+              const isGroup = Boolean(m.replyingTo.isGroup || m.replyingTo.type === 'group');
               return {
                 ...m,
                 replyingTo: {
                   ...m.replyingTo,
                   id: finalMessage.id,
-                  url: finalMessage.url || m.replyingTo.url,
-                  type: finalMessage.type !== 'system_notification' ? finalMessage.type : m.replyingTo.type,
+                  url: isGroup ? undefined : (finalMessage.url || m.replyingTo.url),
+                  type: isGroup ? 'group' : (finalMessage.type !== 'system_notification' ? finalMessage.type : m.replyingTo.type),
                 }
               };
             }
@@ -421,7 +517,7 @@ export function useChatComposer({
           }));
           if (replyingTo?.id === tempId) setReplyingTo(finalMessage);
           const { localBlobUrl: _omittedBlob, ...broadcastPayload } = finalMessage;
-          ws.current?.send(JSON.stringify({ ...broadcastPayload, clientTempId: tempId }));
+          safeSend({ ...broadcastPayload, clientTempId: tempId, roomId });
         })
         .catch(error => {
           if (error.message === 'Aborted') return;
@@ -448,13 +544,13 @@ export function useChatComposer({
   const handleSendMessage = async () => {
     if (editingMessageId) {
       const trimmed = inputMessage.trim();
-      if (trimmed && ws.current && ws.current.readyState === WebSocket.OPEN) {
-        ws.current.send(JSON.stringify({
+      if (trimmed) {
+        safeSend({
           type: 'edit',
           messageId: editingMessageId,
           newText: trimmed,
           roomId,
-        }));
+        });
       }
       setEditingMessageId(null);
       setInputMessage(priorDraftBeforeEdit);
@@ -470,8 +566,7 @@ export function useChatComposer({
 
     if (!stagedFile && !stagedGif && !inputMessage.trim()) return;
     if (inputMessage.length > MAX_MESSAGE_LENGTH) return;
-    if (!ws.current || ws.current.readyState !== WebSocket.OPEN || !userProfile) return;
-    if (Date.now() - lastPingAtRef.current > 25000) return;
+    if (!ws.current || (ws.current.readyState !== WebSocket.OPEN && ws.current.readyState !== WebSocket.CONNECTING) || !userProfile) return;
 
     if (hasMoreNewerMessagesRef.current) {
       await jumpToLatestMessages();
@@ -487,34 +582,51 @@ export function useChatComposer({
       const { type } = replyingTo;
       if (type === 'system_notification') {
         setReplyingTo(null);
-        return;
-      }
-
-      let replyText = replyingTo.text || 'Message';
-      if (!replyingTo.text) {
-        if (isGiphyUrl(replyingTo.url)) {
-          replyText = 'GIF';
-        } else if (replyingTo.type === 'image') {
-          replyText = 'Image';
-        } else if (replyingTo.type === 'video') {
-          replyText = 'Video';
-        } else if (replyingTo.type === 'audio') {
-          replyText = 'Voice Message';
+      } else {
+        const isGroupReply = Boolean(
+          replyingTo.isGroup ||
+          replyingTo.type === 'group' ||
+          (typeof replyingTo.mediaCount === 'number' && replyingTo.mediaCount > 1)
+        );
+        const groupCount = replyingTo.mediaCount || 2;
+        let replyText = replyingTo.text || '';
+        if (isGroupReply) {
+          if (!replyText || replyText.trim().length === 0) {
+            replyText = `${groupCount} media`;
+          }
+        } else if (!replyText) {
+          if (isGiphyUrl(replyingTo.url)) {
+            replyText = 'GIF';
+          } else if (replyingTo.type === 'image') {
+            replyText = 'Image';
+          } else if (replyingTo.type === 'video') {
+            replyText = 'Video';
+          } else if (replyingTo.type === 'audio') {
+            replyText = 'Voice Message';
+          } else if (replyingTo.type === 'file') {
+            replyText = replyingTo.originalName || 'File';
+          } else if (replyingTo.type === 'poll') {
+            replyText = replyingTo.poll?.question || 'Poll';
+          } else {
+            replyText = 'Message';
+          }
         }
+        const resolvedReplyDuration = replyingTo.duration ||
+          (replyingTo.id ? audioDurationCache.get(replyingTo.id) : undefined) ||
+          (replyingTo.url ? audioDurationCache.get(replyingTo.url) : undefined);
+        replyContext = {
+          id: replyingTo.id,
+          username: replyingTo.username,
+          text: replyText,
+          type: isGroupReply ? 'group' : type,
+          url: isGroupReply ? undefined : replyingTo.url,
+          duration: resolvedReplyDuration,
+          isDeleted: replyingTo.isDeleted,
+          deletedBy: replyingTo.deletedBy,
+          isGroup: isGroupReply ? true : undefined,
+          mediaCount: isGroupReply ? groupCount : undefined,
+        };
       }
-      const resolvedReplyDuration = replyingTo.duration ||
-        (replyingTo.id ? audioDurationCache.get(replyingTo.id) : undefined) ||
-        (replyingTo.url ? audioDurationCache.get(replyingTo.url) : undefined);
-      replyContext = {
-        id: replyingTo.id,
-        username: replyingTo.username,
-        text: replyText,
-        type,
-        url: replyingTo.url,
-        duration: resolvedReplyDuration,
-        isDeleted: replyingTo.isDeleted,
-        deletedBy: replyingTo.deletedBy,
-      };
     }
 
     if (stagedFile) {
@@ -529,7 +641,7 @@ export function useChatComposer({
         ? 'audio'
         : 'file';
 
-      const fileUrl = URL.createObjectURL(stagedFile);
+      const fileUrl = registerBlobUrl(URL.createObjectURL(stagedFile));
       let audioDuration: number | undefined = undefined;
       if (isAudio) {
         audioDuration = (await resolveAudioDuration(fileUrl, tempId)) || undefined;
@@ -577,13 +689,14 @@ export function useChatComposer({
           setMessages(prev => prev.map(m => {
             if (m.id === tempId) return finalMessage;
             if (m.replyingTo && m.replyingTo.id === tempId) {
+              const isGroup = Boolean(m.replyingTo.isGroup || m.replyingTo.type === 'group');
               return {
                 ...m,
                 replyingTo: {
                   ...m.replyingTo,
                   id: finalMessage.id,
-                  url: finalMessage.url || m.replyingTo.url,
-                  type: finalMessage.type !== 'system_notification' ? finalMessage.type : m.replyingTo.type,
+                  url: isGroup ? undefined : (finalMessage.url || m.replyingTo.url),
+                  type: isGroup ? 'group' : (finalMessage.type !== 'system_notification' ? finalMessage.type : m.replyingTo.type),
                 }
               };
             }
@@ -591,7 +704,7 @@ export function useChatComposer({
           }));
           if (replyingTo?.id === tempId) setReplyingTo(finalMessage);
           const { localBlobUrl: _omittedBlob, ...broadcastPayload } = finalMessage;
-          ws.current?.send(JSON.stringify({ ...broadcastPayload, clientTempId: tempId }));
+          safeSend({ ...broadcastPayload, clientTempId: tempId, roomId });
         })
         .catch(error => {
           if (error.message === 'Aborted') return;
@@ -615,8 +728,10 @@ export function useChatComposer({
       if (hadReply) forceScrollToBottomAsync();
     } else if (stagedGif) {
       startSendingActivity('sending_gif');
+      const tempId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const gifMessage: Message = {
-        id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        id: tempId,
+        clientTempId: tempId,
         userId,
         username: userProfile?.username || '',
         type: 'image',
@@ -627,14 +742,16 @@ export function useChatComposer({
       };
       appendMessageToWindow(gifMessage);
       forceScrollToBottomAsync(true);
-      ws.current?.send(JSON.stringify({ ...gifMessage, roomId }));
+      safeSend({ ...gifMessage, clientTempId: tempId, roomId });
       stopSendingActivity();
       const hadReply = !!replyingTo;
       resetInput();
       if (hadReply) forceScrollToBottomAsync();
     } else {
+      const tempId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const textMessage: Message = {
-        id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        id: tempId,
+        clientTempId: tempId,
         userId,
         username: userProfile?.username || '',
         type: 'text',
@@ -644,7 +761,7 @@ export function useChatComposer({
       };
       appendMessageToWindow(textMessage);
       forceScrollToBottomAsync(true);
-      ws.current?.send(JSON.stringify({ ...textMessage, roomId }));
+      safeSend({ ...textMessage, clientTempId: tempId, roomId });
       const hadReply = !!replyingTo;
       resetInput();
       if (hadReply) forceScrollToBottomAsync();
@@ -653,8 +770,7 @@ export function useChatComposer({
 
   // Send recorded voice note
   const handleSendVoiceNote = async (audioFile: File, durationSeconds: number, waveform?: number[]) => {
-    if (!ws.current || ws.current.readyState !== WebSocket.OPEN || !userProfile) return;
-    if (Date.now() - lastPingAtRef.current > 25000) return;
+    if (!ws.current || (ws.current.readyState !== WebSocket.OPEN && ws.current.readyState !== WebSocket.CONNECTING) || !userProfile) return;
 
     if (hasMoreNewerMessagesRef.current) {
       await jumpToLatestMessages();
@@ -670,40 +786,58 @@ export function useChatComposer({
       const { type } = replyingTo;
       if (type === 'system_notification') {
         setReplyingTo(null);
-        return;
-      }
-
-      let replyText = replyingTo.text || 'Message';
-      if (!replyingTo.text) {
-        if (isGiphyUrl(replyingTo.url)) {
-          replyText = 'GIF';
-        } else if (replyingTo.type === 'image') {
-          replyText = 'Image';
-        } else if (replyingTo.type === 'video') {
-          replyText = 'Video';
-        } else if (replyingTo.type === 'audio') {
-          replyText = 'Voice Message';
+      } else {
+        const isGroupReply = Boolean(
+          replyingTo.isGroup ||
+          replyingTo.type === 'group' ||
+          (typeof replyingTo.mediaCount === 'number' && replyingTo.mediaCount > 1)
+        );
+        const groupCount = replyingTo.mediaCount || 2;
+        let replyText = replyingTo.text || '';
+        if (isGroupReply) {
+          if (!replyText || replyText.trim().length === 0) {
+            replyText = `${groupCount} media`;
+          }
+        } else if (!replyText) {
+          if (isGiphyUrl(replyingTo.url)) {
+            replyText = 'GIF';
+          } else if (replyingTo.type === 'image') {
+            replyText = 'Image';
+          } else if (replyingTo.type === 'video') {
+            replyText = 'Video';
+          } else if (replyingTo.type === 'audio') {
+            replyText = 'Voice Message';
+          } else if (replyingTo.type === 'file') {
+            replyText = replyingTo.originalName || 'File';
+          } else if (replyingTo.type === 'poll') {
+            replyText = replyingTo.poll?.question || 'Poll';
+          } else {
+            replyText = 'Message';
+          }
         }
-      }
-      replyContext = {
-        id: replyingTo.id,
-        username: replyingTo.username,
-        text: replyText,
-        type,
-        url: replyingTo.url,
-        duration: replyingTo.duration ||
+        const resolvedReplyDuration = replyingTo.duration ||
           (replyingTo.id ? audioDurationCache.get(replyingTo.id) : undefined) ||
-          (replyingTo.url ? audioDurationCache.get(replyingTo.url) : undefined),
-        isDeleted: replyingTo.isDeleted,
-        deletedBy: replyingTo.deletedBy,
-      };
+          (replyingTo.url ? audioDurationCache.get(replyingTo.url) : undefined);
+        replyContext = {
+          id: replyingTo.id,
+          username: replyingTo.username,
+          text: replyText,
+          type: isGroupReply ? 'group' : type,
+          url: isGroupReply ? undefined : replyingTo.url,
+          duration: resolvedReplyDuration,
+          isDeleted: replyingTo.isDeleted,
+          deletedBy: replyingTo.deletedBy,
+          isGroup: isGroupReply ? true : undefined,
+          mediaCount: isGroupReply ? groupCount : undefined,
+        };
+      }
     }
 
     if (durationSeconds) {
       setAudioDurationCache(tempId, durationSeconds);
     }
 
-    const localBlobUrl = URL.createObjectURL(audioFile);
+    const localBlobUrl = registerBlobUrl(URL.createObjectURL(audioFile));
     const message: Message = {
       id: tempId,
       clientTempId: tempId,
@@ -762,7 +896,15 @@ export function useChatComposer({
         }));
         if (replyingTo?.id === tempId) setReplyingTo(finalMessage);
         const { localBlobUrl: _omittedBlob, ...broadcastPayload } = finalMessage;
-        ws.current?.send(JSON.stringify({ ...broadcastPayload, clientTempId: tempId }));
+        safeSend({ ...broadcastPayload, clientTempId: tempId, roomId });
+        if (localBlobUrl) {
+          setTimeout(() => {
+            try {
+              URL.revokeObjectURL(localBlobUrl);
+              createdBlobUrlsRef.current.delete(localBlobUrl);
+            } catch (_) {}
+          }, 60000);
+        }
       })
       .catch(error => {
         if (error.message === 'Aborted') return;
@@ -782,7 +924,8 @@ export function useChatComposer({
       });
 
     const hadReply = !!replyingTo;
-    resetInput();
+    setReplyingTo(null);
+    setPresenceActivity(null);
     if (hadReply) forceScrollToBottomAsync();
   };
 
@@ -812,13 +955,7 @@ export function useChatComposer({
     }
   };
 
-  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const clipboardData = e.clipboardData;
-    if (!clipboardData) return;
-
-    const pastedText = clipboardData.getData('text');
-    const textarea = e.currentTarget;
-
+  const extractFilesFromClipboard = (clipboardData: DataTransfer): File[] => {
     const collectedFiles = new Map<string, File>();
     const addCollectedFile = (file: File | null) => {
       if (!file) return;
@@ -840,11 +977,49 @@ export function useChatComposer({
 
     Array.from(clipboardData.items || []).forEach((item) => {
       if (item.kind !== 'file') return;
-      if (!item.type || !item.type.startsWith('image/')) return;
       addCollectedFile(item.getAsFile());
     });
 
-    const fileArr = Array.from(collectedFiles.values());
+    return Array.from(collectedFiles.values());
+  };
+
+  // Global window paste handler: allows pasting photos/videos/media even when the chat input box is not highlighted
+  useEffect(() => {
+    const handleGlobalPaste = (e: ClipboardEvent) => {
+      if (messageInputRef.current && (e.target === messageInputRef.current || messageInputRef.current.contains(e.target as Node))) {
+        return;
+      }
+
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') && target !== messageInputRef.current) {
+        return;
+      }
+
+      const clipboardData = e.clipboardData;
+      if (!clipboardData) return;
+
+      const fileArr = extractFilesFromClipboard(clipboardData);
+      if (fileArr.length > 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        stageFilesForPreview(fileArr);
+      }
+    };
+
+    window.addEventListener('paste', handleGlobalPaste);
+    return () => {
+      window.removeEventListener('paste', handleGlobalPaste);
+    };
+  }, [stageFilesForPreview, messageInputRef]);
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const clipboardData = e.clipboardData;
+    if (!clipboardData) return;
+
+    const pastedText = clipboardData.getData('text');
+    const textarea = e.currentTarget;
+
+    const fileArr = extractFilesFromClipboard(clipboardData);
     if (fileArr.length === 0) {
       if (!pastedText) return;
 
@@ -878,13 +1053,14 @@ export function useChatComposer({
 
   const handleClearChat = useCallback(() => {
     if (window.confirm('Are you sure you want to clear the chat? All messages will be hidden for you on this device.')) {
-      localStorage.setItem(`pulseClearTimestamp_${userId}`, Date.now().toString());
+      const roomKey = roomId || 'me';
+      localStorage.setItem(`pulseClearTimestamp_${userId}_${roomKey}`, Date.now().toString());
       setMessages([]);
       setHasMoreOlderMessages(false);
       setOldestLoadedAt(null);
       setFirstItemIndex(INITIAL_FIRST_ITEM_INDEX);
     }
-  }, [setFirstItemIndex, setHasMoreOlderMessages, setMessages, setOldestLoadedAt, userId]);
+  }, [setFirstItemIndex, setHasMoreOlderMessages, setMessages, setOldestLoadedAt, userId, roomId]);
 
   const handleHeaderButtonPointerDown = useCallback((e: React.PointerEvent) => {
     if (isMobileView) {

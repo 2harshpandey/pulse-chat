@@ -45,10 +45,10 @@ const blockedUserSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 // Index for fast lookups
-blockedUserSchema.index({ roomId: 1, userId: 1 });
-blockedUserSchema.index({ roomId: 1, isBlocked: 1 });
-blockedUserSchema.index({ roomId: 1, 'fingerprints.ips': 1 });
-blockedUserSchema.index({ roomId: 1, 'fingerprints.deviceHashes': 1 });
+blockedUserSchema.index({ roomId: 1, isBlocked: 1, userId: 1 });
+blockedUserSchema.index({ roomId: 1, isBlocked: 1, 'fingerprints.ips': 1 });
+blockedUserSchema.index({ roomId: 1, isBlocked: 1, 'fingerprints.deviceHashes': 1 });
+blockedUserSchema.index({ roomId: 1, blockedAt: -1 });
 
 const BlockedUser = mongoose.model('BlockedUser', blockedUserSchema);
 

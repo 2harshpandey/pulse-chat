@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import styled, { css } from 'styled-components';
+import styled from 'styled-components';
 import {
   fadeInScale,
   modalSlideUp,
@@ -21,6 +21,8 @@ import {
   activityIconPulse
 } from './chat.animations';
 import { MessageBubble } from './chat.layout.styles';
+import { sanitizeMediaUrl } from '../utils';
+import type { ReactionsPopupData } from '../types';
 
 export const GifPickerModal = styled.div`
   position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 50;
@@ -620,23 +622,32 @@ export const LinkPreviewDesc = styled.p<{ $sender: 'me' | 'other' }>`
 `;
 
 export const ReactionPicker = styled.div<{ $sender: 'me' | 'other' }>`
-  position: absolute;
+  position: fixed;
   background: var(--bg-elevated);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-radius: 24px; 
   padding: 8px 10px; 
   display: flex; 
+  align-items: center;
   gap: 6px; 
   box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
-  z-index: 60;
+  z-index: 1050;
   border: 1px solid var(--border-primary);
+  max-width: calc(100vw - 24px);
+  box-sizing: border-box;
   transition: background-color 0.3s ease;
   animation: ${reactionPickerSlideIn} 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 
   [data-theme='dark'] & {
     background: rgba(30, 41, 59, 0.95);
     box-shadow: 0 8px 32px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.2);
+  }
+
+  @media (max-width: 380px) {
+    gap: 4px;
+    padding: 6px 8px;
+    border-radius: 20px;
   }
 
   /* Stagger each emoji child */
@@ -874,10 +885,10 @@ export const ReactionsPopup = ({
   onClose,
   onRemoveReaction
 }: {
-  popupData: { messageId: string; reactions: { [emoji: string]: { userId: string, username: string }[] } };
+  popupData: ReactionsPopupData;
   currentUserId: string;
   onClose: () => void;
-  onRemoveReaction: (emoji: string) => void;
+  onRemoveReaction: (emoji: string, targetMessageId?: string, isAlbum?: boolean) => void;
 }) => {
   const [activeTab, setActiveTab] = useState('All');
   const tabsRef = useRef<HTMLDivElement>(null!);
@@ -899,9 +910,11 @@ export const ReactionsPopup = ({
     return () => tabsEl.removeEventListener('wheel', onWheel);
   }, []);
 
-  const allReactions = Object.entries(popupData.reactions).flatMap(([emoji, users]) =>
-    users.map(user => ({ ...user, emoji }))
-  );
+  const allReactions = popupData.reactionSources && popupData.reactionSources.length > 0
+    ? popupData.reactionSources
+    : Object.entries(popupData.reactions).flatMap(([emoji, users]) =>
+        users.map(user => ({ ...user, emoji, messageId: popupData.messageId }))
+      );
 
   const reactionsForTab = activeTab === 'All'
     ? allReactions
@@ -933,29 +946,83 @@ export const ReactionsPopup = ({
           })}
         </ReactionsPopupHeader>
         <ReactionsUserList>
-          {sortedReactions.map(({ userId, username, emoji }, index) => {
+          {sortedReactions.map((entry, index) => {
+            const { userId, username, emoji, messageId, isAlbum, mediaThumbUrl, isVideo } = entry as any;
             // Defensive code: Handle potentially corrupt data where userId might be missing.
             const displayName = userId === currentUserId ? 'You' : (username || userId || 'Unknown User');
             const initial = displayName ? displayName.charAt(0).toUpperCase() : '?';
 
             return (
               <ReactionUserRow
-                key={index}
+                key={`${userId}_${emoji}_${messageId || index}_${index}`}
                 onClick={() => {
                   if (userId === currentUserId) {
-                    onRemoveReaction(emoji);
+                    onRemoveReaction(emoji, messageId, isAlbum);
                   }
                 }}
                 style={{ cursor: userId === currentUserId ? 'pointer' : 'default' }}
               >
                 <UserAvatar>{initial}</UserAvatar>
-                <div style={{ flexGrow: 1 }}>
+                <div style={{ flexGrow: 1, minWidth: 0, paddingRight: '8px' }}>
                   <p style={{ fontWeight: 'bold' }}>{displayName}</p>
                   {userId === currentUserId && (
                     <span style={{ fontSize: '0.8rem', color: '#a0aec0' }}>Click to remove</span>
                   )}
                 </div>
-                <span style={{ fontSize: '24px' }}>{emoji}</span>
+                {mediaThumbUrl ? (
+                  <div
+                    style={{
+                      position: 'relative',
+                      width: '44px',
+                      height: '44px',
+                      flexShrink: 0,
+                      borderRadius: '8px',
+                      overflow: 'visible',
+                    }}
+                  >
+                    {isVideo ? (
+                      <video
+                        src={sanitizeMediaUrl(mediaThumbUrl)}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          borderRadius: '8px',
+                          display: 'block',
+                          background: '#1e293b',
+                        }}
+                      />
+                    ) : (
+                      <img
+                        src={sanitizeMediaUrl(mediaThumbUrl)}
+                        alt=""
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                          borderRadius: '8px',
+                          display: 'block',
+                          background: '#1e293b',
+                        }}
+                      />
+                    )}
+                    <span
+                      style={{
+                        position: 'absolute',
+                        bottom: '-4px',
+                        right: '-6px',
+                        fontSize: '18px',
+                        lineHeight: 1,
+                        filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.75))',
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      {emoji}
+                    </span>
+                  </div>
+                ) : (
+                  <span style={{ fontSize: '24px', flexShrink: 0 }}>{emoji}</span>
+                )}
               </ReactionUserRow>
             )
           })}

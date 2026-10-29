@@ -47,9 +47,10 @@ const initialProfile = (): UserProfile | null => {
         if (!localStorage.getItem('pulseUserId')) localStorage.setItem('pulseUserId', userId);
         if (!localStorage.getItem('pulseUsername')) localStorage.setItem('pulseUsername', username);
         if (roomId && !localStorage.getItem('pulseRoomId')) localStorage.setItem('pulseRoomId', roomId);
-        setCookie('pulseUserId', userId, 365);
-        setCookie('pulseUsername', username, 365);
-        if (roomId) setCookie('pulseRoomId', roomId, 365);
+        // Issue 14: Reduce cookie lifetime from 365 to 30 days. SameSite=Strict is set in setCookie.
+        setCookie('pulseUserId', userId, 30);
+        setCookie('pulseUsername', username, 30);
+        if (roomId) setCookie('pulseRoomId', roomId, 30);
       } catch (_) {}
       return { userId, username, roomId };
     }
@@ -67,10 +68,11 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (userProfile.roomId) {
         localStorage.setItem('pulseRoomId', userProfile.roomId);
       }
-      setCookie('pulseUserId', userProfile.userId, 365);
-      setCookie('pulseUsername', userProfile.username, 365);
+      // Issue 14: 30-day cookies with SameSite=Strict (set in setCookie helper)
+      setCookie('pulseUserId', userProfile.userId, 30);
+      setCookie('pulseUsername', userProfile.username, 30);
       if (userProfile.roomId) {
-        setCookie('pulseRoomId', userProfile.roomId, 365);
+        setCookie('pulseRoomId', userProfile.roomId, 30);
       }
     } catch (_) {}
     setProfile(userProfile);
@@ -82,9 +84,17 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       void clearCachedMediaForUser(userId);
     }
     try {
+      // Issue 15: Also remove pulseUserId to prevent ghost sessions on next page load.
+      // Previously, userId was left behind causing initialProfile() to partially restore state.
+      localStorage.removeItem('pulseUserId');
       localStorage.removeItem('pulseUsername');
       localStorage.removeItem('pulseRoomId');
-      sessionStorage.removeItem('chatCleared'); // Reset the chat clear flag on logout
+      // Issue 3: Remove sessionToken from localStorage — it should live only in sessionStorage.
+      localStorage.removeItem('pulseSessionToken');
+      sessionStorage.removeItem('pulseSessionToken');
+      sessionStorage.removeItem('chatCleared');
+      // Issue 15: Clear userId cookie in addition to username/roomId cookies
+      deleteCookie('pulseUserId');
       deleteCookie('pulseUsername');
       deleteCookie('pulseRoomId');
     } catch (_) {}

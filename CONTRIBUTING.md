@@ -24,7 +24,7 @@ By participating in this project, you agree to abide by our [Code of Conduct](CO
 
 ### Prerequisites
 
-- **Node.js** (v18.x, v20.x, or later)
+- **Node.js** (v20.x, v22.x, or later)
 - **npm** (v9.x or later)
 - **MongoDB** instance (local or MongoDB Atlas connection string)
 - Free **Cloudinary** account (for media storage)

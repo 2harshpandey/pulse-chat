@@ -6,7 +6,6 @@ import {
   VideoPlayerWrapper, CVPContainer, CVPControls, CVPTimelineWrapper, CVPTimelineTrack,
   CVPTimelineFill, CVPTimelineThumb, CVPBottomRow, CVPIconBtn, CVPTime, CVPSpeedBtn,
   CVPVolumeWrapper, CVPDoubleTapOverlay, CVPTapIndicator, CVPCenterPlayBtn,
-  DownloadProgressRing,
 } from './ChatStyledComponents';
 
 const formatTime = (s: number): string => {
@@ -18,6 +17,7 @@ const formatTime = (s: number): string => {
 
 export interface VideoPlayerProps {
   src: string;
+  fallbackUrl?: string;
   onPointerDown?: () => void;
   onFullscreenEnter?: () => void;
   isUploading?: boolean;
@@ -29,6 +29,7 @@ export interface VideoPlayerProps {
 
 export const VideoPlayer = ({
   src,
+  fallbackUrl,
   onPointerDown,
   onFullscreenEnter,
   isUploading,
@@ -39,6 +40,8 @@ export const VideoPlayer = ({
 }: VideoPlayerProps) => {
   const containerRef = useRef<HTMLDivElement>(null!);
   const videoRef = useRef<HTMLVideoElement>(null!);
+  const [effectiveSrc, setEffectiveSrc] = useState(src);
+  const [hasTriedFallback, setHasTriedFallback] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -48,7 +51,6 @@ export const VideoPlayer = ({
   const [speedIdx, setSpeedIdx] = useState(2); // 1x default
   const [doubleTapSide, setDoubleTapSide] = useState<'left' | 'right' | null>(null);
   const [showCenterPlay, setShowCenterPlay] = useState(false);
-  const [isScrubbing, setIsScrubbing] = useState(false);
   const isScrubbingRef = useRef(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
@@ -59,8 +61,16 @@ export const VideoPlayer = ({
   const lastTapTimeRef = useRef(0);
   const lastTapXRef = useRef(0);
   const centerPlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+  useEffect(() => {
+    setEffectiveSrc(src);
+    setHasTriedFallback(false);
+    setHasError(false);
+    retryCountRef.current = 0;
+  }, [src]);
 
   const resetControlsTimer = useCallback(() => {
     if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current);
@@ -71,19 +81,19 @@ export const VideoPlayer = ({
   }, [isPlaying]);
 
   // Preserve playback position if src changes mid-playback (e.g. streaming -> cached blob)
-  const prevSrcRef = useRef(src);
+  const prevSrcRef = useRef(effectiveSrc);
   const pendingResumeTimeRef = useRef(0);
   useEffect(() => {
-    if (prevSrcRef.current !== src) {
+    if (prevSrcRef.current !== effectiveSrc) {
       const video = videoRef.current;
       if (video && video.currentTime > 0.3 && !video.ended) {
         pendingResumeTimeRef.current = video.currentTime;
       }
-      prevSrcRef.current = src;
+      prevSrcRef.current = effectiveSrc;
       setHasError(false);
       retryCountRef.current = 0;
     }
-  }, [src]);
+  }, [effectiveSrc]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -114,7 +124,7 @@ export const VideoPlayer = ({
       setIsPlaying(true);
       resetControlsTimer();
       sendClientDiagnostic('video_play', {
-        src: sanitizeMediaUrl(src),
+        src: sanitizeMediaUrl(effectiveSrc),
         duration: Math.round(video.duration || 0),
         currentTime: Math.round(video.currentTime),
       });
@@ -124,7 +134,7 @@ export const VideoPlayer = ({
       setShowControls(true);
       if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current);
       sendClientDiagnostic('video_pause', {
-        src: sanitizeMediaUrl(src),
+        src: sanitizeMediaUrl(effectiveSrc),
         currentTime: Math.round(video.currentTime),
         duration: Math.round(video.duration || 0),
       });
@@ -137,18 +147,25 @@ export const VideoPlayer = ({
       setIsPlaying(false);
       setShowControls(true);
       sendClientDiagnostic('video_ended', {
-        src: sanitizeMediaUrl(src),
+        src: sanitizeMediaUrl(effectiveSrc),
         totalDuration: Math.round(video.duration || 0),
       });
     };
     const onVolumeChange = () => { setVolume(video.volume); setIsMuted(video.muted); };
     const onError = () => {
       sendClientDiagnostic('video_error', {
-        src: sanitizeMediaUrl(src),
+        src: sanitizeMediaUrl(effectiveSrc),
         error: video.error?.message || 'Video error',
       });
+      const currentSrc = video.src || effectiveSrc || '';
+      // If a blob URL failed, and we have a fallback remote URL (e.g. Cloudinary stream), fallback immediately!
+      if (fallbackUrl && currentSrc.startsWith('blob:') && !hasTriedFallback && fallbackUrl !== currentSrc) {
+        setHasTriedFallback(true);
+        setEffectiveSrc(fallbackUrl);
+        return;
+      }
+
       // blob: URLs that fail are dead references — retrying is pointless.
-      const currentSrc = video.src || '';
       if (currentSrc.startsWith('blob:')) {
         setHasError(true);
         return;
@@ -156,7 +173,8 @@ export const VideoPlayer = ({
       // Auto-retry up to 2 times for non-blob sources (real network errors)
       if (retryCountRef.current < 2) {
         retryCountRef.current += 1;
-        setTimeout(() => {
+        if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = setTimeout(() => {
           if (videoRef.current) {
             videoRef.current.load();
           }
@@ -256,6 +274,7 @@ export const VideoPlayer = ({
       if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current);
       if (doubleTapTimerRef.current) clearTimeout(doubleTapTimerRef.current);
       if (centerPlayTimerRef.current) clearTimeout(centerPlayTimerRef.current);
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     };
   }, []);
   useEffect(() => { resetControlsTimer(); }, [isPlaying, resetControlsTimer]);
@@ -360,7 +379,6 @@ export const VideoPlayer = ({
   };
 
   const handleScrubStart = (e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
-    setIsScrubbing(true);
     isScrubbingRef.current = true;
     handleTimelineClick(e);
   };
@@ -370,7 +388,6 @@ export const VideoPlayer = ({
   };
 
   const handleScrubEnd = () => {
-    setIsScrubbing(false);
     isScrubbingRef.current = false;
   };
 
@@ -454,13 +471,14 @@ export const VideoPlayer = ({
       >
         <video
           ref={videoRef}
-          src={sanitizeMediaUrl(src)}
+          src={sanitizeMediaUrl(effectiveSrc)}
           preload="metadata"
           playsInline
+          onLoadedData={onLoadedData}
           style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000', display: 'block' }}
         />
 
-        {/* Error overlay — shown when the video src is unloadable (e.g. expired blob: URL) */}
+        {/* Error overlay: shown when the video src is unloadable (e.g. expired blob: URL) */}
         {hasError && (
           <div style={{
             position: 'absolute', inset: 0,

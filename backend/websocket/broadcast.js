@@ -111,27 +111,20 @@ const startLogWatcher = () => {
         if (logDebounceTimer) return;
         logDebounceTimer = setTimeout(() => {
           logDebounceTimer = null;
-          const { roomStates } = require('../state');
-          let hasAdmins = false;
-          for (const state of roomStates.values()) {
-            if (state.adminClients && state.adminClients.size > 0) {
-              hasAdmins = true;
-              break;
-            }
-          }
-          if (!hasAdmins) return;
+          const meState = getRoomState('me');
+          if (!meState || !meState.adminClients || meState.adminClients.size === 0) return;
 
-          // Read up to 1MB of the file instead of loading the entire file into memory
-          fs.stat(logFilePath, (statErr, stats) => {
+          // Read up to 1MB of the file asynchronously without blocking the event loop
+          fs.stat(logFilePath, async (statErr, stats) => {
             if (statErr || !stats) return;
             const bufferSize = Math.min(stats.size, 1048576);
             if (bufferSize === 0) return;
 
             const buffer = Buffer.alloc(bufferSize);
-            let fd;
+            let fileHandle;
             try {
-              fd = fs.openSync(logFilePath, 'r');
-              fs.readSync(fd, buffer, 0, bufferSize, stats.size - bufferSize);
+              fileHandle = await fs.promises.open(logFilePath, 'r');
+              await fileHandle.read(buffer, 0, bufferSize, stats.size - bufferSize);
               let rawText = buffer.toString('utf8');
               if (stats.size > bufferSize) {
                 const firstNewline = rawText.indexOf('\n');
@@ -145,12 +138,15 @@ const startLogWatcher = () => {
             } catch (readErr) {
               // Ignore or log error without throwing
             } finally {
-              if (fd) {
-                try { fs.closeSync(fd); } catch (_) {}
+              if (fileHandle) {
+                try { await fileHandle.close(); } catch (_) {}
               }
             }
           });
         }, 3000);
+        if (logDebounceTimer && typeof logDebounceTimer.unref === 'function') {
+          logDebounceTimer.unref();
+        }
       }
     });
   } catch (err) {

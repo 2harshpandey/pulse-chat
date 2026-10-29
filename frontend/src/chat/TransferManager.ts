@@ -1,4 +1,4 @@
-import { getCachedMediaBlob, setCachedMediaBlob, removeCachedMediaBlob, getCachedMediaForUser, clearOtherSessions } from '../mediaCache';
+import { setCachedMediaBlob, removeCachedMediaBlob, getCachedMediaForUser, clearOtherSessions } from '../mediaCache';
 import { buildDownloadProxyUrl } from './utils';
 
 // We use sessionStorage to maintain a unique session ID.
@@ -44,6 +44,7 @@ class TransferManager {
   // Tracks how many uploads are currently in-flight (HTTP). Used by Chat.tsx
   // to prevent proactive WebSocket reconnect during active uploads.
   public activeUploadCount = 0;
+  private restoredObjectUrls: Map<string, string> = new Map();
 
   subscribe(listener: (transfers: Map<string, TransferInfo>) => void) {
     this.listeners.add(listener);
@@ -74,7 +75,16 @@ class TransferManager {
 
     // Check status
     try {
-      const statusRes = await fetch(`${apiBase}/api/upload/status?uploadId=${messageId}`);
+      const sessionToken = sessionStorage.getItem('pulseSessionToken');
+      const statusHeaders: Record<string, string> = {};
+      if (sessionToken) statusHeaders['x-session-token'] = sessionToken;
+      if (roomId) statusHeaders['x-room-id'] = roomId;
+      if (userId) statusHeaders['x-user-id'] = userId;
+
+      const statusUrl = `${apiBase}/api/upload/status?uploadId=${encodeURIComponent(messageId)}&roomId=${encodeURIComponent(roomId)}&userId=${encodeURIComponent(userId)}`;
+      const statusRes = await fetch(statusUrl, {
+        headers: statusHeaders,
+      });
       if (statusRes.ok) {
         const statusData = await statusRes.json();
         uploadedBytes = statusData.uploadedBytes || 0;
@@ -130,6 +140,10 @@ class TransferManager {
           formData.append('userId', userId);
           formData.append('roomId', roomId);
           formData.append('text', messageObj?.text || '');
+          const sessionToken = sessionStorage.getItem('pulseSessionToken');
+          if (sessionToken) {
+            formData.append('sessionToken', sessionToken);
+          }
           if (messageObj?.duration !== undefined) {
             formData.append('duration', messageObj.duration.toString());
           }
@@ -149,8 +163,16 @@ class TransferManager {
                 // Exponential backoff: 1s, 2s, 4s
                 await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
               }
+              const chunkHeaders: Record<string, string> = {};
+              if (roomId) chunkHeaders['x-room-id'] = roomId;
+              if (userId) chunkHeaders['x-user-id'] = userId;
+              const sessionToken = sessionStorage.getItem('pulseSessionToken');
+              if (sessionToken) {
+                chunkHeaders['x-session-token'] = sessionToken;
+              }
               const response = await fetch(`${apiBase}/api/upload/chunk`, {
                 method: 'POST',
+                headers: chunkHeaders,
                 body: formData,
                 signal: abortController.signal,
               });
@@ -196,6 +218,10 @@ class TransferManager {
         if (finalInfo) {
           this.transfers.set(messageId, { ...finalInfo, state: 'success', progress: 1 });
           this.transfers.delete(messageId);
+          if (this.restoredObjectUrls.has(messageId)) {
+            URL.revokeObjectURL(this.restoredObjectUrls.get(messageId)!);
+            this.restoredObjectUrls.delete(messageId);
+          }
           removeCachedMediaBlob(currentSessionId, messageId, 'upload').catch(() => {});
           this.notify();
         }
@@ -237,6 +263,10 @@ class TransferManager {
     if (info) {
       if (info.abortController) info.abortController.abort();
       this.transfers.delete(id);
+      if (this.restoredObjectUrls.has(id)) {
+        URL.revokeObjectURL(this.restoredObjectUrls.get(id)!);
+        this.restoredObjectUrls.delete(id);
+      }
       
       // Cleanup partial/upload from IndexedDB
       removeCachedMediaBlob(currentSessionId, id, info.type === 'upload' ? 'upload' : 'download_partial').catch(() => {});
@@ -293,7 +323,14 @@ class TransferManager {
 
       if (!response || (!response.ok && response.status !== 206)) {
         const proxyUrl = buildDownloadProxyUrl(url, filename);
-        response = await fetch(proxyUrl, { headers, signal: abortController.signal });
+        const proxyHeaders = new Headers(headers);
+        const sessionToken = sessionStorage.getItem('pulseSessionToken');
+        if (sessionToken) proxyHeaders.set('x-session-token', sessionToken);
+        const roomId = sessionStorage.getItem('pulse_room_id') || localStorage.getItem('pulse_room_id') || sessionStorage.getItem('pulseRoomId') || localStorage.getItem('pulseRoomId');
+        if (roomId) proxyHeaders.set('x-room-id', roomId);
+        const userId = sessionStorage.getItem('pulse_user_id') || localStorage.getItem('pulse_user_id') || sessionStorage.getItem('pulseUserId') || localStorage.getItem('pulseUserId');
+        if (userId) proxyHeaders.set('x-user-id', userId);
+        response = await fetch(proxyUrl, { headers: proxyHeaders, signal: abortController.signal });
       }
 
       if (!response.ok && response.status !== 206) throw new Error('Fetch failed');
@@ -352,7 +389,7 @@ class TransferManager {
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1000);
+      setTimeout(() => window.URL.revokeObjectURL(objectUrl), 30_000);
 
       this.transfers.delete(messageId);
       this.notify();
@@ -431,8 +468,13 @@ class TransferManager {
         
         // Return the message object with isUploading = true so Chat.tsx can display it
         const restoredMsg = { ...record.metadata, isUploading: true };
-        // Create an object URL for the blob so it renders
-        restoredMsg.url = URL.createObjectURL(record.blob);
+        // Create an object URL for the blob so it renders, revoking any stale prior URL
+        if (this.restoredObjectUrls.has(record.messageId)) {
+          URL.revokeObjectURL(this.restoredObjectUrls.get(record.messageId)!);
+        }
+        const objUrl = URL.createObjectURL(record.blob);
+        this.restoredObjectUrls.set(record.messageId, objUrl);
+        restoredMsg.url = objUrl;
         restoredMessages.push(restoredMsg);
       }
     }

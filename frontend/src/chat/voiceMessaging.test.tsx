@@ -6,7 +6,7 @@ import { MessageQuotedPreview } from './components/message/MessageQuotedPreview'
 import { MessageActionMenuPortal } from './components/message/MessageActionMenuPortal';
 import { ChatFooter } from './components/ChatFooter';
 import type { Message } from './types';
-import { setAudioDurationCache, downloadFile, isCloudinaryUrl } from './utils';
+import { setAudioDurationCache, isCloudinaryUrl } from './utils';
 
 // Mock audio element behavior in jsdom
 beforeEach(() => {
@@ -89,7 +89,7 @@ describe('Voice Messaging System', () => {
     };
 
     it('renders waveform bars and initial duration correctly', () => {
-      const { container } = render(
+      render(
         <AudioMessagePlayer msg={mockMessage} sender="other" isSelectModeActive={false} />
       );
 

@@ -12,7 +12,7 @@ import {
 } from './index';
 import { revokeBlobUrl } from '../utils';
 
-import type { PresenceActivity } from '../types';
+import type { Message, PresenceActivity } from '../types';
 
 interface ChatModalsProps {
   isDark: boolean;
@@ -23,6 +23,8 @@ interface ChatModalsProps {
   media: ReturnType<typeof useChatMedia>;
   onSendFromPreview: () => void;
   onCaptionTyping?: (activity?: PresenceActivity | null) => void;
+  onSetReply?: (message: Message) => void;
+  allMessages?: Message[];
 }
 
 export const ChatModals: React.FC<ChatModalsProps> = ({
@@ -34,6 +36,8 @@ export const ChatModals: React.FC<ChatModalsProps> = ({
   media,
   onSendFromPreview,
   onCaptionTyping,
+  onSetReply,
+  allMessages,
 }) => {
   return (
     <>
@@ -72,6 +76,9 @@ export const ChatModals: React.FC<ChatModalsProps> = ({
           onCaptionTyping?.(null);
         }}
         captionInputRef={media.previewCaptionInputRef as any}
+        onUpdateFile={(idx: number, newFile: File) => {
+          media.setStagedFiles((prev) => prev.map((f, i) => (i === idx ? newFile : f)));
+        }}
       />
 
       <FullEmojiPickerModal
@@ -83,12 +90,12 @@ export const ChatModals: React.FC<ChatModalsProps> = ({
           reactions.messageIdForFullEmojiPickerRef.current = null;
         }}
         onEmojiSelect={(emojiData) => {
-          const msgId = reactions.messageIdForFullEmojiPickerRef.current;
+          const target = reactions.messageIdForFullEmojiPickerRef.current;
           reactions.setFullEmojiPickerPosition(null);
           reactions.messageIdForFullEmojiPickerRef.current = null;
           selection.handleCancelSelectMode();
-          if (msgId) {
-            reactions.handleReact(msgId, emojiData.emoji);
+          if (target) {
+            reactions.handleReact(target.messageId, emojiData.emoji, target.isAlbum);
           }
         }}
         pickerRef={fullEmojiPickerRef as any}
@@ -137,6 +144,7 @@ export const ChatModals: React.FC<ChatModalsProps> = ({
         onPointerMove={media.handleLightboxPointerMove}
         onPointerUp={media.handleLightboxPointerUp}
         onPointerCancel={media.handleLightboxPointerCancel}
+        onDoubleClick={media.handleLightboxDoubleClick}
         onImageLoad={media.handleLightboxImageLoad}
         frameRef={media.lightboxFrameRef as any}
         imageRef={media.lightboxImageRef as any}
@@ -152,6 +160,11 @@ export const ChatModals: React.FC<ChatModalsProps> = ({
         loadedMediaMessageSet={media.loadedMediaMessageSet}
         onRequestMediaLoad={media.handleRequestMediaLoad}
         currentUserId={media.userId}
+        onOpenReactionPicker={reactions.handleOpenReactionPicker}
+        onSetReactionsPopup={reactions.setReactionsPopup}
+        allMessages={allMessages}
+        onSetReply={onSetReply}
+        onMediaLoadError={media.handleMediaError}
       />
 
       <GifPickerModal

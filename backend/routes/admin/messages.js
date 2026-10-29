@@ -5,8 +5,9 @@ const MessageEvent = require('../../models/messageEvent');
 const AuditLog = require('../../models/auditLog');
 const Room = require('../../models/room');
 const { getRoomState } = require('../../state');
-const { adminLimiter, adminAuth } = require('../../middleware');
+const { adminLimiter, adminAuth, extractIp } = require('../../middleware');
 const { unpinIfPinned } = require('../../websocket/pinnedManager');
+const { parseCloudinaryAssetFromUrl, batchDeleteCloudinaryAssets } = require('../../security');
 
 module.exports = (wss, broadcasts) => {
   const { broadcastToAdmins, broadcast } = broadcasts;
@@ -21,10 +22,30 @@ module.exports = (wss, broadcasts) => {
 
   router.get('/api/admin/export-full-db', adminLimiter, adminAuth, async (req, res) => {
     if (!req.isSuperAdmin) return res.status(403).json({ error: 'Forbidden' });
-    const messages = await Message.find({}).sort({ createdAt: 1 }).lean();
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Disposition', 'attachment; filename=pulse_full_db_export.json');
-    res.send(JSON.stringify(messages, null, 2));
+    try {
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', 'attachment; filename=pulse_full_db_export.json');
+      res.write('[\n');
+      let isFirst = true;
+      const cursor = Message.find({}).sort({ createdAt: 1 }).lean().cursor();
+      for await (const doc of cursor) {
+        if (!isFirst) {
+          res.write(',\n');
+        } else {
+          isFirst = false;
+        }
+        res.write(JSON.stringify(doc, null, 2));
+      }
+      res.write('\n]');
+      res.end();
+    } catch (err) {
+      logger.error('Failed to export full database:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to export full database' });
+      } else {
+        res.end();
+      }
+    }
   });
 
   router.get('/api/admin/export-all-messages', adminLimiter, adminAuth, async (req, res) => {
@@ -32,42 +53,97 @@ module.exports = (wss, broadcasts) => {
       if (!req.isSuperAdmin || (req.roomId !== 'me' && req.roomId !== 'global')) {
         return res.status(403).json({ error: 'Forbidden: Super Admin only' });
       }
-      const rooms = await Room.find({}).lean();
-      const allMessages = await Message.find({}).sort({ roomId: 1, createdAt: 1 }).lean();
-      const exportData = {
-        exportedAt: new Date().toISOString(),
-        totalMessages: allMessages.length,
-        rooms: {},
-      };
-      exportData.rooms['me'] = { roomName: 'Super Admin Private Room (me)', messages: [] };
-      exportData.rooms['global'] = { roomName: 'Global Room (global)', messages: [] };
-      rooms.forEach((room) => {
-        exportData.rooms[room.id] = {
-          roomName: room.name,
-          alias: room.alias,
-          messages: [],
-        };
-      });
-      allMessages.forEach((msg) => {
-        if (!exportData.rooms[msg.roomId]) {
-          exportData.rooms[msg.roomId] = { roomName: 'Unknown Room (' + msg.roomId + ')', messages: [] };
-        }
-        exportData.rooms[msg.roomId].messages.push(msg);
-      });
+      const [rooms, totalMessages] = await Promise.all([
+        Room.find({}, 'id name alias').sort({ createdAt: -1 }).limit(1000).lean(),
+        Message.countDocuments({})
+      ]);
+
       res.setHeader('Content-Type', 'application/json');
       res.setHeader('Content-Disposition', 'attachment; filename=all_rooms_messages_export.json');
-      res.send(JSON.stringify(exportData, null, 2));
+
+      res.write('{\n');
+      res.write(`  "exportedAt": ${JSON.stringify(new Date().toISOString())},\n`);
+      res.write(`  "totalMessages": ${totalMessages},\n`);
+      res.write('  "rooms": {\n');
+
+      const roomDefinitions = [
+        { id: 'me', name: 'Super Admin Private Room (me)', alias: null },
+        { id: 'global', name: 'Global Room (global)', alias: null },
+        ...rooms.map(r => ({ id: r.id, name: r.name, alias: r.alias }))
+      ];
+
+      const activeRoomIds = await Message.distinct('roomId');
+      for (const rid of activeRoomIds) {
+        if (!roomDefinitions.some(r => r.id === rid)) {
+          roomDefinitions.push({ id: rid, name: `Unknown Room (${rid})`, alias: null });
+        }
+      }
+
+      for (let i = 0; i < roomDefinitions.length; i++) {
+        const rDef = roomDefinitions[i];
+        const isLastRoom = i === roomDefinitions.length - 1;
+        res.write(`    ${JSON.stringify(rDef.id)}: {\n`);
+        res.write(`      "roomName": ${JSON.stringify(rDef.name)},\n`);
+        if (rDef.alias) {
+          res.write(`      "alias": ${JSON.stringify(rDef.alias)},\n`);
+        }
+        res.write('      "messages": [\n');
+
+        let isFirstMsg = true;
+        const msgCursor = Message.find({ roomId: rDef.id }).sort({ createdAt: 1 }).lean().cursor();
+        for await (const msg of msgCursor) {
+          if (!isFirstMsg) {
+            res.write(',\n');
+          } else {
+            isFirstMsg = false;
+          }
+          const formatted = JSON.stringify(msg, null, 2).split('\n').map(l => '        ' + l).join('\n');
+          res.write(formatted);
+        }
+
+        res.write('\n      ]\n');
+        res.write(`    }${isLastRoom ? '' : ','}\n`);
+      }
+
+      res.write('  }\n');
+      res.write('}\n');
+      res.end();
     } catch (error) {
-      res.status(500).json({ error: 'Failed to export all messages' });
+      logger.error('Failed to export all messages:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to export all messages' });
+      } else {
+        res.end();
+      }
     }
   });
 
   router.get('/api/admin/export-messages', adminLimiter, adminAuth, async (req, res) => {
     const roomId = req.roomId;
-    const messages = await Message.find({ roomId }).sort({ createdAt: 1 }).lean();
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Disposition', 'attachment; filename=messages_export.json');
-    res.send(JSON.stringify(messages, null, 2));
+    try {
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', 'attachment; filename=messages_export.json');
+      res.write('[\n');
+      let isFirst = true;
+      const cursor = Message.find({ roomId }).sort({ createdAt: 1 }).lean().cursor();
+      for await (const doc of cursor) {
+        if (!isFirst) {
+          res.write(',\n');
+        } else {
+          isFirst = false;
+        }
+        res.write(JSON.stringify(doc, null, 2));
+      }
+      res.write('\n]');
+      res.end();
+    } catch (err) {
+      logger.error('Failed to export messages:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to export messages' });
+      } else {
+        res.end();
+      }
+    }
   });
 
   const syncedRooms = new Set();
@@ -88,63 +164,88 @@ module.exports = (wss, broadcasts) => {
           existingEvents.map(e => e.messageId || e.message?.id).filter(Boolean)
         );
 
-        const allMessages = await Message.find({ roomId }).lean();
-        const missingMessages = allMessages.filter(m => !existingIdSet.has(m.id));
-
-        if (missingMessages.length > 0) {
-          const docsToInsert = missingMessages.map(m => ({
-            roomId,
-            type: 'create',
-            messageId: m.id,
-            message: m,
-            userId: m.userId || m.sender || 'unknown',
-            username: m.username || 'Unknown',
-            timestamp: m.createdAt || m.timestamp || new Date(),
-            createdAt: m.createdAt || m.timestamp || new Date(),
-          }));
-          await MessageEvent.insertMany(docsToInsert, { ordered: false });
-          logger.info(`Synced ${docsToInsert.length} legacy messages into MessageEvent for room ${roomId}`);
+        const cursor = Message.find({ roomId }).sort({ createdAt: 1 }).cursor();
+        const batch = [];
+        for await (const m of cursor) {
+          if (!existingIdSet.has(m.id)) {
+            batch.push({
+              roomId,
+              type: 'create',
+              messageId: m.id,
+              message: typeof m.toObject === 'function' ? m.toObject() : m,
+              userId: m.userId || m.sender || 'unknown',
+              username: m.username || 'Unknown',
+              timestamp: m.createdAt || m.timestamp || new Date(),
+              createdAt: m.createdAt || m.timestamp || new Date(),
+            });
+            if (batch.length >= 200) {
+              await MessageEvent.insertMany(batch, { ordered: false }).catch(() => {});
+              batch.length = 0;
+            }
+          }
+        }
+        if (batch.length > 0) {
+          await MessageEvent.insertMany(batch, { ordered: false }).catch(() => {});
         }
       }
 
       // Synchronize any deleted messages so MessageEvent accurately reflects user deletion
-      const deletedMessages = await Message.find({ roomId, isDeleted: true }).lean();
+      const deletedMessages = await Message.find({ roomId, isDeleted: true }).sort({ createdAt: -1 }).limit(100).lean();
       if (deletedMessages.length > 0) {
-        for (const delMsg of deletedMessages) {
-          await MessageEvent.updateMany(
-            { roomId, $or: [{ messageId: delMsg.id }, { 'message.id': delMsg.id }] },
-            { $set: { 'message.isDeleted': true, 'message.deletedBy': delMsg.deletedBy || 'user' } }
-          );
+        const deletedIds = deletedMessages.map(m => m.id);
 
-          const hasDelEvent = await MessageEvent.findOne({
+        // 1. Batch update message.isDeleted across existing events
+        await MessageEvent.updateMany(
+          { roomId, $or: [{ messageId: { $in: deletedIds } }, { 'message.id': { $in: deletedIds } }] },
+          { $set: { 'message.isDeleted': true } }
+        ).catch(() => {});
+
+        // 2. Find all existing delete events for these IDs in one query
+        const existingDelEvents = await MessageEvent.find({
+          roomId,
+          type: { $in: ['delete_everyone', 'delete'] },
+          $or: [{ messageId: { $in: deletedIds } }, { 'message.id': { $in: deletedIds } }]
+        }).lean();
+        const coveredIds = new Set();
+        for (const ev of existingDelEvents) {
+          if (ev.messageId) coveredIds.add(ev.messageId);
+          if (ev.message?.id) coveredIds.add(ev.message.id);
+        }
+
+        const missingDeleteMsgs = deletedMessages.filter(m => !coveredIds.has(m.id));
+        if (missingDeleteMsgs.length > 0) {
+          const missingIds = missingDeleteMsgs.map(m => m.id);
+          const createEvents = await MessageEvent.find({
             roomId,
-            type: { $in: ['delete_everyone', 'delete'] },
-            $or: [{ messageId: delMsg.id }, { 'message.id': delMsg.id }]
+            type: 'create',
+            $or: [{ messageId: { $in: missingIds } }, { 'message.id': { $in: missingIds } }]
           }).lean();
+          const createEventMap = new Map();
+          for (const ev of createEvents) {
+            const id = ev.messageId || ev.message?.id;
+            if (id) createEventMap.set(id, ev);
+          }
 
-          if (!hasDelEvent) {
-            const existingCreateEvent = await MessageEvent.findOne({
-              roomId,
-              type: 'create',
-              $or: [{ messageId: delMsg.id }, { 'message.id': delMsg.id }]
-            }).lean();
-
-            await MessageEvent.create({
+          const newDeleteEvents = missingDeleteMsgs.map(delMsg => {
+            const existingCreate = createEventMap.get(delMsg.id);
+            return {
               roomId,
               type: 'delete_everyone',
               messageId: delMsg.id,
               userId: delMsg.deletedBy || delMsg.userId || delMsg.sender || 'unknown',
               username: delMsg.username || delMsg.sender || 'Unknown',
               deletedContent: {
-                text: existingCreateEvent?.message?.text || delMsg.text || 'Message deleted by user',
-                url: existingCreateEvent?.message?.url || delMsg.url,
-                originalName: existingCreateEvent?.message?.originalName || delMsg.originalName,
-                type: existingCreateEvent?.message?.type || delMsg.type,
+                text: existingCreate?.message?.text || delMsg.text || 'Message deleted by user',
+                url: existingCreate?.message?.url || delMsg.url,
+                originalName: existingCreate?.message?.originalName || delMsg.originalName,
+                type: existingCreate?.message?.type || delMsg.type,
               },
               timestamp: delMsg.updatedAt || delMsg.createdAt || new Date(),
               createdAt: delMsg.updatedAt || delMsg.createdAt || new Date(),
-            });
-          }
+            };
+          });
+
+          await MessageEvent.insertMany(newDeleteEvents, { ordered: false }).catch(() => {});
         }
       }
       syncedRooms.add(roomId);
@@ -221,9 +322,16 @@ module.exports = (wss, broadcasts) => {
         const roomState = getRoomState(roomId);
         const statePins = (roomState && Array.isArray(roomState.pinnedMessages)) ? roomState.pinnedMessages : [];
 
+        const now = new Date();
         const dbPinned = await Message.find({
           roomId,
-          'pinned.pinnedAt': { $ne: null }
+          'pinned.pinnedAt': { $ne: null },
+          isDeleted: { $ne: true },
+          vanished: { $ne: true },
+          $or: [
+            { 'pinned.expiresAt': null },
+            { 'pinned.expiresAt': { $gt: now } }
+          ]
         }).sort({ 'pinned.pinnedAt': -1 }).lean();
 
         const allPinnedMap = new Map();
@@ -233,7 +341,14 @@ module.exports = (wss, broadcasts) => {
           }
         }
         for (const msg of statePins) {
-          if (msg && msg.id && !allPinnedMap.has(msg.id)) {
+          if (
+            msg &&
+            msg.id &&
+            !allPinnedMap.has(msg.id) &&
+            !msg.isDeleted &&
+            !msg.vanished &&
+            (!msg.pinned?.expiresAt || new Date(msg.pinned.expiresAt) > now)
+          ) {
             allPinnedMap.set(msg.id, msg);
           }
         }
@@ -321,13 +436,26 @@ module.exports = (wss, broadcasts) => {
     }
 
     if (messageId) {
+      if (String(messageId).length > 200) return res.status(400).json({ error: 'messageId filter too long' });
       const escaped = String(messageId).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       if (escaped) {
-        query.messageId = { $regex: escaped, $options: 'i' };
+        const msgIdOr = [
+          { messageId: { $regex: escaped, $options: 'i' } },
+          { 'message.id': { $regex: escaped, $options: 'i' } },
+        ];
+        if (query.$and) {
+          query.$and.push({ $or: msgIdOr });
+        } else if (query.$or) {
+          query.$and = [{ $or: query.$or }, { $or: msgIdOr }];
+          delete query.$or;
+        } else {
+          query.$or = msgIdOr;
+        }
       }
     }
 
     if (user) {
+      if (String(user).length > 200) return res.status(400).json({ error: 'user filter too long' });
       const escaped = String(user).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       if (escaped) {
         const userOr = [
@@ -346,6 +474,7 @@ module.exports = (wss, broadcasts) => {
     }
 
     if (content) {
+      if (String(content).length > 200) return res.status(400).json({ error: 'content filter too long' });
       const escaped = String(content).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       if (escaped) {
         const contentOr = [
@@ -403,6 +532,10 @@ module.exports = (wss, broadcasts) => {
       return res.status(400).json({ error: 'No message IDs provided.' });
     }
 
+    if (messageIds.length > 500) {
+      return res.status(400).json({ error: 'Cannot process more than 500 messages at once.' });
+    }
+
     if (!['hide', 'delete'].includes(action)) {
       return res.status(400).json({ error: 'Invalid action.' });
     }
@@ -433,13 +566,25 @@ module.exports = (wss, broadcasts) => {
 
         if (vanish) {
           broadcast(roomId, { type: 'bulk_delete', messageIds });
-          const auditEntry = await AuditLog.create({ roomId, type: 'messages_deleted_disappear', details: { count: messageIds.length, action: 'hide' } });
+          const auditEntry = await AuditLog.create({
+            roomId,
+            type: 'messages_deleted_disappear',
+            details: { count: messageIds.length, action: 'hide' },
+            ip: extractIp(req),
+            userAgent: req.headers['user-agent'] || '',
+          });
           broadcastToAdmins(roomId, 'audit_log', auditEntry);
           broadcastToAdmins(roomId, 'activity', `${messageIds.length} message(s) vanished from frontend by super admin (retained in DB).`);
         } else {
           const updatedMessages = await Message.find({ roomId, id: { $in: messageIds } }).lean();
           broadcast(roomId, { type: 'bulk_update', messages: updatedMessages });
-          const auditEntry = await AuditLog.create({ roomId, type: 'messages_hidden', details: { count: messageIds.length } });
+          const auditEntry = await AuditLog.create({
+            roomId,
+            type: 'messages_hidden',
+            details: { count: messageIds.length },
+            ip: extractIp(req),
+            userAgent: req.headers['user-agent'] || '',
+          });
           broadcastToAdmins(roomId, 'audit_log', auditEntry);
           broadcastToAdmins(roomId, 'activity', `${messageIds.length} message(s) hidden from frontend by admin.`);
         }
@@ -448,6 +593,23 @@ module.exports = (wss, broadcasts) => {
         broadcastToAdmins(roomId, 'bulk_history_update', { events: updatedEvents });
 
       } else if (action === 'delete') {
+        // Clean up Cloudinary assets for media messages in the batch before purging / nullifying
+        try {
+          const messagesWithMedia = await Message.find({
+            roomId,
+            id: { $in: messageIds },
+            url: { $exists: true, $ne: null }
+          }).select('id url type').lean();
+
+          if (messagesWithMedia && messagesWithMedia.length > 0) {
+            batchDeleteCloudinaryAssets(messagesWithMedia).catch((err) => {
+              logger.warn('Failed to clean up Cloudinary assets during bulk delete:', err.message);
+            });
+          }
+        } catch (mediaErr) {
+          logger.warn('Failed to scan messages for Cloudinary assets during bulk delete:', mediaErr.message);
+        }
+
         const objectIds = messageIds.filter((id) => /^[0-9a-fA-F]{24}$/.test(id));
 
         await MessageEvent.deleteMany({
@@ -469,7 +631,13 @@ module.exports = (wss, broadcasts) => {
           await unpinIfPinned(wss, roomId, messageIds);
 
           broadcast(roomId, { type: 'bulk_delete', messageIds });
-          const auditEntry = await AuditLog.create({ roomId, type: 'messages_deleted_disappear', details: { count: messageIds.length, action: 'delete' } });
+          const auditEntry = await AuditLog.create({
+            roomId,
+            type: 'messages_deleted_disappear',
+            details: { count: messageIds.length, action: 'delete' },
+            ip: extractIp(req),
+            userAgent: req.headers['user-agent'] || '',
+          });
           broadcastToAdmins(roomId, 'audit_log', auditEntry);
           broadcastToAdmins(roomId, 'activity', `${messageIds.length} message(s) permanently deleted (vanished) and history scrubbed by super admin.`);
         } else {
@@ -497,7 +665,13 @@ module.exports = (wss, broadcasts) => {
           const updatedMessages = await Message.find({ roomId, id: { $in: messageIds } }).lean();
           broadcast(roomId, { type: 'bulk_update', messages: updatedMessages });
 
-          const auditEntry = await AuditLog.create({ roomId, type: 'messages_deleted_bubble', details: { count: messageIds.length } });
+          const auditEntry = await AuditLog.create({
+            roomId,
+            type: 'messages_deleted_bubble',
+            details: { count: messageIds.length },
+            ip: extractIp(req),
+            userAgent: req.headers['user-agent'] || '',
+          });
           broadcastToAdmins(roomId, 'audit_log', auditEntry);
           broadcastToAdmins(roomId, 'activity', `${messageIds.length} message(s) scrubbed from database (bubble preserved) and history deleted by admin.`);
         }

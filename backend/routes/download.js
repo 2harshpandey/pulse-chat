@@ -3,14 +3,42 @@
 const express = require('express');
 const axios = require('axios');
 const logger = require('../logger');
+const Message = require('../models/message');
 const {
   isAllowedDownloadHost,
   getAllowedDownloadHost,
   runWithSafeRedirects,
   sanitizeDownloadFilename,
   getSignedCloudinaryDownloadUrl,
+  parseCloudinaryAssetFromUrl,
 } = require('../security');
 const { apiLimiter } = require('../middleware');
+const { isRoomAccessAllowed } = require('./messages');
+
+// Issue 13: Allowlist of content types safe to echo back to the browser.
+// Any type not in this set defaults to application/octet-stream (force-download)
+// to prevent stored-XSS via text/html or script payloads rendered inline.
+const SAFE_DOWNLOAD_CONTENT_TYPES = new Set([
+  'application/octet-stream', 'application/pdf', 'application/zip',
+  'application/x-zip-compressed', 'application/x-rar-compressed', 'application/gzip',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif',
+  'image/svg+xml', 'image/bmp', 'image/tiff', 'image/x-icon',
+  'video/mp4', 'video/webm', 'video/ogg', 'video/quicktime', 'video/x-msvideo',
+  'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/webm', 'audio/aac',
+  'audio/flac', 'audio/x-flac', 'audio/opus', 'audio/mp4', 'audio/x-m4a',
+  'text/plain', // plain text is safe; html/js/css are intentionally excluded
+]);
+
+const sanitizeContentType = (raw) => {
+  const mimeOnly = String(raw || '').split(';')[0].trim().toLowerCase();
+  return SAFE_DOWNLOAD_CONTENT_TYPES.has(mimeOnly) ? mimeOnly : 'application/octet-stream';
+};
 
 const router = express.Router();
 
@@ -39,6 +67,39 @@ router.all('/api/download', apiLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Untrusted download host.' });
     }
 
+    // Verify room access authorization for media belonging to chat rooms
+    let targetRoomId = null;
+    const cleanUrl = `${parsedUrl.origin}${parsedUrl.pathname}`;
+    let associatedMessage = await Message.findOne({
+      $or: [{ url: rawUrl }, { url: cleanUrl }]
+    }).lean();
+
+    const parsedAsset = parseCloudinaryAssetFromUrl(rawUrl);
+    if (!associatedMessage && parsedAsset && parsedAsset.publicId) {
+      const safePublicId = parsedAsset.publicId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      associatedMessage = await Message.findOne({
+        $or: [
+          { url: { $regex: safePublicId } },
+          { id: parsedAsset.publicId }
+        ]
+      }).lean();
+    }
+
+    if (associatedMessage && associatedMessage.roomId) {
+      targetRoomId = associatedMessage.roomId;
+    } else if (parsedAsset) {
+      // Cloudinary asset not found in database messages: reject untrusted fallback
+      return res.status(404).json({ error: 'Media not found or access denied.' });
+    } else {
+      const rawRoomId = req.headers['x-room-id'] || req.query.roomId;
+      targetRoomId = typeof rawRoomId === 'string' && rawRoomId.trim() ? rawRoomId.trim() : 'me';
+    }
+
+    const isAllowed = await isRoomAccessAllowed(targetRoomId, req);
+    if (!isAllowed) {
+      return res.status(401).json({ error: 'Access denied: room authentication required to download media.' });
+    }
+
     let pathName = parsedUrl.pathname.split('/').pop() || '';
     try {
       pathName = decodeURIComponent(pathName);
@@ -51,8 +112,11 @@ router.all('/api/download', apiLimiter, async (req, res) => {
     const contentDisposition = `attachment; filename="${safeFilename.replace(/\"/g, '')}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`;
 
     const upstreamHeaders = {};
-    if (req.headers.range) {
-      upstreamHeaders['Range'] = req.headers.range;
+    if (req.headers.range && typeof req.headers.range === 'string') {
+      const cleanRange = req.headers.range.trim();
+      if (/^bytes=(?:\d+-\d*|-\d+)$/.test(cleanRange) && cleanRange.length <= 64) {
+        upstreamHeaders['Range'] = cleanRange;
+      }
     }
 
     const getSafeAxiosUrl = (urlStr) => {
@@ -106,14 +170,15 @@ router.all('/api/download', apiLimiter, async (req, res) => {
     }
 
     const payloadResponse = await runWithCloudinaryFallback(fetchBody);
-    const contentType = String(payloadResponse.headers['content-type'] || 'application/octet-stream');
+    const rawContentType = String(payloadResponse.headers['content-type'] || 'application/octet-stream');
+    const contentType = sanitizeContentType(rawContentType);
     const upstreamLength = Number.parseInt(String(payloadResponse.headers['content-length'] || ''), 10);
 
     logger.info(`[Download] File download: ${safeFilename}`, {
       filename: safeFilename,
       size: upstreamLength || undefined,
       contentType,
-      ip: req.ip || req.headers['x-forwarded-for'],
+      ip: req.ip || req.socket?.remoteAddress,
     });
 
     res.setHeader('Content-Type', contentType);
@@ -128,6 +193,19 @@ router.all('/api/download', apiLimiter, async (req, res) => {
     }
     
     res.status(payloadResponse.status === 206 ? 206 : 200);
+
+    payloadResponse.data.on('error', (streamErr) => {
+      logger.error('Download upstream stream error:', {
+        message: streamErr?.message,
+        code: streamErr?.code,
+      });
+      if (!res.headersSent) {
+        res.status(502).json({ error: 'Failed to download file stream.' });
+      } else {
+        res.destroy(streamErr);
+      }
+    });
+
     res.on('close', () => {
       if (payloadResponse.data && !payloadResponse.data.destroyed) {
         payloadResponse.data.destroy();

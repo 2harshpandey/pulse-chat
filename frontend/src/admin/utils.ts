@@ -133,7 +133,7 @@ export const formatDuration = (durationMs?: number | null): string => {
 const serverLogFormatCache = new Map<string, string>();
 const MAX_LOG_CACHE_SIZE = 2500;
 
-// Rewrites the "timestamp" field inside a raw Winston JSON log line to IST (with O(1) cache)
+// Rewrites the "timestamp" field inside a raw Winston JSON log line to IST with AM/PM (with O(1) cache)
 export const formatServerLogLine = (line: string): string => {
   if (!line) return '';
   const cached = serverLogFormatCache.get(line);
@@ -142,14 +142,28 @@ export const formatServerLogLine = (line: string): string => {
   try {
     const parsed = JSON.parse(line);
     if (parsed.timestamp) {
-      // Try to parse the timestamp and convert to IST
-      const date = new Date(parsed.timestamp);
-      if (!isNaN(date.getTime())) {
-        const ist = new Date(date.getTime() + 5.5 * 60 * 60 * 1000);
-        const pad = (n: number) => String(n).padStart(2, '0');
-        parsed.timestamp =
-          `${ist.getUTCFullYear()}-${pad(ist.getUTCMonth() + 1)}-${pad(ist.getUTCDate())} ` +
-          `${pad(ist.getUTCHours())}:${pad(ist.getUTCMinutes())}:${pad(ist.getUTCSeconds())} IST`;
+      if (typeof parsed.timestamp === 'string' && (parsed.timestamp.includes('AM IST') || parsed.timestamp.includes('PM IST'))) {
+        // Already formatted with AM/PM IST
+      } else if (typeof parsed.timestamp === 'string') {
+        const oldIstMatch = parsed.timestamp.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}):(\d{2}):(\d{2})\s+IST$/);
+        if (oldIstMatch) {
+          const rawHours = parseInt(oldIstMatch[2], 10);
+          const ampm = rawHours >= 12 ? 'PM' : 'AM';
+          const hours12 = String(rawHours % 12 || 12).padStart(2, '0');
+          parsed.timestamp = `${oldIstMatch[1]} ${hours12}:${oldIstMatch[3]}:${oldIstMatch[4]} ${ampm} IST`;
+        } else {
+          const date = new Date(parsed.timestamp);
+          if (!isNaN(date.getTime())) {
+            const ist = new Date(date.getTime() + 5.5 * 60 * 60 * 1000);
+            const pad = (n: number) => String(n).padStart(2, '0');
+            const rawHours = ist.getUTCHours();
+            const ampm = rawHours >= 12 ? 'PM' : 'AM';
+            const hours12 = pad(rawHours % 12 || 12);
+            parsed.timestamp =
+              `${ist.getUTCFullYear()}-${pad(ist.getUTCMonth() + 1)}-${pad(ist.getUTCDate())} ` +
+              `${hours12}:${pad(ist.getUTCMinutes())}:${pad(ist.getUTCSeconds())} ${ampm} IST`;
+          }
+        }
       }
     }
     const result = JSON.stringify(parsed);

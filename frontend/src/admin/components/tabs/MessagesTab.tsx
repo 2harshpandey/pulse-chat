@@ -59,7 +59,6 @@ export function MessagesTab({ admin }: MessagesTabProps) {
     handleSelectAll,
     filteredHistoryLogs,
     displayedLogsCount,
-    setDisplayedLogsCount,
     extractMessageId,
     handleSelectMessage,
     laterDeletedByUserIds,

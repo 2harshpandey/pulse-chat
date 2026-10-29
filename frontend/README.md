@@ -1,4 +1,4 @@
-# Pulse Chat — Frontend Client
+# Pulse Chat: Frontend Client
 
 The frontend client for **Pulse Chat**, engineered with React 18, TypeScript, Vite, Styled Components, and Progressive Web App (PWA) capabilities.
 
@@ -62,6 +62,11 @@ Configure these in `frontend/.env` (or via deployment environment settings):
 ## Architectural Highlights
 
 - **Domain-Modular Structure**: Decomposed into focused domains: `/chat`, `/admin`, `/rooms`, `/auth`, `/home`, and `/errors`.
+- **Grouped Media Mosaic Albums**: WhatsApp and Telegram inspired dynamic multi-photo album grids (1 to 4+ tiles) with automatic layout calculations and `+N` overflow counters.
+- **Interactive Lightbox Gallery & Zoom Engine**: Fullscreen multi-photo gallery viewer featuring thumbnail carousels, keyboard navigation, non-passive wheel zoom scaling without browser intervention warnings, dedicated desktop zoom toolbar buttons (+ / - / 1:1), and multi-touch pinch-to-zoom.
+- **Granular Per-Media & Single-Media Actions**: Floating reaction pills placed precisely on the bottom-right corner of individual photos inside albums, auto-hiding while zoomed in, aggregated reaction banners with per-item breakdown tabs in modal popups, plus header quick actions (reply, react, download) for single sent media.
+- **In-Browser Interactive Photo Cropper**: Non-destructive client-side image editor with 8 drag handles, rule-of-thirds grid, 90-degree rotations, and history management (undo, redo, reset) with keyboard shortcuts before uploading.
+- **Album Quoting & Navigation**: Custom SVG album icon and item count previews in quoted message bubbles with instant scroll-to-original jump navigation.
 - **Sliding Window Virtualization**: Handles tens of thousands of messages smoothly without memory bloat or UI stutter.
 - **Intelligent Realtime Presence**: Granular activity tracking (typing, live audio recording with soundwaves, media upload progress with bouncing dots, and GIF selection) with upload presence protection and flicker-free caption typing.
 - **Zero Layout Shift (CLS)**: Uses `ResizeObserver` on media bubbles and link previews to maintain stable scroll anchoring.

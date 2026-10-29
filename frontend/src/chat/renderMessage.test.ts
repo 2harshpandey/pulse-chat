@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import type { ReactElement } from 'react';
 import { normalizeUrl, detectFirstUrl, CANDIDATE_URL_RE } from './renderMessage';
 
 describe('renderMessage URL detection and normalization', () => {
@@ -93,4 +94,111 @@ describe('renderMessage URL detection and normalization', () => {
     expect(isDomainOrSubdomain(getHostnameFromUrl('https://m.media-amazon.com/images/I/xyz.jpg'), 'media-amazon.com')).toBe(true);
     expect(isDomainOrSubdomain(getHostnameFromUrl('https://evil-media-amazon.com/pic.jpg'), 'media-amazon.com')).toBe(false);
   });
+
+  it('fetchBlobWithProgress preserves and infers proper MIME type for video and images', async () => {
+    const { fetchBlobWithProgress } = await import('./utils');
+    const origFetch = global.fetch;
+
+    try {
+      // Test 1: Content-Type header present
+      global.fetch = async () => {
+        return new Response(new Uint8Array([0, 1, 2, 3]), {
+          status: 200,
+          headers: { 'content-type': 'video/mp4;codecs=avc1', 'content-length': '4' }
+        });
+      };
+      const blob1 = await fetchBlobWithProgress('https://res.cloudinary.com/test/video.mp4');
+      expect(blob1.type).toBe('video/mp4;codecs=avc1');
+
+      // Test 2: Content-Type missing, inferred from .mp4 URL
+      global.fetch = async () => {
+        return new Response(new Uint8Array([0, 1, 2, 3]), {
+          status: 200,
+          headers: { 'content-length': '4' }
+        });
+      };
+      const blob2 = await fetchBlobWithProgress('https://res.cloudinary.com/test/video.mp4?_a=123');
+      expect(blob2.type).toBe('video/mp4');
+
+      // Test 3: Content-Type missing, inferred from .jpg URL
+      global.fetch = async () => {
+        return new Response(new Uint8Array([0, 1, 2, 3]), {
+          status: 200,
+          headers: { 'content-length': '4' }
+        });
+      };
+      const blob3 = await fetchBlobWithProgress('https://res.cloudinary.com/test/photo.jpg');
+      expect(blob3.type).toBe('image/jpeg');
+    } finally {
+      global.fetch = origFetch;
+    }
+  });
 });
+
+describe('Emoji sequence parsing and wrapEmojis', () => {
+  it('correctly matches emojis with skin tone modifiers without splitting into isolated modifiers', async () => {
+    const { EMOJI_SEQUENCE_RE } = await import('./utils');
+
+    const testTones = ['🤦🏻', '🤦🏼', '🤦🏽', '🤦🏾', '🤦🏿', '👍🏻', '🙏🏽'];
+    for (const emoji of testTones) {
+      const re = new RegExp(EMOJI_SEQUENCE_RE.source, EMOJI_SEQUENCE_RE.flags);
+      const matches = [...emoji.matchAll(re)].map(m => m[0]);
+      expect(matches).toEqual([emoji]);
+    }
+  });
+
+  it('correctly matches complex skin-tone + ZWJ sequences as single emoji tokens', async () => {
+    const { EMOJI_SEQUENCE_RE } = await import('./utils');
+
+    const complex = ['🤦🏻‍♀️', '🤦🏻‍♂️', '🧑🏻‍🤝‍🧑🏼', '👩🏻‍❤️‍💋‍👨🏼', '👨‍👩‍👧‍👦', '🏳️‍🌈', '🏴󠁧󠁢󠁥󠁮󠁧󠁿'];
+    for (const seq of complex) {
+      const re = new RegExp(EMOJI_SEQUENCE_RE.source, EMOJI_SEQUENCE_RE.flags);
+      const matches = [...seq.matchAll(re)].map(m => m[0]);
+      expect(matches).toEqual([seq]);
+    }
+  });
+
+  it('wrapEmojis does not split light skin tone modifier into separate net/swatch span', async () => {
+    const { wrapEmojis } = await import('./utils');
+
+    const result = wrapEmojis('Chupppp 🤦🏻', false);
+    // Should produce 2 parts: 'Chupppp ' string and 1 <span> containing '🤦🏻'
+    expect(result).toHaveLength(2);
+    expect(result[0]).toBe('Chupppp ');
+
+    const span = result[1] as ReactElement;
+    expect(span.props.className).toBe('emoji-inline');
+    expect(span.props.children).toBe('🤦🏻');
+  });
+
+  it('wrapEmojis handles messages with multiple skin-tone emojis from real user chat transcripts', async () => {
+    const { wrapEmojis } = await import('./utils');
+
+    const text = 'Hey bhagwan... Tum pagal ho jao usi ke peeche 🤦🏻🤦🏻';
+    const result = wrapEmojis(text, false);
+
+    // Text + emoji 1 + emoji 2
+    expect(result).toHaveLength(3);
+    expect(result[0]).toBe('Hey bhagwan... Tum pagal ho jao usi ke peeche ');
+    expect((result[1] as ReactElement).props.children).toBe('🤦🏻');
+    expect((result[2] as ReactElement).props.children).toBe('🤦🏻');
+  });
+
+  it('wrapEmojis formats standalone emoji-only messages with emoji-standalone class', async () => {
+    const { wrapEmojis, EMOJI_SEQUENCE_RE } = await import('./utils');
+
+    const standaloneText = '🤦🏻 🤦🏻';
+    const hasEmoji = Boolean(standaloneText.match(EMOJI_SEQUENCE_RE));
+    const isStandalone = hasEmoji && standaloneText.replace(EMOJI_SEQUENCE_RE, '').trim().length === 0;
+    expect(isStandalone).toBe(true);
+
+    const result = wrapEmojis(standaloneText, isStandalone);
+    expect(result).toHaveLength(3); // emoji, space, emoji
+    expect((result[0] as ReactElement).props.className).toBe('emoji-standalone');
+    expect((result[0] as ReactElement).props.children).toBe('🤦🏻');
+    expect(result[1]).toBe(' ');
+    expect((result[2] as ReactElement).props.className).toBe('emoji-standalone');
+    expect((result[2] as ReactElement).props.children).toBe('🤦🏻');
+  });
+});
+

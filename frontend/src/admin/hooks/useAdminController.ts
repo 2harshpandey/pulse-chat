@@ -31,13 +31,21 @@ export function useAdminController() {
   const [activeTab, setActiveTab] = useState<Tab>('messages');
   const [activityLogs, setActivityLogs] = useState<string[]>(() => {
     const targetRoom = urlRoomId || 'me';
-    const saved = sessionStorage.getItem(`admin-activity-logs-${targetRoom}`);
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = sessionStorage.getItem(`admin-activity-logs-${targetRoom}`);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
   });
 
   useEffect(() => {
-    const saved = sessionStorage.getItem(`admin-activity-logs-${roomId}`);
-    setActivityLogs(saved ? JSON.parse(saved) : []);
+    try {
+      const saved = sessionStorage.getItem(`admin-activity-logs-${roomId}`);
+      setActivityLogs(saved ? JSON.parse(saved) : []);
+    } catch {
+      setActivityLogs([]);
+    }
   }, [roomId]);
 
   const ws = useRef<WebSocket | null>(null);
@@ -308,7 +316,10 @@ export function useAdminController() {
   const handleLogout = () => {
     if (ws.current) ws.current.close();
     passwordRef.current = '';
-    sessionStorage.removeItem('admin-activity-logs');
+    try {
+      sessionStorage.removeItem('admin-activity-logs');
+      sessionStorage.removeItem(`admin-activity-logs-${roomId}`);
+    } catch (_) {}
     setIsAuthenticated(false);
     setPassword('');
     setActivityLogs([]);

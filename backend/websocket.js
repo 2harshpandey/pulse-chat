@@ -3,6 +3,7 @@
 const logger = require('./logger');
 const { getRoomState } = require('./state');
 const { getVisibleMessagesQuery } = require('./routes/media');
+const { extractIp } = require('./middleware');
 
 const {
   broadcastToAdmins,
@@ -20,7 +21,6 @@ const {
 } = require('./websocket/pinnedManager');
 
 const {
-  setupAdmin,
   handleAdminAuth,
 } = require('./websocket/adminHandler');
 
@@ -44,6 +44,68 @@ const {
   handleNewMessage,
 } = require('./websocket/messageHandler');
 
+function getWebSocketLogLabel(msg) {
+  if (!msg || typeof msg !== 'object') return 'Incoming WebSocket event:';
+  const type = msg.type;
+  switch (type) {
+    case 'message': {
+      const mediaType = msg.message?.type || msg.messageType;
+      if (mediaType === 'image' || mediaType === 'photo') return 'New photo message:';
+      if (mediaType === 'video') return 'New video message:';
+      if (mediaType === 'audio' || mediaType === 'voice') return 'New voice message:';
+      if (mediaType === 'media_group' || mediaType === 'album') return 'New media album message:';
+      if (mediaType === 'file' || mediaType === 'document') return 'New file message:';
+      return 'New chat message:';
+    }
+    case 'file_picker_open':
+      return 'File picker opened:';
+    case 'file_picker_close':
+      return 'File picker closed:';
+    case 'react':
+      return 'Reaction event:';
+    case 'user_join':
+      return 'User join request:';
+    case 'delete_message':
+      return 'Delete message request:';
+    case 'delete_for_me':
+      return 'Delete-for-me request:';
+    case 'edit_message':
+      return 'Edit message request:';
+    case 'poll_vote':
+      return 'Poll vote event:';
+    case 'create_poll':
+      return 'Create poll event:';
+    case 'pin_message':
+      return 'Pin message request:';
+    case 'unpin_message':
+      return 'Unpin message request:';
+    case 'clear_chat':
+      return 'Clear chat request:';
+    case 'hide_chat_for_everyone':
+      return 'Hide chat request:';
+    case 'start_typing':
+      return 'Typing started:';
+    case 'stop_typing':
+      return 'Typing stopped:';
+    case 'album_download_cancel':
+      return 'Album download cancelled:';
+    case 'telemetry':
+    case 'client_diagnostic':
+      return 'Client telemetry event:';
+    case 'error':
+      return 'Client error event:';
+    default: {
+      if (typeof type === 'string' && type.trim()) {
+        const readable = type
+          .replace(/_/g, ' ')
+          .replace(/\b\w/g, (c) => c.toUpperCase());
+        return `${readable} event:`;
+      }
+      return 'Incoming WebSocket event:';
+    }
+  }
+}
+
 /**
  * Initialise all WebSocket logic on the given server instance.
  *
@@ -63,6 +125,15 @@ const initWebSocket = (wss) => {
     return getVisibleMessagesQuery(() => getRoomState(roomId).frontendHiddenBefore)();
   };
 
+  // Issue 4: Per-IP cap on unauthenticated admin WebSocket connections (prevents FD exhaustion DoS)
+  const adminConnectionCounts = new Map(); // ip -> count
+  // Periodic cleanup of stale entries (connections that disconnected silently)
+  setInterval(() => {
+    for (const [ip, count] of adminConnectionCounts.entries()) {
+      if (count <= 0) adminConnectionCounts.delete(ip);
+    }
+  }, 5 * 60 * 1000).unref();
+
   // --- WebSocket Heartbeat (Ping/Pong) ---
   const heartbeatInterval = setInterval(function ping() {
     wss.clients.forEach(function each(ws) {
@@ -71,12 +142,19 @@ const initWebSocket = (wss) => {
         return ws.terminate();
       }
       ws.isAlive = false;
-      ws.ping(() => {});
+      try {
+        ws.ping(() => {});
+      } catch (_) {}
       if (ws.readyState === 1 /* WebSocket.OPEN */) {
-        ws.send(JSON.stringify({ type: 'ping' }));
+        try {
+          ws.send(JSON.stringify({ type: 'ping' }));
+        } catch (_) {}
       }
     });
   }, 15000);
+  if (heartbeatInterval && typeof heartbeatInterval.unref === 'function') {
+    heartbeatInterval.unref();
+  }
 
   wss.on('close', function close() {
     clearInterval(heartbeatInterval);
@@ -91,6 +169,8 @@ const initWebSocket = (wss) => {
       req.socket.setNoDelay(true);
     }
     ws.isAlive = true;
+    ws.clientIp = extractIp(req);
+    ws.clientUa = req.headers['user-agent'] || '';
     ws.on('pong', () => {
       ws.isAlive = true;
     });
@@ -107,24 +187,70 @@ const initWebSocket = (wss) => {
         return;
       }
       if (!parsedMessage || typeof parsedMessage !== 'object') return;
+      ws.isAlive = true;
+
+      // Per-socket rate limiter: max 50 frames per second to prevent DoS flooding
+      const now = Date.now();
+      if (!ws.rateLimitWindow || now - ws.rateLimitWindow > 1000) {
+        ws.rateLimitWindow = now;
+        ws.frameCount = 1;
+      } else {
+        ws.frameCount += 1;
+        if (ws.frameCount > 50) {
+          if (ws.frameCount === 51) {
+            logger.warn(`Rate limit exceeded for WebSocket client (user: ${ws.userId || 'unjoined'}, ip: ${ws.clientIp})`);
+            ws.send(JSON.stringify({ type: 'error', message: 'Rate limit exceeded. Please slow down.' }));
+          }
+          return;
+        }
+      }
 
       if (parsedMessage.type !== 'admin_auth' && parsedMessage.type !== 'ping' && parsedMessage.type !== 'pong' && parsedMessage.type !== 'start_typing' && parsedMessage.type !== 'stop_typing' && parsedMessage.type !== 'client_diagnostic') {
-        logger.info('Received message:', parsedMessage);
+        // Issue 17: Log only safe metadata, never the message body (text/url/replyingTo) to avoid PII in logs
+        logger.info(getWebSocketLogLabel(parsedMessage), {
+          type: parsedMessage.type,
+          roomId: ws.roomId,
+          userId: ws.userId,
+        });
+      }
+
+      // Disallow sending user actions prior to successful user_join
+      if (
+        parsedMessage.type !== 'user_join' &&
+        parsedMessage.type !== 'ping' &&
+        parsedMessage.type !== 'pong'
+      ) {
+        if ((!ws.isAdmin && !ws.userId) || !ws.roomId) {
+          logger.warn(`Rejected WebSocket frame '${parsedMessage.type}' from unjoined socket`);
+          ws.send(JSON.stringify({ type: 'error', message: 'You must join a room before sending events.' }));
+          return;
+        }
       }
 
       switch (parsedMessage.type) {
+        case 'ping':
+          ws.isAlive = true;
+          if (ws.readyState === 1 /* WebSocket.OPEN */) {
+            try { ws.send(JSON.stringify({ type: 'pong' })); } catch (_) {}
+          }
+          break;
+
+        case 'pong':
+          ws.isAlive = true;
+          break;
+
         case 'client_diagnostic':
           try {
+            if (!ws.roomId || !ws.userId) break;
             const diag = parsedMessage.data || parsedMessage;
-            const eventName = diag.event || diag.action || 'client_action';
-            const username = ws.user?.username || diag.username || 'Anonymous';
-            const roomId = ws.roomId || diag.roomId || 'unknown';
+            const eventName = typeof diag.event === 'string' ? diag.event.slice(0, 50) : (typeof diag.action === 'string' ? diag.action.slice(0, 50) : 'client_action');
+            const username = ws.username || ws.user?.username || 'Anonymous';
+            const roomId = ws.roomId;
             logger.info(`[Client-Diag] [Room: ${roomId}] ${username}: ${eventName}`, {
               telemetry: true,
               roomId,
-              userId: ws.user?.userId || diag.userId,
+              userId: ws.userId,
               username,
-              details: diag.details || diag
             });
 
             // Safe, non-sensitive live activity notifications for room moderators & super admins
@@ -143,12 +269,12 @@ const initWebSocket = (wss) => {
             } else if (eventName === 'album_zip_download_complete') {
               safeActivity = `User '${username}' completed downloading an album.`;
             } else if (eventName === 'file_download_complete') {
-              const fn = diag.details?.filename ? ` '${diag.details.filename}'` : '';
+              const fn = typeof diag.details?.filename === 'string' ? ` '${diag.details.filename.slice(0, 50)}'` : '';
               safeActivity = `User '${username}' downloaded file${fn}.`;
             }
 
-            if (safeActivity && roomId && roomId !== 'unknown') {
-              broadcastToAdmins(roomId, 'activity', safeActivity);
+            if (safeActivity && ws.roomId && ws.userId) {
+              broadcastToAdmins(ws.roomId, 'activity', safeActivity);
             }
           } catch (_) {}
           break;
@@ -212,12 +338,51 @@ const initWebSocket = (wss) => {
           break;
 
         default:
-          await handleNewMessage({ ws, parsedMessage, wss, broadcastToAdmins, _broadcastOnlineUsers });
+          // Issue 11: Only route recognized chat message types to handleNewMessage.
+          // Unknown type strings would still trigger DB queries (session lookup, reply resolution)
+          // which can be abused as a DoS amplifier even with the 50 frame/s per-socket limit.
+          {
+            const CHAT_MSG_TYPES = new Set(['message', 'text', 'image', 'video', 'audio', 'file', 'gif', 'poll']);
+            if (!CHAT_MSG_TYPES.has(parsedMessage.type)) {
+              logger.warn(`Ignored unknown WebSocket message type '${parsedMessage.type}' from user ${ws.userId || 'unjoined'} in room ${ws.roomId || 'none'}`);
+              break;
+            }
+            await handleNewMessage({ ws, parsedMessage, wss, broadcastToAdmins, _broadcastOnlineUsers });
+          }
           break;
       }
     }
 
+    // Enforce handshake timeout for unjoined/unauthenticated sockets to prevent connection exhaustion
+    const joinTimeout = setTimeout(() => {
+      if (!ws.userId && !ws.isAdmin) {
+        logger.warn(`Unauthenticated socket connection timed out from IP: ${ws.clientIp}`);
+        try {
+          ws.send(JSON.stringify({ type: 'force_logout', message: 'Connection handshake timed out.' }));
+          ws.close(1008, 'Handshake timeout');
+        } catch (_) {}
+        setTimeout(() => ws.terminate(), 500);
+      }
+    }, 25000);
+    if (joinTimeout && typeof joinTimeout.unref === 'function') joinTimeout.unref();
+
     if (isAdminConnection) {
+      // Issue 4: Enforce per-IP cap on admin WebSocket connections before authentication
+      const adminIp = ws.clientIp || '127.0.0.1';
+      const currentCount = (adminConnectionCounts.get(adminIp) || 0) + 1;
+      adminConnectionCounts.set(adminIp, currentCount);
+      if (currentCount > 5) {
+        logger.warn(`Admin WS connection limit exceeded for IP ${adminIp} (count: ${currentCount}). Closing.`);
+        adminConnectionCounts.set(adminIp, Math.max(0, currentCount - 1));
+        try {
+          ws.close(1008, 'Too many admin connections from this IP.');
+        } catch (_) {}
+        return;
+      }
+      ws.on('close', () => {
+        const c = adminConnectionCounts.get(adminIp) || 1;
+        adminConnectionCounts.set(adminIp, Math.max(0, c - 1));
+      });
       ws.once('message', (rawData) => {
         handleAdminAuth(ws, rawData, broadcastToAdmins, loadPinnedMessages, handleClientMessage);
       });
@@ -232,6 +397,7 @@ const initWebSocket = (wss) => {
     });
 
     ws.on('close', () => {
+      clearTimeout(joinTimeout);
       handleSocketClose({ ws, wss, broadcastToAdmins, _broadcast, _broadcastOnlineUsers });
     });
 

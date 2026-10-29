@@ -24,6 +24,7 @@ export function useChatLightbox() {
   const closeMediaGallery = useCallback(() => {
     sendClientDiagnostic('media_gallery_close');
     setMediaGallery(null);
+    setLightboxUrl(null);
   }, []);
   const [lightboxTransform, setLightboxTransform] = useState<{ scale: number; x: number; y: number }>({
     scale: PHOTO_LIGHTBOX_MIN_SCALE,
@@ -50,6 +51,10 @@ export function useChatLightbox() {
     focalImageX: number;
     focalImageY: number;
   } | null>(null);
+  const lastTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
+  const tapStartRef = useRef<{ time: number; x: number; y: number } | null>(null);
+  const lastDoubleTapTimeRef = useRef<number>(0);
+  const lastLightboxTouchTimeRef = useRef<number>(0);
 
   useEffect(() => {
     lightboxTransformRef.current = lightboxTransform;
@@ -82,11 +87,21 @@ export function useChatLightbox() {
     [lightboxNaturalSize]
   );
 
-  const openLightbox = useCallback((url: string) => {
+  const openLightbox = useCallback((url: string, canonicalUrl?: string) => {
     lightboxOpenedAtRef.current = Date.now();
-    sendClientDiagnostic('photo_lightbox_open', { mediaUrl: url });
+    sendClientDiagnostic('photo_lightbox_open', { mediaUrl: canonicalUrl || url });
     setLightboxTransform({ scale: PHOTO_LIGHTBOX_MIN_SCALE, x: 0, y: 0 });
     setLightboxUrl(url);
+    const fallbackMsg: Message = {
+      id: canonicalUrl || url,
+      userId: '',
+      username: '',
+      text: '',
+      timestamp: new Date().toISOString(),
+      type: (url.match(/\.(mp4|webm|mov)$/i) ? 'video' : 'image') as any,
+      url,
+    };
+    setMediaGallery({ items: [fallbackMsg], initialIndex: 0 });
   }, []);
 
   const closeLightbox = useCallback(() => {
@@ -95,6 +110,7 @@ export function useChatLightbox() {
       : 0;
     sendClientDiagnostic('photo_lightbox_close', { durationViewedSeconds: duration });
     setLightboxUrl(null);
+    setMediaGallery(null);
   }, []);
 
   const canZoomOutLightbox = lightboxTransform.scale > PHOTO_LIGHTBOX_MIN_SCALE + 0.001;
@@ -134,9 +150,14 @@ export function useChatLightbox() {
     [clampLightboxOffset]
   );
 
-  const handleLightboxWheel = useCallback(
-    (e: React.WheelEvent<HTMLDivElement>) => {
-      e.preventDefault();
+  useEffect(() => {
+    const frame = lightboxFrameRef.current;
+    if (!frame || !lightboxUrl) return;
+
+    const onWheel = (e: WheelEvent) => {
+      if (e.cancelable) {
+        e.preventDefault();
+      }
       e.stopPropagation();
       const delta = -e.deltaY * PHOTO_LIGHTBOX_WHEEL_SENSITIVITY;
       setLightboxTransform((prev) => {
@@ -152,12 +173,77 @@ export function useChatLightbox() {
         );
         return { scale: nextScale, ...nextOffset };
       });
+    };
+
+    frame.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      frame.removeEventListener('wheel', onWheel);
+    };
+  }, [lightboxUrl, clampLightboxOffset]);
+
+  const handleLightboxWheel = useCallback(
+    (e: React.WheelEvent<HTMLDivElement>) => {
+      // Native non-passive listener attached to lightboxFrameRef handles wheel events and calls preventDefault().
+      // React synthetic wheel events are passive at the root, so avoid calling preventDefault here.
+      e.stopPropagation();
+    },
+    []
+  );
+
+  const handleLightboxDoubleTap = useCallback(
+    (clientX?: number, clientY?: number) => {
+      const now = Date.now();
+      if (now - lastDoubleTapTimeRef.current < 250) {
+        return;
+      }
+      lastDoubleTapTimeRef.current = now;
+
+      setIsLightboxInteracting(false);
+      lightboxPointersRef.current.clear();
+      lightboxDragRef.current = null;
+      lightboxPinchRef.current = null;
+      lastTapRef.current = null;
+      tapStartRef.current = null;
+
+      setLightboxTransform((prev) => {
+        const isCurrentlyZoomed = prev.scale > PHOTO_LIGHTBOX_MIN_SCALE + 0.05;
+        if (isCurrentlyZoomed) {
+          return { scale: PHOTO_LIGHTBOX_MIN_SCALE, x: 0, y: 0 };
+        }
+
+        const targetScale = Math.min(PHOTO_LIGHTBOX_MAX_SCALE, 2.5);
+        if (clientX !== undefined && clientY !== undefined && lightboxFrameRef.current) {
+          const rect = lightboxFrameRef.current.getBoundingClientRect();
+          const focalX = clientX - (rect.left + rect.width / 2);
+          const focalY = clientY - (rect.top + rect.height / 2);
+          const targetX = -focalX * (targetScale - 1);
+          const targetY = -focalY * (targetScale - 1);
+          const clamped = clampLightboxOffset(targetScale, targetX, targetY);
+          return { scale: targetScale, ...clamped };
+        }
+        return { scale: targetScale, x: 0, y: 0 };
+      });
     },
     [clampLightboxOffset]
   );
 
+  const handleLightboxDoubleClick = useCallback(
+    (e: React.MouseEvent<HTMLElement>) => {
+      e.stopPropagation();
+      // Guard against synthetic emulated dblclick events dispatched by mobile browsers after touch tap
+      if (Date.now() - lastLightboxTouchTimeRef.current < 600) {
+        return;
+      }
+      handleLightboxDoubleTap(e.clientX, e.clientY);
+    },
+    [handleLightboxDoubleTap]
+  );
+
   const handleLightboxPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.pointerType === 'touch') {
+        lastLightboxTouchTimeRef.current = Date.now();
+      }
       lightboxPointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
       setIsLightboxInteracting(true);
 
@@ -172,6 +258,7 @@ export function useChatLightbox() {
           focalImageY: (p1.y + p2.y) / 2,
         };
         lightboxDragRef.current = null;
+        tapStartRef.current = null;
       } else if (pointers.length === 1) {
         lightboxDragRef.current = {
           pointerId: e.pointerId,
@@ -179,6 +266,11 @@ export function useChatLightbox() {
           startY: e.clientY,
           startOffsetX: lightboxTransformRef.current.x,
           startOffsetY: lightboxTransformRef.current.y,
+        };
+        tapStartRef.current = {
+          time: Date.now(),
+          x: e.clientX,
+          y: e.clientY,
         };
       }
     },
@@ -221,24 +313,59 @@ export function useChatLightbox() {
     [clampLightboxOffset]
   );
 
-  const handleLightboxPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    lightboxPointersRef.current.delete(e.pointerId);
-    if (lightboxPointersRef.current.size === 0) {
-      setIsLightboxInteracting(false);
-      lightboxDragRef.current = null;
-      lightboxPinchRef.current = null;
-    } else if (lightboxPointersRef.current.size === 1) {
-      const [remainingId, point] = Array.from(lightboxPointersRef.current.entries())[0];
-      lightboxDragRef.current = {
-        pointerId: remainingId,
-        startX: point.x,
-        startY: point.y,
-        startOffsetX: lightboxTransformRef.current.x,
-        startOffsetY: lightboxTransformRef.current.y,
-      };
-      lightboxPinchRef.current = null;
-    }
-  }, []);
+  const handleLightboxPointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.pointerType === 'touch') {
+        lastLightboxTouchTimeRef.current = Date.now();
+      }
+      lightboxPointersRef.current.delete(e.pointerId);
+
+      if (tapStartRef.current) {
+        const dx = Math.abs(e.clientX - tapStartRef.current.x);
+        const dy = Math.abs(e.clientY - tapStartRef.current.y);
+        const dt = Date.now() - tapStartRef.current.time;
+
+        if (dx < 18 && dy < 18 && dt < 400) {
+          const now = Date.now();
+          if (lastTapRef.current) {
+            const timeSinceLastTap = now - lastTapRef.current.time;
+            const distFromLastTap = Math.hypot(
+              e.clientX - lastTapRef.current.x,
+              e.clientY - lastTapRef.current.y
+            );
+
+            if (timeSinceLastTap >= 40 && timeSinceLastTap <= 400 && distFromLastTap < 50) {
+              lastTapRef.current = null;
+              tapStartRef.current = null;
+              handleLightboxDoubleTap(e.clientX, e.clientY);
+              return;
+            }
+          }
+          lastTapRef.current = { time: now, x: e.clientX, y: e.clientY };
+        } else {
+          lastTapRef.current = null;
+        }
+        tapStartRef.current = null;
+      }
+
+      if (lightboxPointersRef.current.size === 0) {
+        setIsLightboxInteracting(false);
+        lightboxDragRef.current = null;
+        lightboxPinchRef.current = null;
+      } else if (lightboxPointersRef.current.size === 1) {
+        const [remainingId, point] = Array.from(lightboxPointersRef.current.entries())[0];
+        lightboxDragRef.current = {
+          pointerId: remainingId,
+          startX: point.x,
+          startY: point.y,
+          startOffsetX: lightboxTransformRef.current.x,
+          startOffsetY: lightboxTransformRef.current.y,
+        };
+        lightboxPinchRef.current = null;
+      }
+    },
+    [handleLightboxDoubleTap]
+  );
 
   const handleLightboxImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;
@@ -263,6 +390,8 @@ export function useChatLightbox() {
     handleLightboxPointerMove,
     handleLightboxPointerUp,
     handleLightboxPointerCancel: handleLightboxPointerUp,
+    handleLightboxDoubleClick,
+    handleLightboxDoubleTap,
     handleLightboxImageLoad,
     mediaGallery,
     openMediaGallery,

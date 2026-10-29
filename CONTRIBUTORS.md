@@ -6,7 +6,7 @@ Pulse Chat was created and is actively maintained by **Harsh Pandey**.
 
 ## Project Lead & Creator
 
-- **Harsh Pandey** ([@2harshpandey](https://github.com/2harshpandey)) — Lead Developer, Architecture, UI/UX Design
+- **Harsh Pandey** ([@2harshpandey](https://github.com/2harshpandey)) - Lead Developer, Architecture, UI/UX Design
 
 ---
 

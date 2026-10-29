@@ -1,8 +1,11 @@
 {
   "name": "pulse",
-  "version": "2.3.0",
+  "version": "3.0.0",
   "private": true,
   "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "dependencies": {
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^13.4.0",

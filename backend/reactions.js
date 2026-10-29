@@ -1,7 +1,5 @@
 'use strict';
 
-const QUICK_REACTIONS = Object.freeze(['👍', '❤️', '😂', '😮', '😢', '🙏']);
-const QUICK_REACTION_SET = new Set(QUICK_REACTIONS);
 
 const normalizeReactionEmoji = (emoji) => {
   if (typeof emoji !== 'string') return null;
@@ -20,6 +18,7 @@ const normalizeReactionUser = (user) => {
   return {
     userId: user.userId,
     username: typeof user.username === 'string' && user.username ? user.username : user.userId,
+    ...(user.isAlbum ? { isAlbum: true } : {}),
   };
 };
 
@@ -55,7 +54,6 @@ const toReactionMap = (reactions) => {
 };
 
 module.exports = {
-  QUICK_REACTIONS,
   normalizeReactionEmoji,
   filterValidReactions,
   toReactionMap,
