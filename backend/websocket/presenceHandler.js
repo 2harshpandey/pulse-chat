@@ -551,8 +551,14 @@ const handleStartTyping = ({ ws, parsedMessage, _broadcastOnlineUsers }) => {
       roomState.typingTimeouts.delete(ws.userId);
     }
 
+    const prevActivity = roomState.typingUsers.get(ws.userId);
     roomState.typingUsers.set(ws.userId, activity);
-    _broadcastOnlineUsers(ws.roomId);
+
+    // Broadcast only if activity changed or user was not actively typing/sending.
+    // If activity is unchanged, this is a keep-alive heartbeat: renew expiration lease without redundant broadcast spam.
+    if (prevActivity !== activity) {
+      _broadcastOnlineUsers(ws.roomId);
+    }
 
     // Rolling auto-expiration: automatically prune typing indicator after 7s of inactivity
     if (roomState.typingTimeouts) {

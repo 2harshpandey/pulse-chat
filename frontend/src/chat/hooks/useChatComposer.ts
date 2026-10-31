@@ -204,6 +204,7 @@ export function useChatComposer({
   } = useChatEmojiPicker({
     setInputMessage,
     messageInputRef,
+    onTyping: handleTyping,
   });
 
   useChatDrafts({
@@ -313,11 +314,11 @@ export function useChatComposer({
     setPreviewCaption('');
     setPreviewActiveIndex(0);
     resetInputLayerHeight();
-    setPresenceActivity(null);
+    handleTyping(null);
   }, [
+    handleTyping,
     resetInputLayerHeight,
     setPreMediaDraft,
-    setPresenceActivity,
     setPreviewActiveIndex,
     setPreviewCaption,
     setReplyingTo,
@@ -933,7 +934,11 @@ export function useChatComposer({
     const nextValue = e.target.value;
     skipNextInputLayoutSyncRef.current = true;
     setInputMessage(nextValue);
-    handleTyping();
+    if (nextValue.trim().length > 0) {
+      handleTyping();
+    } else {
+      handleTyping(null);
+    }
     syncInputLayerLayout(e.target, nextValue, true);
   };
 
@@ -1042,7 +1047,9 @@ export function useChatComposer({
           if (inputOverlayRef.current) inputOverlayRef.current.scrollTop = inputOverlayRef.current.scrollHeight;
         });
       });
-      handleTyping();
+      if (nextValue.trim().length > 0) {
+        handleTyping();
+      }
       syncInputLayerLayout(textarea, nextValue, true);
       return;
     }

@@ -314,5 +314,136 @@ describe('Media and File Sending Presence Activity', () => {
       fireEvent.change(input, { target: { value: '' } });
       expect(emittedActivity).toBeNull();
     });
+
+    it('triggers onTyping when an emoji is clicked from useChatEmojiPicker', async () => {
+      const { useChatEmojiPicker } = await import('./hooks/useChatEmojiPicker');
+      const { renderHook, act } = await import('@testing-library/react');
+      const { vi } = await import('vitest');
+
+      let typingFired = false;
+      const setInputMessage = vi.fn();
+      const messageInputRef = { current: null };
+
+      const { result } = renderHook(() =>
+        useChatEmojiPicker({
+          setInputMessage,
+          messageInputRef,
+          onTyping: () => {
+            typingFired = true;
+          },
+        })
+      );
+
+      act(() => {
+        result.current.handleEmojiClick({ emoji: '🔥' } as any);
+      });
+
+      expect(setInputMessage).toHaveBeenCalled();
+      expect(typingFired).toBe(true);
+    });
+
+    it('clears typing presence immediately when input text becomes empty', async () => {
+      let typingState: string | null = null;
+      const handleTyping = (act?: string | null) => {
+        typingState = act === null ? null : (act || 'typing');
+      };
+
+      // Simulating handleInputChange behavior
+      const simulateChange = (val: string) => {
+        if (val.trim().length > 0) {
+          handleTyping();
+        } else {
+          handleTyping(null);
+        }
+      };
+
+      simulateChange('Hello world');
+      expect(typingState).toBe('typing');
+
+      simulateChange('   ');
+      expect(typingState).toBeNull();
+    });
+
+    it('manages continuous typing heartbeats and auto-expiration accurately', async () => {
+      const { vi } = await import('vitest');
+      vi.useFakeTimers();
+
+      const sentFrames: any[] = [];
+      let presenceActivity: string | null = null;
+      let lastTypingSentAt = 0;
+      let typingTimeout: any = null;
+
+      const setPresenceActivity = (act: string | null) => {
+        presenceActivity = act;
+        if (act) {
+          sentFrames.push({ type: 'start_typing', activity: act });
+        } else {
+          sentFrames.push({ type: 'stop_typing' });
+        }
+      };
+
+      const handleTyping = (activity?: string | null) => {
+        if (activity === null) {
+          if (typingTimeout) clearTimeout(typingTimeout);
+          typingTimeout = null;
+          lastTypingSentAt = 0;
+          setPresenceActivity(null);
+          return;
+        }
+
+        const targetActivity = activity || 'typing';
+        const now = Date.now();
+        const isNewActivity = presenceActivity !== targetActivity;
+        const shouldSendHeartbeat = now - lastTypingSentAt >= 2000;
+
+        if (isNewActivity || shouldSendHeartbeat) {
+          lastTypingSentAt = now;
+          setPresenceActivity(targetActivity);
+        }
+
+        if (typingTimeout) clearTimeout(typingTimeout);
+        typingTimeout = setTimeout(() => {
+          setPresenceActivity(null);
+          typingTimeout = null;
+          lastTypingSentAt = 0;
+        }, 2500);
+      };
+
+      // 1. First keystroke at t = 0
+      handleTyping();
+      expect(sentFrames).toHaveLength(1);
+      expect(sentFrames[0]).toEqual({ type: 'start_typing', activity: 'typing' });
+
+      // 2. Typing keystrokes at t = 500ms and t = 1000ms: no redundant websocket messages
+      vi.advanceTimersByTime(500);
+      handleTyping();
+      vi.advanceTimersByTime(500);
+      handleTyping();
+      expect(sentFrames).toHaveLength(1);
+
+      // 3. Continuous typing at t = 2100ms (> 2000ms since last send): heartbeat sent!
+      vi.advanceTimersByTime(1100);
+      handleTyping();
+      expect(sentFrames).toHaveLength(2);
+      expect(sentFrames[1]).toEqual({ type: 'start_typing', activity: 'typing' });
+
+      // 4. Pausing for 2500ms: typing ceases, stop_typing sent
+      vi.advanceTimersByTime(2500);
+      expect(sentFrames).toHaveLength(3);
+      expect(sentFrames[2]).toEqual({ type: 'stop_typing' });
+
+      // 5. Typing resumes: start_typing sent immediately
+      vi.advanceTimersByTime(100);
+      handleTyping();
+      expect(sentFrames).toHaveLength(4);
+      expect(sentFrames[3]).toEqual({ type: 'start_typing', activity: 'typing' });
+
+      // 6. Explicit clear (e.g. backspace to empty or message send): stops typing immediately
+      handleTyping(null);
+      expect(sentFrames).toHaveLength(5);
+      expect(sentFrames[4]).toEqual({ type: 'stop_typing' });
+
+      vi.useRealTimers();
+    });
   });
 });

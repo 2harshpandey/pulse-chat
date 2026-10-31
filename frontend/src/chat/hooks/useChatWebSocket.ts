@@ -105,7 +105,8 @@ export function useChatWebSocket({
   const reconnectDelayRef = useRef<number>(600);
 
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const typingCooldownRef = useRef(false);
+  const lastTypingSentAtRef = useRef<number>(0);
+  const presenceHeartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const presenceActivityRef = useRef<PresenceActivity | null>(null);
   const activeUploadsCountRef = useRef<number>(0);
   const currentSendingActivityRef = useRef<PresenceActivity | null>(null);
@@ -117,12 +118,36 @@ export function useChatWebSocket({
     appendMessageToWindowRef.current = appendMessageToWindow;
   }, [appendMessageToWindow]);
 
+  const stopHeartbeatForActivity = useCallback(() => {
+    if (presenceHeartbeatIntervalRef.current) {
+      clearInterval(presenceHeartbeatIntervalRef.current);
+      presenceHeartbeatIntervalRef.current = null;
+    }
+  }, []);
+
+  const startHeartbeatForActivity = useCallback(
+    (activity: PresenceActivity) => {
+      stopHeartbeatForActivity();
+      presenceHeartbeatIntervalRef.current = setInterval(() => {
+        if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
+        if (ws.current.bufferedAmount > 4096) return;
+        const current = currentSendingActivityRef.current || presenceActivityRef.current;
+        if (current && current !== 'typing') {
+          try {
+            ws.current.send(JSON.stringify({ type: 'start_typing', activity: current, roomId }));
+          } catch (_) {}
+        }
+      }, 2200);
+    },
+    [roomId, stopHeartbeatForActivity]
+  );
+
   const setPresenceActivity = useCallback(
     (nextActivity: PresenceActivity | null, force: boolean = false) => {
       if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
-      if (presenceActivityRef.current === nextActivity) return;
+      if (!force && presenceActivityRef.current === nextActivity) return;
 
-      // Prevent generic resets (e.g. from resetInput or typing timeouts)
+      // Prevent generic resets (e.g. from typing timeouts)
       // from wiping out an active media upload or active sending state unless forced
       if (
         nextActivity === null &&
@@ -135,7 +160,13 @@ export function useChatWebSocket({
       try {
         if (nextActivity) {
           ws.current.send(JSON.stringify({ type: 'start_typing', activity: nextActivity, roomId }));
+          if (nextActivity !== 'typing') {
+            startHeartbeatForActivity(nextActivity);
+          } else {
+            stopHeartbeatForActivity();
+          }
         } else {
+          stopHeartbeatForActivity();
           ws.current.send(JSON.stringify({ type: 'stop_typing', roomId }));
         }
         presenceActivityRef.current = nextActivity;
@@ -143,7 +174,7 @@ export function useChatWebSocket({
         // Best effort
       }
     },
-    [roomId]
+    [roomId, startHeartbeatForActivity, stopHeartbeatForActivity]
   );
 
   const startSendingActivity = useCallback(
@@ -160,6 +191,7 @@ export function useChatWebSocket({
         clearTimeout(typingTimeoutRef.current);
         typingTimeoutRef.current = null;
       }
+      lastTypingSentAtRef.current = 0;
 
       setPresenceActivity(activity, true);
     },
@@ -180,7 +212,7 @@ export function useChatWebSocket({
         if (activeUploadsCountRef.current === 0) {
           currentSendingActivityRef.current = null;
           setPresenceActivity(null, true);
-          typingCooldownRef.current = false;
+          lastTypingSentAtRef.current = 0;
         }
       }, delay);
     }
@@ -196,8 +228,8 @@ export function useChatWebSocket({
           clearTimeout(typingTimeoutRef.current);
           typingTimeoutRef.current = null;
         }
-        typingCooldownRef.current = false;
-        setPresenceActivity(null);
+        lastTypingSentAtRef.current = 0;
+        setPresenceActivity(null, true);
         return;
       }
 
@@ -207,20 +239,23 @@ export function useChatWebSocket({
       }
 
       const targetActivity = activity || 'typing';
+      const now = Date.now();
+      const isNewActivity = presenceActivityRef.current !== targetActivity;
+      const shouldSendHeartbeat = now - lastTypingSentAtRef.current >= 2000;
 
-      if (!typingCooldownRef.current || presenceActivityRef.current !== targetActivity) {
-        typingCooldownRef.current = true;
-        setPresenceActivity(targetActivity);
+      if (isNewActivity || shouldSendHeartbeat) {
+        lastTypingSentAtRef.current = now;
+        setPresenceActivity(targetActivity, true);
       }
 
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = setTimeout(() => {
         if (activeUploadsCountRef.current === 0 && currentSendingActivityRef.current === null) {
-          setPresenceActivity(null);
+          setPresenceActivity(null, true);
         }
         typingTimeoutRef.current = null;
-        typingCooldownRef.current = false;
-      }, 3000);
+        lastTypingSentAtRef.current = 0;
+      }, 2500);
     },
     [setPresenceActivity]
   );
@@ -282,7 +317,8 @@ export function useChatWebSocket({
           clearTimeout(stopSendingTimeoutRef.current);
           stopSendingTimeoutRef.current = null;
         }
-        typingCooldownRef.current = false;
+        stopHeartbeatForActivity();
+        lastTypingSentAtRef.current = 0;
         presenceActivityRef.current = null;
         activeUploadsCountRef.current = 0;
         currentSendingActivityRef.current = null;
@@ -623,6 +659,15 @@ export function useChatWebSocket({
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         lastHiddenTimeRef.current = Date.now();
+        // If user was actively typing, stop typing immediately to avoid ghost indicators
+        if (presenceActivityRef.current === 'typing') {
+          if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+            typingTimeoutRef.current = null;
+          }
+          lastTypingSentAtRef.current = 0;
+          setPresenceActivity(null, true);
+        }
       } else if (document.visibilityState === 'visible') {
         const timeHidden = Date.now() - lastHiddenTimeRef.current;
         if (timeHidden > 0 && timeHidden < 5000) return;
@@ -649,7 +694,8 @@ export function useChatWebSocket({
             clearTimeout(stopSendingTimeoutRef.current);
             stopSendingTimeoutRef.current = null;
           }
-          typingCooldownRef.current = false;
+          stopHeartbeatForActivity();
+          lastTypingSentAtRef.current = 0;
           presenceActivityRef.current = null;
           activeUploadsCountRef.current = 0;
           currentSendingActivityRef.current = null;
@@ -668,13 +714,25 @@ export function useChatWebSocket({
 
     const handleOnline = () => connect();
 
+    const handlePageHide = () => {
+      if (presenceActivityRef.current && ws.current && ws.current.readyState === WebSocket.OPEN) {
+        try {
+          ws.current.send(JSON.stringify({ type: 'stop_typing', roomId }));
+        } catch (_) {}
+      }
+    };
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('online', handleOnline);
+    window.addEventListener('pagehide', handlePageHide);
 
     return () => {
       shouldReconnect = false;
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       if (stopSendingTimeoutRef.current) clearTimeout(stopSendingTimeoutRef.current);
+      stopHeartbeatForActivity();
+      lastTypingSentAtRef.current = 0;
       if (ws.current) {
         const socket = ws.current;
         socket.onclose = null;
@@ -690,6 +748,7 @@ export function useChatWebSocket({
       }
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('online', handleOnline);
+      window.removeEventListener('pagehide', handlePageHide);
     };
   }, [userProfile, roomId, tempToken, userId]); // eslint-disable-line react-hooks/exhaustive-deps
 

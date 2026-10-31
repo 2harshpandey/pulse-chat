@@ -4,11 +4,13 @@ import type { EmojiClickData } from 'emoji-picker-react';
 interface UseChatEmojiPickerProps {
   setInputMessage: React.Dispatch<React.SetStateAction<string>>;
   messageInputRef: React.RefObject<HTMLTextAreaElement | null>;
+  onTyping?: () => void;
 }
 
 export function useChatEmojiPicker({
   setInputMessage,
   messageInputRef,
+  onTyping,
 }: UseChatEmojiPickerProps) {
   const emojiButtonRef = useRef<HTMLButtonElement>(null!);
   const emojiPickerRef = useRef<HTMLDivElement>(null!);
@@ -42,7 +44,8 @@ export function useChatEmojiPicker({
 
   const handleEmojiClick = useCallback((emojiData: EmojiClickData) => {
     setInputMessage((prev) => prev + emojiData.emoji);
-  }, [setInputMessage]);
+    onTyping?.();
+  }, [setInputMessage, onTyping]);
 
   // Restore keyboard focus when emoji picker is closed
   useEffect(() => {
