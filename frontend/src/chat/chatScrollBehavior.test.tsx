@@ -216,6 +216,23 @@ describe('Enter key behavior and touch device detection', () => {
     }
   });
 
+  it('correctly detects desktop device even if primary pointer is coarse but any-pointer is fine or hover capability exists', () => {
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = vi.fn().mockImplementation((query: string) => {
+      if (query === '(pointer: fine)') return { matches: false };
+      if (query === '(any-pointer: fine)') return { matches: true };
+      if (query === '(hover: hover)') return { matches: true };
+      if (query === '(pointer: coarse)') return { matches: true };
+      return { matches: false };
+    });
+
+    try {
+      expect(isTouchDevice()).toBe(false);
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
+  });
+
   it('simulates handleInputKeyDown logic: Enter sends message in small desktop window', () => {
     const handleSendMessage = vi.fn();
     const preventDefault = vi.fn();

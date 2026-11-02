@@ -18,11 +18,23 @@ export const isDesktopInteractionDevice = (): boolean => {
 export const isTouchDevice = (): boolean => {
   if (typeof window === 'undefined') return false;
 
+  const isMobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+    typeof navigator !== 'undefined' ? navigator.userAgent || '' : ''
+  );
+
   if (typeof window.matchMedia === 'function') {
-    const hasFinePointer = Boolean(window.matchMedia('(pointer: fine)')?.matches);
-    const canHover = Boolean(window.matchMedia('(hover: hover)')?.matches);
-    // Desktop and laptop environments with mouse/trackpad pointer and hover are NOT touch devices
-    if (hasFinePointer && canHover) {
+    // If ANY fine pointer (mouse/trackpad) or hover capability exists, this is a desktop/laptop environment
+    const hasFinePointer = Boolean(
+      window.matchMedia('(any-pointer: fine)')?.matches ||
+      window.matchMedia('(pointer: fine)')?.matches
+    );
+    const canHover = Boolean(
+      window.matchMedia('(any-hover: hover)')?.matches ||
+      window.matchMedia('(hover: hover)')?.matches
+    );
+
+    // Desktop and laptop environments with mouse/trackpad or hover are NOT touch-only devices
+    if (hasFinePointer || canHover) {
       return false;
     }
 
@@ -32,9 +44,6 @@ export const isTouchDevice = (): boolean => {
     }
   }
 
-  const isMobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-    typeof navigator !== 'undefined' ? navigator.userAgent || '' : ''
-  );
   const hasTouchCapability =
     'ontouchstart' in window ||
     (typeof navigator !== 'undefined' && typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 0);
