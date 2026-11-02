@@ -18,9 +18,17 @@ export const isDesktopInteractionDevice = (): boolean => {
 export const isTouchDevice = (): boolean => {
   if (typeof window === 'undefined') return false;
 
-  const isMobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-    typeof navigator !== 'undefined' ? navigator.userAgent || '' : ''
-  );
+  const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent || '' : '';
+  const isWindowsDesktop = /Windows NT/i.test(userAgent);
+  const isMacDesktop = /Macintosh/i.test(userAgent) && !(typeof navigator !== 'undefined' && navigator.maxTouchPoints > 1);
+  const isLinuxDesktop = /Linux/i.test(userAgent) && !/Android/i.test(userAgent) && !/jsdom/i.test(userAgent);
+
+  // Desktop operating systems (Windows, macOS desktop, desktop Linux) are never touch-only devices
+  if (isWindowsDesktop || isMacDesktop || isLinuxDesktop) {
+    return false;
+  }
+
+  const isMobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
 
   if (typeof window.matchMedia === 'function') {
     // If ANY fine pointer (mouse/trackpad) or hover capability exists, this is a desktop/laptop environment
@@ -38,7 +46,10 @@ export const isTouchDevice = (): boolean => {
       return false;
     }
 
-    const hasCoarsePointer = Boolean(window.matchMedia('(pointer: coarse)')?.matches);
+    const hasCoarsePointer = Boolean(
+      window.matchMedia('(pointer: coarse)')?.matches ||
+      window.matchMedia('(any-pointer: coarse)')?.matches
+    );
     if (hasCoarsePointer && !hasFinePointer) {
       return true;
     }

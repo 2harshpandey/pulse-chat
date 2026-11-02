@@ -233,6 +233,35 @@ describe('Enter key behavior and touch device detection', () => {
     }
   });
 
+  it('always detects Windows desktop as non-touch device even if coarse pointer or touch capability is reported', () => {
+    const originalUserAgent = navigator.userAgent;
+    const originalMaxTouchPoints = navigator.maxTouchPoints;
+    const originalMatchMedia = window.matchMedia;
+
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      configurable: true,
+    });
+    Object.defineProperty(navigator, 'maxTouchPoints', {
+      value: 10,
+      configurable: true,
+    });
+    window.matchMedia = vi.fn().mockImplementation((query: string) => {
+      if (query === '(pointer: fine)') return { matches: false };
+      if (query === '(hover: hover)') return { matches: false };
+      if (query === '(pointer: coarse)') return { matches: true };
+      return { matches: false };
+    });
+
+    try {
+      expect(isTouchDevice()).toBe(false);
+    } finally {
+      Object.defineProperty(navigator, 'userAgent', { value: originalUserAgent, configurable: true });
+      Object.defineProperty(navigator, 'maxTouchPoints', { value: originalMaxTouchPoints, configurable: true });
+      window.matchMedia = originalMatchMedia;
+    }
+  });
+
   it('simulates handleInputKeyDown logic: Enter sends message in small desktop window', () => {
     const handleSendMessage = vi.fn();
     const preventDefault = vi.fn();

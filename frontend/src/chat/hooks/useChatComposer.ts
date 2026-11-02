@@ -294,7 +294,10 @@ export function useChatComposer({
       const tag = (document.activeElement as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       if (isSelectModeActive || !!lightboxUrl || isDeleteConfirmationVisible || isUserListVisible) return;
-      if (isTouchDevice()) return;
+      const isMobileOS = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        typeof navigator !== 'undefined' ? navigator.userAgent || '' : ''
+      );
+      if (isMobileOS && isTouchDevice()) return;
       messageInputRef.current?.focus();
     };
     document.addEventListener('keydown', handler);
@@ -948,13 +951,27 @@ export function useChatComposer({
       handleCancelEdit();
       return;
     }
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    const isEnter =
+      e.key === 'Enter' ||
+      e.keyCode === 13 ||
+      (e.nativeEvent && (e.nativeEvent as any).code === 'Enter') ||
+      (e.nativeEvent && (e.nativeEvent as any).code === 'NumpadEnter');
+    if (!isEnter) return;
+
+    if (e.nativeEvent && ((e.nativeEvent as any).isComposing || (e as any).keyCode === 229)) {
+      return;
+    }
+
+    if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
       handleSendMessage();
       return;
     }
-    if (e.key === 'Enter' && !e.shiftKey) {
-      if (isTouchDevice()) return;
+    if (!e.shiftKey) {
+      const isMobileOS = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        typeof navigator !== 'undefined' ? navigator.userAgent || '' : ''
+      );
+      if (isMobileOS && isTouchDevice()) return;
       e.preventDefault();
       handleSendMessage();
     }
@@ -1086,7 +1103,10 @@ export function useChatComposer({
   const handleChatAreaClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target !== chatContainerRef.current) return;
     if (isSelectModeActive || !!lightboxUrl || isDeleteConfirmationVisible) return;
-    if (isTouchDevice()) return;
+    const isMobileOS = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      typeof navigator !== 'undefined' ? navigator.userAgent || '' : ''
+    );
+    if (isMobileOS && isTouchDevice()) return;
     messageInputRef.current?.focus();
   }, [chatContainerRef, isDeleteConfirmationVisible, isSelectModeActive, lightboxUrl, messageInputRef]);
 
