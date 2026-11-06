@@ -348,6 +348,11 @@ const generateSessionToken = (userId, roomId) => {
   return crypto.randomBytes(32).toString('hex');
 };
 
+const hashSessionToken = (token) => {
+  if (!token || typeof token !== 'string') return null;
+  return crypto.createHash('sha256').update(token.trim()).digest('hex');
+};
+
 const batchDeleteCloudinaryAssets = async (messagesWithMedia) => {
   if (!Array.isArray(messagesWithMedia) || messagesWithMedia.length === 0) return;
   const groups = { image: [], video: [], raw: [] };
@@ -396,6 +401,7 @@ module.exports = {
   verifyPassword,
   generateSessionToken,
   verifySignedSessionToken,
+  hashSessionToken,
   SESSION_TOKEN_TTL_MS,
   batchDeleteCloudinaryAssets,
 };

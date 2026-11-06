@@ -7,7 +7,7 @@ const User = require('../models/user');
 const Message = require('../models/message');
 const Room = require('../models/room');
 const AuditLog = require('../models/auditLog');
-const { timingSafeEqualStr, verifyPassword, generateSessionToken, verifySignedSessionToken } = require('../security');
+const { timingSafeEqualStr, verifyPassword, generateSessionToken, verifySignedSessionToken, hashSessionToken } = require('../security');
 const { extractIp, generateDeviceHash, toClientMessage, isUserBlocked, isLoginLocked, toSafeLoggedInUserList } = require('../middleware');
 const {
   getRoomState,
@@ -44,9 +44,9 @@ const handleUserJoin = async ({
     return;
   }
 
-  if (rawUsername.trim().length > 50 || rawUserId.trim().length > 64) {
-    logger.warn('Rejected user_join payload: username or userId exceeds maximum allowed length');
-    ws.send(JSON.stringify({ type: 'force_logout', message: 'Username cannot exceed 50 characters.' }));
+  if (rawUsername.trim().length > 50 || rawUserId.trim().length > 64 || !/^[a-zA-Z0-9_-]{1,64}$/.test(rawUserId.trim())) {
+    logger.warn('Rejected user_join payload: invalid userId format or excessive length');
+    ws.send(JSON.stringify({ type: 'force_logout', message: 'Invalid credentials. Please log in again.' }));
     setTimeout(() => ws.terminate(), 300);
     return;
   }
@@ -118,17 +118,9 @@ const handleUserJoin = async ({
   let activeSessionToken = null;
   const existingSession = loggedInUsers.get(userId);
 
-  if (existingSession) {
-    if (existingSession.sessionToken) {
-      if (sessionTokenProvided && timingSafeEqualStr(sessionTokenProvided, existingSession.sessionToken)) {
-        activeSessionToken = existingSession.sessionToken;
-      }
-    } else {
-      // Legacy session without token: allow if IP matches and upgrade to cryptographic token
-      if (existingSession.ip && existingSession.ip === wsIp) {
-        activeSessionToken = generateSessionToken(userId, roomId);
-        existingSession.sessionToken = activeSessionToken;
-      }
+  if (existingSession && existingSession.sessionToken) {
+    if (sessionTokenProvided && timingSafeEqualStr(sessionTokenProvided, existingSession.sessionToken)) {
+      activeSessionToken = existingSession.sessionToken;
     }
   }
 
@@ -143,7 +135,14 @@ const handleUserJoin = async ({
     } else {
       try {
         const dbUser = await User.findOne({ roomId: String(roomId), userId: String(userId) }).lean();
-        if (dbUser && dbUser.sessionToken && timingSafeEqualStr(sessionTokenProvided, dbUser.sessionToken)) {
+        const incomingHash = hashSessionToken(sessionTokenProvided);
+        const isDbTokenValid = Boolean(
+          dbUser && (
+            (dbUser.sessionTokenHash && incomingHash && timingSafeEqualStr(incomingHash, dbUser.sessionTokenHash)) ||
+            (dbUser.sessionToken && timingSafeEqualStr(sessionTokenProvided, dbUser.sessionToken))
+          )
+        );
+        if (isDbTokenValid) {
           activeSessionToken = sessionTokenProvided;
           if (existingSession) {
             existingSession.sessionToken = activeSessionToken;
@@ -212,22 +211,20 @@ const handleUserJoin = async ({
   }
 
 
-  // Store fingerprint data
-  if (fpData || true) {
-    const existing = userFingerprints.get(userId) || { ips: new Set(), userAgents: new Set(), deviceHashes: new Set() };
-    existing.ips.add(wsIp);
-    if (wsUa) existing.userAgents.add(wsUa);
-    if (fpData) {
-      existing.screenResolution = fpData.screenResolution || existing.screenResolution;
-      existing.platform = fpData.platform || existing.platform;
-      existing.language = fpData.language || existing.language;
-      existing.timezone = fpData.timezone || existing.timezone;
-      const hash = generateDeviceHash({ ...fpData, userAgent: wsUa });
-      existing.deviceHashes.add(hash);
-    }
-    existing.lastSeen = Date.now();
-    userFingerprints.set(userId, existing);
+  // Store fingerprint and device data
+  const existingFp = userFingerprints.get(userId) || { ips: new Set(), userAgents: new Set(), deviceHashes: new Set() };
+  existingFp.ips.add(wsIp);
+  if (wsUa) existingFp.userAgents.add(wsUa);
+  if (fpData && typeof fpData === 'object') {
+    existingFp.screenResolution = fpData.screenResolution || existingFp.screenResolution;
+    existingFp.platform = fpData.platform || existingFp.platform;
+    existingFp.language = fpData.language || existingFp.language;
+    existingFp.timezone = fpData.timezone || existingFp.timezone;
+    const hash = generateDeviceHash({ ...fpData, userAgent: wsUa });
+    existingFp.deviceHashes.add(hash);
   }
+  existingFp.lastSeen = Date.now();
+  userFingerprints.set(userId, existingFp);
 
   // Check if user is blocked (async)
   const blockResult = await isUserBlocked(roomId, userId, wsIp, wsUa, fpData);
@@ -464,6 +461,7 @@ const handleUserJoin = async ({
         userId: String(userId),
         username: String(username),
         sessionToken: activeSessionToken,
+        sessionTokenHash: hashSessionToken(activeSessionToken),
         lastSeen: new Date(),
       },
       $push: {
@@ -542,7 +540,7 @@ const handleUserLogout = ({ ws, parsedMessage, broadcastToAdmins, _broadcast, _b
     logger.info(`User '${logoutUsername}' logged out explicitly from room ${roomId}.`);
     User.updateOne(
       { roomId: String(roomId), userId: String(logoutUserId) },
-      { $unset: { sessionToken: 1 } }
+      { $unset: { sessionToken: 1, sessionTokenHash: 1 } }
     ).catch(err => logger.error('Failed to clear sessionToken on logout:', err));
     broadcastToAdmins(roomId, 'user_logged_out', { userId: logoutUserId, username: logoutUsername });
     broadcastToAdmins(roomId, 'logged_in_users', toSafeLoggedInUserList(loggedInUsers));

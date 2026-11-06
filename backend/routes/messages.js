@@ -6,9 +6,10 @@ const logger = require('../logger');
 const Message = require('../models/message');
 const Room = require('../models/room');
 const User = require('../models/user');
-const { verifyPassword, timingSafeEqualStr, verifySignedSessionToken } = require('../security');
+const { verifyPassword, timingSafeEqualStr, verifySignedSessionToken, hashSessionToken } = require('../security');
 const {
   getRoomState,
+  getCachedRoom,
   DEFAULT_HISTORY_PAGE_SIZE,
   MAX_HISTORY_PAGE_SIZE,
 } = require('../state');
@@ -43,7 +44,7 @@ const isRoomAccessAllowed = async (rawRoomId, req) => {
 
   if (roomId !== 'me' && roomId !== 'global') {
     try {
-      room = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] }).lean();
+      room = await getCachedRoom(roomId);
       if (!room) {
         return false;
       }
@@ -136,7 +137,14 @@ const isRoomAccessAllowed = async (rawRoomId, req) => {
     // 3. Fallback to DB session token check for multi-instance / post-restart resilience
     try {
       const userDoc = await User.findOne({ roomId: canonicalRoomId, userId: cleanUserId }).lean();
-      if (userDoc && userDoc.sessionToken && timingSafeEqualStr(sessionToken, userDoc.sessionToken)) {
+      const incomingHash = hashSessionToken(sessionToken);
+      const isDbTokenValid = Boolean(
+        userDoc && (
+          (userDoc.sessionTokenHash && incomingHash && timingSafeEqualStr(incomingHash, userDoc.sessionTokenHash)) ||
+          (userDoc.sessionToken && timingSafeEqualStr(sessionToken, userDoc.sessionToken))
+        )
+      );
+      if (isDbTokenValid) {
         if (roomState && roomState.loggedInUsers) {
           const existingSession = roomState.loggedInUsers.get(cleanUserId);
           let tokenToKeep = sessionToken;
@@ -184,7 +192,7 @@ router.get('/api/messages/search', apiLimiter, async (req, res) => {
   }
 
   if (roomId !== 'me' && roomId !== 'global') {
-    const roomDoc = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] }).lean();
+    const roomDoc = await getCachedRoom(roomId);
     if (roomDoc) roomId = roomDoc.id;
   }
 
@@ -224,7 +232,7 @@ router.get('/api/messages', apiLimiter, async (req, res) => {
   }
 
   if (roomId !== 'me' && roomId !== 'global') {
-    const roomDoc = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] }).lean();
+    const roomDoc = await getCachedRoom(roomId);
     if (roomDoc) roomId = roomDoc.id;
   }
   try {
@@ -256,7 +264,9 @@ router.get('/api/messages', apiLimiter, async (req, res) => {
 
       if (targetMsg) {
         const targetDate = targetMsg.createdAt;
-        const halfSize = Math.floor(pageSize / 2);
+        const MAX_AROUND_PAGE_SIZE = 100;
+        const aroundPageSize = Math.min(pageSize, MAX_AROUND_PAGE_SIZE);
+        const halfSize = Math.floor(aroundPageSize / 2);
 
         const olderQuery = { roomId, vanished: { $ne: true }, type: { $ne: 'client_diagnostic' }, createdAt: { $lt: targetDate } };
         if (frontendHiddenBefore instanceof Date && !Number.isNaN(frontendHiddenBefore.getTime())) {

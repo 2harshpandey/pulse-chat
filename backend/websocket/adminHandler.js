@@ -137,7 +137,7 @@ const handleAdminAuth = async (ws, rawData, broadcastToAdmins, loadPinnedMessage
       let isValid = false;
       if (process.env.ADMIN_PASSWORD && timingSafeEqualStr(password, process.env.ADMIN_PASSWORD)) {
         isValid = true;
-      } else if (targetRoom && (verifyPassword(password, targetRoom.adminPassword) || (process.env.ADMIN_PASSWORD && timingSafeEqualStr(password, process.env.ADMIN_PASSWORD)))) {
+      } else if (targetRoom && verifyPassword(password, targetRoom.adminPassword)) {
         isValid = true;
       }
 

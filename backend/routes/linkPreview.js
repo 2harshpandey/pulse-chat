@@ -8,7 +8,7 @@ const net = require('net');
 const axios = require('axios');
 const logger = require('../logger');
 const { isPrivateOrInternalIp } = require('../security');
-const { apiLimiter, getClientIp } = require('../middleware');
+const { apiLimiter, extractIp } = require('../middleware');
 // Issue 6: Tighter, dedicated rate limiter for link-preview — this endpoint fetches
 // external URLs on behalf of the user and can amplify DoS/enumeration if abused.
 const rateLimit = require('express-rate-limit');
@@ -18,7 +18,7 @@ const previewLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   validate: { ip: false, default: true },
-  keyGenerator: getClientIp,
+  keyGenerator: (req) => extractIp(req),
   message: { error: 'Too many link preview requests. Please slow down.' },
   skip: (req) => req.method === 'OPTIONS',
 });
@@ -141,7 +141,7 @@ router.get('/api/link-preview', previewLimiter, async (req, res) => {
             siteName: 'YouTube',
             url: url
           };
-          setToPreviewCache(url, ytResult);
+          setToPreviewCache(cacheKey, ytResult);
           return res.json(ytResult);
         }
       } catch {

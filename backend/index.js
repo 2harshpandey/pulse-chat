@@ -72,7 +72,23 @@ app.set('trust proxy', 1);
 // Global middleware
 // ---------------------------------------------------------------------------
 
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com", "https://*.giphy.com", "https://*.ytimg.com", "https://*.google.com"],
+      mediaSrc: ["'self'", "blob:", "https://res.cloudinary.com"],
+      connectSrc: ["'self'", "wss:", "ws:", "https://res.cloudinary.com", "https://*.giphy.com"],
+      frameSrc: ["'self'", "https://www.youtube.com", "https://www.youtube-nocookie.com"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+}));
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin || !allowedOrigins || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {

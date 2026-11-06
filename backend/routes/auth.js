@@ -10,7 +10,7 @@ const AuditLog = require('../models/auditLog');
 const TempLink = require('../models/tempLink');
 const Room = require('../models/room');
 const User = require('../models/user');
-const { timingSafeEqualStr, verifyPassword, hashPassword, generateSessionToken, verifySignedSessionToken } = require('../security');
+const { timingSafeEqualStr, verifyPassword, hashPassword, generateSessionToken, verifySignedSessionToken, hashSessionToken } = require('../security');
 const {
   getRoomState,
   userFingerprints,
@@ -136,8 +136,8 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
     }
     const roomId = cleanRoomId;
 
-    if (!userId || typeof userId !== 'string' || !userId.trim()) {
-      return res.status(400).json({ success: false, error: 'User ID is required.' });
+    if (!userId || typeof userId !== 'string' || !userId.trim() || userId.trim().length > 64 || !/^[a-zA-Z0-9_-]{1,64}$/.test(userId.trim())) {
+      return res.status(400).json({ success: false, error: 'Invalid user ID format.' });
     }
     if (username !== undefined) {
       if (typeof username !== 'string' || !username.trim()) {
@@ -267,6 +267,7 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
             userId: String(userId),
             username: username ? String(username).trim() : 'Anonymous',
             sessionToken,
+            sessionTokenHash: hashSessionToken(sessionToken),
             lastSeen: new Date(),
           },
         },
@@ -301,8 +302,8 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
     if (!username || typeof username !== 'string' || !username.trim()) {
       return res.status(400).json({ success: false, error: 'Username is required.' });
     }
-    if (!userId || typeof userId !== 'string' || !userId.trim()) {
-      return res.status(400).json({ success: false, error: 'User ID is required.' });
+    if (!userId || typeof userId !== 'string' || !userId.trim() || userId.trim().length > 64 || !/^[a-zA-Z0-9_-]{1,64}$/.test(userId.trim())) {
+      return res.status(400).json({ success: false, error: 'Invalid user ID format.' });
     }
 
     // Validate token format before querying — crypto.randomBytes(32).hex() always produces 64 hex chars
@@ -492,6 +493,7 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
           userId: String(userId),
           username: username.trim(),
           sessionToken,
+          sessionTokenHash: hashSessionToken(sessionToken),
           lastSeen: new Date(),
         },
       },

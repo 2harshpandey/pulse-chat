@@ -26,9 +26,14 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: null,
   },
+  sessionTokenHash: {
+    type: String,
+    default: null,
+  },
 }, { timestamps: true });
 
 userSchema.index({ roomId: 1, userId: 1 }, { unique: true });
+userSchema.index({ roomId: 1, userId: 1, sessionTokenHash: 1 });
 userSchema.index({ roomId: 1, userId: 1, sessionToken: 1 });
 userSchema.index({ roomId: 1, lastSeen: -1 });
 

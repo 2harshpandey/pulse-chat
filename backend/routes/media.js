@@ -15,7 +15,7 @@ const MessageEvent = require('../models/messageEvent');
 const User = require('../models/user');
 const Room = require('../models/room');
 const ChatState = require('../models/chatState');
-const { getRoomState } = require('../state');
+const { getRoomState, getCachedRoom } = require('../state');
 const { unpinIfPinned, clearAllPins } = require('../websocket/pinnedManager');
 const {
   uploadLimiter,
@@ -54,15 +54,47 @@ const sanitizeUploadFilename = (name) => sanitizeDownloadFilename(repairMojibake
 // which can return a 10 MB provider limit for raw files such as .rar/.zip.
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024; // 100 MB max total file size
 const MAX_MEMORY_FILE_BYTES = 25 * 1024 * 1024; // 25 MB max in-memory multer buffer
+
+const BLOCKED_MIME_TYPES = new Set([
+  'image/svg+xml',
+  'text/html',
+  'application/xhtml+xml',
+  'text/javascript',
+  'application/javascript',
+  'application/x-javascript',
+  'application/x-msdownload',
+  'application/x-executable',
+  'application/x-bat',
+  'application/x-sh'
+]);
+
+const BLOCKED_EXTENSIONS = new Set([
+  '.svg', '.html', '.htm', '.xhtml', '.exe', '.dll', '.bat', '.cmd', '.sh', '.vbs', '.js', '.mjs', '.scr'
+]);
+
+const isSafeUploadFile = (mimetype, filename) => {
+  const mime = String(mimetype || '').toLowerCase().trim();
+  if (BLOCKED_MIME_TYPES.has(mime)) return false;
+  const ext = path.extname(filename || '').toLowerCase().trim();
+  if (BLOCKED_EXTENSIONS.has(ext)) return false;
+  return true;
+};
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_MEMORY_FILE_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (!isSafeUploadFile(file.mimetype, file.originalname)) {
+      return cb(new Error('File type not allowed for upload.'));
+    }
+    cb(null, true);
+  },
 });
 
 // Dedicated isolated directory for chunk upload temp files
 const UPLOAD_TEMP_DIR = path.join(os.tmpdir(), 'pulse_uploads');
 try {
-  fs.mkdirSync(UPLOAD_TEMP_DIR, { recursive: true });
+  fs.mkdirSync(UPLOAD_TEMP_DIR, { recursive: true, mode: 0o700 });
 } catch (_) {}
 
 // Issue 5: Per-session concurrent upload cap — prevents disk exhaustion DoS.
@@ -310,7 +342,7 @@ module.exports = (wss, broadcasts) => {
       let canonicalRoomId = roomId;
       if (roomId !== 'me' && roomId !== 'global') {
         try {
-          const room = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] }).lean();
+          const room = await getCachedRoom(roomId);
           if (room) canonicalRoomId = room.id;
         } catch (_) {}
       }
@@ -403,7 +435,7 @@ module.exports = (wss, broadcasts) => {
     }
     if (roomId !== 'me' && roomId !== 'global') {
       try {
-        const roomDoc = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] }).lean();
+        const roomDoc = await getCachedRoom(roomId);
         if (roomDoc) roomId = roomDoc.id;
       } catch (_) {}
     }
@@ -431,6 +463,8 @@ module.exports = (wss, broadcasts) => {
         logger.error(`Upload chunk middleware error: ${err.message}`);
         return res.status(500).json({ error: `Upload failed: ${err.message}` });
       }
+      let safeUploadId;
+      let scopeHash;
       try {
         const { uploadId, chunkIndex, totalChunks, originalname, mimetype, userId, text } = req.body;
         const rawRoomId = req.body?.roomId;
@@ -445,17 +479,19 @@ module.exports = (wss, broadcasts) => {
         }
         if (roomId !== 'me' && roomId !== 'global') {
           try {
-            const roomDoc = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] }).lean();
+            const roomDoc = await getCachedRoom(roomId);
             if (roomDoc) roomId = roomDoc.id;
           } catch (_) {}
         }
         
-        const safeUploadId = path.basename(uploadId).replace(/[^a-zA-Z0-9_-]/g, '');
+        safeUploadId = path.basename(uploadId).replace(/[^a-zA-Z0-9_-]/g, '');
         if (!safeUploadId || safeUploadId !== uploadId) {
           return res.status(400).json({ error: 'Invalid uploadId format' });
         }
 
-        const { tmpPath, scopeHash } = getChunkUploadTempPath(safeUploadId, roomId, req);
+        const chunkPathInfo = getChunkUploadTempPath(safeUploadId, roomId, req);
+        const tmpPath = chunkPathInfo.tmpPath;
+        scopeHash = chunkPathInfo.scopeHash;
 
         // Issue 5: Enforce concurrent upload cap — reject if session already has MAX active uploads
         if (!trackUploadStart(scopeHash, safeUploadId)) {
@@ -504,7 +540,7 @@ module.exports = (wss, broadcasts) => {
           let canonicalRoomId = roomId;
           if (roomId !== 'me' && roomId !== 'global') {
             try {
-              const room = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] }).lean();
+              const room = await getCachedRoom(roomId);
               if (room) canonicalRoomId = room.id;
             } catch (_) {}
           }
@@ -577,7 +613,7 @@ module.exports = (wss, broadcasts) => {
       } catch (err) {
         logger.error('Chunk upload error:', { message: err.message, stack: err.stack });
         // Clean up tracking on error
-        if (typeof scopeHash !== 'undefined' && typeof safeUploadId !== 'undefined') {
+        if (scopeHash && safeUploadId) {
           trackUploadEnd(scopeHash, safeUploadId);
         }
         
@@ -707,7 +743,7 @@ module.exports = (wss, broadcasts) => {
 
     if (roomId !== 'me' && roomId !== 'global') {
       try {
-        const roomDoc = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] }).lean();
+        const roomDoc = await getCachedRoom(roomId);
         if (roomDoc) {
           roomId = roomDoc.id;
           roomIdentifiers = Array.from(new Set([roomDoc.id, roomDoc.alias, rawRoomId.trim()].filter(Boolean)));
@@ -753,7 +789,7 @@ module.exports = (wss, broadcasts) => {
 
     if (roomId !== 'me' && roomId !== 'global') {
       try {
-        const roomDoc = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] }).lean();
+        const roomDoc = await getCachedRoom(roomId);
         if (roomDoc) roomId = roomDoc.id;
       } catch (_) {}
     }

@@ -18,6 +18,24 @@ const pollSchema = new mongoose.Schema({
   options:  { type: [pollOptionSchema], default: [] },
 }, { _id: false });
 
+const replyingToSchema = new mongoose.Schema({
+  id:         { type: String, maxlength: 64 },
+  text:       { type: String, maxlength: 500 },
+  url:        { type: String, maxlength: 2048 },
+  type:       { type: String, maxlength: 20 },
+  username:   { type: String, maxlength: 50 },
+  isDeleted:  { type: Boolean, default: false },
+  deletedBy:  { type: String, maxlength: 64 },
+  duration:   { type: Number },
+  mediaCount: { type: Number },
+  isGroup:    { type: Boolean },
+}, { _id: false, strict: true });
+
+const pinnedSchema = new mongoose.Schema({
+  pinnedAt:  { type: Date },
+  expiresAt: { type: Date, default: null },
+}, { _id: false, strict: true });
+
 const messageSchema = new mongoose.Schema({
   id: { type: String, required: true, unique: true },
   roomId: { type: String, required: true, default: 'me' },
@@ -39,12 +57,12 @@ const messageSchema = new mongoose.Schema({
   edited: { type: Boolean, default: false },
   clientTempId: { type: String, default: null },
   replyingTo: {
-    type: Object,
+    type: replyingToSchema,
     default: null
   },
   pinned: {
-    type: Object,
-    default: null // { pinnedAt: Date, expiresAt: Date | null }
+    type: pinnedSchema,
+    default: null
   },
   reactions: {
     type: Map,

@@ -9,7 +9,7 @@ const MessageEvent = require('../models/messageEvent');
 const UserReport = require('../models/userReport');
 const cloudinary = require('cloudinary').v2;
 const { toClientMessage } = require('../middleware');
-const { timingSafeEqualStr, parseCloudinaryAssetFromUrl, verifySignedSessionToken } = require('../security');
+const { timingSafeEqualStr, parseCloudinaryAssetFromUrl, verifySignedSessionToken, hashSessionToken } = require('../security');
 const { normalizeReactionEmoji, filterValidReactions, toReactionMap } = require('../reactions');
 const {
   getRoomState,
@@ -36,7 +36,12 @@ const buildSafeReplyingTo = (rt) => {
   const safe = {};
   if (typeof rt.id === 'string')        safe.id        = rt.id.slice(0, 64);
   if (typeof rt.text === 'string')      safe.text      = rt.text.slice(0, 500);
-  if (typeof rt.url === 'string')       safe.url       = rt.url.slice(0, 2048);
+  if (typeof rt.url === 'string') {
+    const trimmedUrl = rt.url.trim();
+    if (/^(https?:\/\/|\/api\/)/i.test(trimmedUrl) && !trimmedUrl.startsWith('blob:')) {
+      safe.url = trimmedUrl.slice(0, 2048);
+    }
+  }
   if (typeof rt.type === 'string')      safe.type      = rt.type.slice(0, 20);
   if (typeof rt.username === 'string')  safe.username  = rt.username.slice(0, 50);
   if (typeof rt.deletedBy === 'string') safe.deletedBy = rt.deletedBy.slice(0, 64);
@@ -99,7 +104,7 @@ const isSocketSessionValid = (ws, roomId) => {
       }
       User.updateOne(
         { roomId: String(roomId), userId: String(userId) },
-        { $set: { sessionToken: ws.sessionToken, lastSeen: new Date() } }
+        { $set: { sessionToken: ws.sessionToken, sessionTokenHash: hashSessionToken(ws.sessionToken), lastSeen: new Date() } }
       ).catch(() => {});
       return true;
     }
@@ -631,17 +636,17 @@ const handleDeleteForEveryone = async ({ ws, parsedMessage, wss, broadcastToAdmi
       { id: messageId, roomId },
       {
         $set: {
-          text: undefined,
-          url: undefined,
-          originalName: undefined,
-          size: undefined,
-          reactions: undefined,
           isDeleted: true,
           deletedBy: operatorUserId,
           pinned: null,
         },
         $unset: {
-          replyingTo: ""
+          text: "",
+          url: "",
+          originalName: "",
+          size: "",
+          reactions: "",
+          replyingTo: "",
         }
       },
       { new: true }
