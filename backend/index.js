@@ -135,6 +135,15 @@ app.post('/api/telemetry/diagnostic', diagnosticLimiter, (req, res) => {
   res.status(204).end();
 });
 
+// Database readiness check: fail closed with 503 instead of hanging or returning unhandled errors when DB is disconnected
+app.use('/api', (_req, res, next) => {
+  const mongoose = require('mongoose');
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({ error: 'Database service is currently unavailable. Please try again shortly.' });
+  }
+  next();
+});
+
 app.use('/', authRouter);
 app.use('/', require('./routes/admin')(wss, broadcasts));
 app.use('/', require('./routes/media')(wss, broadcasts));

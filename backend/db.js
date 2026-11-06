@@ -28,4 +28,11 @@ const connectDB = async () => {
   }
 };
 
+mongoose.connection.on('disconnected', () => {
+  logger.warn('MongoDB disconnected. Waiting for reconnection...');
+});
+mongoose.connection.on('reconnected', () => {
+  logger.info('MongoDB reconnected successfully.');
+});
+
 module.exports = connectDB;

@@ -1,5 +1,6 @@
 'use strict';
 
+const mongoose = require('mongoose');
 const { WebSocket } = require('ws');
 const logger = require('../logger');
 const User = require('../models/user');
@@ -46,6 +47,14 @@ const handleUserJoin = async ({
   if (rawUsername.trim().length > 50 || rawUserId.trim().length > 64) {
     logger.warn('Rejected user_join payload: username or userId exceeds maximum allowed length');
     ws.send(JSON.stringify({ type: 'force_logout', message: 'Username cannot exceed 50 characters.' }));
+    setTimeout(() => ws.terminate(), 300);
+    return;
+  }
+
+  // Database readiness check: fail closed if database is unavailable
+  if (mongoose.connection.readyState !== 1) {
+    logger.warn('Rejected WebSocket join: database is currently unavailable');
+    ws.send(JSON.stringify({ type: 'force_logout', message: 'Chat service is temporarily unavailable. Please try again shortly.' }));
     setTimeout(() => ws.terminate(), 300);
     return;
   }
@@ -277,10 +286,28 @@ const handleUserJoin = async ({
         } else {
           usernameTaken = true;
         }
-      } else if (isWithinPickerGrace || (client.clientIp === wsIp && client.isAlive === false)) {
-        // User opened native file picker on mobile, tab was killed/evicted by OS, or un-alive zombie.
-        logger.info(`Recovering file picker session for '${username}' (old userId: ${client.userId}, new userId: ${userId}).`);
-        client.terminate();
+      } else if (isWithinPickerGrace) {
+        const prevLogged = loggedInUsers.get(client.userId);
+        const prevFp = userFingerprints.get(client.userId);
+        const devHash = fpData ? generateDeviceHash({ ...fpData, userAgent: wsUa }) : null;
+        const isDeviceMatch = Boolean(devHash && prevFp?.deviceHashes?.has(devHash));
+        let isTokenMatch = Boolean(
+          sessionTokenProvided &&
+          prevLogged?.sessionToken &&
+          timingSafeEqualStr(sessionTokenProvided, prevLogged.sessionToken)
+        );
+        if (!isTokenMatch && sessionTokenProvided) {
+          const verified = verifySignedSessionToken(sessionTokenProvided);
+          if (verified && verified.userId === client.userId && (verified.roomId === roomId || verified.roomId === cleanRoomId)) {
+            isTokenMatch = true;
+          }
+        }
+        if (isTokenMatch || isDeviceMatch) {
+          logger.info(`Recovering file picker session for '${username}' (old userId: ${client.userId}, new userId: ${userId}).`);
+          client.terminate();
+        } else {
+          usernameTaken = true;
+        }
       } else {
         usernameTaken = true;
       }
@@ -308,17 +335,50 @@ const handleUserJoin = async ({
       if (pUser && pUser.username && pUser.username.trim().toLowerCase() === trimmedLower) {
         const prevLogged = loggedInUsers.get(pUserId);
         const prevFp = userFingerprints.get(pUserId);
-        const isSameIp = Boolean(prevLogged?.ip && prevLogged.ip === wsIp);
-        const isFpMatch = Boolean(wsIp && prevFp?.ips?.has(wsIp));
-        if (isSameIp || isFpMatch || !prevLogged?.ip) {
+        const devHash = fpData ? generateDeviceHash({ ...fpData, userAgent: wsUa }) : null;
+        const isDeviceMatch = Boolean(devHash && prevFp?.deviceHashes?.has(devHash));
+        let isTokenMatch = Boolean(
+          sessionTokenProvided &&
+          prevLogged?.sessionToken &&
+          timingSafeEqualStr(sessionTokenProvided, prevLogged.sessionToken)
+        );
+        if (!isTokenMatch && sessionTokenProvided) {
+          const verified = verifySignedSessionToken(sessionTokenProvided);
+          if (verified && verified.userId === pUserId && (verified.roomId === roomId || verified.roomId === cleanRoomId)) {
+            isTokenMatch = true;
+          }
+        }
+        if (isTokenMatch || isDeviceMatch) {
           clearTimeout(timerId);
           pendingDisconnects.delete(pUserId);
           onlineUsers.delete(pUserId);
           reconnectedFromPending = true;
           break;
+        } else {
+          logger.warn(`Username '${username}' rejected — currently held in pending disconnect by another session.`);
+          ws.send(JSON.stringify({
+            type: 'username_taken',
+            message: 'That username is already in use. Please choose a different one.',
+          }));
+          setTimeout(() => ws.terminate(), 300);
+          return;
         }
       }
     }
+  }
+
+  // Ensure no other active session in onlineUsers has the same username
+  const takenInOnline = Array.from(onlineUsers.values()).find(
+    u => u.username && u.username.trim().toLowerCase() === trimmedLower && u.userId !== userId
+  );
+  if (takenInOnline) {
+    logger.warn(`Username '${username}' rejected — already taken by active user in room ${roomId}.`);
+    ws.send(JSON.stringify({
+      type: 'username_taken',
+      message: 'That username is already in use. Please choose a different one.',
+    }));
+    setTimeout(() => ws.terminate(), 300);
+    return;
   }
 
   if (isWithinPickerGrace) {

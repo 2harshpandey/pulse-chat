@@ -10,7 +10,7 @@ const AuditLog = require('../models/auditLog');
 const TempLink = require('../models/tempLink');
 const Room = require('../models/room');
 const User = require('../models/user');
-const { timingSafeEqualStr, verifyPassword, hashPassword, generateSessionToken } = require('../security');
+const { timingSafeEqualStr, verifyPassword, hashPassword, generateSessionToken, verifySignedSessionToken } = require('../security');
 const {
   getRoomState,
   userFingerprints,
@@ -71,16 +71,20 @@ async function resolveUsernameCollision({ roomId, username, userId, ip, userAgen
 
   const prevLogged = roomState.loggedInUsers?.get(takenUser.userId);
   const prevFp = userFingerprints.get(takenUser.userId);
-  const prevIp = prevLogged?.ip || pickerGrace?.ip;
-  const isSameIp = Boolean(ip && prevIp && ip === prevIp);
   const incomingToken = typeof incomingSessionToken === 'string' && incomingSessionToken.trim() ? incomingSessionToken.trim() : null;
-  const isTokenMatch = Boolean(incomingToken && prevLogged?.sessionToken && timingSafeEqualStr(incomingToken, prevLogged.sessionToken));
+  let isTokenMatch = Boolean(incomingToken && prevLogged?.sessionToken && timingSafeEqualStr(incomingToken, prevLogged.sessionToken));
+  if (!isTokenMatch && incomingToken) {
+    const verified = verifySignedSessionToken(incomingToken);
+    if (verified && verified.userId === takenUser.userId && (verified.roomId === roomId || verified.roomId === 'me')) {
+      isTokenMatch = true;
+    }
+  }
   const devHash = fingerprint ? generateDeviceHash({ ...fingerprint, userAgent }) : null;
   const isDeviceMatch = Boolean(devHash && prevFp?.deviceHashes?.has(devHash));
 
   // Require cryptographic session token match OR device fingerprint verification.
-  // Prevent arbitrary clients sharing the same NAT/public IP from hijacking disconnected sessions.
-  const canReclaim = (isPending || hasPickerGrace) && (isTokenMatch || isDeviceMatch || (isSameIp && isDeviceMatch));
+  // IP alone is NOT sufficient to prevent arbitrary clients sharing the same NAT/public IP from hijacking disconnected sessions.
+  const canReclaim = (isPending || hasPickerGrace) && (isTokenMatch || isDeviceMatch);
 
   if (canReclaim) {
     const authType = viaTempLink ? 'temp-link re-auth' : 're-auth';

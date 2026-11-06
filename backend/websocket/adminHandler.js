@@ -1,5 +1,6 @@
 'use strict';
 
+const mongoose = require('mongoose');
 const User = require('../models/user');
 const Room = require('../models/room');
 const AuditLog = require('../models/auditLog');
@@ -75,6 +76,14 @@ const handleAdminAuth = async (ws, rawData, broadcastToAdmins, loadPinnedMessage
 
     logger.info(`Admin auth attempt: roomId=${roomId}, type=${data.type}, hasPassword=${Boolean(password)}`);
     if (data.type === 'admin_auth' && rawRoomId) {
+      if (mongoose.connection.readyState !== 1) {
+        logger.warn('Rejected admin auth: database is currently unavailable');
+        try {
+          ws.send(JSON.stringify({ type: 'error', message: 'Database service is currently unavailable. Please try again shortly.' }));
+        } catch (_) {}
+        setTimeout(() => ws.terminate(), 300).unref();
+        return;
+      }
       let targetRoom = null;
       if (roomId !== 'me' && roomId !== 'global') {
         try {
