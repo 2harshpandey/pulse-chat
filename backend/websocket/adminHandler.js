@@ -6,7 +6,7 @@ const AuditLog = require('../models/auditLog');
 const logger = require('../logger');
 const { getRoomState } = require('../state');
 const { timingSafeEqualStr, verifyPassword } = require('../security');
-const { isPasswordLocked, recordFailedPasswordAttempt, resetPasswordAttempts, toSafeLoggedInUserList } = require('../middleware');
+const { isPasswordLocked, recordFailedPasswordAttempt, recordFailedAdminAttempt, resetPasswordAttempts, toSafeLoggedInUserList } = require('../middleware');
 
 /**
  * Configure and register an authenticated admin client.
@@ -108,7 +108,7 @@ const handleAdminAuth = async (ws, rawData, broadcastToAdmins, loadPinnedMessage
       const { adminClients, loggedInUsers, onlineUsers } = getRoomState(canonicalRoomId);
 
       const onAuthFailure = () => {
-        recordFailedPasswordAttempt(rateLimitKey, { ip: clientIp, headers: { 'user-agent': ws.clientUa } });
+        recordFailedAdminAttempt(rateLimitKey, { ip: clientIp, headers: { 'user-agent': ws.clientUa } });
         AuditLog.create({
           roomId: canonicalRoomId,
           type: 'admin_auth_failed',

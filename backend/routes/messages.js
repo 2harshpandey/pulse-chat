@@ -65,7 +65,10 @@ const isRoomAccessAllowed = async (rawRoomId, req) => {
     if (blockCheck.blocked) {
       return false;
     }
-  } catch (_) {}
+  } catch (err) {
+    logger.warn('Failed to verify block check status (failing closed):', err?.message);
+    return false;
+  }
 
   if (roomId === 'global') return true;
 
@@ -137,25 +140,6 @@ const isRoomAccessAllowed = async (rawRoomId, req) => {
         return true;
       }
     } catch (_) {}
-  }
-
-  // Alternatively check if room password was passed directly (via header or request body)
-  const roomPassword = req.headers['x-room-password'] || req.body?.password || req.body?.joinPassword;
-  if (roomPassword && typeof roomPassword === 'string') {
-    if (roomId === 'me' && process.env.CLIENT_PASSWORD && timingSafeEqualStr(roomPassword, process.env.CLIENT_PASSWORD)) {
-      return true;
-    }
-    if (room && room.joinPassword && verifyPassword(roomPassword, room.joinPassword)) {
-      return true;
-    }
-    if (!room && roomId !== 'me') {
-      try {
-        const fetchedRoom = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] }).lean();
-        if (fetchedRoom && fetchedRoom.joinPassword && verifyPassword(roomPassword, fetchedRoom.joinPassword)) {
-          return true;
-        }
-      } catch (_) {}
-    }
   }
 
   return false;

@@ -156,24 +156,13 @@ const handleUserJoin = async ({
   }
 
   if (requiresPassword) {
-    let isAuthorized = Boolean(activeSessionToken);
-
-    if (!isAuthorized && parsedMessage.password) {
-      if (roomId === 'me') {
-        isAuthorized = Boolean(process.env.CLIENT_PASSWORD && timingSafeEqualStr(parsedMessage.password, process.env.CLIENT_PASSWORD));
-      } else if (roomDoc && roomDoc.joinPassword) {
-        isAuthorized = verifyPassword(parsedMessage.password, roomDoc.joinPassword);
-      }
-      if (isAuthorized) {
-        activeSessionToken = generateSessionToken(userId, roomId);
-      }
-    }
+    const isAuthorized = Boolean(activeSessionToken);
 
     if (!isAuthorized) {
       logger.warn(`Unauthorized WebSocket join attempt to private room '${roomId}' by user '${username}' (${userId}) from IP ${wsIp}`);
       ws.send(JSON.stringify({
         type: 'force_logout',
-        message: 'Authentication required to enter this private room.'
+        message: 'Authentication required to enter this private room. Please log in first.'
       }));
       setTimeout(() => ws.terminate(), 300);
       return;
@@ -220,6 +209,7 @@ const handleUserJoin = async ({
       const hash = generateDeviceHash({ ...fpData, userAgent: wsUa });
       existing.deviceHashes.add(hash);
     }
+    existing.lastSeen = Date.now();
     userFingerprints.set(userId, existing);
   }
 

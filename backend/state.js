@@ -29,11 +29,21 @@ const pruneStaleState = () => {
   const now = Date.now();
   const maxAgeMs = 48 * 60 * 60 * 1000; // 48 hours
 
-  // Cap global fingerprints to prevent unbounded heap growth
+  // Cap global fingerprints by staleness (lastSeen) to avoid evicting active users
   if (userFingerprints.size > 1000) {
-    const keysToDelete = Array.from(userFingerprints.keys()).slice(0, userFingerprints.size - 500);
-    for (const key of keysToDelete) {
-      userFingerprints.delete(key);
+    const cutoff = now - 24 * 60 * 60 * 1000; // 24 hours
+    for (const [key, fp] of userFingerprints.entries()) {
+      if (!fp.lastSeen || fp.lastSeen < cutoff) {
+        userFingerprints.delete(key);
+      }
+    }
+    // If still over 1000 after staleness prune, evict least recently seen
+    if (userFingerprints.size > 1000) {
+      const sorted = Array.from(userFingerprints.entries()).sort((a, b) => (a[1].lastSeen || 0) - (b[1].lastSeen || 0));
+      const toRemove = sorted.slice(0, userFingerprints.size - 800);
+      for (const [key] of toRemove) {
+        userFingerprints.delete(key);
+      }
     }
   }
 

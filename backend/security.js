@@ -243,12 +243,12 @@ const timingSafeEqualStr = (a, b) => {
   if (a.length === 0 || b.length === 0) return false;
   const bufA = Buffer.from(a, 'utf8');
   const bufB = Buffer.from(b, 'utf8');
-  if (bufA.length !== bufB.length) {
-    // Execute timingSafeEqual against self on length mismatch to equalize execution time
-    crypto.timingSafeEqual(bufA, bufA);
-    return false;
-  }
-  return crypto.timingSafeEqual(bufA, bufB);
+  // Hash both buffers with a fixed-length HMAC so timingSafeEqual always receives
+  // identical 32-byte buffers, completely eliminating length timing side-channels.
+  const hmacKey = Buffer.alloc(32, 0);
+  const digestA = crypto.createHmac('sha256', hmacKey).update(bufA).digest();
+  const digestB = crypto.createHmac('sha256', hmacKey).update(bufB).digest();
+  return crypto.timingSafeEqual(digestA, digestB);
 };
 
 /**
@@ -296,13 +296,12 @@ const verifyPassword = (providedPassword, storedHashOrPlain) => {
   return timingSafeEqualStr(providedPassword, storedHashOrPlain);
 };
 
-// SESSION_SECRET must be explicitly configured. A missing secret is a startup error,
-// not something to silently paper over with a public literal.
-if (!process.env.SESSION_SECRET && !process.env.ADMIN_SECRET) {
+// SESSION_SECRET must be explicitly configured as an independent cryptographic key.
+// Never derive it from ADMIN_SECRET to prevent cross-domain key reuse vulnerabilities.
+if (!process.env.SESSION_SECRET) {
   throw new Error('[security] SESSION_SECRET environment variable is required and must not be empty. Set it in your environment before starting the server.');
 }
-const SESSION_SECRET = process.env.SESSION_SECRET
-  || crypto.createHash('sha256').update(process.env.ADMIN_SECRET).digest('hex');
+const SESSION_SECRET = process.env.SESSION_SECRET;
 
 const SESSION_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 

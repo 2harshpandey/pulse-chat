@@ -26,6 +26,9 @@ const { isRoomAccessAllowed } = require('./messages');
 
 const router = express.Router();
 
+let inFlightPreviews = 0;
+const MAX_CONCURRENT_PREVIEWS = 25;
+
 const linkPreviewCache = new Map(); // url -> { timestamp: number, data: object }
 const PREVIEW_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 const MAX_PREVIEW_CACHE_SIZE = 500;
@@ -61,6 +64,10 @@ const getPreviewCacheKey = (rawUrl) => {
 };
 
 router.get('/api/link-preview', previewLimiter, async (req, res) => {
+  if (inFlightPreviews >= MAX_CONCURRENT_PREVIEWS) {
+    return res.status(429).json({ error: 'Link preview service is busy. Please try again in a few moments.' });
+  }
+  inFlightPreviews += 1;
   try {
     const rawRoomId = req.headers['x-room-id'] || req.query.roomId;
     const roomId = typeof rawRoomId === 'string' && rawRoomId.trim() ? rawRoomId.trim() : 'me';
@@ -494,6 +501,8 @@ router.get('/api/link-preview', previewLimiter, async (req, res) => {
   } catch (error) {
     logger.error('Link preview fetch error:', { message: error.message });
     res.status(500).json({ error: 'Failed to fetch preview' });
+  } finally {
+    inFlightPreviews = Math.max(0, inFlightPreviews - 1);
   }
 });
 

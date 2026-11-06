@@ -17,6 +17,56 @@ const setBroadcast = (fn) => { if (typeof fn === 'function') _broadcastToAdmins 
 
 const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+// Cache message counts per room to prevent N+1 full-collection aggregates under load
+const _roomMessageCountCache = new Map(); // roomId -> { count: number, ts: number }
+const ROOM_COUNT_CACHE_TTL_MS = 30 * 1000;
+
+const getCachedMessageCounts = async (roomIds) => {
+  if (!Array.isArray(roomIds) || roomIds.length === 0) return new Map();
+  const now = Date.now();
+  const countMap = new Map();
+  const missingIds = [];
+
+  for (const id of roomIds) {
+    const cached = _roomMessageCountCache.get(id);
+    if (cached && (now - cached.ts < ROOM_COUNT_CACHE_TTL_MS)) {
+      countMap.set(id, cached.count);
+    } else {
+      missingIds.push(id);
+    }
+  }
+
+  if (missingIds.length > 0) {
+    const counts = await Message.aggregate([
+      { $match: { roomId: { $in: missingIds } } },
+      { $group: { _id: '$roomId', count: { $sum: 1 } } }
+    ]);
+    const foundIds = new Set();
+    for (const c of counts) {
+      countMap.set(c._id, c.count);
+      _roomMessageCountCache.set(c._id, { count: c.count, ts: now });
+      foundIds.add(c._id);
+    }
+    for (const id of missingIds) {
+      if (!foundIds.has(id)) {
+        countMap.set(id, 0);
+        _roomMessageCountCache.set(id, { count: 0, ts: now });
+      }
+    }
+  }
+
+  return countMap;
+};
+
+if (typeof setInterval !== 'undefined') {
+  setInterval(() => {
+    const cutoff = Date.now() - ROOM_COUNT_CACHE_TTL_MS;
+    for (const [k, v] of _roomMessageCountCache.entries()) {
+      if (v.ts < cutoff) _roomMessageCountCache.delete(k);
+    }
+  }, 60 * 1000).unref();
+}
+
 // Create a new room
 router.post('/', apiLimiter, async (req, res) => {
   const { name, isPrivate, joinPassword, description, adminPassword, fpData } = req.body;
@@ -243,14 +293,7 @@ router.get('/', apiLimiter, async (req, res) => {
     ]);
     const hasMore = skip + publicRooms.length < totalCount;
     const roomIds = publicRooms.map(r => r.id);
-    let countMap = new Map();
-    if (roomIds.length > 0) {
-      const counts = await Message.aggregate([
-        { $match: { roomId: { $in: roomIds } } },
-        { $group: { _id: '$roomId', count: { $sum: 1 } } }
-      ]);
-      countMap = new Map(counts.map(c => [c._id, c.count]));
-    }
+    const countMap = await getCachedMessageCounts(roomIds);
 
     const roomsWithStats = publicRooms.map((room) => {
       const state = getRoomState(room.id);
@@ -305,14 +348,7 @@ router.get('/search', apiLimiter, async (req, res) => {
     const hasMore = skip + rooms.length < totalCount;
 
     const roomIds = rooms.map(r => r.id);
-    let countMap = new Map();
-    if (roomIds.length > 0) {
-      const counts = await Message.aggregate([
-        { $match: { roomId: { $in: roomIds } } },
-        { $group: { _id: '$roomId', count: { $sum: 1 } } }
-      ]);
-      countMap = new Map(counts.map(c => [c._id, c.count]));
-    }
+    const countMap = await getCachedMessageCounts(roomIds);
 
     const roomsWithStats = rooms.map((room) => {
       const state = getRoomState(room.id);

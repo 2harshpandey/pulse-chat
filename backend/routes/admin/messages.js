@@ -5,7 +5,7 @@ const MessageEvent = require('../../models/messageEvent');
 const AuditLog = require('../../models/auditLog');
 const Room = require('../../models/room');
 const { getRoomState } = require('../../state');
-const { adminLimiter, adminAuth, extractIp } = require('../../middleware');
+const { adminLimiter, adminAuth, extractIp, toClientMessage } = require('../../middleware');
 const { unpinIfPinned } = require('../../websocket/pinnedManager');
 const { parseCloudinaryAssetFromUrl, batchDeleteCloudinaryAssets } = require('../../security');
 
@@ -16,8 +16,17 @@ module.exports = (wss, broadcasts) => {
   // --- Message / History ---
   router.get('/api/admin/messages', adminLimiter, adminAuth, async (req, res) => {
     const roomId = req.roomId;
-    const messages = await Message.find({ roomId }).sort({ createdAt: -1 }).limit(500);
-    res.json(messages.reverse());
+    const requestedLimit = parseInt(req.query.limit, 10);
+    const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 500) : 500;
+    const query = { roomId };
+    if (req.query.before) {
+      const beforeDate = new Date(req.query.before);
+      if (!Number.isNaN(beforeDate.getTime())) {
+        query.createdAt = { $lt: beforeDate };
+      }
+    }
+    const messages = await Message.find(query).sort({ createdAt: -1 }).limit(limit).lean();
+    res.json(messages.reverse().map(toClientMessage));
   });
 
   router.get('/api/admin/export-full-db', adminLimiter, adminAuth, async (req, res) => {

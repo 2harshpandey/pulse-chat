@@ -636,6 +636,11 @@ const handleDeleteForEveryone = async ({ ws, parsedMessage, wss, broadcastToAdmi
       logger.error('Failed to handle delete event logging:', e);
     }
 
+    if (!updatedMessage) {
+      logger.warn(`Delete-for-everyone: message ${messageId} not found upon update in room ${roomId}. Skipping broadcast.`);
+      return;
+    }
+
     const updateMsg = { type: 'update', data: toClientMessage(updatedMessage) };
     wss.clients.forEach(c => {
       if (c.readyState === WebSocket.OPEN && c.roomId === roomId) {

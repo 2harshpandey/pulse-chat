@@ -50,7 +50,7 @@ const setBroadcast = (broadcastToAdmins) => { _broadcastToAdmins = broadcastToAd
  * @param {Object} res - Express response object
  * @returns {Promise<boolean>} - True if allowed/resolved; false if rejected with 409
  */
-async function resolveUsernameCollision({ roomId, username, userId, ip, userAgent, roomState, viaTempLink = false, fingerprint = null }, res) {
+async function resolveUsernameCollision({ roomId, username, userId, ip, userAgent, roomState, viaTempLink = false, fingerprint = null, incomingSessionToken = null }, res) {
   if (!username || typeof username !== 'string') return true;
 
   const { onlineUsers, pendingDisconnects, filePickerPresenceByUsername } = roomState;
@@ -73,11 +73,14 @@ async function resolveUsernameCollision({ roomId, username, userId, ip, userAgen
   const prevFp = userFingerprints.get(takenUser.userId);
   const prevIp = prevLogged?.ip || pickerGrace?.ip;
   const isSameIp = Boolean(ip && prevIp && ip === prevIp);
-  const isFpMatch = Boolean(ip && prevFp?.ips?.has(ip));
+  const incomingToken = typeof incomingSessionToken === 'string' && incomingSessionToken.trim() ? incomingSessionToken.trim() : null;
+  const isTokenMatch = Boolean(incomingToken && prevLogged?.sessionToken && timingSafeEqualStr(incomingToken, prevLogged.sessionToken));
   const devHash = fingerprint ? generateDeviceHash({ ...fingerprint, userAgent }) : null;
   const isDeviceMatch = Boolean(devHash && prevFp?.deviceHashes?.has(devHash));
 
-  const canReclaim = (isPending || hasPickerGrace) && (isSameIp || isFpMatch || isDeviceMatch);
+  // Require cryptographic session token match OR device fingerprint verification.
+  // Prevent arbitrary clients sharing the same NAT/public IP from hijacking disconnected sessions.
+  const canReclaim = (isPending || hasPickerGrace) && (isTokenMatch || isDeviceMatch || (isSameIp && isDeviceMatch));
 
   if (canReclaim) {
     const authType = viaTempLink ? 'temp-link re-auth' : 're-auth';
@@ -208,9 +211,10 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
     if (isPasswordValid) {
       // If the client sends a username, verify it is not already in use.
       if (username) {
+        const incomingSessionToken = req.headers['x-session-token'] || req.body?.sessionToken;
         const roomState = { onlineUsers, loggedInUsers, pendingDisconnects, filePickerPresenceByUsername };
         const allowed = await resolveUsernameCollision({
-          roomId, username, userId, ip, userAgent, roomState, viaTempLink: false, fingerprint
+          roomId, username, userId, ip, userAgent, roomState, viaTempLink: false, fingerprint, incomingSessionToken
         }, res);
         if (!allowed) return;
       }
@@ -226,6 +230,7 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
         existing.timezone = fingerprint.timezone;
         const hash = generateDeviceHash({ ...fingerprint, userAgent });
         existing.deviceHashes.add(hash);
+        existing.lastSeen = Date.now();
         userFingerprints.set(userId, existing);
       }
 
@@ -384,9 +389,10 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
     }
 
     // Check username availability
+    const incomingSessionToken = req.headers['x-session-token'] || req.body?.sessionToken;
     const roomState = { onlineUsers, loggedInUsers, pendingDisconnects, filePickerPresenceByUsername };
     const allowed = await resolveUsernameCollision({
-      roomId, username: username.trim(), userId, ip, userAgent, roomState, viaTempLink: true, fingerprint
+      roomId, username: username.trim(), userId, ip, userAgent, roomState, viaTempLink: true, fingerprint, incomingSessionToken
     }, res);
     if (!allowed) return;
 
@@ -401,6 +407,7 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
       existing.timezone = fingerprint.timezone;
       const hash = generateDeviceHash({ ...fingerprint, userAgent });
       existing.deviceHashes.add(hash);
+      existing.lastSeen = Date.now();
       userFingerprints.set(userId, existing);
     }
 

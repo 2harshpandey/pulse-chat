@@ -24,6 +24,7 @@ const {
   adminLimiter,
   adminAuth,
   adminSecretAuth,
+  extractIp,
 } = require('../middleware');
 const { sanitizeDownloadFilename, parseCloudinaryAssetFromUrl, batchDeleteCloudinaryAssets } = require('../security');
 const { isRoomAccessAllowed } = require('./messages');
@@ -384,9 +385,11 @@ module.exports = (wss, broadcasts) => {
 
   const getChunkUploadTempPath = (safeUploadId, roomId, req) => {
     const callerId = req.headers['x-user-id'] || req.body?.userId || req.query?.userId || 'anon';
+    const clientIp = extractIp(req);
     const cleanRoom = typeof roomId === 'string' && roomId.trim() ? roomId.trim() : 'me';
     const cleanUser = typeof callerId === 'string' && callerId.trim() ? callerId.trim() : 'anon';
-    const scopeHash = crypto.createHash('sha256').update(`${cleanRoom}:${cleanUser}`).digest('hex').slice(0, 16);
+    // Bind scope to room, user, and verified client IP to eliminate cross-session collisions and spoofing
+    const scopeHash = crypto.createHash('sha256').update(`${cleanRoom}:${cleanUser}:${clientIp}`).digest('hex').slice(0, 16);
     return { tmpPath: path.join(UPLOAD_TEMP_DIR, `pulse_upload_${scopeHash}_${safeUploadId}`), scopeHash };
   };
 

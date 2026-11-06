@@ -136,7 +136,7 @@ const apiLimiter = rateLimit({
 
 const adminLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1200,
+  max: 300,
   standardHeaders: true,
   legacyHeaders: false,
   validate: { ip: false, default: true },
@@ -249,6 +249,42 @@ const recordFailedPasswordAttempt = (key, req) => {
   passwordAttemptLocks.set(key, record);
 };
 
+const recordFailedAdminAttempt = (key, req) => {
+  const now = Date.now();
+  let record = passwordAttemptLocks.get(key) || { count: 0, lockUntil: 0, lastAttempt: 0 };
+  if (record.lastAttempt && (now - record.lastAttempt > 10 * 60 * 1000)) {
+    record.count = 0;
+  }
+  record.count += 1;
+  record.lastAttempt = now;
+  // Strict admin threshold: lock out for 3 minutes after 3 consecutive failures
+  if (record.count >= 3) {
+    record.lockUntil = now + 180 * 1000;
+    record.count = 0;
+
+    if (req) {
+      const ip = extractIp(req);
+      const roomId = req.body?.roomId || req.body?.id || req.headers?.['x-room-id'] || 'me';
+      const userAgent = req.headers?.['user-agent'] || '';
+      AuditLog.create({
+        roomId,
+        type: 'potential_admin_bruteforce',
+        details: {
+          attempts: 3,
+          lockoutSeconds: 180,
+          reason: '3 consecutive failed admin password attempts detected from this IP',
+        },
+        ip,
+        userAgent,
+      }).then((entry) => {
+        _broadcastToAdmins(roomId, 'audit_log', entry);
+        _broadcastToAdmins(roomId, 'activity', `Admin security alert: IP ${ip} failed 3 consecutive admin attempts on room '${roomId}'. Locked out for 180s.`);
+      }).catch(() => {});
+    }
+  }
+  passwordAttemptLocks.set(key, record);
+};
+
 const resetPasswordAttempts = (key) => {
   passwordAttemptLocks.delete(key);
 };
@@ -273,7 +309,7 @@ const adminAuth = async (req, res, next) => {
   }
 
   const handleFailure = () => {
-    recordFailedPasswordAttempt(key, req);
+    recordFailedAdminAttempt(key, req);
     res.status(401).json({ error: 'Unauthorized' });
   };
 
@@ -466,6 +502,7 @@ module.exports = {
   diagnosticLimiter,
   checkPasswordRateLimit,
   recordFailedPasswordAttempt,
+  recordFailedAdminAttempt,
   resetPasswordAttempts,
   isPasswordLocked,
   toSafeLoggedInUserList,
