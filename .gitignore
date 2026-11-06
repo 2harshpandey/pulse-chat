@@ -4,13 +4,26 @@ node_modules/
 /frontend/node_modules/
 /package-lock.json
 
-# Environment variables
+# Environment variables & secrets (comprehensive protection against secret leakage)
 .env
-backend/.env
-frontend/.env
+.env.*
+*.env
+*.env.*
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.key
+*.cert
+*.pfx
+.secret_archives/
+**/.secret_archives/
+secrets/
+**/*.secret
 
-# Logs
+# Logs & Debug dumps
 *.log
+**/*.log
 /backend/pulse-activity.log
 /frontend/dev.log
 npm-debug.log*
@@ -25,5 +38,6 @@ lerna-debug.log*
 # Misc
 .DS_Store
 .vscode/
+frontend/.vscode/
 npm-debug.log
 yarn-error.log
