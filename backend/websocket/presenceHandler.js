@@ -135,7 +135,7 @@ const handleUserJoin = async ({
   // Cross-restart or multi-instance fallback: verify signed token or check database User record
   if (!activeSessionToken && sessionTokenProvided) {
     const verified = verifySignedSessionToken(sessionTokenProvided);
-    if (verified && verified.userId === userId && (verified.roomId === roomId || (cleanRoomId && verified.roomId === cleanRoomId))) {
+    if (verified && verified.userId === userId && (verified.roomId === roomId || (cleanRoomId && verified.roomId === cleanRoomId) || (verified.roomId === 'me' && (roomId === 'me' || !roomId)))) {
       activeSessionToken = sessionTokenProvided;
       if (existingSession) {
         existingSession.sessionToken = activeSessionToken;
@@ -153,10 +153,11 @@ const handleUserJoin = async ({
     }
   }
 
-  // Rolling expiration: refresh signed session tokens older than 12 hours on active visits
+  // Rolling expiration: refresh signed session tokens older than 7 days on active visits
+  // (Session tokens have a 30-day lifetime; refreshing weekly prevents morning churn while keeping active sessions alive indefinitely)
   if (activeSessionToken && typeof activeSessionToken === 'string' && activeSessionToken.startsWith('pls.')) {
     const tokenData = verifySignedSessionToken(activeSessionToken);
-    if (tokenData && typeof tokenData.iat === 'number' && (Date.now() - tokenData.iat > 12 * 60 * 60 * 1000)) {
+    if (tokenData && typeof tokenData.iat === 'number' && (Date.now() - tokenData.iat > 7 * 24 * 60 * 60 * 1000)) {
       activeSessionToken = generateSessionToken(userId, roomId);
       if (existingSession) {
         existingSession.sessionToken = activeSessionToken;
@@ -192,7 +193,13 @@ const handleUserJoin = async ({
     if (!activeSessionToken) {
       if (sessionTokenProvided) {
         const verified = verifySignedSessionToken(sessionTokenProvided);
-        if (verified && (verified.userId !== userId || verified.roomId !== roomId)) {
+        const isRoomMatch = Boolean(
+          verified &&
+          (verified.roomId === roomId ||
+           (cleanRoomId && verified.roomId === cleanRoomId) ||
+           (verified.roomId === 'me' && (roomId === 'me' || !roomId)))
+        );
+        if (verified && (verified.userId !== userId || !isRoomMatch)) {
           // Token signature belongs to a different user/room — generate a fresh token for this user
           activeSessionToken = generateSessionToken(userId, roomId);
         } else {
@@ -279,7 +286,13 @@ const handleUserJoin = async ({
     for (const client of conflictingClients) {
       if (client.userId === userId) {
         // Only terminate older socket if from the same IP, zombie connection, or verified by cryptographic session token
-        const isTokenVerified = Boolean(activeSessionToken && existingSession?.sessionToken && timingSafeEqualStr(activeSessionToken, existingSession.sessionToken));
+        let isTokenVerified = Boolean(activeSessionToken && existingSession?.sessionToken && timingSafeEqualStr(activeSessionToken, existingSession.sessionToken));
+        if (!isTokenVerified && activeSessionToken) {
+          const verified = verifySignedSessionToken(activeSessionToken);
+          if (verified && verified.userId === userId) {
+            isTokenVerified = true;
+          }
+        }
         if (client.clientIp === wsIp || client.isAlive === false || isTokenVerified) {
           logger.info(`Terminating older hanging socket for reconnecting user '${username}' (${userId}).`);
           client.terminate();

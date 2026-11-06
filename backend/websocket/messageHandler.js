@@ -9,7 +9,7 @@ const MessageEvent = require('../models/messageEvent');
 const UserReport = require('../models/userReport');
 const cloudinary = require('cloudinary').v2;
 const { toClientMessage } = require('../middleware');
-const { timingSafeEqualStr, parseCloudinaryAssetFromUrl } = require('../security');
+const { timingSafeEqualStr, parseCloudinaryAssetFromUrl, verifySignedSessionToken } = require('../security');
 const { normalizeReactionEmoji, filterValidReactions, toReactionMap } = require('../reactions');
 const {
   getRoomState,
@@ -49,6 +49,66 @@ const buildSafeReplyingTo = (rt) => {
 };
 
 /**
+ * Validate the WebSocket's session token against the active room state and HMAC signature.
+ * Prevents premature logout when tokens are rotated or when multi-tab / HTTP prefetch races occur,
+ * while strictly ensuring that the session token is genuine and authorized for this user and room.
+ */
+const isSocketSessionValid = (ws, roomId) => {
+  if (ws.isAdmin) return true;
+  const userId = ws.userId;
+  if (!userId) return false;
+
+  const roomState = getRoomState(roomId);
+  const activeSession = roomState.loggedInUsers?.get(userId);
+
+  // Fast path 1: active session exists, has token, and exact string match
+  if (activeSession && activeSession.sessionToken && ws.sessionToken && timingSafeEqualStr(ws.sessionToken, activeSession.sessionToken)) {
+    return true;
+  }
+
+  // Fast path 2: legacy or tokenless active session where no token is enforced
+  if (activeSession && !activeSession.sessionToken) {
+    return true;
+  }
+
+  // Deep verification: Verify ws.sessionToken cryptographically
+  if (ws.sessionToken && typeof ws.sessionToken === 'string') {
+    const verified = verifySignedSessionToken(ws.sessionToken);
+    const cleanRoomId = (roomId === 'me' || !roomId) ? 'me' : roomId;
+    const isRoomMatch = Boolean(
+      verified &&
+      (verified.roomId === roomId ||
+       verified.roomId === cleanRoomId ||
+       verified.roomId === 'me' ||
+       (cleanRoomId === 'me' && verified.roomId === ''))
+    );
+
+    if (verified && verified.userId === userId && isRoomMatch) {
+      // Socket token is authentic and unexpired! Synchronize roomState.loggedInUsers
+      if (activeSession) {
+        activeSession.sessionToken = ws.sessionToken;
+      } else if (roomState.loggedInUsers) {
+        roomState.loggedInUsers.set(userId, {
+          userId,
+          username: ws.username || 'User',
+          sessionToken: ws.sessionToken,
+          loginTime: new Date(),
+          ip: ws.clientIp || '',
+          userAgent: ws.clientUa || '',
+        });
+      }
+      User.updateOne(
+        { roomId: String(roomId), userId: String(userId) },
+        { $set: { sessionToken: ws.sessionToken, lastSeen: new Date() } }
+      ).catch(() => {});
+      return true;
+    }
+  }
+
+  return false;
+};
+
+/**
  * Handle reaction addition/toggle.
  */
 const handleReact = async ({ ws, parsedMessage, wss, broadcastToAdmins }) => {
@@ -61,14 +121,14 @@ const handleReact = async ({ ws, parsedMessage, wss, broadcastToAdmins }) => {
     return;
   }
 
-  const roomState = getRoomState(roomId);
-  const activeSession = roomState.loggedInUsers?.get(userId);
-  if (activeSession && activeSession.sessionToken && (!ws.sessionToken || !timingSafeEqualStr(ws.sessionToken, activeSession.sessionToken))) {
+  if (!isSocketSessionValid(ws, roomId)) {
     logger.warn(`Rejected reaction from socket with invalid session token (userId: ${userId})`);
     ws.send(JSON.stringify({ type: 'force_logout', message: 'Invalid session token. Please log in again.' }));
     ws.terminate();
     return;
   }
+
+  const roomState = getRoomState(roomId);
 
   const { onlineUsers } = roomState;
   const username = ws.username || onlineUsers.get(userId)?.username || 'Unknown';
@@ -167,9 +227,7 @@ const handleEdit = async ({ ws, parsedMessage, wss, broadcastToAdmins }) => {
   const msg = await Message.findOne({ id: messageId, roomId });
   if (!msg || msg.isDeleted || msg.vanished) return;
 
-  const roomState = getRoomState(roomId);
-  const activeSession = roomState.loggedInUsers?.get(ws.userId);
-  const isSessionValid = Boolean(activeSession && (!activeSession.sessionToken || (ws.sessionToken && timingSafeEqualStr(ws.sessionToken, activeSession.sessionToken))));
+  const isSessionValid = isSocketSessionValid(ws, roomId);
 
   const isAuthor = Boolean(isSessionValid && ws.userId && (msg.userId === ws.userId || msg.sender === ws.userId));
   if (!isAuthor && !ws.isAdmin) {
@@ -519,9 +577,7 @@ const handleDeleteForEveryone = async ({ ws, parsedMessage, wss, broadcastToAdmi
       return;
     }
 
-    const roomState = getRoomState(roomId);
-    const activeSession = roomState.loggedInUsers?.get(ws.userId);
-    const isSessionValid = Boolean(activeSession && (!activeSession.sessionToken || (ws.sessionToken && timingSafeEqualStr(ws.sessionToken, activeSession.sessionToken))));
+    const isSessionValid = isSocketSessionValid(ws, roomId);
 
     const isAuthor = Boolean(isSessionValid && ws.userId && (originalMessage.userId === ws.userId || originalMessage.sender === ws.userId));
     if (!isAuthor && !ws.isAdmin) {
@@ -669,8 +725,7 @@ const handleNewMessage = async ({ ws, parsedMessage, wss, broadcastToAdmins, _br
     _broadcastOnlineUsers(roomId);
   }
 
-  const activeSession = roomState.loggedInUsers?.get(ws.userId);
-  if (activeSession && activeSession.sessionToken && (!ws.sessionToken || !timingSafeEqualStr(ws.sessionToken, activeSession.sessionToken))) {
+  if (!isSocketSessionValid(ws, roomId)) {
     logger.warn(`Rejected new message from socket with invalid session token (userId: ${ws.userId})`);
     ws.send(JSON.stringify({ type: 'force_logout', message: 'Invalid session token. Please log in again.' }));
     ws.terminate();

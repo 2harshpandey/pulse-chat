@@ -112,10 +112,20 @@ const isRoomAccessAllowed = async (rawRoomId, req) => {
     const verifiedData = verifySignedSessionToken(sessionToken);
     if (verifiedData && verifiedData.userId === cleanUserId && (verifiedData.roomId === canonicalRoomId || verifiedData.roomId === roomId)) {
       if (roomState && roomState.loggedInUsers) {
+        const existingSession = roomState.loggedInUsers.get(cleanUserId);
+        let tokenToKeep = sessionToken;
+        if (existingSession && existingSession.sessionToken) {
+          const existingData = verifySignedSessionToken(existingSession.sessionToken);
+          // If the existing session token is valid and newer or same age, preserve it to prevent desyncing active sockets
+          if (existingData && typeof existingData.iat === 'number' && typeof verifiedData.iat === 'number' && existingData.iat >= verifiedData.iat) {
+            tokenToKeep = existingSession.sessionToken;
+          }
+        }
         roomState.loggedInUsers.set(cleanUserId, {
           userId: cleanUserId,
-          sessionToken,
-          loginTime: new Date(),
+          username: existingSession?.username || cleanUserId,
+          sessionToken: tokenToKeep,
+          loginTime: existingSession?.loginTime || new Date(),
           ip: clientIp,
           userAgent,
         });
@@ -128,11 +138,20 @@ const isRoomAccessAllowed = async (rawRoomId, req) => {
       const userDoc = await User.findOne({ roomId: canonicalRoomId, userId: cleanUserId }).lean();
       if (userDoc && userDoc.sessionToken && timingSafeEqualStr(sessionToken, userDoc.sessionToken)) {
         if (roomState && roomState.loggedInUsers) {
+          const existingSession = roomState.loggedInUsers.get(cleanUserId);
+          let tokenToKeep = sessionToken;
+          if (existingSession && existingSession.sessionToken) {
+            const existingData = verifySignedSessionToken(existingSession.sessionToken);
+            const incomingData = verifySignedSessionToken(sessionToken);
+            if (existingData && typeof existingData.iat === 'number' && incomingData && typeof incomingData.iat === 'number' && existingData.iat >= incomingData.iat) {
+              tokenToKeep = existingSession.sessionToken;
+            }
+          }
           roomState.loggedInUsers.set(cleanUserId, {
             userId: cleanUserId,
-            username: userDoc.username,
-            sessionToken,
-            loginTime: new Date(),
+            username: userDoc.username || existingSession?.username || cleanUserId,
+            sessionToken: tokenToKeep,
+            loginTime: existingSession?.loginTime || new Date(),
             ip: clientIp,
             userAgent,
           });

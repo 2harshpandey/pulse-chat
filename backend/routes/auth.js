@@ -175,8 +175,15 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
     const existingSession = loggedInUsers.get(userId);
     if (existingSession && existingSession.sessionToken) {
       const incomingToken = req.headers['x-session-token'] || req.body?.sessionToken;
-      if (typeof incomingToken === 'string' && timingSafeEqualStr(incomingToken, existingSession.sessionToken)) {
-        isResumingSession = true;
+      if (typeof incomingToken === 'string') {
+        if (timingSafeEqualStr(incomingToken, existingSession.sessionToken)) {
+          isResumingSession = true;
+        } else {
+          const verified = verifySignedSessionToken(incomingToken);
+          if (verified && verified.userId === userId && (verified.roomId === roomId || verified.roomId === 'me')) {
+            isResumingSession = true;
+          }
+        }
       }
     }
 
@@ -344,8 +351,15 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
     const existingSession = loggedInUsers.get(userId);
     if (existingSession && existingSession.sessionToken) {
       const incomingToken = req.headers['x-session-token'] || req.body?.sessionToken;
-      if (typeof incomingToken === 'string' && timingSafeEqualStr(incomingToken, existingSession.sessionToken)) {
-        isResumingSession = true;
+      if (typeof incomingToken === 'string') {
+        if (timingSafeEqualStr(incomingToken, existingSession.sessionToken)) {
+          isResumingSession = true;
+        } else {
+          const verified = verifySignedSessionToken(incomingToken);
+          if (verified && verified.userId === userId && (verified.roomId === roomId || verified.roomId === 'me')) {
+            isResumingSession = true;
+          }
+        }
       }
     }
 
