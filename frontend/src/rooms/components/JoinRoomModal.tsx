@@ -49,7 +49,9 @@ export const JoinRoomModal: React.FC<JoinRoomModalProps> = ({
   return (
     <ModalOverlay onClick={onClose}>
       <ModalContent onClick={e => e.stopPropagation()}>
-        <h2 style={{ margin: '0 0 1.5rem', fontSize: '1.5rem', fontWeight: 800 }}>Join Room</h2>
+        <h2 style={{ margin: '0 0 1.5rem', fontSize: '1.45rem', fontWeight: 800, color: 'var(--text-heading)', letterSpacing: '-0.01em' }}>
+          Join Room
+        </h2>
         <form onSubmit={onSubmit} onKeyDown={onKeyDown}>
           <FormGroup>
             <Label>Room ID</Label>

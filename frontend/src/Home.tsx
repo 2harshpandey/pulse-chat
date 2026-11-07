@@ -23,7 +23,6 @@ const Home: React.FC = () => {
     navigate,
     isDark,
     toggleTheme,
-    mounted,
     isAdminModalOpen,
     setIsAdminModalOpen,
     adminRoomId,
@@ -43,9 +42,9 @@ const Home: React.FC = () => {
     <>
       <GlobalHomeStyle />
       <HeroContainer>
-        <Orb $color="#3b82f6" $size="400px" $top="10%" $left="-5%" $delay="0s" />
-        <Orb $color="#8b5cf6" $size="500px" $top="45%" $left="60%" $delay="-2s" />
-        <Orb $color="#ec4899" $size="300px" $top="75%" $left="10%" $delay="-4s" />
+        <Orb $color="var(--orb-primary)" $size="450px" $top="5%" $left="-5%" />
+        <Orb $color="var(--orb-secondary)" $size="500px" $top="45%" $left="60%" />
+        <Orb $color="var(--orb-accent)" $size="380px" $top="75%" $left="10%" />
 
         <TopNav>
           <Logo href="/">Pulse Chat</Logo>
@@ -81,7 +80,7 @@ const Home: React.FC = () => {
           </NavActions>
         </TopNav>
 
-        <ContentWrapper style={{ opacity: mounted ? 1 : 0, transition: 'opacity 0.8s ease' }}>
+        <ContentWrapper>
           <Title>
             Connect without limits.<br />
             <span>Chat reimagined.</span>

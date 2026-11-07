@@ -35,7 +35,7 @@ export const RoomCardItem: React.FC<RoomCardItemProps> = ({
               <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
             </svg>
           ) : (
-            <svg viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 20, height: 20 }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 20, height: 20 }}>
               <circle cx="12" cy="12" r="10"></circle>
               <line x1="2" y1="12" x2="22" y2="12"></line>
               <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
@@ -46,12 +46,14 @@ export const RoomCardItem: React.FC<RoomCardItemProps> = ({
         <RoomBadge $private={room.isPrivate}>{room.isPrivate ? 'Private' : 'Public'}</RoomBadge>
       </RoomHeader>
 
-      <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1rem', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', gap: '0.5rem', minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', width: '100%', minWidth: 0 }}>
-          <span style={{ flexShrink: 0 }}>Room ID:</span>
-          <code style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }} title={room.id}>
-            {room.id}
-          </code>
+      <div style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '1rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '0.65rem', minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', minWidth: 0, flex: 1 }}>
+            <span style={{ color: 'var(--text-secondary)', fontWeight: 500, flexShrink: 0 }}>Room ID:</span>
+            <span style={{ color: 'var(--text-primary)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace', fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={room.id}>
+              {room.id}
+            </span>
+          </div>
           <CopyIcon
             $copied={copiedId === room.id}
             title="Copy Room ID"
@@ -63,7 +65,7 @@ export const RoomCardItem: React.FC<RoomCardItemProps> = ({
                 <polyline points="20 6 9 17 4 12"></polyline>
               </svg>
             ) : (
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 12, height: 12 }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 13, height: 13 }}>
                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
               </svg>
@@ -87,11 +89,9 @@ export const RoomCardItem: React.FC<RoomCardItemProps> = ({
           </svg>
           {room.onlineCount || 0} Online
         </Stat>
-        <div style={{ marginLeft: 'auto' }}>
-          <JoinButton onClick={() => onJoin(room.id)}>
-            Join
-          </JoinButton>
-        </div>
+        <JoinButton onClick={() => onJoin(room.id)}>
+          Join
+        </JoinButton>
       </RoomStats>
     </RoomCard>
   );

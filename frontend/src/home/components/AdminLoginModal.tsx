@@ -48,7 +48,9 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   return (
     <ModalOverlay onClick={() => { onClose(); setAdminError(''); }}>
       <ModalContent onClick={e => e.stopPropagation()}>
-        <h2 style={{ margin: '0 0 1.5rem', color: 'var(--text-heading)', fontSize: '1.5rem' }}>Room Admin Login</h2>
+        <h2 style={{ margin: '0 0 1.5rem', color: 'var(--text-heading)', fontSize: '1.45rem', fontWeight: 800, letterSpacing: '-0.01em' }}>
+          Room Admin Login
+        </h2>
         <form onSubmit={onSubmit}>
           <FormGroup>
             <Label>Room ID</Label>

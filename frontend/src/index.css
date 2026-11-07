@@ -23,99 +23,137 @@ html, body, #root {
    ══════════════════════════════════════════ */
 :root,
 [data-theme='light'] {
-  --bg-primary: #f7fafc;
+  --bg-primary: #f8fafc;
   --bg-secondary: #ffffff;
-  --bg-tertiary: #f0f4f8;
+  --bg-tertiary: #f1f5f9;
   --bg-elevated: #ffffff;
   --bg-input: #ffffff;
   --bg-sidebar: #f8fafc;
   --bg-header: #ffffff;
   --bg-hover: #f1f5f9;
   --bg-message-other: #ffffff;
-  --bg-code: #1a202c;
+  --bg-code: #1e293b;
   --bg-filter: #f0f4f8;
   --bg-tab-active: #ffffff;
 
-  --text-primary: #1a202c;
-  --text-secondary: #4a5568;
-  --text-tertiary: #5e6a7d;
-  --text-muted: #6b7280;
-  --text-heading: #1e293b;
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+  --text-tertiary: #94a3b8;
+  --text-muted: #94a3b8;
+  --text-heading: #0f172a;
 
-  --border-primary: #e2e8f0;
-  --border-secondary: #cbd5e0;
-  --border-focus: #3B82F6;
+  --border-primary: #cbd5e1;
+  --border-secondary: #94a3b8;
+  --border-subtle: rgba(203, 213, 225, 0.8);
+  --border-focus: #2563eb;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.08);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 16px -2px rgba(0, 0, 0, 0.03);
+  --shadow-card-hover: 0 12px 28px -4px rgba(0, 0, 0, 0.08), 0 4px 12px -2px rgba(0, 0, 0, 0.04);
+  --shadow-modal: 0 25px 60px -15px rgba(15, 23, 42, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05);
 
-  --accent-blue: #3B82F6;
-  --accent-blue-hover: #2563EB;
-  --accent-indigo: #4F46E5;
-  --accent-red: #EF4444;
-  --accent-green: #10B981;
-  --accent-yellow: #F59E0B;
+  --accent-blue: #2563eb;
+  --accent-blue-hover: #1d4ed8;
+  --accent-indigo: #4f46e5;
+  --accent-red: #ef4444;
+  --accent-green: #10b981;
+  --accent-yellow: #f59e0b;
 
-  --scrollbar-thumb: #cbd5e0;
-  --scrollbar-thumb-hover: #a0aec0;
+  --badge-blue-bg: #e0f2fe;
+  --badge-blue-color: #0284c7;
+  --badge-pink-bg: #fce7f3;
+  --badge-pink-color: #db2777;
+  --badge-purple-bg: #f3e8ff;
+  --badge-purple-color: #9333ea;
 
-  --login-bg: #dde3ed;
-  --login-card-bg: rgba(255, 255, 255, 0.82);
-  --login-card-border: rgba(255, 255, 255, 0.6);
+  --orb-primary: #60a5fa;
+  --orb-secondary: #a78bfa;
+  --orb-accent: #f472b6;
+  --orb-opacity: 0.12;
+
+  --hero-gradient: linear-gradient(90deg, #2563eb 0%, #7c3aed 45%, #ec4899 90%);
+  --modal-overlay-bg: rgba(15, 23, 42, 0.4);
+
+  --scrollbar-thumb: #cbd5e1;
+  --scrollbar-thumb-hover: #94a3b8;
+
+  --login-bg: #e2e8f0;
+  --login-card-bg: rgba(255, 255, 255, 0.88);
+  --login-card-border: rgba(203, 213, 225, 0.8);
 
   /* Link color inside other-users' message bubbles */
-  --link-color: rgb(0, 6, 255);
+  --link-color: #2563eb;
 }
 
 [data-theme='dark'] {
-  --bg-primary: #0f172a;
-  --bg-secondary: #1e293b;
-  --bg-tertiary: #1e293b;
-  --bg-elevated: #1e293b;
-  --bg-input: #1e293b;
-  --bg-sidebar: #1e293b;
+  --bg-primary: #090d16;
+  --bg-secondary: #111827;
+  --bg-tertiary: #162032;
+  --bg-elevated: #131c2e;
+  --bg-input: #151f32;
+  --bg-sidebar: #0f172a;
   --bg-header: #0f172a;
-  --bg-hover: #334155;
-  --bg-message-other: #334155;
-  --bg-code: #0f172a;
-  --bg-filter: #1e293b;
-  --bg-tab-active: #1e293b;
+  --bg-hover: #1b263b;
+  --bg-message-other: #1e293b;
+  --bg-code: #0b0f19;
+  --bg-filter: #162032;
+  --bg-tab-active: #162032;
 
-  --text-primary: #f1f5f9;
-  --text-secondary: #cbd5e0;
-  --text-tertiary: #94a3b8;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-tertiary: #64748b;
   --text-muted: #64748b;
-  --text-heading: #f8fafc;
+  --text-heading: #ffffff;
 
-  --border-primary: #334155;
-  --border-secondary: #475569;
-  --border-focus: #60a5fa;
+  --border-primary: #2d3d57;
+  --border-secondary: #3b4e6d;
+  --border-subtle: rgba(255, 255, 255, 0.12);
+  --border-focus: #3b82f6;
 
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.5);
+  --shadow-card: 0 4px 20px -2px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --shadow-card-hover: 0 16px 36px -4px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  --shadow-modal: 0 25px 60px -15px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.1);
 
-  --accent-blue: #3B82F6;
+  --accent-blue: #3b82f6;
   --accent-blue-hover: #60a5fa;
   --accent-indigo: #818cf8;
   --accent-red: #f87171;
   --accent-green: #34d399;
   --accent-yellow: #fbbf24;
 
-  --scrollbar-thumb: #475569;
-  --scrollbar-thumb-hover: #64748b;
+  --badge-blue-bg: rgba(14, 165, 233, 0.18);
+  --badge-blue-color: #38bdf8;
+  --badge-pink-bg: rgba(236, 72, 153, 0.18);
+  --badge-pink-color: #f472b6;
+  --badge-purple-bg: rgba(168, 85, 247, 0.18);
+  --badge-purple-color: #c084fc;
 
-  --login-bg: #0f172a;
-  --login-card-bg: rgba(30, 41, 59, 0.82);
-  --login-card-border: rgba(51, 65, 85, 0.6);
+  --orb-primary: #1d4ed8;
+  --orb-secondary: #7c3aed;
+  --orb-accent: #ec4899;
+  --orb-opacity: 0.12;
+
+  --hero-gradient: linear-gradient(90deg, #38bdf8 0%, #a78bfa 45%, #f472b6 90%);
+  --modal-overlay-bg: rgba(15, 23, 42, 0.5);
+
+  --scrollbar-thumb: #334155;
+  --scrollbar-thumb-hover: #475569;
+
+  --login-bg: #090d16;
+  --login-card-bg: rgba(18, 24, 38, 0.85);
+  --login-card-border: rgba(45, 61, 87, 0.8);
 
   /* Link color inside other-users' message bubbles */
-  --link-color: rgb(255, 238, 0);
+  --link-color: #60a5fa;
 }
 
 body {
-  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
   background-color: var(--bg-primary);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;

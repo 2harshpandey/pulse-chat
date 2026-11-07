@@ -1,0 +1,26 @@
+{
+  "specVersion": "1.0",
+  "host": {
+    "displayName": "Pulse Chat",
+    "url": "https://pulsechat.tech"
+  },
+  "entries": [
+    {
+      "identifier": "urn:air:pulsechat.tech:app",
+      "displayName": "Pulse Chat",
+      "type": "text/html",
+      "url": "https://pulsechat.tech",
+      "description": "A modern, high-performance real-time messaging platform with multi-room channels, instant media sharing, and secure communication.",
+      "capabilities": [
+        "RealTimeChat",
+        "MultiRoomChannels",
+        "InstantMediaSharing"
+      ],
+      "representativeQueries": [
+        "real-time chat messaging",
+        "create a private or public chat room",
+        "instant media sharing and messaging"
+      ]
+    }
+  ]
+}

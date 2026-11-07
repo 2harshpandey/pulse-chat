@@ -69,7 +69,9 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
   return (
     <ModalOverlay onClick={onClose}>
       <ModalContent onClick={e => e.stopPropagation()}>
-        <h2 style={{ margin: '0 0 1.5rem', fontSize: '1.5rem', fontWeight: 800 }}>Create New Room</h2>
+        <h2 style={{ margin: '0 0 1.5rem', fontSize: '1.45rem', fontWeight: 800, color: 'var(--text-heading)', letterSpacing: '-0.01em' }}>
+          Create New Room
+        </h2>
         <form onSubmit={onSubmit} onKeyDown={onKeyDown}>
           <FormGroup>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
@@ -96,7 +98,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
               value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder="What is this room about?"
-              style={{ minHeight: '150px', resize: 'none' }}
+              style={{ minHeight: '120px', resize: 'none' }}
               maxLength={150}
             />
           </FormGroup>
