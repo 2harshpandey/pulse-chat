@@ -365,10 +365,13 @@ module.exports = (wss, broadcasts) => {
         const event = new MessageEvent({
           roomId: canonicalRoomId,
           type: 'upload',
+          messageId: uploaded.public_id,
           file: {
             originalname: originalName,
             mimetype: req.file.mimetype,
             size: req.file.size,
+            url: uploaded.secure_url,
+            publicId: uploaded.public_id,
           },
           userId,
           username,
@@ -571,10 +574,13 @@ module.exports = (wss, broadcasts) => {
           const event = new MessageEvent({
             roomId: canonicalRoomId,
             type: 'upload',
+            messageId: uploaded.public_id,
             file: {
               originalname: safeName,
               mimetype: fileMime,
               size: fileSize,
+              url: uploaded.secure_url,
+              publicId: uploaded.public_id,
             },
             userId,
             username,

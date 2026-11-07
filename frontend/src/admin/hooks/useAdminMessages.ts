@@ -80,7 +80,7 @@ export function useAdminMessages({ apiUrl, apiHeaders, users, ws }: UseAdminMess
   };
 
   // --- Selection & Bulk Actions ---
-  const extractMessageId = (log: any) => log.messageId || log.message?.id || log.message?._id || log._id;
+  const extractMessageId = (log: any) => log.messageId || log.message?.id || log.file?.publicId || log.message?._id || log._id;
 
   const enrichedHistoryLogs = useMemo(() => {
     const userMap = new Map(users.map((u) => [u.userId, u.username]));
@@ -155,7 +155,10 @@ export function useAdminMessages({ apiUrl, apiHeaders, users, ws }: UseAdminMess
         const id = extractMessageId(log);
         if (id) ids.add(id);
       }
-      if (log.message?.isDeleted && log.message?.deletedBy && log.message.deletedBy !== 'admin') {
+      if (
+        (log.message?.isDeleted && log.message?.deletedBy && log.message.deletedBy !== 'admin') ||
+        (log.isDeleted && log.deletedBy && log.deletedBy !== 'admin')
+      ) {
         const id = extractMessageId(log);
         if (id) ids.add(id);
       }

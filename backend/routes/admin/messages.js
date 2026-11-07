@@ -176,7 +176,7 @@ module.exports = (wss, broadcasts) => {
         const cursor = Message.find({ roomId }).sort({ createdAt: 1 }).cursor();
         const batch = [];
         for await (const m of cursor) {
-          if (!existingIdSet.has(m.id)) {
+          if (!existingIdSet.has(m.id) && !(m.isDeleted && m.deletedBy === 'admin')) {
             batch.push({
               roomId,
               type: 'create',
@@ -554,27 +554,103 @@ module.exports = (wss, broadcasts) => {
     }
 
     try {
+      // 1. Separate hex ObjectIds (24-char hex) from regular string message IDs
+      const objectIds = messageIds.filter((id) => /^[0-9a-fA-F]{24}$/.test(id));
+      const resolvedIds = new Set(messageIds);
+
+      // 2. Query MessageEvent and Message to resolve linked IDs for any ObjectIds
+      if (objectIds.length > 0) {
+        const linkedEvents = await MessageEvent.find({
+          roomId,
+          _id: { $in: objectIds },
+        }).select('messageId message.id file').lean();
+
+        for (const ev of linkedEvents) {
+          if (ev.messageId) resolvedIds.add(ev.messageId);
+          if (ev.message?.id) resolvedIds.add(ev.message.id);
+          if (ev.file?.publicId) resolvedIds.add(ev.file.publicId);
+        }
+
+        const linkedMessages = await Message.find({
+          roomId,
+          _id: { $in: objectIds },
+        }).select('id url originalName').lean();
+
+        for (const msg of linkedMessages) {
+          if (msg.id) resolvedIds.add(msg.id);
+        }
+      }
+
+      // 3. For any string ID > 64 chars, also add 64-char truncated slice for legacy compatibility
+      for (const id of Array.from(resolvedIds)) {
+        if (typeof id === 'string' && id.length > 64) {
+          resolvedIds.add(id.slice(0, 64));
+        }
+      }
+
+      const allTargetMessageIds = Array.from(resolvedIds);
+
+      // 4. Also find any linked events for these target message IDs
+      const matchingEvents = await MessageEvent.find({
+        roomId,
+        $or: [
+          { 'message.id': { $in: allTargetMessageIds } },
+          { messageId: { $in: allTargetMessageIds } },
+          { 'file.publicId': { $in: allTargetMessageIds } },
+          ...(objectIds.length > 0 ? [{ _id: { $in: objectIds } }] : []),
+        ],
+      }).select('_id messageId message.id file').lean();
+
+      const allEventObjectIds = new Set(objectIds);
+      for (const ev of matchingEvents) {
+        if (ev._id) allEventObjectIds.add(String(ev._id));
+        if (ev.messageId) resolvedIds.add(ev.messageId);
+        if (ev.message?.id) resolvedIds.add(ev.message.id);
+        if (ev.file?.publicId) resolvedIds.add(ev.file.publicId);
+      }
+
+      const finalTargetMessageIds = Array.from(resolvedIds);
+      const finalEventObjectIds = Array.from(allEventObjectIds);
+
+      const matchingEventQuery = {
+        roomId,
+        $or: [
+          { 'message.id': { $in: finalTargetMessageIds } },
+          { messageId: { $in: finalTargetMessageIds } },
+          { 'file.publicId': { $in: finalTargetMessageIds } },
+          ...(finalEventObjectIds.length > 0 ? [{ _id: { $in: finalEventObjectIds } }] : []),
+        ],
+      };
+
+      const messageTargetQuery = {
+        roomId,
+        $or: [
+          { id: { $in: finalTargetMessageIds } },
+          ...(objectIds.length > 0 ? [{ _id: { $in: objectIds } }] : []),
+        ],
+      };
+
       if (action === 'hide') {
         const updatePayload = vanish
           ? { $set: { vanished: true, isDeleted: true, deletedBy: 'admin', pinned: null } }
           : { $set: { isDeleted: true, deletedBy: 'admin', pinned: null } };
 
-        await Message.updateMany({ roomId, id: { $in: messageIds } }, updatePayload);
+        await Message.updateMany(messageTargetQuery, updatePayload);
         await Message.updateMany(
-          { roomId, 'replyingTo.id': { $in: messageIds } },
+          { roomId, 'replyingTo.id': { $in: finalTargetMessageIds } },
           { $set: { 'replyingTo.isDeleted': true, 'replyingTo.deletedBy': 'admin' } }
         ).catch((e) => logger.error('Failed to update replyingTo on admin hide:', e));
 
         const eventPayload = vanish
-          ? { $set: { 'message.vanished': true, 'message.isDeleted': true, 'message.deletedBy': 'admin', 'message.pinned': null } }
-          : { $set: { 'message.isDeleted': true, 'message.deletedBy': 'admin', 'message.pinned': null } };
+          ? { $set: { 'message.vanished': true, 'message.isDeleted': true, 'message.deletedBy': 'admin', 'message.pinned': null, vanished: true, isDeleted: true, deletedBy: 'admin' } }
+          : { $set: { 'message.isDeleted': true, 'message.deletedBy': 'admin', 'message.pinned': null, isDeleted: true, deletedBy: 'admin' } };
 
-        await MessageEvent.updateMany({ roomId, 'message.id': { $in: messageIds } }, eventPayload);
+        await MessageEvent.updateMany(matchingEventQuery, eventPayload);
 
-        await unpinIfPinned(wss, roomId, messageIds);
+        await unpinIfPinned(wss, roomId, finalTargetMessageIds);
 
         if (vanish) {
-          broadcast(roomId, { type: 'bulk_delete', messageIds });
+          broadcast(roomId, { type: 'bulk_delete', messageIds: finalTargetMessageIds });
           const auditEntry = await AuditLog.create({
             roomId,
             type: 'messages_deleted_disappear',
@@ -585,7 +661,7 @@ module.exports = (wss, broadcasts) => {
           broadcastToAdmins(roomId, 'audit_log', auditEntry);
           broadcastToAdmins(roomId, 'activity', `${messageIds.length} message(s) vanished from frontend by super admin (retained in DB).`);
         } else {
-          const updatedMessages = await Message.find({ roomId, id: { $in: messageIds } }).lean();
+          const updatedMessages = await Message.find({ roomId, id: { $in: finalTargetMessageIds } }).lean();
           broadcast(roomId, { type: 'bulk_update', messages: updatedMessages });
           const auditEntry = await AuditLog.create({
             roomId,
@@ -598,15 +674,14 @@ module.exports = (wss, broadcasts) => {
           broadcastToAdmins(roomId, 'activity', `${messageIds.length} message(s) hidden from frontend by admin.`);
         }
 
-        const updatedEvents = await MessageEvent.find({ roomId, 'message.id': { $in: messageIds } }).lean();
+        const updatedEvents = await MessageEvent.find(matchingEventQuery).lean();
         broadcastToAdmins(roomId, 'bulk_history_update', { events: updatedEvents });
 
       } else if (action === 'delete') {
         // Clean up Cloudinary assets for media messages in the batch before purging / nullifying
         try {
           const messagesWithMedia = await Message.find({
-            roomId,
-            id: { $in: messageIds },
+            ...messageTargetQuery,
             url: { $exists: true, $ne: null }
           }).select('id url type').lean();
 
@@ -619,27 +694,23 @@ module.exports = (wss, broadcasts) => {
           logger.warn('Failed to scan messages for Cloudinary assets during bulk delete:', mediaErr.message);
         }
 
-        const objectIds = messageIds.filter((id) => /^[0-9a-fA-F]{24}$/.test(id));
+        const allDeletedIds = new Set(finalTargetMessageIds);
+        for (const oid of finalEventObjectIds) {
+          allDeletedIds.add(oid);
+        }
 
-        await MessageEvent.deleteMany({
-          roomId,
-          $or: [
-            { 'message.id': { $in: messageIds } },
-            { messageId: { $in: messageIds } },
-            ...(objectIds.length > 0 ? [{ _id: { $in: objectIds } }] : []),
-          ],
-        });
-        broadcastToAdmins(roomId, 'bulk_history_delete', { messageIds });
+        await MessageEvent.deleteMany(matchingEventQuery);
+        broadcastToAdmins(roomId, 'bulk_history_delete', { messageIds: Array.from(allDeletedIds) });
 
         if (vanish) {
           await Message.updateMany(
-            { roomId, 'replyingTo.id': { $in: messageIds } },
+            { roomId, 'replyingTo.id': { $in: finalTargetMessageIds } },
             { $set: { 'replyingTo.isDeleted': true, 'replyingTo.deletedBy': 'admin' } }
           ).catch((e) => logger.error('Failed to update replyingTo on admin vanish:', e));
-          await Message.deleteMany({ roomId, id: { $in: messageIds } });
-          await unpinIfPinned(wss, roomId, messageIds);
+          await Message.deleteMany(messageTargetQuery);
+          await unpinIfPinned(wss, roomId, finalTargetMessageIds);
 
-          broadcast(roomId, { type: 'bulk_delete', messageIds });
+          broadcast(roomId, { type: 'bulk_delete', messageIds: finalTargetMessageIds });
           const auditEntry = await AuditLog.create({
             roomId,
             type: 'messages_deleted_disappear',
@@ -651,7 +722,7 @@ module.exports = (wss, broadcasts) => {
           broadcastToAdmins(roomId, 'activity', `${messageIds.length} message(s) permanently deleted (vanished) and history scrubbed by super admin.`);
         } else {
           await Message.updateMany(
-            { roomId, id: { $in: messageIds } },
+            messageTargetQuery,
             {
               $set: {
                 isDeleted: true,
@@ -666,12 +737,12 @@ module.exports = (wss, broadcasts) => {
             }
           );
           await Message.updateMany(
-            { roomId, 'replyingTo.id': { $in: messageIds } },
+            { roomId, 'replyingTo.id': { $in: finalTargetMessageIds } },
             { $set: { 'replyingTo.isDeleted': true, 'replyingTo.deletedBy': 'admin' } }
           ).catch((e) => logger.error('Failed to update replyingTo on admin delete:', e));
-          await unpinIfPinned(wss, roomId, messageIds);
+          await unpinIfPinned(wss, roomId, finalTargetMessageIds);
 
-          const updatedMessages = await Message.find({ roomId, id: { $in: messageIds } }).lean();
+          const updatedMessages = await Message.find({ roomId, id: { $in: finalTargetMessageIds } }).lean();
           broadcast(roomId, { type: 'bulk_update', messages: updatedMessages });
 
           const auditEntry = await AuditLog.create({

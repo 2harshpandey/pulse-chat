@@ -113,4 +113,51 @@ describe('MessagesTab responsive toolbar and controls', () => {
     expect(setFilterEventType).toHaveBeenCalledWith('All');
     expect(setFilterContent).toHaveBeenCalledWith('');
   });
+
+  it('renders Deleted by Admin for upload events when deletedBy is admin', () => {
+    const admin = createMockAdmin({
+      filteredHistoryLogs: [
+        {
+          _id: 'upload-log-1',
+          type: 'upload',
+          messageId: 'pulse-chat/test-audio',
+          file: { originalname: 'audio.mp3', size: 1024, mimetype: 'audio/mpeg' },
+          username: 'alice',
+          userId: 'user-1',
+          timestamp: Date.now(),
+          deletedBy: 'admin',
+          isDeleted: true,
+        },
+      ],
+    });
+
+    render(<MessagesTab admin={admin} />);
+    expect(screen.getByText('Deleted by Admin')).toBeInTheDocument();
+  });
+
+  it('renders Deleted by Admin for create events when message.deletedBy is admin', () => {
+    const admin = createMockAdmin({
+      filteredHistoryLogs: [
+        {
+          _id: 'create-log-1',
+          type: 'create',
+          messageId: 'pulse-chat/test-zip',
+          message: {
+            id: 'pulse-chat/test-zip',
+            originalName: 'project.zip',
+            size: 2048,
+            type: 'file',
+            deletedBy: 'admin',
+            isDeleted: true,
+          },
+          username: 'bob',
+          userId: 'user-2',
+          timestamp: Date.now(),
+        },
+      ],
+    });
+
+    render(<MessagesTab admin={admin} />);
+    expect(screen.getByText('Deleted by Admin')).toBeInTheDocument();
+  });
 });

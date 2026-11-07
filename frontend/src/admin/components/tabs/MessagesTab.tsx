@@ -463,12 +463,12 @@ export function MessagesTab({ admin }: MessagesTabProps) {
                         {log.messageId || log.message?.id || log.message?._id || log._id || 'N/A'}
                       </Td>
                       <Td style={{ textAlign: 'center' }}>
-                        {log.message?.deletedBy === 'admin' || log.message?.vanished ? (
+                        {log.message?.deletedBy === 'admin' || log.message?.vanished || log.deletedBy === 'admin' || log.vanished ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
                             <Badge $color="red" style={{ whiteSpace: 'nowrap' }}>
                               <StatusDot $color="red" /> Deleted by Admin
                             </Badge>
-                            {log.message?.vanished ? (
+                            {log.message?.vanished || log.vanished ? (
                               <Badge $color="gray" style={{ fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
                                 <StatusDot $color="gray" /> Vanished (No Bubble)
                               </Badge>
@@ -484,7 +484,7 @@ export function MessagesTab({ admin }: MessagesTabProps) {
                               Deleted by User
                             </Badge>
                           </div>
-                        ) : log.type === 'create' && (laterDeletedByUserIds.has(extractMessageId(log)) || (log.message?.isDeleted && log.message?.deletedBy !== 'admin')) ? (
+                        ) : (log.type === 'create' || log.type === 'upload') && (laterDeletedByUserIds.has(extractMessageId(log)) || (log.message?.isDeleted && log.message?.deletedBy !== 'admin') || (log.isDeleted && log.deletedBy !== 'admin')) ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
                             <Badge $color="green" style={{ whiteSpace: 'nowrap' }}>
                               Sent
@@ -510,6 +510,8 @@ export function MessagesTab({ admin }: MessagesTabProps) {
                           const isDeleted =
                             log.message?.isDeleted ||
                             log.message?.vanished ||
+                            log.isDeleted ||
+                            log.vanished ||
                             laterDeletedByUserIds.has(extractMessageId(log)) ||
                             log.message?.text === 'This message has been deleted by an admin.';
 

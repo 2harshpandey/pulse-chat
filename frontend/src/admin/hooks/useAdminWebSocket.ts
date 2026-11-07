@@ -131,8 +131,9 @@ export function useAdminWebSocket({
             setHistoryLogs((prev) => {
               const updated = [...prev];
               message.data.events.forEach((ev: any) => {
+                const targetMsgId = ev.message?.id || ev.messageId || ev.file?.publicId;
                 const idx = updated.findIndex(
-                  (l) => l._id === ev._id || l.messageId === (ev.message?.id || ev.messageId)
+                  (l) => l._id === ev._id || (targetMsgId && (l.messageId === targetMsgId || l.message?.id === targetMsgId || l.file?.publicId === targetMsgId))
                 );
                 if (idx !== -1) updated[idx] = ev;
               });
@@ -142,8 +143,8 @@ export function useAdminWebSocket({
           case 'bulk_history_delete':
             setHistoryLogs((prev) =>
               prev.filter((l) => {
-                const id = l.messageId || l.message?.id || l.message?._id || l._id;
-                return !message.data.messageIds.includes(id);
+                const id = l.messageId || l.message?.id || l.file?.publicId || l.message?._id || l._id;
+                return !message.data.messageIds.includes(id) && !message.data.messageIds.includes(l._id);
               })
             );
             break;

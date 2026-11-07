@@ -34,7 +34,7 @@ if (typeof setInterval !== 'undefined') {
 const buildSafeReplyingTo = (rt) => {
   if (!rt || typeof rt !== 'object') return null;
   const safe = {};
-  if (typeof rt.id === 'string')        safe.id        = rt.id.slice(0, 64);
+  if (typeof rt.id === 'string')        safe.id        = rt.id.slice(0, 255);
   if (typeof rt.text === 'string')      safe.text      = rt.text.slice(0, 500);
   if (typeof rt.url === 'string') {
     const trimmedUrl = rt.url.trim();
@@ -572,8 +572,13 @@ const handleDeleteForEveryone = async ({ ws, parsedMessage, wss, broadcastToAdmi
 
   if (!messageId || typeof messageId !== 'string') return;
 
+  const candidateIds = [messageId];
+  if (typeof messageId === 'string' && messageId.length > 64) {
+    candidateIds.push(messageId.slice(0, 64));
+  }
+
   try {
-    const originalMessage = await Message.findOne({ id: messageId, roomId }).lean();
+    const originalMessage = await Message.findOne({ id: { $in: candidateIds }, roomId }).lean();
     if (!originalMessage) return;
 
     // Idempotency guard: ignore duplicate delete requests for already-deleted messages
@@ -633,7 +638,7 @@ const handleDeleteForEveryone = async ({ ws, parsedMessage, wss, broadcastToAdmi
     }
 
     const updatedMessage = await Message.findOneAndUpdate(
-      { id: messageId, roomId },
+      { id: originalMessage.id, roomId },
       {
         $set: {
           isDeleted: true,
@@ -652,7 +657,7 @@ const handleDeleteForEveryone = async ({ ws, parsedMessage, wss, broadcastToAdmi
       { new: true }
     );
 
-    const targetReplyIds = [messageId];
+    const targetReplyIds = [...candidateIds];
     if (originalMessage && originalMessage._id) {
       targetReplyIds.push(String(originalMessage._id));
     }
@@ -662,13 +667,13 @@ const handleDeleteForEveryone = async ({ ws, parsedMessage, wss, broadcastToAdmi
     ).catch(e => logger.error('Failed to update replyingTo on delete:', e));
 
     // Unpin immediately if this message was pinned
-    await unpinIfPinned(wss, roomId, [messageId]);
+    await unpinIfPinned(wss, roomId, candidateIds);
 
     try {
       const event = new MessageEvent({
         roomId,
         type: 'delete_everyone',
-        messageId,
+        messageId: originalMessage.id,
         deletedContent: {
           text: originalMessage.text,
           url: originalMessage.url,
@@ -682,11 +687,20 @@ const handleDeleteForEveryone = async ({ ws, parsedMessage, wss, broadcastToAdmi
       await event.save().catch(e => logger.error('Failed to save delete event:', e));
 
       await MessageEvent.updateMany(
-        { roomId, $or: [{ messageId }, { 'message.id': messageId }] },
+        {
+          roomId,
+          $or: [
+            { messageId: { $in: candidateIds } },
+            { 'message.id': { $in: candidateIds } },
+            { 'file.publicId': { $in: candidateIds } },
+          ]
+        },
         {
           $set: {
             'message.isDeleted': true,
             'message.deletedBy': operatorUserId,
+            isDeleted: true,
+            deletedBy: operatorUserId,
           }
         }
       ).catch(e => logger.error('Failed to update MessageEvent on delete:', e));
@@ -799,7 +813,7 @@ const handleNewMessage = async ({ ws, parsedMessage, wss, broadcastToAdmins, _br
   }
 
   const safeMessageId = typeof sanitisedMessage.id === 'string' && sanitisedMessage.id.trim()
-    ? String(sanitisedMessage.id).trim().slice(0, 64)
+    ? String(sanitisedMessage.id).trim().slice(0, 255)
     : Date.now().toString();
 
   const safeType = typeof sanitisedMessage.type === 'string' && ['text', 'image', 'video', 'audio', 'file', 'poll', 'gif'].includes(sanitisedMessage.type)

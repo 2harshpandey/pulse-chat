@@ -19,7 +19,7 @@ const pollSchema = new mongoose.Schema({
 }, { _id: false });
 
 const replyingToSchema = new mongoose.Schema({
-  id:         { type: String, maxlength: 64 },
+  id:         { type: String, maxlength: 255 },
   text:       { type: String, maxlength: 500 },
   url:        { type: String, maxlength: 2048 },
   type:       { type: String, maxlength: 20 },

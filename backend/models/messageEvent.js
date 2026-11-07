@@ -19,7 +19,12 @@ const messageEventSchema = new mongoose.Schema({
     originalname: String,
     mimetype: String,
     size: Number,
+    url: String,
+    publicId: String,
   },
+  isDeleted: { type: Boolean, default: false },
+  deletedBy: { type: String, default: null },
+  vanished: { type: Boolean, default: false },
   message: { type: mongoose.Schema.Types.Mixed },
   userId: { type: String, required: true },
   username: { type: String, required: true },
@@ -30,6 +35,7 @@ messageEventSchema.index({ roomId: 1, createdAt: -1 });
 messageEventSchema.index({ roomId: 1, type: 1, createdAt: -1 });
 messageEventSchema.index({ roomId: 1, messageId: 1 });
 messageEventSchema.index({ roomId: 1, 'message.id': 1 });
+messageEventSchema.index({ roomId: 1, 'file.publicId': 1 });
 
 const MessageEvent = mongoose.model('MessageEvent', messageEventSchema);
 
