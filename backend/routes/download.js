@@ -28,7 +28,7 @@ const SAFE_DOWNLOAD_CONTENT_TYPES = new Set([
   'application/vnd.ms-powerpoint',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/avif',
-  'image/svg+xml', 'image/bmp', 'image/tiff', 'image/x-icon',
+  'image/bmp', 'image/tiff', 'image/x-icon',
   'video/mp4', 'video/webm', 'video/ogg', 'video/quicktime', 'video/x-msvideo',
   'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/webm', 'audio/aac',
   'audio/flac', 'audio/x-flac', 'audio/opus', 'audio/mp4', 'audio/x-m4a',

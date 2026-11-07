@@ -90,7 +90,7 @@ const isRoomAccessAllowed = async (rawRoomId, req) => {
   }
 
   // Check if requesting user has an active authenticated session using canonical room state
-  const rawSessionToken = req.headers['x-session-token'] || req.body?.sessionToken;
+  const rawSessionToken = req.headers['x-session-token'] || req.query?.sessionToken || req.body?.sessionToken;
   const sessionToken = typeof rawSessionToken === 'string' && rawSessionToken.trim() ? rawSessionToken.trim() : null;
 
   if (typeof userId === 'string' && userId.trim() && sessionToken) {
@@ -100,69 +100,57 @@ const isRoomAccessAllowed = async (rawRoomId, req) => {
     // 1. Check in-memory session
     if (roomState && roomState.loggedInUsers) {
       const session = roomState.loggedInUsers.get(cleanUserId);
-      if (session && session.sessionToken && timingSafeEqualStr(sessionToken, session.sessionToken)) {
-        return true;
+      if (session) {
+        if (session.sessionToken && timingSafeEqualStr(sessionToken, session.sessionToken)) {
+          return true;
+        }
+        const incomingHash = hashSessionToken(sessionToken);
+        if (session.sessionTokenHash && incomingHash && timingSafeEqualStr(incomingHash, session.sessionTokenHash)) {
+          return true;
+        }
       }
     }
 
-    // 2. Check signed token validity
+    // 2. Cross-restart / multi-instance fallback: verify signed token AND active DB record
     const verifiedData = verifySignedSessionToken(sessionToken);
     if (verifiedData && verifiedData.userId === cleanUserId && (verifiedData.roomId === canonicalRoomId || verifiedData.roomId === roomId)) {
-      if (roomState && roomState.loggedInUsers) {
-        const existingSession = roomState.loggedInUsers.get(cleanUserId);
-        let tokenToKeep = sessionToken;
-        if (existingSession && existingSession.sessionToken) {
-          const existingData = verifySignedSessionToken(existingSession.sessionToken);
-          // If the existing session token is valid and newer or same age, preserve it to prevent desyncing active sockets
-          if (existingData && typeof existingData.iat === 'number' && typeof verifiedData.iat === 'number' && existingData.iat >= verifiedData.iat) {
-            tokenToKeep = existingSession.sessionToken;
+      try {
+        const userDoc = await User.findOne({ roomId: canonicalRoomId, userId: cleanUserId }).lean();
+        const incomingHash = hashSessionToken(sessionToken);
+        const isDbTokenValid = Boolean(
+          userDoc && (
+            (userDoc.sessionTokenHash && incomingHash && timingSafeEqualStr(incomingHash, userDoc.sessionTokenHash)) ||
+            (userDoc.sessionToken && timingSafeEqualStr(sessionToken, userDoc.sessionToken))
+          )
+        );
+        if (isDbTokenValid) {
+          if (userDoc.sessionToken && !userDoc.sessionTokenHash) {
+            User.updateOne({ _id: userDoc._id }, { $set: { sessionTokenHash: incomingHash }, $unset: { sessionToken: 1 } }).catch(() => {});
           }
-        }
-        roomState.loggedInUsers.set(cleanUserId, {
-          userId: cleanUserId,
-          username: existingSession?.username || cleanUserId,
-          sessionToken: tokenToKeep,
-          loginTime: existingSession?.loginTime || new Date(),
-          ip: clientIp,
-          userAgent,
-        });
-      }
-      return true;
-    }
-
-    // 3. Fallback to DB session token check for multi-instance / post-restart resilience
-    try {
-      const userDoc = await User.findOne({ roomId: canonicalRoomId, userId: cleanUserId }).lean();
-      const incomingHash = hashSessionToken(sessionToken);
-      const isDbTokenValid = Boolean(
-        userDoc && (
-          (userDoc.sessionTokenHash && incomingHash && timingSafeEqualStr(incomingHash, userDoc.sessionTokenHash)) ||
-          (userDoc.sessionToken && timingSafeEqualStr(sessionToken, userDoc.sessionToken))
-        )
-      );
-      if (isDbTokenValid) {
-        if (roomState && roomState.loggedInUsers) {
-          const existingSession = roomState.loggedInUsers.get(cleanUserId);
-          let tokenToKeep = sessionToken;
-          if (existingSession && existingSession.sessionToken) {
-            const existingData = verifySignedSessionToken(existingSession.sessionToken);
-            const incomingData = verifySignedSessionToken(sessionToken);
-            if (existingData && typeof existingData.iat === 'number' && incomingData && typeof incomingData.iat === 'number' && existingData.iat >= incomingData.iat) {
-              tokenToKeep = existingSession.sessionToken;
+          if (roomState && roomState.loggedInUsers) {
+            const existingSession = roomState.loggedInUsers.get(cleanUserId);
+            let tokenToKeep = sessionToken;
+            if (existingSession && existingSession.sessionToken) {
+              const existingData = verifySignedSessionToken(existingSession.sessionToken);
+              const incomingData = verifySignedSessionToken(sessionToken);
+              if (existingData && typeof existingData.iat === 'number' && incomingData && typeof incomingData.iat === 'number' && existingData.iat >= incomingData.iat) {
+                tokenToKeep = existingSession.sessionToken;
+              }
             }
+            roomState.loggedInUsers.set(cleanUserId, {
+              userId: cleanUserId,
+              username: userDoc.username || existingSession?.username || cleanUserId,
+              sessionToken: tokenToKeep,
+              sessionTokenHash: hashSessionToken(tokenToKeep),
+              loginTime: existingSession?.loginTime || new Date(),
+              ip: clientIp,
+              userAgent,
+            });
           }
-          roomState.loggedInUsers.set(cleanUserId, {
-            userId: cleanUserId,
-            username: userDoc.username || existingSession?.username || cleanUserId,
-            sessionToken: tokenToKeep,
-            loginTime: existingSession?.loginTime || new Date(),
-            ip: clientIp,
-            userAgent,
-          });
+          return true;
         }
-        return true;
-      }
-    } catch (_) {}
+      } catch (_) {}
+    }
   }
 
   return false;

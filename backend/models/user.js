@@ -22,6 +22,8 @@ const userSchema = new mongoose.Schema({
     type: [Date],
     default: [],
   },
+  // Legacy plaintext token field retained for backward-compatible document reads during on-the-fly migration.
+  // New and updated sessions only store sessionTokenHash.
   sessionToken: {
     type: String,
     default: null,
@@ -34,7 +36,6 @@ const userSchema = new mongoose.Schema({
 
 userSchema.index({ roomId: 1, userId: 1 }, { unique: true });
 userSchema.index({ roomId: 1, userId: 1, sessionTokenHash: 1 });
-userSchema.index({ roomId: 1, userId: 1, sessionToken: 1 });
 userSchema.index({ roomId: 1, lastSeen: -1 });
 
 const User = mongoose.model('User', userSchema);

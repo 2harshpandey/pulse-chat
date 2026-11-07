@@ -58,56 +58,76 @@ const buildSafeReplyingTo = (rt) => {
  * Prevents premature logout when tokens are rotated or when multi-tab / HTTP prefetch races occur,
  * while strictly ensuring that the session token is genuine and authorized for this user and room.
  */
-const isSocketSessionValid = (ws, roomId) => {
+const isSocketSessionValid = async (ws, roomId) => {
   if (ws.isAdmin) return true;
   const userId = ws.userId;
   if (!userId) return false;
+  if (!ws.sessionToken || typeof ws.sessionToken !== 'string') return false;
 
   const roomState = getRoomState(roomId);
   const activeSession = roomState.loggedInUsers?.get(userId);
 
-  // Fast path 1: active session exists, has token, and exact string match
-  if (activeSession && activeSession.sessionToken && ws.sessionToken && timingSafeEqualStr(ws.sessionToken, activeSession.sessionToken)) {
-    return true;
-  }
-
-  // Fast path 2: legacy or tokenless active session where no token is enforced
-  if (activeSession && !activeSession.sessionToken) {
-    return true;
-  }
-
-  // Deep verification: Verify ws.sessionToken cryptographically
-  if (ws.sessionToken && typeof ws.sessionToken === 'string') {
-    const verified = verifySignedSessionToken(ws.sessionToken);
-    const cleanRoomId = (roomId === 'me' || !roomId) ? 'me' : roomId;
-    const isRoomMatch = Boolean(
-      verified &&
-      (verified.roomId === roomId ||
-       verified.roomId === cleanRoomId ||
-       verified.roomId === 'me' ||
-       (cleanRoomId === 'me' && verified.roomId === ''))
-    );
-
-    if (verified && verified.userId === userId && isRoomMatch) {
-      // Socket token is authentic and unexpired! Synchronize roomState.loggedInUsers
-      if (activeSession) {
-        activeSession.sessionToken = ws.sessionToken;
-      } else if (roomState.loggedInUsers) {
-        roomState.loggedInUsers.set(userId, {
-          userId,
-          username: ws.username || 'User',
-          sessionToken: ws.sessionToken,
-          loginTime: new Date(),
-          ip: ws.clientIp || '',
-          userAgent: ws.clientUa || '',
-        });
-      }
-      User.updateOne(
-        { roomId: String(roomId), userId: String(userId) },
-        { $set: { sessionToken: ws.sessionToken, sessionTokenHash: hashSessionToken(ws.sessionToken), lastSeen: new Date() } }
-      ).catch(() => {});
+  // Fast path 1: active session exists in memory and string or hash matches
+  if (activeSession) {
+    if (activeSession.sessionToken && timingSafeEqualStr(ws.sessionToken, activeSession.sessionToken)) {
       return true;
     }
+    const tokenHash = hashSessionToken(ws.sessionToken);
+    if (activeSession.sessionTokenHash && tokenHash && timingSafeEqualStr(tokenHash, activeSession.sessionTokenHash)) {
+      return true;
+    }
+    if (!activeSession.sessionToken && !activeSession.sessionTokenHash) {
+      return true;
+    }
+  }
+
+  // Deep verification: activeSession is missing in memory (e.g. server restart / pruned state).
+  // Verify ws.sessionToken cryptographically AND check MongoDB to ensure the session was not revoked.
+  const verified = verifySignedSessionToken(ws.sessionToken);
+  const cleanRoomId = (roomId === 'me' || !roomId) ? 'me' : roomId;
+  const isRoomMatch = Boolean(
+    verified &&
+    (verified.roomId === roomId ||
+     verified.roomId === cleanRoomId ||
+     verified.roomId === 'me' ||
+     (cleanRoomId === 'me' && verified.roomId === ''))
+  );
+
+  if (verified && verified.userId === userId && isRoomMatch) {
+    try {
+      const dbUser = await User.findOne({ roomId: String(roomId), userId: String(userId) }).lean();
+      const tokenHash = hashSessionToken(ws.sessionToken);
+      const isDbActive = Boolean(
+        dbUser && (
+          (dbUser.sessionTokenHash && tokenHash && timingSafeEqualStr(tokenHash, dbUser.sessionTokenHash)) ||
+          (dbUser.sessionToken && timingSafeEqualStr(ws.sessionToken, dbUser.sessionToken))
+        )
+      );
+
+      if (isDbActive) {
+        if (activeSession) {
+          activeSession.sessionToken = ws.sessionToken;
+          activeSession.sessionTokenHash = tokenHash;
+        } else if (roomState.loggedInUsers) {
+          roomState.loggedInUsers.set(userId, {
+            userId,
+            username: dbUser?.username || ws.username || 'User',
+            sessionToken: ws.sessionToken,
+            sessionTokenHash: tokenHash,
+            loginTime: new Date(),
+            ip: ws.clientIp || '',
+            userAgent: ws.clientUa || '',
+          });
+        }
+        if (dbUser?.sessionToken && !dbUser?.sessionTokenHash) {
+          User.updateOne(
+            { roomId: String(roomId), userId: String(userId) },
+            { $set: { sessionTokenHash: tokenHash, lastSeen: new Date() }, $unset: { sessionToken: 1 } }
+          ).catch(() => {});
+        }
+        return true;
+      }
+    } catch (_) {}
   }
 
   return false;
@@ -126,7 +146,7 @@ const handleReact = async ({ ws, parsedMessage, wss, broadcastToAdmins }) => {
     return;
   }
 
-  if (!isSocketSessionValid(ws, roomId)) {
+  if (!(await isSocketSessionValid(ws, roomId))) {
     logger.warn(`Rejected reaction from socket with invalid session token (userId: ${userId})`);
     ws.send(JSON.stringify({ type: 'force_logout', message: 'Invalid session token. Please log in again.' }));
     ws.terminate();
@@ -232,7 +252,7 @@ const handleEdit = async ({ ws, parsedMessage, wss, broadcastToAdmins }) => {
   const msg = await Message.findOne({ id: messageId, roomId });
   if (!msg || msg.isDeleted || msg.vanished) return;
 
-  const isSessionValid = isSocketSessionValid(ws, roomId);
+  const isSessionValid = await isSocketSessionValid(ws, roomId);
 
   const isAuthor = Boolean(isSessionValid && ws.userId && (msg.userId === ws.userId || msg.sender === ws.userId));
   if (!isAuthor && !ws.isAdmin) {
@@ -587,7 +607,7 @@ const handleDeleteForEveryone = async ({ ws, parsedMessage, wss, broadcastToAdmi
       return;
     }
 
-    const isSessionValid = isSocketSessionValid(ws, roomId);
+    const isSessionValid = await isSocketSessionValid(ws, roomId);
 
     const isAuthor = Boolean(isSessionValid && ws.userId && (originalMessage.userId === ws.userId || originalMessage.sender === ws.userId));
     if (!isAuthor && !ws.isAdmin) {
@@ -744,7 +764,20 @@ const handleNewMessage = async ({ ws, parsedMessage, wss, broadcastToAdmins, _br
     _broadcastOnlineUsers(roomId);
   }
 
-  if (!isSocketSessionValid(ws, roomId)) {
+  // Rate limiter: prevent message flooding (max 30 messages per 5s window per socket)
+  const now = Date.now();
+  if (!ws.messageRateTimestamps) {
+    ws.messageRateTimestamps = [];
+  }
+  ws.messageRateTimestamps = ws.messageRateTimestamps.filter((t) => now - t < 5000);
+  if (ws.messageRateTimestamps.length >= 30) {
+    logger.warn(`Message rate limit exceeded for user ${ws.userId || 'unknown'} in room ${roomId}`);
+    ws.send(JSON.stringify({ type: 'error', message: 'You are sending messages too quickly. Please slow down.' }));
+    return;
+  }
+  ws.messageRateTimestamps.push(now);
+
+  if (!(await isSocketSessionValid(ws, roomId))) {
     logger.warn(`Rejected new message from socket with invalid session token (userId: ${ws.userId})`);
     ws.send(JSON.stringify({ type: 'force_logout', message: 'Invalid session token. Please log in again.' }));
     ws.terminate();
@@ -860,6 +893,13 @@ const handleNewMessage = async ({ ws, parsedMessage, wss, broadcastToAdmins, _br
   // Reject empty text messages that contain no text and no poll
   if (safeType === 'text' && !rawText.trim() && !safePoll) {
     logger.warn(`Rejected empty text message from user '${verifiedUsername}' (${verifiedUserId}) in room '${roomId}'`);
+    return;
+  }
+
+  // Reject media messages that lack a valid storage/proxy URL
+  const hasValidMediaUrl = typeof sanitisedMessage.url === 'string' && sanitisedMessage.url.trim().length > 0 && !sanitisedMessage.url.startsWith('blob:');
+  if (['image', 'video', 'audio', 'file'].includes(safeType) && !hasValidMediaUrl) {
+    logger.warn(`Rejected media message (${safeType}) without valid URL from user '${verifiedUsername}' in room '${roomId}'`);
     return;
   }
 

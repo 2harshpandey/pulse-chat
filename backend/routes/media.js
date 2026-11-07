@@ -331,9 +331,9 @@ module.exports = (wss, broadcasts) => {
       }
       if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
 
-      const rawRoomId = req.body?.roomId;
+      const rawRoomId = req.body?.roomId || req.headers['x-room-id'];
       const roomId = typeof rawRoomId === 'string' && rawRoomId.trim() ? rawRoomId.trim() : 'me';
-      const userId = req.body?.userId;
+      const userId = req.body?.userId || req.headers['x-user-id'];
       const allowed = await isRoomAccessAllowed(roomId, req);
       if (!allowed) {
         return res.status(401).json({ error: 'Upload denied: room authentication required.' });
@@ -470,7 +470,7 @@ module.exports = (wss, broadcasts) => {
       let scopeHash;
       try {
         const { uploadId, chunkIndex, totalChunks, originalname, mimetype, userId, text } = req.body;
-        const rawRoomId = req.body?.roomId;
+        const rawRoomId = req.body?.roomId || req.headers['x-room-id'];
         let roomId = typeof rawRoomId === 'string' && rawRoomId.trim() ? rawRoomId.trim() : 'me';
         if (!uploadId || typeof uploadId !== 'string' || !req.file) {
           return res.status(400).json({ error: 'Missing or invalid chunk data' });
@@ -523,7 +523,11 @@ module.exports = (wss, broadcasts) => {
           return res.status(400).json({ error: `Non-sequential chunk rejected. Expected offset <= ${currentFileSize}, got ${chunkStart}.` });
         }
 
-        const fileHandle = await fs.promises.open(tmpPath, 'a+');
+        const fileHandle = await fs.promises.open(
+          tmpPath,
+          fs.constants.O_CREAT | fs.constants.O_RDWR,
+          0o600
+        );
         try {
           await fileHandle.write(req.file.buffer, 0, req.file.buffer.length, chunkStart);
         } finally {

@@ -20,6 +20,7 @@ const auditLogSchema = new mongoose.Schema({
       'join_failed_username_taken',
       'join_failed_rate_limit',
       'potential_bruteforce_detected',
+      'potential_admin_bruteforce',
       'admin_auth_failed',
       'temp_link_created',
       'temp_link_revoked',

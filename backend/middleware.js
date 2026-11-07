@@ -228,7 +228,7 @@ const recordFailedPasswordAttempt = (key, req) => {
       const ip = extractIp(req);
       const roomId = req.body?.roomId || req.body?.id || req.headers['x-room-id'] || 'me';
       const userAgent = req.headers['user-agent'] || '';
-      const username = req.body?.username;
+      const username = typeof req.body?.username === 'string' ? req.body.username.trim().slice(0, 100) : undefined;
       AuditLog.create({
         roomId,
         type: 'potential_bruteforce_detected',
@@ -326,7 +326,7 @@ const adminAuth = async (req, res, next) => {
       return next();
     } else {
       try {
-        const room = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] });
+        const room = await Room.findByIdOrAlias(roomId);
         if (room) {
           req.roomId = room.id;
           req.isSuperAdmin = true;
@@ -342,7 +342,7 @@ const adminAuth = async (req, res, next) => {
   }
 
   try {
-    const room = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] });
+    const room = await Room.findByIdOrAlias(roomId);
     if (room && verifyPassword(password, room.adminPassword)) {
       resetPasswordAttempts(key);
       req.roomId = room.id;
@@ -392,7 +392,7 @@ const isUserBlocked = async (roomId, userId, ip, userAgent, deviceFingerprint) =
   let canonicalRoomId = roomId;
   if (roomId !== 'me' && roomId !== 'global') {
     try {
-      const room = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] }).lean();
+      const room = await Room.findByIdOrAlias(roomId, { lean: true });
       if (room) canonicalRoomId = room.id;
     } catch (_) {}
   }
@@ -448,7 +448,7 @@ const isLoginLocked = async (roomId) => {
   let canonicalRoomId = roomId;
   if (roomId !== 'me' && roomId !== 'global') {
     try {
-      const room = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] }).lean();
+      const room = await Room.findByIdOrAlias(roomId, { lean: true });
       if (room) canonicalRoomId = room.id;
     } catch (_) {}
   }
@@ -477,11 +477,11 @@ const toClientMessage = (msg) => {
   return { ...plain, reactions: filterValidReactions(plain.reactions) };
 };
 
-// Strips sensitive bearer session tokens before transmitting logged-in user lists to admin clients
+// Strips sensitive bearer session tokens and token hashes before transmitting logged-in user lists to admin clients
 const toSafeLoggedInUserList = (loggedInUsers) => {
   if (!loggedInUsers) return [];
   const list = loggedInUsers instanceof Map ? Array.from(loggedInUsers.values()) : Array.from(loggedInUsers);
-  return list.map(({ sessionToken, ...safeInfo }) => safeInfo);
+  return list.map(({ sessionToken, sessionTokenHash, ...safeInfo }) => safeInfo);
 };
 
 const isPasswordLocked = (key) => {

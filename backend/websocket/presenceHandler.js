@@ -86,7 +86,7 @@ const handleUserJoin = async ({
     requiresPassword = Boolean(process.env.CLIENT_PASSWORD);
   } else if (roomId !== 'global') {
     try {
-      roomDoc = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] }).lean();
+      roomDoc = await Room.findByIdOrAlias(roomId, { lean: true });
       if (!roomDoc) {
         logger.warn(`Rejected WebSocket join to non-existent room '${roomId}' by user '${username}'`);
         ws.send(JSON.stringify({ type: 'force_logout', message: 'Chat room does not exist.' }));
@@ -117,15 +117,10 @@ const handleUserJoin = async ({
     }
   }
 
-  // Cross-restart or multi-instance fallback: verify signed token or check database User record
+  // Cross-restart or multi-instance fallback: verify signed token AND check database User record
   if (!activeSessionToken && sessionTokenProvided) {
     const verified = verifySignedSessionToken(sessionTokenProvided);
     if (verified && verified.userId === userId && (verified.roomId === roomId || (cleanRoomId && verified.roomId === cleanRoomId) || (verified.roomId === 'me' && (roomId === 'me' || !roomId)))) {
-      activeSessionToken = sessionTokenProvided;
-      if (existingSession) {
-        existingSession.sessionToken = activeSessionToken;
-      }
-    } else {
       try {
         const dbUser = await User.findOne({ roomId: String(roomId), userId: String(userId) }).lean();
         const incomingHash = hashSessionToken(sessionTokenProvided);
@@ -139,6 +134,10 @@ const handleUserJoin = async ({
           activeSessionToken = sessionTokenProvided;
           if (existingSession) {
             existingSession.sessionToken = activeSessionToken;
+            existingSession.sessionTokenHash = incomingHash;
+          }
+          if (dbUser.sessionToken && !dbUser.sessionTokenHash) {
+            User.updateOne({ _id: dbUser._id }, { $set: { sessionTokenHash: incomingHash }, $unset: { sessionToken: 1 } }).catch(() => {});
           }
         }
       } catch (_) {}
@@ -183,23 +182,7 @@ const handleUserJoin = async ({
     }
 
     if (!activeSessionToken) {
-      if (sessionTokenProvided) {
-        const verified = verifySignedSessionToken(sessionTokenProvided);
-        const isRoomMatch = Boolean(
-          verified &&
-          (verified.roomId === roomId ||
-           (cleanRoomId && verified.roomId === cleanRoomId) ||
-           (verified.roomId === 'me' && (roomId === 'me' || !roomId)))
-        );
-        if (verified && (verified.userId !== userId || !isRoomMatch)) {
-          // Token signature belongs to a different user/room — generate a fresh token for this user
-          activeSessionToken = generateSessionToken(userId, roomId);
-        } else {
-          activeSessionToken = sessionTokenProvided;
-        }
-      } else {
-        activeSessionToken = generateSessionToken(userId, roomId);
-      }
+      activeSessionToken = generateSessionToken(userId, roomId);
     }
   }
 
@@ -294,10 +277,13 @@ const handleUserJoin = async ({
         const prevFp = userFingerprints.get(client.userId);
         const devHash = fpData ? generateDeviceHash({ ...fpData, userAgent: wsUa }) : null;
         const isDeviceMatch = Boolean(devHash && prevFp?.deviceHashes?.has(devHash));
+        const incomingHash = sessionTokenProvided ? hashSessionToken(sessionTokenProvided) : null;
         let isTokenMatch = Boolean(
           sessionTokenProvided &&
-          prevLogged?.sessionToken &&
-          timingSafeEqualStr(sessionTokenProvided, prevLogged.sessionToken)
+          prevLogged && (
+            (prevLogged.sessionTokenHash && incomingHash && timingSafeEqualStr(incomingHash, prevLogged.sessionTokenHash)) ||
+            (prevLogged.sessionToken && timingSafeEqualStr(sessionTokenProvided, prevLogged.sessionToken))
+          )
         );
         if (!isTokenMatch && sessionTokenProvided) {
           const verified = verifySignedSessionToken(sessionTokenProvided);
@@ -340,10 +326,13 @@ const handleUserJoin = async ({
         const prevFp = userFingerprints.get(pUserId);
         const devHash = fpData ? generateDeviceHash({ ...fpData, userAgent: wsUa }) : null;
         const isDeviceMatch = Boolean(devHash && prevFp?.deviceHashes?.has(devHash));
+        const incomingHash = sessionTokenProvided ? hashSessionToken(sessionTokenProvided) : null;
         let isTokenMatch = Boolean(
           sessionTokenProvided &&
-          prevLogged?.sessionToken &&
-          timingSafeEqualStr(sessionTokenProvided, prevLogged.sessionToken)
+          prevLogged && (
+            (prevLogged.sessionTokenHash && incomingHash && timingSafeEqualStr(incomingHash, prevLogged.sessionTokenHash)) ||
+            (prevLogged.sessionToken && timingSafeEqualStr(sessionTokenProvided, prevLogged.sessionToken))
+          )
         );
         if (!isTokenMatch && sessionTokenProvided) {
           const verified = verifySignedSessionToken(sessionTokenProvided);
@@ -371,9 +360,13 @@ const handleUserJoin = async ({
   }
 
   // Ensure no other active session in onlineUsers has the same username
-  const takenInOnline = Array.from(onlineUsers.values()).find(
-    u => u.username && u.username.trim().toLowerCase() === trimmedLower && u.userId !== userId
-  );
+  let takenInOnline = null;
+  for (const u of onlineUsers.values()) {
+    if (u.username && u.username.trim().toLowerCase() === trimmedLower && u.userId !== userId) {
+      takenInOnline = u;
+      break;
+    }
+  }
   if (takenInOnline) {
     logger.warn(`Username '${username}' rejected — already taken by active user in room ${roomId}.`);
     ws.send(JSON.stringify({
@@ -411,11 +404,13 @@ const handleUserJoin = async ({
     }
   }
 
+  const tokenHash = activeSessionToken ? hashSessionToken(activeSessionToken) : null;
   if (!loggedInUsers.has(userId)) {
     loggedInUsers.set(userId, {
       userId,
       username,
       sessionToken: activeSessionToken,
+      sessionTokenHash: tokenHash,
       loginTime: new Date(),
       ip: ws.clientIp,
       userAgent: ws.clientUa,
@@ -424,6 +419,7 @@ const handleUserJoin = async ({
     const s = loggedInUsers.get(userId);
     if (activeSessionToken) {
       s.sessionToken = activeSessionToken;
+      s.sessionTokenHash = tokenHash;
     }
     s.username = username;
     s.ip = ws.clientIp;
@@ -445,7 +441,7 @@ const handleUserJoin = async ({
     roomId,
   }));
 
-
+  // Persist hashed session token to MongoDB User document (never store plaintext tokens)
   User.findOneAndUpdate(
     { roomId: String(roomId), userId: String(userId) },
     {
@@ -453,9 +449,11 @@ const handleUserJoin = async ({
         roomId: String(roomId),
         userId: String(userId),
         username: String(username),
-        sessionToken: activeSessionToken,
-        sessionTokenHash: hashSessionToken(activeSessionToken),
+        sessionTokenHash: tokenHash,
         lastSeen: new Date(),
+      },
+      $unset: {
+        sessionToken: 1,
       },
       $push: {
         joinHistory: {

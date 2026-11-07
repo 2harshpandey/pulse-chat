@@ -40,6 +40,7 @@ module.exports = (wss, broadcasts) => {
     // Send force_logout to the specific user's WebSocket(s)
     wss.clients.forEach((client) => {
       if (client.readyState === WebSocket.OPEN && client.userId === userId && !client.isAdmin && client.roomId === roomId) {
+        client.sessionToken = null;
         client.send(JSON.stringify({ type: 'force_logout', message: 'You have been logged out by an administrator.' }));
         setTimeout(() => client.terminate(), 500);
       }
@@ -57,6 +58,12 @@ module.exports = (wss, broadcasts) => {
       clearTimeout(pendingDisconnects.get(userId));
       pendingDisconnects.delete(userId);
     }
+
+    // Invalidate session in MongoDB so the revoked token cannot re-authenticate
+    await User.updateOne(
+      { roomId: String(roomId), userId: String(userId) },
+      { $unset: { sessionToken: 1, sessionTokenHash: 1 } }
+    ).catch((err) => logger.error('Failed to clear sessionToken on force-logout:', err));
 
     await AuditLog.create({
       roomId,
@@ -79,6 +86,7 @@ module.exports = (wss, broadcasts) => {
     const affectedUsers = [];
     wss.clients.forEach((client) => {
       if (client.readyState === WebSocket.OPEN && !client.isAdmin && client.roomId === roomId) {
+        client.sessionToken = null;
         const uid = client.userId;
         const uname = (loggedInUsers.get(uid) || onlineUsers.get(uid))?.username || 'Unknown';
         affectedUsers.push({ userId: uid, username: uname });
@@ -96,6 +104,12 @@ module.exports = (wss, broadcasts) => {
     }
     pendingDisconnects.forEach((t) => clearTimeout(t));
     pendingDisconnects.clear();
+
+    // Invalidate all sessions in MongoDB for this room
+    await User.updateMany(
+      { roomId: String(roomId) },
+      { $unset: { sessionToken: 1, sessionTokenHash: 1 } }
+    ).catch((err) => logger.error('Failed to clear sessionTokens on force-logout-all:', err));
 
     await AuditLog.create({
       roomId,
@@ -116,12 +130,15 @@ module.exports = (wss, broadcasts) => {
       return res.status(400).json({ error: 'userId is required and must be a non-empty string.' });
     }
     const userId = rawUserId.trim();
+    const safeUsername = typeof username === 'string' ? username.trim().slice(0, 100) : '';
+    const safeReason = typeof reason === 'string' ? reason.trim().slice(0, 500) : '';
 
     try {
       const { loggedInUsers, onlineUsers, typingUsers, typingTimeouts } = getRoomState(roomId);
       // Gather all known fingerprints for this user
       const fp = userFingerprints.get(userId);
       const userInfo = loggedInUsers.get(userId) || onlineUsers.get(userId);
+      const resolvedUsername = safeUsername || userInfo?.username || 'Unknown';
 
       const fingerprints = {
         ips: [],
@@ -163,8 +180,8 @@ module.exports = (wss, broadcasts) => {
         blockedUser.isBlocked = true;
         blockedUser.blockedAt = new Date();
         blockedUser.unblockedAt = null;
-        blockedUser.username = username || blockedUser.username;
-        blockedUser.reason = reason || '';
+        blockedUser.username = resolvedUsername || blockedUser.username;
+        blockedUser.reason = safeReason || blockedUser.reason || '';
         // Merge fingerprints defensively
         const existingIps = Array.isArray(blockedUser.fingerprints?.ips) ? blockedUser.fingerprints.ips : [];
         const existingUAs = Array.isArray(blockedUser.fingerprints?.userAgents) ? blockedUser.fingerprints.userAgents : [];
@@ -192,7 +209,7 @@ module.exports = (wss, broadcasts) => {
         blockedUser = await BlockedUser.create({
           roomId,
           userId,
-          username: username || 'Unknown',
+          username: resolvedUsername,
           fingerprints: {
             ...fingerprints,
             screenResolution: fingerprints.screenResolution || priorFp?.screenResolution || '',
@@ -200,13 +217,14 @@ module.exports = (wss, broadcasts) => {
             language: fingerprints.language || priorFp?.language || '',
             timezone: fingerprints.timezone || priorFp?.timezone || '',
           },
-          reason: reason || '',
+          reason: safeReason,
         });
       }
 
       // Force logout the blocked user immediately
       wss.clients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN && client.userId === userId && !client.isAdmin && client.roomId === roomId) {
+          client.sessionToken = null;
           client.send(JSON.stringify({ type: 'force_logout', message: 'You have been blocked from this chat room.' }));
           setTimeout(() => client.terminate(), 500);
         }
@@ -218,6 +236,12 @@ module.exports = (wss, broadcasts) => {
         clearTimeout(typingTimeouts.get(userId));
         typingTimeouts.delete(userId);
       }
+
+      // Invalidate session in MongoDB so the blocked user's token cannot re-authenticate
+      await User.updateOne(
+        { roomId: String(roomId), userId: String(userId) },
+        { $unset: { sessionToken: 1, sessionTokenHash: 1 } }
+      ).catch((err) => logger.error('Failed to clear sessionToken on block-user:', err));
 
       await AuditLog.create({
         roomId,

@@ -149,29 +149,47 @@ const ROOM_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 const getCachedRoom = async (idOrAlias) => {
   if (!idOrAlias || typeof idOrAlias !== 'string') return null;
-  const hit = _roomMetaCache.get(idOrAlias);
+  const key = idOrAlias.trim();
+  const lowerKey = key.toLowerCase();
+  const hit = _roomMetaCache.get(key) || _roomMetaCache.get(lowerKey);
   if (hit && (Date.now() - hit.ts) < ROOM_CACHE_TTL_MS) return hit.room;
 
   let Room;
   try { Room = require('./models/room'); } catch { return null; }
 
-  const room = await Room.findOne({ $or: [{ id: idOrAlias }, { alias: idOrAlias }] }).lean();
+  const room = typeof Room.findByIdOrAlias === 'function'
+    ? await Room.findByIdOrAlias(key, { lean: true })
+    : await Room.findOne({ $or: [{ id: key }, { alias: key }] }).lean();
+
   if (room) {
     const entry = { room, ts: Date.now() };
     _roomMetaCache.set(room.id, entry);
-    if (room.alias) _roomMetaCache.set(room.alias, entry);
+    _roomMetaCache.set(room.id.toLowerCase(), entry);
+    if (room.alias) {
+      _roomMetaCache.set(room.alias, entry);
+      _roomMetaCache.set(room.alias.toLowerCase(), entry);
+    }
+    _roomMetaCache.set(key, entry);
+    _roomMetaCache.set(lowerKey, entry);
   }
   return room;
 };
 
 const invalidateCachedRoom = (idOrAlias) => {
   if (!idOrAlias) return;
-  const hit = _roomMetaCache.get(idOrAlias);
+  const key = String(idOrAlias).trim();
+  const lowerKey = key.toLowerCase();
+  const hit = _roomMetaCache.get(key) || _roomMetaCache.get(lowerKey);
   if (hit?.room) {
     _roomMetaCache.delete(hit.room.id);
-    if (hit.room.alias) _roomMetaCache.delete(hit.room.alias);
+    _roomMetaCache.delete(hit.room.id.toLowerCase());
+    if (hit.room.alias) {
+      _roomMetaCache.delete(hit.room.alias);
+      _roomMetaCache.delete(hit.room.alias.toLowerCase());
+    }
   }
-  _roomMetaCache.delete(idOrAlias);
+  _roomMetaCache.delete(key);
+  _roomMetaCache.delete(lowerKey);
 };
 
 // Single combined hourly prune: room state + room metadata cache

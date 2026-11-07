@@ -14,6 +14,7 @@ const { timingSafeEqualStr, verifyPassword, hashPassword, generateSessionToken, 
 const {
   getRoomState,
   userFingerprints,
+  invalidateCachedRoom,
 } = require('../state');
 const {
   authLimiter,
@@ -56,9 +57,13 @@ async function resolveUsernameCollision({ roomId, username, userId, ip, userAgen
   const { onlineUsers, pendingDisconnects, filePickerPresenceByUsername } = roomState;
   const normalised = username.trim().toLowerCase();
 
-  const takenUser = Array.from(onlineUsers.values()).find(
-    u => u.username && u.username.trim().toLowerCase() === normalised && u.userId !== userId
-  );
+  let takenUser = null;
+  for (const u of onlineUsers.values()) {
+    if (u.username && u.username.trim().toLowerCase() === normalised && u.userId !== userId) {
+      takenUser = u;
+      break;
+    }
+  }
 
   if (!takenUser) {
     return true;
@@ -72,7 +77,13 @@ async function resolveUsernameCollision({ roomId, username, userId, ip, userAgen
   const prevLogged = roomState.loggedInUsers?.get(takenUser.userId);
   const prevFp = userFingerprints.get(takenUser.userId);
   const incomingToken = typeof incomingSessionToken === 'string' && incomingSessionToken.trim() ? incomingSessionToken.trim() : null;
-  let isTokenMatch = Boolean(incomingToken && prevLogged?.sessionToken && timingSafeEqualStr(incomingToken, prevLogged.sessionToken));
+  const incomingHash = incomingToken ? hashSessionToken(incomingToken) : null;
+  let isTokenMatch = Boolean(
+    incomingToken && prevLogged && (
+      (prevLogged.sessionTokenHash && incomingHash && timingSafeEqualStr(incomingHash, prevLogged.sessionTokenHash)) ||
+      (prevLogged.sessionToken && timingSafeEqualStr(incomingToken, prevLogged.sessionToken))
+    )
+  );
   if (!isTokenMatch && incomingToken) {
     const verified = verifySignedSessionToken(incomingToken);
     if (verified && verified.userId === takenUser.userId && (verified.roomId === roomId || verified.roomId === 'me')) {
@@ -124,7 +135,7 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
     let cleanRoomId = rawInputRoomId;
     let roomDoc = null;
     if (cleanRoomId !== 'me' && cleanRoomId !== 'global') {
-      roomDoc = await Room.findOne({ $or: [{ id: cleanRoomId }, { alias: cleanRoomId }] });
+      roomDoc = await Room.findByIdOrAlias(cleanRoomId);
       if (!roomDoc) {
         return res.status(404).json({ success: false, error: 'Chat room does not exist.' });
       }
@@ -211,6 +222,7 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
         if (roomDoc.isPrivate && roomDoc.joinPassword && !roomDoc.joinPassword.startsWith('scrypt$') && password) {
           roomDoc.joinPassword = hashPassword(password);
           roomDoc.save().catch((err) => logger.error('Failed to upgrade legacy room password:', err));
+          invalidateCachedRoom(roomDoc.id);
         }
       }
     }
@@ -245,16 +257,18 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
       const sessionToken = generateSessionToken(userId, roomId);
 
       // Track as logged in
+      const sessionTokenHash = hashSessionToken(sessionToken);
       loggedInUsers.set(userId, {
         userId,
         username: username?.trim(),
         sessionToken,
+        sessionTokenHash,
         loginTime: new Date(),
         ip,
         userAgent,
       });
 
-      // Persist session token to MongoDB User document for multi-instance / restart resilience
+      // Persist hashed session token to MongoDB User document (never store plaintext tokens)
       User.findOneAndUpdate(
         { roomId: String(roomId), userId: String(userId) },
         {
@@ -262,9 +276,11 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
             roomId: String(roomId),
             userId: String(userId),
             username: username ? String(username).trim() : 'Anonymous',
-            sessionToken,
-            sessionTokenHash: hashSessionToken(sessionToken),
+            sessionTokenHash,
             lastSeen: new Date(),
+          },
+          $unset: {
+            sessionToken: 1,
           },
         },
         { upsert: true, new: true }
@@ -319,8 +335,8 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
     if (typeof reqRoomId === 'string' && reqRoomId.trim()) {
       const cleanReqRoomId = reqRoomId.trim();
       if (cleanReqRoomId !== roomId) {
-        const roomDoc = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] });
-        const reqRoomDoc = await Room.findOne({ $or: [{ id: cleanReqRoomId }, { alias: cleanReqRoomId }] });
+        const roomDoc = await Room.findByIdOrAlias(roomId);
+        const reqRoomDoc = await Room.findByIdOrAlias(cleanReqRoomId);
         const canonicalTempRoomId = roomDoc ? roomDoc.id : roomId;
         const canonicalReqRoomId = reqRoomDoc ? reqRoomDoc.id : cleanReqRoomId;
         if (canonicalTempRoomId !== canonicalReqRoomId) {
@@ -468,19 +484,21 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
 
     // Generate cryptographically secure session token
     const sessionToken = generateSessionToken(userId, roomId);
+    const sessionTokenHash = hashSessionToken(sessionToken);
 
     // Track as logged in
     loggedInUsers.set(userId, {
       userId,
       username: username.trim(),
       sessionToken,
+      sessionTokenHash,
       loginTime: new Date(),
       ip,
       userAgent,
       viaTempLink: true,
     });
 
-    // Persist session token to MongoDB User document for multi-instance / restart resilience
+    // Persist hashed session token to MongoDB User document (never store plaintext tokens)
     User.findOneAndUpdate(
       { roomId: String(roomId), userId: String(userId) },
       {
@@ -488,9 +506,11 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
           roomId: String(roomId),
           userId: String(userId),
           username: username.trim(),
-          sessionToken,
-          sessionTokenHash: hashSessionToken(sessionToken),
+          sessionTokenHash,
           lastSeen: new Date(),
+        },
+        $unset: {
+          sessionToken: 1,
         },
       },
       { upsert: true, new: true }
@@ -527,16 +547,20 @@ router.get('/api/users/check-username', authLimiter, async (req, res) => {
   let canonicalRoomId = roomId;
   if (roomId !== 'me' && roomId !== 'global') {
     try {
-      const roomDoc = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] }).lean();
+      const roomDoc = await Room.findByIdOrAlias(roomId, { lean: true });
       if (roomDoc) canonicalRoomId = roomDoc.id;
     } catch (_) {}
   }
 
   const { onlineUsers } = getRoomState(canonicalRoomId);
   const normalised = username.trim().toLowerCase();
-  const taken = Array.from(onlineUsers.values()).some(
-    u => u.username && u.username.trim().toLowerCase() === normalised && (!safeUserId || u.userId !== safeUserId)
-  );
+  let taken = false;
+  for (const u of onlineUsers.values()) {
+    if (u.username && u.username.trim().toLowerCase() === normalised && (!safeUserId || u.userId !== safeUserId)) {
+      taken = true;
+      break;
+    }
+  }
   res.json({ available: !taken });
 });
 

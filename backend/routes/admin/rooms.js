@@ -22,7 +22,9 @@ const cleanupRoomMediaAssets = async (roomIdentifiers) => {
     }).select('id url type').lean();
 
     if (messagesWithMedia && messagesWithMedia.length > 0) {
-      await batchDeleteCloudinaryAssets(messagesWithMedia);
+      batchDeleteCloudinaryAssets(messagesWithMedia).catch((err) => {
+        logger.warn('Failed to clean up Cloudinary assets during room deletion:', err?.message);
+      });
     }
   } catch (err) {
     logger.error('Error during room media asset cleanup:', err);
@@ -68,7 +70,7 @@ module.exports = (wss, broadcasts) => {
         return res.status(403).json({ error: 'Cannot delete the system default rooms.' });
       }
 
-      const room = await Room.findOne({ $or: [{ id: targetRoomParam }, { alias: targetRoomParam }] });
+      const room = await Room.findByIdOrAlias(targetRoomParam);
 
       if (!room) {
         return res.status(404).json({ error: 'Room not found' });
@@ -80,8 +82,8 @@ module.exports = (wss, broadcasts) => {
 
       const roomIdentifiers = Array.from(new Set([room.id, room.alias, targetRoomParam].filter(Boolean)));
 
-      // Asynchronously trigger Cloudinary media cleanup for deleted room
-      cleanupRoomMediaAssets(roomIdentifiers).catch(() => {});
+      // Clean up Cloudinary assets before purging messages from DB
+      await cleanupRoomMediaAssets(roomIdentifiers);
 
       // Clean up related data in parallel across all collections
       await Promise.all([
@@ -139,11 +141,11 @@ module.exports = (wss, broadcasts) => {
       return res.status(403).json({ error: 'Cannot delete the system default rooms.' });
     }
     try {
-      const room = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] });
+      const room = await Room.findByIdOrAlias(roomId);
       const roomIdentifiers = Array.from(new Set([roomId, room?.id, room?.alias].filter(Boolean)));
 
-      // Asynchronously trigger Cloudinary media cleanup for deleted room
-      cleanupRoomMediaAssets(roomIdentifiers).catch(() => {});
+      // Clean up Cloudinary assets before purging messages from DB
+      await cleanupRoomMediaAssets(roomIdentifiers);
 
       await Promise.all([
         Room.deleteOne({ id: room ? room.id : roomId }),

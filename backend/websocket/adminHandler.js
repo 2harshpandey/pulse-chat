@@ -87,7 +87,7 @@ const handleAdminAuth = async (ws, rawData, broadcastToAdmins, loadPinnedMessage
       let targetRoom = null;
       if (roomId !== 'me' && roomId !== 'global') {
         try {
-          targetRoom = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] }).lean();
+          targetRoom = await Room.findByIdOrAlias(roomId, { lean: true });
         } catch (dbErr) {
           logger.error(`Admin auth DB lookup error for room ${roomId}:`, dbErr);
         }

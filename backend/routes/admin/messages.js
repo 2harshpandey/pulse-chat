@@ -541,7 +541,12 @@ module.exports = (wss, broadcasts) => {
       return res.status(400).json({ error: 'No message IDs provided.' });
     }
 
-    if (messageIds.length > 500) {
+    const cleanMessageIds = messageIds.filter((id) => typeof id === 'string' && id.trim()).map((id) => id.trim());
+    if (cleanMessageIds.length === 0) {
+      return res.status(400).json({ error: 'No valid message IDs provided.' });
+    }
+
+    if (cleanMessageIds.length > 500) {
       return res.status(400).json({ error: 'Cannot process more than 500 messages at once.' });
     }
 
@@ -555,8 +560,8 @@ module.exports = (wss, broadcasts) => {
 
     try {
       // 1. Separate hex ObjectIds (24-char hex) from regular string message IDs
-      const objectIds = messageIds.filter((id) => /^[0-9a-fA-F]{24}$/.test(id));
-      const resolvedIds = new Set(messageIds);
+      const objectIds = cleanMessageIds.filter((id) => /^[0-9a-fA-F]{24}$/.test(id));
+      const resolvedIds = new Set(cleanMessageIds);
 
       // 2. Query MessageEvent and Message to resolve linked IDs for any ObjectIds
       if (objectIds.length > 0) {

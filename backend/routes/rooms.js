@@ -6,7 +6,7 @@ const Room = require('../models/room');
 const Message = require('../models/message');
 const MessageEvent = require('../models/messageEvent');
 const AuditLog = require('../models/auditLog');
-const { getRoomState } = require('../state');
+const { getRoomState, invalidateCachedRoom } = require('../state');
 const { authLimiter, apiLimiter, extractIp, generateDeviceHash, checkPasswordRateLimit, recordFailedPasswordAttempt, resetPasswordAttempts } = require('../middleware');
 const { timingSafeEqualStr, hashPassword, verifyPassword } = require('../security');
 
@@ -188,7 +188,7 @@ router.get('/:id/meta', apiLimiter, async (req, res) => {
         description: 'Direct private chat room'
       });
     }
-    const room = await Room.findOne({ $or: [{ id }, { alias: id }] });
+    const room = await Room.findByIdOrAlias(id);
     if (!room) return res.status(404).json({ error: 'Room not found.' });
     res.json({
       id: room.id,
@@ -237,7 +237,7 @@ router.post('/verify-join', authLimiter, checkPasswordRateLimit, async (req, res
   }
 
   try {
-    const room = await Room.findOne({ $or: [{ id: cleanRoomId }, { alias: cleanRoomId }] });
+    const room = await Room.findByIdOrAlias(cleanRoomId);
     if (!room) {
       return res.status(404).json({ error: 'Chat room does not exist.' });
     }
@@ -273,7 +273,8 @@ router.post('/verify-join', authLimiter, checkPasswordRateLimit, async (req, res
 // Get public rooms
 router.get('/', apiLimiter, async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
+    const rawPage = parseInt(req.query.page, 10);
+    const page = Number.isFinite(rawPage) && rawPage >= 1 ? Math.min(rawPage, 1000) : 1;
     const limit = 9;
     const skip = (page - 1) * limit;
 
@@ -318,7 +319,8 @@ router.get('/search', apiLimiter, async (req, res) => {
   }
 
   try {
-    const page = parseInt(req.query.page) || 1;
+    const rawPage = parseInt(req.query.page, 10);
+    const page = Number.isFinite(rawPage) && rawPage >= 1 ? Math.min(rawPage, 1000) : 1;
     const limit = 9;
     const skip = (page - 1) * limit;
 
@@ -368,7 +370,7 @@ router.post('/join', authLimiter, checkPasswordRateLimit, async (req, res) => {
   if (!id) return res.status(400).json({ error: 'Room ID is required.' });
 
   try {
-    const room = await Room.findOne({ $or: [{ id }, { alias: id }] });
+    const room = await Room.findByIdOrAlias(id);
     if (!room) return res.status(404).json({ error: 'Room not found.' });
     
     if (!room.isPrivate) return res.json({ success: true });
@@ -379,6 +381,7 @@ router.post('/join', authLimiter, checkPasswordRateLimit, async (req, res) => {
       if (room.joinPassword && !room.joinPassword.startsWith('scrypt$')) {
         room.joinPassword = hashPassword(joinPassword);
         room.save().catch((err) => logger.error('Failed to upgrade legacy room password:', err));
+        invalidateCachedRoom(room.id);
       }
       return res.json({ success: true });
     }
@@ -419,7 +422,7 @@ router.post('/admin-auth', authLimiter, checkPasswordRateLimit, async (req, res)
        return res.json({ success: true });
     }
 
-    const room = await Room.findOne({ $or: [{ id: cleanRoomId }, { alias: cleanRoomId }] });
+    const room = await Room.findByIdOrAlias(cleanRoomId);
     if (!room) {
       if (cleanRoomId === 'me') {
         recordFailedPasswordAttempt(req.passwordRateLimitKey, req);
@@ -445,6 +448,7 @@ router.post('/admin-auth', authLimiter, checkPasswordRateLimit, async (req, res)
       if (room.adminPassword && !room.adminPassword.startsWith('scrypt$') && verifyPassword(adminPassword, room.adminPassword)) {
         room.adminPassword = hashPassword(adminPassword);
         room.save().catch((err) => logger.error('Failed to upgrade legacy admin password:', err));
+        invalidateCachedRoom(room.id);
       }
       return res.json({ success: true });
     }
@@ -501,7 +505,7 @@ router.get('/admin/details', apiLimiter, checkPasswordRateLimit, async (req, res
      if (roomId === 'me' && process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)) {
         isValid = true;
      } else {
-        room = await Room.findOne({ $or: [{ id: roomId }, { alias: roomId }] });
+        room = await Room.findByIdOrAlias(roomId);
         if (room && (verifyPassword(adminPassword, room.adminPassword) || (process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)))) {
            isValid = true;
         }
@@ -542,7 +546,7 @@ router.put('/admin/details', apiLimiter, checkPasswordRateLimit, async (req, res
   }
 
   try {
-    const room = await Room.findOne({ $or: [{ id: cleanRoomId }, { alias: cleanRoomId }] });
+    const room = await Room.findByIdOrAlias(cleanRoomId);
     const isAuthorized = room && (verifyPassword(adminPassword, room.adminPassword) || (process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)));
     if (!room || !isAuthorized) {
       recordAdminAuthFailure(req, cleanRoomId);
@@ -554,6 +558,8 @@ router.put('/admin/details', apiLimiter, checkPasswordRateLimit, async (req, res
     if (description !== undefined) room.description = description;
     
     await room.save();
+    invalidateCachedRoom(room.id);
+    if (room.alias) invalidateCachedRoom(room.alias);
     res.json({ success: true, name: room.name, description: room.description });
   } catch (error) {
     logger.error('Failed to update room details:', error);
@@ -574,7 +580,7 @@ router.put('/admin/roomId', apiLimiter, checkPasswordRateLimit, async (req, res)
   if (!newRoomId) return res.status(400).json({ error: 'New Room ID is required.' });
 
   try {
-    const room = await Room.findOne({ $or: [{ id: cleanRoomId }, { alias: cleanRoomId }] });
+    const room = await Room.findByIdOrAlias(cleanRoomId);
     const isAuthorized = room && (verifyPassword(adminPassword, room.adminPassword) || (process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)));
     if (!room || !isAuthorized) {
       recordAdminAuthFailure(req, cleanRoomId);
@@ -610,6 +616,9 @@ router.put('/admin/roomId', apiLimiter, checkPasswordRateLimit, async (req, res)
     room.alias = alias;
     room.lastIdChangeAt = new Date();
     await room.save();
+    invalidateCachedRoom(room.id);
+    if (previousAlias) invalidateCachedRoom(previousAlias);
+    if (alias) invalidateCachedRoom(alias);
 
     // Migrate messages and events associated with the previous alias to canonical room.id
     if (previousAlias && previousAlias !== room.id) {
@@ -638,7 +647,7 @@ router.put('/admin/joinPassword', apiLimiter, checkPasswordRateLimit, async (req
   const cleanRoomId = roomId.trim();
 
   try {
-    const room = await Room.findOne({ $or: [{ id: cleanRoomId }, { alias: cleanRoomId }] });
+    const room = await Room.findByIdOrAlias(cleanRoomId);
     const isAuthorized = room && (verifyPassword(adminPassword, room.adminPassword) || (process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)));
     if (!room || !isAuthorized) {
       recordAdminAuthFailure(req, cleanRoomId);
@@ -665,6 +674,8 @@ router.put('/admin/joinPassword', apiLimiter, checkPasswordRateLimit, async (req
     room.isPrivate = true; // Implicitly private if it has a join password
     
     await room.save();
+    invalidateCachedRoom(room.id);
+    if (room.alias) invalidateCachedRoom(room.alias);
     
     res.json({ success: true });
   } catch (error) {
@@ -684,7 +695,7 @@ router.delete('/admin/joinPassword', apiLimiter, checkPasswordRateLimit, async (
   const cleanRoomId = roomId.trim();
 
   try {
-    const room = await Room.findOne({ $or: [{ id: cleanRoomId }, { alias: cleanRoomId }] });
+    const room = await Room.findByIdOrAlias(cleanRoomId);
     const isAuthorized = room && (verifyPassword(adminPassword, room.adminPassword) || (process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)));
     if (!room || !isAuthorized) {
       recordAdminAuthFailure(req, cleanRoomId);
@@ -697,6 +708,8 @@ router.delete('/admin/joinPassword', apiLimiter, checkPasswordRateLimit, async (
     room.isPrivate = false; // Make the room public again
     
     await room.save();
+    invalidateCachedRoom(room.id);
+    if (room.alias) invalidateCachedRoom(room.alias);
     
     res.json({ success: true });
   } catch (error) {
