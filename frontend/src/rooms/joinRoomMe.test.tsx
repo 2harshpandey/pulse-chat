@@ -42,5 +42,13 @@ describe('JoinRoomModal - /me Room Support', () => {
     // Test pasting room URL "https://pulsechat.tech/room/me"
     fireEvent.change(input, { target: { value: 'https://pulsechat.tech/room/me' } });
     expect(setJoinRoomId).toHaveBeenCalledWith('me');
+
+    // Test pasting custom private room URL "https://pulsechat.tech/room/my_secret.room"
+    fireEvent.change(input, { target: { value: 'https://pulsechat.tech/room/my_secret.room' } });
+    expect(setJoinRoomId).toHaveBeenCalledWith('my_secret.room');
+
+    // Test typing custom room ID directly
+    fireEvent.change(input, { target: { value: 'secret_lounge' } });
+    expect(setJoinRoomId).toHaveBeenCalledWith('secret_lounge');
   });
 });

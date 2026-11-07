@@ -290,6 +290,9 @@ export const useRoomsController = () => {
         setIsJoining(false);
         return;
       }
+      if (data.roomId) {
+        targetRoom = data.roomId;
+      }
     } catch {
       setJoinModalError('Network error while checking room.');
       setIsJoining(false);

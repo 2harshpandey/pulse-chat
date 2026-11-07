@@ -128,10 +128,6 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
       if (!roomDoc) {
         return res.status(404).json({ success: false, error: 'Chat room does not exist.' });
       }
-      // Do not allow joining private room via alias
-      if (roomDoc.isPrivate && cleanRoomId !== roomDoc.id) {
-        return res.status(404).json({ success: false, error: 'Chat room does not exist.' });
-      }
       cleanRoomId = roomDoc.id;
     }
     const roomId = cleanRoomId;
@@ -210,7 +206,7 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
     } else if (roomId === 'global') {
       isPasswordValid = true;
     } else {
-      if (roomDoc && (!roomDoc.isPrivate || (roomDoc.joinPassword && verifyPassword(password || '', roomDoc.joinPassword)))) {
+      if (roomDoc && (!roomDoc.isPrivate || !roomDoc.joinPassword || verifyPassword(password || '', roomDoc.joinPassword))) {
         isPasswordValid = true;
         if (roomDoc.isPrivate && roomDoc.joinPassword && !roomDoc.joinPassword.startsWith('scrypt$') && password) {
           roomDoc.joinPassword = hashPassword(password);

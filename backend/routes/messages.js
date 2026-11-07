@@ -48,10 +48,6 @@ const isRoomAccessAllowed = async (rawRoomId, req) => {
       if (!room) {
         return false;
       }
-      // Do not allow access to private room via alias
-      if (room.isPrivate && roomId !== room.id) {
-        return false;
-      }
       canonicalRoomId = room.id;
     } catch (err) {
       logger.error('Failed to lookup room access requirements:', err);

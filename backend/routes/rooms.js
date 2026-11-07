@@ -125,15 +125,11 @@ router.post('/', apiLimiter, async (req, res) => {
       }
     }
 
-    if (isPrivate) {
-      id = crypto.randomBytes(24).toString('hex'); // 48 character long random string
-    } else {
-      id = alias || crypto.randomBytes(24).toString('hex');
-    }
+    id = alias || crypto.randomBytes(24).toString('hex');
 
     const newRoom = new Room({
       id,
-      alias: (isPrivate && alias) ? alias : undefined,
+      alias: alias || undefined,
       name,
       description,
       isPrivate,
@@ -194,7 +190,6 @@ router.get('/:id/meta', apiLimiter, async (req, res) => {
     }
     const room = await Room.findOne({ $or: [{ id }, { alias: id }] });
     if (!room) return res.status(404).json({ error: 'Room not found.' });
-    if (room.isPrivate && id !== room.id) return res.status(404).json({ error: 'Room not found.' });
     res.json({
       id: room.id,
       isPrivate: room.isPrivate,
@@ -246,14 +241,9 @@ router.post('/verify-join', authLimiter, checkPasswordRateLimit, async (req, res
     if (!room) {
       return res.status(404).json({ error: 'Chat room does not exist.' });
     }
-    
-    // Do not allow joining private room via alias
-    if (room.isPrivate && cleanRoomId !== room.id) {
-      return res.status(404).json({ error: 'Chat room does not exist.' });
-    }
 
-    if (room.isPrivate) {
-      if (!room.joinPassword || !verifyPassword(password, room.joinPassword)) {
+    if (room.isPrivate && room.joinPassword) {
+      if (!verifyPassword(password || '', room.joinPassword)) {
         recordFailedPasswordAttempt(req.passwordRateLimitKey, req);
         const ip = extractIp(req);
         const userAgent = req.headers['user-agent'] || '';
@@ -273,7 +263,7 @@ router.post('/verify-join', authLimiter, checkPasswordRateLimit, async (req, res
     }
 
     resetPasswordAttempts(req.passwordRateLimitKey);
-    return res.json({ valid: true });
+    return res.json({ valid: true, roomId: room.id });
   } catch (err) {
     logger.error('Error in verify-join:', err);
     return res.status(500).json({ error: 'Internal server error.' });
@@ -380,9 +370,9 @@ router.post('/join', authLimiter, checkPasswordRateLimit, async (req, res) => {
   try {
     const room = await Room.findOne({ $or: [{ id }, { alias: id }] });
     if (!room) return res.status(404).json({ error: 'Room not found.' });
-    if (room.isPrivate && id !== room.id) return res.status(404).json({ error: 'Room not found.' });
     
     if (!room.isPrivate) return res.json({ success: true });
+    if (!room.joinPassword) return res.json({ success: true });
 
     if (joinPassword && verifyPassword(joinPassword, room.joinPassword)) {
       resetPasswordAttempts(req.passwordRateLimitKey);

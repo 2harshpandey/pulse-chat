@@ -93,16 +93,9 @@ const handleUserJoin = async ({
         setTimeout(() => ws.terminate(), 300);
         return;
       }
-      // Do not allow joining private room via alias
-      if (roomDoc.isPrivate && cleanRoomId !== roomDoc.id) {
-        logger.warn(`Rejected WebSocket join to private room via alias '${cleanRoomId}' by user '${username}'`);
-        ws.send(JSON.stringify({ type: 'force_logout', message: 'Chat room does not exist.' }));
-        setTimeout(() => ws.terminate(), 300);
-        return;
-      }
       // Canonicalize roomId to roomDoc.id to prevent room state fragmentation across aliases
       roomId = roomDoc.id;
-      if (roomDoc.isPrivate) {
+      if (roomDoc.isPrivate && roomDoc.joinPassword) {
         requiresPassword = true;
       }
     } catch (err) {
