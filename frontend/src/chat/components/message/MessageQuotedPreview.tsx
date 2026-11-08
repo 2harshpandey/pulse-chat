@@ -141,8 +141,7 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
 
   const isIndividualMediaReply = !isTargetDeleted && Boolean(
     (msg.replyingTo?.type === 'image' || msg.replyingTo?.type === 'video') &&
-    !msg.replyingTo?.isGroup &&
-    msg.replyingTo?.type !== 'group'
+    !msg.replyingTo?.isGroup
   );
 
   const isGroupReply = !isTargetDeleted && !isIndividualMediaReply && Boolean(
@@ -205,8 +204,21 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
         }
 
         if (replyTargetId) {
+          const isWholeAlbumReply = Boolean(
+            isGroupReply ||
+            msg.replyingTo.isGroup ||
+            msg.replyingTo.type === 'group' ||
+            (typeof msg.replyingTo.mediaCount === 'number' && msg.replyingTo.mediaCount > 1)
+          );
+
+          const shouldOpenFullscreenMedia = Boolean(
+            !isWholeAlbumReply &&
+            isIndividualMediaReply &&
+            onOpenQuotedMedia
+          );
+
           let opened = false;
-          if (onOpenQuotedMedia) {
+          if (shouldOpenFullscreenMedia && onOpenQuotedMedia) {
             opened = Boolean(onOpenQuotedMedia(replyTargetId, msg.replyingTo));
           }
           try {
@@ -215,6 +227,7 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
             // If target media was not in memory prior to jump (e.g. very old message history batch),
             // open the gallery modal now using the newly loaded messages batch.
             if (
+              shouldOpenFullscreenMedia &&
               !opened &&
               onOpenQuotedMedia &&
               navResult &&

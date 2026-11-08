@@ -585,6 +585,7 @@ describe('Album Download Manager and Quoted Message Locating', () => {
         id: 'msg-reply-to-deleted',
         userId: 'user-bob',
         username: 'Bob',
+        type: 'text',
         text: 'This is my reply',
         timestamp: new Date().toISOString(),
         replyingTo: {
@@ -618,7 +619,7 @@ describe('Album Download Manager and Quoted Message Locating', () => {
       const userDeletedReplyMessage: Message = {
         ...deletedReplyMessage,
         replyingTo: {
-          ...deletedReplyMessage.replyingTo,
+          ...deletedReplyMessage.replyingTo!,
           deletedBy: 'user-bob',
         },
       };
@@ -638,7 +639,7 @@ describe('Album Download Manager and Quoted Message Locating', () => {
       const adminDeletedReplyMessage: Message = {
         ...deletedReplyMessage,
         replyingTo: {
-          ...deletedReplyMessage.replyingTo,
+          ...deletedReplyMessage.replyingTo!,
           deletedBy: 'admin',
         },
       };
@@ -708,6 +709,111 @@ describe('Album Download Manager and Quoted Message Locating', () => {
       expect(card).toHaveStyle('width: 100%');
       expect(card).toHaveStyle('box-sizing: border-box');
       expect(card).toHaveStyle('align-self: stretch');
+    });
+
+    it('only scrolls and highlights when clicking a quoted whole album, opening fullscreen only for individual media', async () => {
+      const wholeAlbumReplyMessage: Message = {
+        id: 'reply-to-album',
+        userId: 'user-bob',
+        username: 'Bob',
+        type: 'text',
+        text: 'Great album collection!',
+        timestamp: new Date().toISOString(),
+        replyingTo: {
+          id: 'album-primary-1',
+          username: 'Alice',
+          type: 'group' as any,
+          isGroup: true,
+          mediaCount: 4,
+          text: 'Vacation pictures',
+        },
+      };
+
+      const onOpenQuotedMedia = vi.fn();
+      const scrollToMessage = vi.fn();
+
+      const { rerender } = render(
+        <MessageQuotedPreview
+          msg={wholeAlbumReplyMessage}
+          currentUserId="user-bob"
+          sender="me"
+          quotedPreviewThumbUrl=""
+          scrollToMessage={scrollToMessage}
+          onOpenQuotedMedia={onOpenQuotedMedia}
+        />
+      );
+
+      // Click on quoted whole album preview
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button'));
+      });
+
+      // Must NOT open fullscreen media gallery for whole album quote
+      expect(onOpenQuotedMedia).not.toHaveBeenCalled();
+      // Must scroll to and highlight the album in chat as usual
+      expect(scrollToMessage).toHaveBeenCalledWith('album-primary-1', 'reply-to-album', 'auto', true, wholeAlbumReplyMessage.replyingTo);
+
+      // Now test individual media quote within that album
+      const individualMediaReplyMessage: Message = {
+        id: 'reply-to-photo-2',
+        userId: 'user-bob',
+        username: 'Bob',
+        type: 'text',
+        text: 'Love this specific picture!',
+        timestamp: new Date().toISOString(),
+        replyingTo: {
+          id: 'album-photo-2',
+          username: 'Alice',
+          text: '',
+          type: 'image',
+          url: 'https://example.com/photo-2.jpg',
+        },
+      };
+
+      rerender(
+        <MessageQuotedPreview
+          msg={individualMediaReplyMessage}
+          currentUserId="user-bob"
+          sender="me"
+          quotedPreviewThumbUrl="https://example.com/photo-2.jpg"
+          scrollToMessage={scrollToMessage}
+          onOpenQuotedMedia={onOpenQuotedMedia}
+        />
+      );
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button'));
+      });
+
+      // For individual media quote, opening fullscreen media gallery MUST be triggered
+      expect(onOpenQuotedMedia).toHaveBeenCalledWith('album-photo-2', individualMediaReplyMessage.replyingTo);
+    });
+
+    it('returns null from findGroupAlbumForMessage when replyingTo represents a whole album', () => {
+      const sampleAlbumMessages: Message[] = [
+        { id: 'item-1', userId: 'u1', username: 'Alice', type: 'image', url: 'https://example.com/1.jpg', timestamp: new Date().toISOString() },
+        { id: 'item-2', userId: 'u1', username: 'Alice', type: 'image', url: 'https://example.com/2.jpg', timestamp: new Date().toISOString() },
+      ];
+
+      const wholeAlbumPayload = {
+        id: 'item-1',
+        isGroup: true,
+        type: 'group',
+        mediaCount: 2,
+      };
+
+      const result = findGroupAlbumForMessage(sampleAlbumMessages, 'item-1', wholeAlbumPayload);
+      expect(result).toBeNull();
+
+      const individualPayload = {
+        id: 'item-2',
+        type: 'image',
+        url: 'https://example.com/2.jpg',
+      };
+
+      const individualResult = findGroupAlbumForMessage(sampleAlbumMessages, 'item-2', individualPayload);
+      expect(individualResult).not.toBeNull();
+      expect(individualResult?.initialIndex).toBe(1);
     });
   });
 });

@@ -660,8 +660,12 @@ export function useChatWebSocket({
           setMessages(prev => applyBulkUpdate(prev));
           setSearchResults(prev => (prev ? applyBulkUpdate(prev) : null));
           setReplyingTo(prev => {
-            if (prev && updatedIds.has(prev.id)) {
-              const updatedTarget = updatedMap.get(prev.id);
+            if (prev) {
+              const prevNormId = normalizeMessageId(prev.id);
+              const prevNormMongoId = prev._id ? normalizeMessageId(prev._id) : undefined;
+              const updatedTarget =
+                (prevNormId ? updatedMap.get(prevNormId) : undefined) ||
+                (prevNormMongoId ? updatedMap.get(prevNormMongoId) : undefined);
               if (updatedTarget) {
                 if (
                   updatedTarget.isDeleted ||

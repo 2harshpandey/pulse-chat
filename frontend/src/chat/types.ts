@@ -3,9 +3,12 @@
 
 export interface ReplyContext {
   id: string;
-  username: string;
-  text: string;
-  type: 'text' | 'image' | 'video' | 'file' | 'audio' | 'poll' | 'group';
+  _id?: string;
+  messageId?: string;
+  clientTempId?: string;
+  username?: string;
+  text?: string;
+  type?: 'text' | 'image' | 'video' | 'file' | 'audio' | 'poll' | 'group';
   url?: string;
   duration?: number;
   isDeleted?: boolean;
@@ -13,6 +16,7 @@ export interface ReplyContext {
   poll?: any;
   mediaCount?: number;
   isGroup?: boolean;
+  edited?: boolean;
 }
 
 export interface Message {

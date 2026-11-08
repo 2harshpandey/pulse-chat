@@ -95,6 +95,12 @@ export function findGroupAlbumForMessage(
   replyingTo?: any
 ): { groupMessages: Message[]; initialIndex: number; count: number; primaryId: string; caption?: string } | null {
   if (!messages || messages.length === 0) return null;
+  const isWholeAlbumTarget = Boolean(
+    replyingTo?.isGroup ||
+    replyingTo?.type === 'group' ||
+    (typeof replyingTo?.mediaCount === 'number' && replyingTo.mediaCount > 1)
+  );
+  if (isWholeAlbumTarget) return null;
   const rawTargetId = normalizeMessageId(targetId);
   const replyingId = normalizeMessageId(replyingTo?.id);
   const replyingMongoId = normalizeMessageId(replyingTo?._id);
@@ -297,6 +303,17 @@ export const MessagesList = React.memo(function MessagesList({
   const handleOpenQuotedMedia = React.useCallback(
     (targetId: string, replyingTo?: any, customMessages?: Message[]): boolean => {
       if (!openMediaGallery) return false;
+
+      // Fullscreen media gallery should ONLY open if a particular media of that album was quoted and replied.
+      // If the quoted target is an entire album (isGroup / type === 'group' / mediaCount > 1), do not open.
+      const isWholeAlbumTarget = Boolean(
+        replyingTo?.isGroup ||
+        replyingTo?.type === 'group' ||
+        (typeof replyingTo?.mediaCount === 'number' && replyingTo.mediaCount > 1)
+      );
+      if (isWholeAlbumTarget) {
+        return false;
+      }
 
       // 1. If customMessages provided, search directly in customMessages
       if (customMessages && customMessages.length > 0) {
