@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Message } from '../types';
 import type { UserProfile, PresenceActivity } from '../../UserContext';
-import { clearOverlayGuardHistoryEntry, resolveApiBaseUrl, isGroupStartMessage, getSessionToken, setSessionToken } from '../utils';
+import { clearOverlayGuardHistoryEntry, resolveApiBaseUrl, isGroupStartMessage, getSessionToken, setSessionToken, normalizeMessageId } from '../utils';
 import { transferManager } from '../TransferManager';
 import { INITIAL_HISTORY_BATCH_SIZE, INITIAL_FIRST_ITEM_INDEX } from '../constants';
 import { initTelemetryContext, updateTelemetryWs } from '../telemetry';
@@ -517,18 +517,62 @@ export function useChatWebSocket({
           setPinnedMessages(prev => prev.filter(p => p.id !== targetId));
         } else if (messageData.type === 'update') {
           const normalizedUpdate = normalizeMessage(messageData.data);
+          const targetMatches = (replyingTo: any, update: Message): boolean => {
+            if (!replyingTo || !update) return false;
+            const replyIds = [
+              normalizeMessageId(replyingTo.id),
+              normalizeMessageId(replyingTo._id),
+              normalizeMessageId(replyingTo.messageId),
+              normalizeMessageId(replyingTo.clientTempId),
+            ].filter(Boolean);
+            const updateIds = [
+              normalizeMessageId(update.id),
+              normalizeMessageId(update._id),
+              normalizeMessageId((update as any).clientTempId),
+            ].filter(Boolean);
+            return replyIds.some(rid => updateIds.includes(rid));
+          };
+
           const updateMsgInList = (list: Message[]) =>
             list.map(m => {
-              if (m.id === normalizedUpdate.id) return { ...m, ...normalizedUpdate };
-              if (normalizedUpdate.isDeleted && m.replyingTo && m.replyingTo.id === normalizedUpdate.id) {
-                return { ...m, replyingTo: { ...m.replyingTo, isDeleted: true } };
+              if (m.id === normalizedUpdate.id || (normalizedUpdate._id && m._id === normalizedUpdate._id)) {
+                return { ...m, ...normalizedUpdate };
+              }
+              if (m.replyingTo && targetMatches(m.replyingTo, normalizedUpdate)) {
+                if (
+                  normalizedUpdate.isDeleted ||
+                  normalizedUpdate.vanished ||
+                  normalizedUpdate.text === 'This message has been deleted.' ||
+                  normalizedUpdate.text === 'This message has been deleted by an admin.'
+                ) {
+                  return {
+                    ...m,
+                    replyingTo: {
+                      ...m.replyingTo,
+                      isDeleted: true,
+                      deletedBy: normalizedUpdate.deletedBy || m.replyingTo.deletedBy,
+                      text: undefined,
+                      url: undefined,
+                    },
+                  };
+                }
+                if (normalizedUpdate.edited && normalizedUpdate.text && !m.replyingTo.isGroup && m.replyingTo.type !== 'group') {
+                  return {
+                    ...m,
+                    replyingTo: {
+                      ...m.replyingTo,
+                      text: normalizedUpdate.text,
+                      edited: true,
+                    },
+                  };
+                }
               }
               return m;
             });
           setMessages(prev => updateMsgInList(prev));
           setSearchResults(prev => (prev ? updateMsgInList(prev) : null));
           setReplyingTo(prev => {
-            if (prev && prev.id === normalizedUpdate.id) {
+            if (prev && (prev.id === normalizedUpdate.id || (normalizedUpdate._id && prev._id === normalizedUpdate._id))) {
               if (
                 normalizedUpdate.isDeleted ||
                 normalizedUpdate.vanished ||
@@ -545,24 +589,70 @@ export function useChatWebSocket({
             normalizedUpdate.vanished ||
             normalizedUpdate.text === 'This message has been deleted by an admin.'
           ) {
-            setPinnedMessages(prev => prev.filter(p => p.id !== normalizedUpdate.id));
+            setPinnedMessages(prev => prev.filter(p => p.id !== normalizedUpdate.id && (!normalizedUpdate._id || p._id !== normalizedUpdate._id)));
           } else {
             setPinnedMessages(prev =>
-              prev.map(p => (p.id === normalizedUpdate.id ? { ...p, ...normalizedUpdate } : p))
+              prev.map(p => (p.id === normalizedUpdate.id || (normalizedUpdate._id && p._id === normalizedUpdate._id) ? { ...p, ...normalizedUpdate } : p))
             );
           }
         } else if (messageData.type === 'bulk_update') {
           const updatedMessages = messageData.messages.map(normalizeMessage);
-          const updatedIds = new Set(updatedMessages.map((m: any) => m.id));
-          const updatedMap = new Map<string, Message>(updatedMessages.map((m: any) => [m.id, m]));
+          const targetMatches = (replyingTo: any, update: Message): boolean => {
+            if (!replyingTo || !update) return false;
+            const replyIds = [
+              normalizeMessageId(replyingTo.id),
+              normalizeMessageId(replyingTo._id),
+              normalizeMessageId(replyingTo.messageId),
+              normalizeMessageId(replyingTo.clientTempId),
+            ].filter(Boolean);
+            const updateIds = [
+              normalizeMessageId(update.id),
+              normalizeMessageId(update._id),
+              normalizeMessageId((update as any).clientTempId),
+            ].filter(Boolean);
+            return replyIds.some(rid => updateIds.includes(rid));
+          };
+
+          const updatedMap = new Map<string, Message>();
+          updatedMessages.forEach((m: any) => {
+            if (m.id) updatedMap.set(normalizeMessageId(m.id), m);
+            if (m._id) updatedMap.set(normalizeMessageId(m._id), m);
+          });
 
           const applyBulkUpdate = (list: Message[]) =>
             list.map(m => {
-              if (updatedMap.has(m.id)) return { ...m, ...(updatedMap.get(m.id) as Message) };
-              if (m.replyingTo && updatedIds.has(m.replyingTo.id)) {
-                const updatedTarget = updatedMap.get(m.replyingTo.id);
-                if (updatedTarget && updatedTarget.isDeleted) {
-                  return { ...m, replyingTo: { ...m.replyingTo, isDeleted: true } };
+              const directMatch = updatedMap.get(normalizeMessageId(m.id)) || (m._id ? updatedMap.get(normalizeMessageId(m._id)) : undefined);
+              if (directMatch) return { ...m, ...directMatch };
+              if (m.replyingTo) {
+                const matchingUpdated = updatedMessages.find((u: any) => targetMatches(m.replyingTo, u));
+                if (matchingUpdated) {
+                  if (
+                    matchingUpdated.isDeleted ||
+                    matchingUpdated.vanished ||
+                    matchingUpdated.text === 'This message has been deleted.' ||
+                    matchingUpdated.text === 'This message has been deleted by an admin.'
+                  ) {
+                    return {
+                      ...m,
+                      replyingTo: {
+                        ...m.replyingTo,
+                        isDeleted: true,
+                        deletedBy: matchingUpdated.deletedBy || m.replyingTo.deletedBy,
+                        text: undefined,
+                        url: undefined,
+                      },
+                    };
+                  }
+                  if (matchingUpdated.edited && matchingUpdated.text && !m.replyingTo.isGroup && m.replyingTo.type !== 'group') {
+                    return {
+                      ...m,
+                      replyingTo: {
+                        ...m.replyingTo,
+                        text: matchingUpdated.text,
+                        edited: true,
+                      },
+                    };
+                  }
                 }
               }
               return m;

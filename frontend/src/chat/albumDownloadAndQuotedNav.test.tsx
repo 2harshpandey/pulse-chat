@@ -1,8 +1,11 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, renderHook } from '@testing-library/react';
 import { albumDownloadManager } from './albumDownloadManager';
-import { MessageQuotedPreview } from './components/message/MessageQuotedPreview';
+import { MessageQuotedPreview, getDeletedForMeMessageLabel } from './components/message/MessageQuotedPreview';
+import { findGroupAlbumForMessage } from './components/MessagesList';
+import { usePhotoZoom } from './hooks/usePhotoZoom';
+import { LinkPreviewCard } from './styles/chat.message.styles';
 import type { Message } from './types';
 
 describe('Album Download Manager and Quoted Message Locating', () => {
@@ -213,6 +216,199 @@ describe('Album Download Manager and Quoted Message Locating', () => {
       // Cursor should reset
       expect(quotedContainer.style.cursor).not.toBe('wait');
     });
+
+    it('opens quoted media in fullscreen when loaded after scrollToMessage for older albums', async () => {
+      const olderAlbumTargetId = 'older-photo-2';
+      const replyMsg: Message = {
+        id: 'msg-replying-to-old-album',
+        userId: 'user1',
+        username: 'Alice',
+        type: 'text',
+        text: 'Replying to an older photo in an album',
+        timestamp: new Date().toISOString(),
+        replyingTo: {
+          id: olderAlbumTargetId,
+          text: '',
+          username: 'Bob',
+          type: 'image',
+          url: 'https://example.com/photo2.jpg',
+        },
+      };
+
+      const fetchedAlbumBatch: Message[] = [
+        {
+          id: 'older-photo-1',
+          userId: 'user2',
+          username: 'Bob',
+          type: 'image',
+          url: 'https://example.com/photo1.jpg',
+          timestamp: '2026-07-09T10:00:00.000Z',
+        },
+        {
+          id: 'older-photo-2',
+          userId: 'user2',
+          username: 'Bob',
+          type: 'image',
+          url: 'https://example.com/photo2.jpg',
+          timestamp: '2026-07-09T10:00:05.000Z',
+        },
+        {
+          id: 'older-photo-3',
+          userId: 'user2',
+          username: 'Bob',
+          type: 'image',
+          url: 'https://example.com/photo3.jpg',
+          timestamp: '2026-07-09T10:00:10.000Z',
+        },
+      ];
+
+      const onOpenQuotedMediaMock = vi.fn(
+        (targetId: string, replyingTo?: any, customMessages?: Message[]) => {
+          if (!customMessages) {
+            // Initial call before messages are loaded from server: album is not in memory
+            return false;
+          }
+          // Second call after scrollToMessage returns the fetched batch
+          const found = findGroupAlbumForMessage(customMessages, targetId, replyingTo);
+          if (found) {
+            expect(found.groupMessages).toHaveLength(3);
+            expect(found.initialIndex).toBe(1); // second photo in album
+            return true;
+          }
+          return false;
+        }
+      );
+
+      const scrollToMessageMock = vi.fn(async () => ({
+        success: true,
+        messages: fetchedAlbumBatch,
+      }));
+
+      render(
+        <MessageQuotedPreview
+          msg={replyMsg}
+          currentUserId="user1"
+          sender="me"
+          quotedPreviewThumbUrl=""
+          scrollToMessage={scrollToMessageMock}
+          onOpenQuotedMedia={onOpenQuotedMediaMock}
+        />
+      );
+
+      const quotedContainer = screen.getByRole('button');
+      await act(async () => {
+        fireEvent.click(quotedContainer);
+      });
+
+      expect(scrollToMessageMock).toHaveBeenCalledTimes(1);
+      // First call (in-memory check, returned false) + second call (with fetched messages batch)
+      expect(onOpenQuotedMediaMock).toHaveBeenCalledTimes(2);
+      expect(onOpenQuotedMediaMock).toHaveBeenLastCalledWith(
+        olderAlbumTargetId,
+        replyMsg.replyingTo,
+        fetchedAlbumBatch
+      );
+    });
+
+    it('displays toast and aborts navigation when quoted media was deleted for current user session', async () => {
+      const deletedMediaId = 'media-deleted-for-me-123';
+      localStorage.setItem('pulseDeletedForMe_user1', JSON.stringify([deletedMediaId]));
+
+      const replyMsg: Message = {
+        id: 'msg-replying-to-deleted-media',
+        userId: 'user1',
+        username: 'Alice',
+        type: 'text',
+        text: 'Replying to deleted photo',
+        timestamp: new Date().toISOString(),
+        replyingTo: {
+          id: deletedMediaId,
+          text: '',
+          username: 'Bob',
+          type: 'image',
+          url: 'https://example.com/pic.jpg',
+        },
+      };
+
+      const scrollToMessageMock = vi.fn();
+      const onOpenQuotedMediaMock = vi.fn();
+      const onShowToastMock = vi.fn();
+
+      render(
+        <MessageQuotedPreview
+          msg={replyMsg}
+          currentUserId="user1"
+          sender="me"
+          quotedPreviewThumbUrl=""
+          scrollToMessage={scrollToMessageMock}
+          onOpenQuotedMedia={onOpenQuotedMediaMock}
+          onShowToast={onShowToastMock}
+        />
+      );
+
+      const quotedContainer = screen.getByRole('button');
+      await act(async () => {
+        fireEvent.click(quotedContainer);
+      });
+
+      // Toast must be shown with the exact label
+      expect(onShowToastMock).toHaveBeenCalledTimes(1);
+      expect(onShowToastMock).toHaveBeenCalledWith('This photo is deleted by you for your session.');
+
+      // Navigation and gallery opening MUST be aborted
+      expect(scrollToMessageMock).not.toHaveBeenCalled();
+      expect(onOpenQuotedMediaMock).not.toHaveBeenCalled();
+
+      // Clean up localStorage
+      localStorage.removeItem('pulseDeletedForMe_user1');
+    });
+
+    it('formats deleted for me labels accurately across different media and file types', () => {
+      expect(getDeletedForMeMessageLabel({ type: 'image', url: 'https://test.com/photo.jpg' })).toBe('photo');
+      expect(getDeletedForMeMessageLabel({ type: 'video', url: 'https://test.com/clip.mp4' })).toBe('video');
+      expect(getDeletedForMeMessageLabel({ url: 'https://media.giphy.com/media/xyz/giphy.gif' })).toBe('GIF');
+      expect(getDeletedForMeMessageLabel({ type: 'audio', url: 'https://test.com/note.mp3' })).toBe('voice message');
+      expect(getDeletedForMeMessageLabel({ type: 'file', url: 'https://test.com/doc.pdf' })).toBe('file');
+      expect(getDeletedForMeMessageLabel({ isGroup: true, mediaCount: 4 })).toBe('media album');
+      expect(getDeletedForMeMessageLabel({ text: 'Hello' })).toBe('message');
+    });
+
+    it('findGroupAlbumForMessage helper accurately groups and indexes target media in batches', () => {
+      const batch: Message[] = [
+        {
+          id: 'album-img-1',
+          userId: 'user1',
+          username: 'Bob',
+          type: 'image',
+          url: 'https://test.com/1.jpg',
+          timestamp: '2026-11-08T12:00:00.000Z',
+        },
+        {
+          id: 'album-img-2',
+          userId: 'user1',
+          username: 'Bob',
+          type: 'image',
+          url: 'https://test.com/2.jpg',
+          timestamp: '2026-11-08T12:00:05.000Z',
+        },
+        {
+          id: 'single-text-1',
+          userId: 'user1',
+          username: 'Bob',
+          type: 'text',
+          text: 'standalone',
+          timestamp: '2026-11-08T12:01:00.000Z',
+        },
+      ];
+
+      const found = findGroupAlbumForMessage(batch, 'album-img-2');
+      expect(found).not.toBeNull();
+      expect(found?.initialIndex).toBe(1);
+      expect(found?.count).toBe(2);
+
+      const notFound = findGroupAlbumForMessage(batch, 'single-text-1');
+      expect(notFound).toBeNull();
+    });
   });
 
   describe('Unified Status Toast Component', () => {
@@ -382,6 +578,136 @@ describe('Album Download Manager and Quoted Message Locating', () => {
 
       const resolved = resolveReplyNavigationTargetId(requestedId, inMemoryMessages);
       expect(resolved).toBe(requestedId);
+    });
+
+    it('shows generic deleted text and suppresses thumbnails when target message was deleted for everyone', () => {
+      const deletedReplyMessage: Message = {
+        id: 'msg-reply-to-deleted',
+        userId: 'user-bob',
+        username: 'Bob',
+        text: 'This is my reply',
+        timestamp: new Date().toISOString(),
+        replyingTo: {
+          id: 'target-msg-1',
+          username: 'Alice',
+          text: 'Old edited message text',
+          url: 'https://example.com/photo.jpg',
+          type: 'image',
+          isDeleted: true,
+          deletedBy: 'user-alice',
+        },
+      };
+
+      const { rerender } = render(
+        <MessageQuotedPreview
+          msg={deletedReplyMessage}
+          currentUserId="user-bob"
+          sender="me"
+          quotedPreviewThumbUrl="https://example.com/photo.jpg"
+          scrollToMessage={vi.fn()}
+        />
+      );
+
+      // Verify generic deleted text is displayed instead of old message text
+      expect(screen.getByText('This message has been deleted.')).toBeInTheDocument();
+      expect(screen.queryByText('Old edited message text')).not.toBeInTheDocument();
+      // Verify thumbnail is suppressed
+      expect(screen.queryByRole('img')).not.toBeInTheDocument();
+
+      // If deleted by current user, show 'You deleted this message.'
+      const userDeletedReplyMessage: Message = {
+        ...deletedReplyMessage,
+        replyingTo: {
+          ...deletedReplyMessage.replyingTo,
+          deletedBy: 'user-bob',
+        },
+      };
+
+      rerender(
+        <MessageQuotedPreview
+          msg={userDeletedReplyMessage}
+          currentUserId="user-bob"
+          sender="me"
+          quotedPreviewThumbUrl="https://example.com/photo.jpg"
+          scrollToMessage={vi.fn()}
+        />
+      );
+      expect(screen.getByText('You deleted this message.')).toBeInTheDocument();
+
+      // If deleted by admin, show 'This message has been deleted by an admin.'
+      const adminDeletedReplyMessage: Message = {
+        ...deletedReplyMessage,
+        replyingTo: {
+          ...deletedReplyMessage.replyingTo,
+          deletedBy: 'admin',
+        },
+      };
+
+      rerender(
+        <MessageQuotedPreview
+          msg={adminDeletedReplyMessage}
+          currentUserId="user-bob"
+          sender="me"
+          quotedPreviewThumbUrl="https://example.com/photo.jpg"
+          scrollToMessage={vi.fn()}
+        />
+      );
+      expect(screen.getByText('This message has been deleted by an admin.')).toBeInTheDocument();
+    });
+
+    it('smoothly steps zoom in and out on rapid clicks without resetting zoom', () => {
+      const { result } = renderHook(() => usePhotoZoom());
+      const mockEvent = {
+        stopPropagation: vi.fn(),
+        preventDefault: vi.fn(),
+      } as unknown as React.MouseEvent<HTMLButtonElement>;
+
+      // Multiple rapid zoom-in clicks
+      act(() => {
+        result.current.handleZoomIn(mockEvent);
+      });
+      const firstScale = result.current.transform.scale;
+      expect(firstScale).toBeGreaterThan(1);
+
+      act(() => {
+        result.current.handleZoomIn(mockEvent);
+      });
+      const secondScale = result.current.transform.scale;
+      expect(secondScale).toBeGreaterThan(firstScale);
+
+      // Rapid zoom-out clicks
+      act(() => {
+        result.current.handleZoomOut(mockEvent);
+      });
+      expect(result.current.transform.scale).toBeLessThan(secondScale);
+
+      // Simulate double click event originating from a zoom button
+      const buttonEl = document.createElement('button');
+      const dblClickEvent = {
+        target: buttonEl,
+        stopPropagation: vi.fn(),
+        preventDefault: vi.fn(),
+        clientX: 100,
+        clientY: 100,
+      } as unknown as React.MouseEvent<HTMLElement>;
+
+      act(() => {
+        result.current.handleDoubleClick(dblClickEvent);
+      });
+
+      // Zoom level should remain preserved and not reset to 1
+      expect(result.current.transform.scale).toBe(firstScale);
+    });
+
+    it('renders LinkPreviewCard with full-width bubble stretching styles', () => {
+      const { container } = render(
+        <LinkPreviewCard $sender="me" href="https://example.com" />
+      );
+      const card = container.firstChild as HTMLElement;
+      expect(card).toBeInTheDocument();
+      expect(card).toHaveStyle('width: 100%');
+      expect(card).toHaveStyle('box-sizing: border-box');
+      expect(card).toHaveStyle('align-self: stretch');
     });
   });
 });

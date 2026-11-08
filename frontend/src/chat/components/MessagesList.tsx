@@ -4,7 +4,7 @@ import { SystemMessage } from '../Chat.styles';
 import { MessageItem } from '../MessageItem';
 import { MediaGroupItem } from './message';
 
-import { isGiphyUrl, setAudioDurationCache } from '../utils';
+import { isGiphyUrl, setAudioDurationCache, getQuotedPreviewThumbUrl, normalizeMessageId } from '../utils';
 
 export const isMediaMessage = (m: Message): boolean => {
   if (m.isDeleted) return false;
@@ -89,6 +89,60 @@ export const groupMessages = (messages: Message[]): MessageListItem[] => {
   return result;
 };
 
+export function findGroupAlbumForMessage(
+  messages: Message[],
+  targetId: string,
+  replyingTo?: any
+): { groupMessages: Message[]; initialIndex: number; count: number; primaryId: string; caption?: string } | null {
+  if (!messages || messages.length === 0) return null;
+  const rawTargetId = normalizeMessageId(targetId);
+  const replyingId = normalizeMessageId(replyingTo?.id);
+  const replyingMongoId = normalizeMessageId(replyingTo?._id);
+  const replyingMessageId = normalizeMessageId(replyingTo?.messageId);
+  const replyingTempId = normalizeMessageId(replyingTo?.clientTempId);
+  const targetIds = [rawTargetId, replyingId, replyingMongoId, replyingMessageId, replyingTempId].filter(
+    (id): id is string => Boolean(id && id.length > 0)
+  );
+
+  if (targetIds.length === 0) return null;
+
+  const grouped = groupMessages(messages);
+  for (const item of grouped) {
+    if (item.type === 'group' && item.messages.length > 1) {
+      let idx = item.messages.findIndex((m) => {
+        const mId = normalizeMessageId(m.id);
+        const mMongoId = normalizeMessageId(m._id);
+        const mTempId = normalizeMessageId((m as any).clientTempId);
+        return targetIds.some((tid) => tid === mId || tid === mMongoId || tid === mTempId);
+      });
+      if (
+        idx === -1 &&
+        targetIds.some(
+          (tid) => tid === normalizeMessageId(item.id) || tid === normalizeMessageId(item.primaryMessage?.id)
+        )
+      ) {
+        idx = 0;
+      }
+      if (idx !== -1) {
+        const count = item.messages.length;
+        const primaryId = item.primaryMessage.id;
+        const captionList = item.messages
+          .map((m) => m.text?.trim())
+          .filter((t): t is string => Boolean(t && t.length > 0));
+        const caption = Array.from(new Set(captionList)).join('\n');
+        return {
+          groupMessages: item.messages,
+          initialIndex: idx,
+          count,
+          primaryId,
+          caption,
+        };
+      }
+    }
+  }
+  return null;
+}
+
 export const getDateSeparatorText = (timestamp: string | number) => {
   if (!timestamp) return '';
   const date = new Date(timestamp);
@@ -114,7 +168,7 @@ export interface MessagesListProps {
   handleReact: (messageId: string, emoji: string, isAlbum?: boolean) => void;
   handleOpenDeleteMenu: (messageId: string) => void;
   openLightbox: (url: string) => void;
-  openMediaGallery?: (items: Message[], initialIndex: number) => void;
+  openMediaGallery?: (items: Message[], initialIndex: number, options?: { autoPlayVideo?: boolean }) => void;
   loadedMediaMessageSet: Set<string>;
   onRequestMediaLoad: (messageId: string, mediaUrl?: string) => void;
   mediaLoadProgressById: Record<string, number>;
@@ -132,7 +186,7 @@ export interface MessagesListProps {
     behavior?: 'auto' | 'smooth',
     force?: boolean,
     replyingToPayload?: any
-  ) => Promise<void> | void;
+  ) => Promise<{ success: boolean; messages?: Message[] } | void> | void;
   isSelectModeActive: boolean;
   selectedMessageIds: Set<string>;
   handleToggleSelectMessage: (messageId: string) => void;
@@ -152,6 +206,7 @@ export interface MessagesListProps {
   handleCancelEdit: () => void;
   onVideoFullscreenEnter: (messageId: string) => void;
   onMediaLoadError?: (messageId: string, url?: string) => void;
+  onShowToast?: (msg: string) => void;
 }
 
 export const MessagesList = React.memo(function MessagesList({
@@ -195,6 +250,7 @@ export const MessagesList = React.memo(function MessagesList({
   handleCancelEdit,
   onVideoFullscreenEnter,
   onMediaLoadError,
+  onShowToast,
 }: MessagesListProps) {
   const pinnedMessageIdSet = useMemo(
     () =>
@@ -214,8 +270,11 @@ export const MessagesList = React.memo(function MessagesList({
 
   const groupedItems = useMemo(() => groupMessages(messages), [messages]);
 
-  const messageIdToGroupInfo = useMemo(() => {
-    const map = new Map<string, { count: number; primaryId: string; caption?: string }>();
+  const messageIdToGroupAlbum = useMemo(() => {
+    const map = new Map<
+      string,
+      { groupMessages: Message[]; initialIndex: number; count: number; primaryId: string; caption?: string }
+    >();
     for (const item of groupedItems) {
       if (item.type === 'group' && item.messages.length > 1) {
         const count = item.messages.length;
@@ -224,15 +283,53 @@ export const MessagesList = React.memo(function MessagesList({
           .map((m) => m.text?.trim())
           .filter((t): t is string => Boolean(t && t.length > 0));
         const caption = Array.from(new Set(captionList)).join('\n');
-        for (const m of item.messages) {
-          if (m.id) map.set(m.id, { count, primaryId, caption });
-          if (m._id) map.set(m._id, { count, primaryId, caption });
-          if ((m as any).clientTempId) map.set((m as any).clientTempId, { count, primaryId, caption });
-        }
+        item.messages.forEach((m, idx) => {
+          const entry = { groupMessages: item.messages, initialIndex: idx, count, primaryId, caption };
+          if (m.id) map.set(m.id, entry);
+          if (m._id) map.set(m._id, entry);
+          if ((m as any).clientTempId) map.set((m as any).clientTempId, entry);
+        });
       }
     }
     return map;
   }, [groupedItems]);
+
+  const handleOpenQuotedMedia = React.useCallback(
+    (targetId: string, replyingTo?: any, customMessages?: Message[]): boolean => {
+      if (!openMediaGallery) return false;
+
+      // 1. If customMessages provided, search directly in customMessages
+      if (customMessages && customMessages.length > 0) {
+        const foundAlbum = findGroupAlbumForMessage(customMessages, targetId, replyingTo);
+        if (foundAlbum) {
+          openMediaGallery(foundAlbum.groupMessages, foundAlbum.initialIndex, { autoPlayVideo: false });
+          return true;
+        }
+        return false;
+      }
+
+      // 2. Otherwise check existing memoized map
+      const albumData =
+        (targetId && messageIdToGroupAlbum.get(targetId)) ||
+        (replyingTo?.id && messageIdToGroupAlbum.get(replyingTo.id)) ||
+        (replyingTo?._id && messageIdToGroupAlbum.get(replyingTo._id));
+
+      if (albumData) {
+        openMediaGallery(albumData.groupMessages, albumData.initialIndex, { autoPlayVideo: false });
+        return true;
+      }
+
+      // 3. Fallback: check current messages list
+      const fallbackAlbum = findGroupAlbumForMessage(messages, targetId, replyingTo);
+      if (fallbackAlbum) {
+        openMediaGallery(fallbackAlbum.groupMessages, fallbackAlbum.initialIndex, { autoPlayVideo: false });
+        return true;
+      }
+
+      return false;
+    },
+    [openMediaGallery, messageIdToGroupAlbum, messages]
+  );
 
   React.useEffect(() => {
     messages.forEach((m) => {
@@ -253,7 +350,69 @@ export const MessagesList = React.memo(function MessagesList({
     <>
       {groupedItems.map((item, index, displayArr) => {
         const msg = item.type === 'single' ? item.message : item.primaryMessage;
-        const quotedGroupInfo = msg.replyingTo?.id ? messageIdToGroupInfo.get(msg.replyingTo.id) : undefined;
+        const albumData = msg.replyingTo?.id ? messageIdToGroupAlbum.get(msg.replyingTo.id) : undefined;
+        const quotedGroupInfo = albumData
+          ? { count: albumData.count, primaryId: albumData.primaryId, caption: albumData.caption }
+          : undefined;
+
+        const replyCandidates = [
+          msg.replyingTo?.id,
+          (msg.replyingTo as any)?._id,
+          (msg.replyingTo as any)?.messageId,
+          (msg.replyingTo as any)?.clientTempId,
+        ].filter(Boolean).map(normalizeMessageId);
+
+        const quotedTargetMessage = replyCandidates.length > 0
+          ? messages.find((m) => {
+              const mIds = [
+                normalizeMessageId(m.id),
+                normalizeMessageId((m as any)._id),
+                normalizeMessageId((m as any).clientTempId),
+              ].filter(Boolean);
+              return replyCandidates.some(rc => mIds.includes(rc));
+            })
+          : undefined;
+
+        const isQuotedTargetDeleted = Boolean(
+          msg.replyingTo?.isDeleted ||
+          quotedTargetMessage?.isDeleted ||
+          quotedTargetMessage?.text === 'This message has been deleted.' ||
+          quotedTargetMessage?.text === 'This message has been deleted by an admin.' ||
+          msg.replyingTo?.text === 'This message has been deleted.' ||
+          msg.replyingTo?.text === 'This message has been deleted by an admin.'
+        );
+
+        const effectiveReplyingTo = msg.replyingTo
+          ? (isQuotedTargetDeleted
+              ? {
+                  ...msg.replyingTo,
+                  isDeleted: true,
+                  deletedBy: msg.replyingTo.deletedBy || quotedTargetMessage?.deletedBy,
+                  text: undefined,
+                  url: undefined,
+                }
+              : msg.replyingTo)
+          : undefined;
+
+        const effectiveMsg = effectiveReplyingTo && effectiveReplyingTo !== msg.replyingTo
+          ? { ...msg, replyingTo: effectiveReplyingTo }
+          : msg;
+
+        const targetMediaUrl =
+          !isQuotedTargetDeleted
+            ? (effectiveReplyingTo?.url ||
+               quotedTargetMessage?.url ||
+               (quotedTargetMessage?.id ? loadedMediaSrcById[quotedTargetMessage.id] : undefined))
+            : undefined;
+        const targetMediaType = effectiveReplyingTo?.type || quotedTargetMessage?.type;
+
+        const resolvedQuotedThumbUrl =
+          effectiveReplyingTo &&
+          !isQuotedTargetDeleted &&
+          (targetMediaType === 'image' || targetMediaType === 'video') &&
+          targetMediaUrl
+            ? getQuotedPreviewThumbUrl(targetMediaType as any, targetMediaUrl)
+            : '';
         if (msg.type === 'system_notification') {
           return (
             <div key={msg.id || index} style={{ display: 'flex', justifyContent: 'center', padding: '0.4rem 0' }}>
@@ -320,7 +479,7 @@ export const MessagesList = React.memo(function MessagesList({
               )}
               <MediaGroupItem
                 messages={item.messages}
-                primaryMessage={msg}
+                primaryMessage={effectiveMsg}
                 showUsername={showUsername}
                 isPinned={isGroupPinned}
                 currentUserId={currentUserId}
@@ -361,6 +520,9 @@ export const MessagesList = React.memo(function MessagesList({
                 reactionPickerData={reactionPickerData}
                 onMediaLoadError={onMediaLoadError}
                 quotedGroupInfo={quotedGroupInfo}
+                quotedPreviewThumbUrl={resolvedQuotedThumbUrl}
+                onOpenQuotedMedia={handleOpenQuotedMedia}
+                onShowToast={onShowToast}
               />
             </div>
           );
@@ -388,7 +550,7 @@ export const MessagesList = React.memo(function MessagesList({
               </div>
             )}
             <MessageItem
-              msg={msg}
+              msg={effectiveMsg}
               isPinned={pinnedMessageIdSet.has(msg.id)}
               showUsername={showUsername}
               currentUserId={currentUserId}
@@ -430,6 +592,9 @@ export const MessagesList = React.memo(function MessagesList({
               onVideoFullscreenEnter={onVideoFullscreenEnter}
               onMediaError={onMediaLoadError}
               quotedGroupInfo={quotedGroupInfo}
+              quotedPreviewThumbUrl={resolvedQuotedThumbUrl}
+              onOpenQuotedMedia={handleOpenQuotedMedia}
+              onShowToast={onShowToast}
             />
           </div>
         );

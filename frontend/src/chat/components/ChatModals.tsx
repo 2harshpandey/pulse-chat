@@ -105,7 +105,12 @@ export const ChatModals: React.FC<ChatModalsProps> = ({
         isOpen={selection.isDeleteConfirmationVisible}
         selectedCount={selection.selectedMessages.length}
         canDeleteForEveryone={selection.canDeleteForEveryone}
-        onCancel={() => selection.setIsDeleteConfirmationVisible(false)}
+        onCancel={() => {
+          selection.setIsDeleteConfirmationVisible(false);
+          if (!selection.isSelectModeActive) {
+            selection.setSelectedMessages([]);
+          }
+        }}
         onDeleteForMe={selection.handleBulkDeleteForMe}
         onDeleteForEveryone={selection.handleBulkDeleteForEveryone}
       />
@@ -154,6 +159,7 @@ export const ChatModals: React.FC<ChatModalsProps> = ({
         isOpen={Boolean(media.mediaGallery)}
         items={media.mediaGallery?.items || []}
         initialIndex={media.mediaGallery?.initialIndex || 0}
+        autoPlayVideo={media.mediaGallery?.autoPlayVideo}
         onClose={media.closeMediaGallery}
         onRequestDownload={media.handleRequestDownload}
         loadedMediaSrcById={media.loadedMediaSrcById}
@@ -165,6 +171,7 @@ export const ChatModals: React.FC<ChatModalsProps> = ({
         allMessages={allMessages}
         onSetReply={onSetReply}
         onMediaLoadError={media.handleMediaError}
+        onInitiateDelete={selection.handleInitiateDeleteForMessage}
       />
 
       <GifPickerModal

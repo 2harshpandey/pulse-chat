@@ -64,4 +64,5 @@ Pulse Chat implements defense-in-depth measures across all tiers:
 - **ReDoS Prevention:** User search queries and regex patterns are escaped using strict regex sanitization routines.
 - **Multi-Tier Rate Limiting:** Layered protections on HTTP authentication, room joining, media uploads, and administrative endpoints.
 - **Memory Hygiene & Stale State Pruning:** Automated periodic sweeps clean up disconnected sockets, expired typing states, and dangling promises.
+- **Session-Scoped Message Isolation & Client Bounds:** Messages deleted locally ("Delete for me") are isolated per user session, strictly preventing client quote traversal, scroll hijacking, or unauthorized element exposure across message history.
 - **Device & IP Fingerprinting:** Real-time abuse mitigation leveraging device hashes and IP tracking with instant moderation enforcement.

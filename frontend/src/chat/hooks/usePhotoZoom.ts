@@ -147,6 +147,10 @@ export function usePhotoZoom(): UsePhotoZoomReturn {
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent<HTMLElement>) => {
       e.stopPropagation();
+      const target = e.target as HTMLElement | null;
+      if (target && target.closest('button, [data-toolbar], [class*="Toolbar"], [class*="Button"]')) {
+        return;
+      }
       // Guard against synthetic emulated dblclick events dispatched by mobile browsers after touch tap
       if (Date.now() - lastTouchTimeRef.current < 600) {
         return;

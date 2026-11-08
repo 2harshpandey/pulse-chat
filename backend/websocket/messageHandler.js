@@ -47,8 +47,13 @@ const buildSafeReplyingTo = (rt) => {
   if (typeof rt.deletedBy === 'string') safe.deletedBy = rt.deletedBy.slice(0, 64);
   if (Number.isFinite(rt.duration))     safe.duration  = Number(rt.duration);
   if (Number.isFinite(rt.mediaCount))   safe.mediaCount = Math.max(1, Math.min(50, Math.floor(Number(rt.mediaCount))));
-  // Boolean flags — coerce to actual booleans
+  // Boolean flags: coerce to actual booleans
   safe.isDeleted = Boolean(rt.isDeleted);
+  if (safe.isDeleted || safe.text === 'This message has been deleted.' || safe.text === 'This message has been deleted by an admin.') {
+    safe.isDeleted = true;
+    delete safe.text;
+    delete safe.url;
+  }
   if (rt.isGroup !== undefined)         safe.isGroup   = Boolean(rt.isGroup);
   return safe;
 };
@@ -681,9 +686,28 @@ const handleDeleteForEveryone = async ({ ws, parsedMessage, wss, broadcastToAdmi
     if (originalMessage && originalMessage._id) {
       targetReplyIds.push(String(originalMessage._id));
     }
+    if (originalMessage && originalMessage.id && !targetReplyIds.includes(originalMessage.id)) {
+      targetReplyIds.push(originalMessage.id);
+    }
     await Message.updateMany(
-      { roomId: String(roomId), 'replyingTo.id': { $in: targetReplyIds } },
-      { $set: { 'replyingTo.isDeleted': true, 'replyingTo.deletedBy': operatorUserId } }
+      {
+        roomId: String(roomId),
+        $or: [
+          { 'replyingTo.id': { $in: targetReplyIds } },
+          { 'replyingTo._id': { $in: targetReplyIds } },
+          { 'replyingTo.messageId': { $in: targetReplyIds } },
+        ]
+      },
+      {
+        $set: {
+          'replyingTo.isDeleted': true,
+          'replyingTo.deletedBy': operatorUserId,
+        },
+        $unset: {
+          'replyingTo.text': '',
+          'replyingTo.url': '',
+        }
+      }
     ).catch(e => logger.error('Failed to update replyingTo on delete:', e));
 
     // Unpin immediately if this message was pinned
@@ -818,8 +842,13 @@ const handleNewMessage = async ({ ws, parsedMessage, wss, broadcastToAdmins, _br
           const isGroupReply = Boolean(sanitisedMessage.replyingTo.isGroup || sanitisedMessage.replyingTo.type === 'group');
           if (!isGroupReply) {
             if (targetDoc.text && !targetDoc.isDeleted) sanitisedMessage.replyingTo.text = targetDoc.text;
-            if (targetDoc.url) sanitisedMessage.replyingTo.url = targetDoc.url;
+            if (targetDoc.url && !targetDoc.isDeleted) sanitisedMessage.replyingTo.url = targetDoc.url;
             if (targetDoc.type) sanitisedMessage.replyingTo.type = targetDoc.type;
+          }
+          if (targetDoc.isDeleted) {
+            sanitisedMessage.replyingTo.isDeleted = true;
+            delete sanitisedMessage.replyingTo.text;
+            delete sanitisedMessage.replyingTo.url;
           }
           if (targetDoc.duration) sanitisedMessage.replyingTo.duration = targetDoc.duration;
         }

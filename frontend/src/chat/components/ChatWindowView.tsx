@@ -181,6 +181,7 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
             handleCancelEdit={msgs.handleCancelEdit}
             onVideoFullscreenEnter={viewport.handleVideoFullscreenEnter}
             onMediaLoadError={media.handleMediaError}
+            onShowToast={triggerStatusErrorToast}
           />
         </MessagesContainer>
 

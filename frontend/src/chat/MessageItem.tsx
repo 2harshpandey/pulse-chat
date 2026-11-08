@@ -64,11 +64,15 @@ export const MessageItem = React.memo(({
   onCancelUpload,
   onMediaError,
   quotedGroupInfo,
+  quotedPreviewThumbUrl: passedQuotedThumbUrl,
+  onOpenQuotedMedia,
+  onShowToast,
 }: MessageItemProps) => {
   const isEditing = editingMessageId === msg.id;
-  const quotedPreviewThumbUrl = msg.replyingTo && !msg.replyingTo.isDeleted && (msg.replyingTo.type === 'image' || msg.replyingTo.type === 'video')
-    ? getQuotedPreviewThumbUrl(msg.replyingTo.type, msg.replyingTo.url)
-    : '';
+  const quotedPreviewThumbUrl = passedQuotedThumbUrl ||
+    (msg.replyingTo && !msg.replyingTo.isDeleted && (msg.replyingTo.type === 'image' || msg.replyingTo.type === 'video')
+      ? getQuotedPreviewThumbUrl(msg.replyingTo.type, msg.replyingTo.url)
+      : '');
   const messageBubbleRef = useRef<HTMLDivElement>(null!);
   const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; right?: number; left?: number } | null>(null);
   
@@ -322,6 +326,8 @@ export const MessageItem = React.memo(({
               quotedPreviewThumbUrl={quotedPreviewThumbUrl}
               scrollToMessage={scrollToMessage}
               quotedGroupInfo={quotedGroupInfo}
+              onOpenQuotedMedia={onOpenQuotedMedia}
+              onShowToast={onShowToast}
             />
             {isDeleted ? (
               <>

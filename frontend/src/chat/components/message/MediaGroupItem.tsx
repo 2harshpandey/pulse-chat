@@ -99,7 +99,7 @@ export interface MediaGroupItemProps {
     behavior?: 'auto' | 'smooth',
     force?: boolean,
     replyingToPayload?: any
-  ) => Promise<void> | void;
+  ) => Promise<{ success: boolean; messages?: Message[] } | void> | void;
   isSelectModeActive: boolean;
   isSelected: boolean;
   handleToggleSelectMessage: (messageId: string) => void;
@@ -115,6 +115,9 @@ export interface MediaGroupItemProps {
   reactionPickerData: { messageId: string; rect: DOMRect; sender: 'me' | 'other' } | null;
   onMediaLoadError?: (messageId: string, url?: string) => void;
   quotedGroupInfo?: { count: number; primaryId: string; caption?: string };
+  quotedPreviewThumbUrl?: string;
+  onOpenQuotedMedia?: (targetId: string, replyingTo?: any, customMessages?: Message[]) => boolean | void;
+  onShowToast?: (msg: string) => void;
 }
 
 export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
@@ -149,6 +152,9 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
   handleOpenFullEmojiPicker,
   onMediaLoadError,
   quotedGroupInfo,
+  quotedPreviewThumbUrl: passedQuotedThumbUrl,
+  onOpenQuotedMedia,
+  onShowToast,
 }) => {
   const messageBubbleRef = useRef<HTMLDivElement>(null!);
   const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; right?: number; left?: number } | null>(null);
@@ -156,11 +162,12 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
   const sender = primaryMessage.userId === currentUserId ? 'me' : 'other';
 
   const quotedPreviewThumbUrl =
-    primaryMessage.replyingTo &&
+    passedQuotedThumbUrl ||
+    (primaryMessage.replyingTo &&
     !primaryMessage.replyingTo.isDeleted &&
     (primaryMessage.replyingTo.type === 'image' || primaryMessage.replyingTo.type === 'video')
       ? getQuotedPreviewThumbUrl(primaryMessage.replyingTo.type, primaryMessage.replyingTo.url)
-      : '';
+      : '');
 
   // Close context menu on scroll
   useEffect(() => {
@@ -395,6 +402,8 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
               quotedPreviewThumbUrl={quotedPreviewThumbUrl}
               scrollToMessage={scrollToMessage}
               quotedGroupInfo={quotedGroupInfo}
+              onOpenQuotedMedia={onOpenQuotedMedia}
+              onShowToast={onShowToast}
             />
 
             {!isMobileView && (
@@ -433,6 +442,13 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
                 return (
                   <MediaGroupTile
                     key={item.id || idx}
+                    onDoubleClick={(e) => {
+                      if (!isMobileView && !isSelectModeActive) {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        handleSetReply(item);
+                      }
+                    }}
                     onClick={(e) => {
                       if (shouldGateTile && !isLastWithOverflow) {
                         e.stopPropagation();

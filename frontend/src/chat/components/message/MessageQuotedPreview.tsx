@@ -1,10 +1,46 @@
 import React from 'react';
 import type { Message } from '../../types';
-import { resolveReplyTargetId, resolveAudioDuration, audioDurationCache, setAudioDurationCache, subscribeAudioDuration } from '../../utils';
+import {
+  resolveReplyTargetId,
+  resolveAudioDuration,
+  audioDurationCache,
+  setAudioDurationCache,
+  subscribeAudioDuration,
+  getDeletedForMeIds,
+  isGiphyUrl,
+} from '../../utils';
 import { quoteLog } from '../../constants';
 import { QuotedMessageContainer, QuotedMediaThumb } from '../../ChatStyledComponents';
 import { formatAudioDuration } from './AudioMessagePlayer';
 import { MediaAlbumIcon } from './MediaAlbumIcon';
+
+export function getDeletedForMeMessageLabel(replyingTo: any): string {
+  if (!replyingTo) return 'message';
+  const rawUrl = replyingTo.url || '';
+  if (isGiphyUrl(rawUrl) || Boolean(rawUrl.match(/\.gif($|\?)/i))) {
+    return 'GIF';
+  }
+  if (
+    replyingTo.isGroup ||
+    replyingTo.type === 'group' ||
+    (typeof replyingTo.mediaCount === 'number' && replyingTo.mediaCount > 1)
+  ) {
+    return 'media album';
+  }
+  if (replyingTo.type === 'image' || Boolean(rawUrl.match(/\.(jpg|jpeg|png|webp|avif|bmp)($|\?)/i))) {
+    return 'photo';
+  }
+  if (replyingTo.type === 'video' || Boolean(rawUrl.match(/\.(mp4|webm|mov)($|\?)/i))) {
+    return 'video';
+  }
+  if (replyingTo.type === 'audio' || Boolean(rawUrl.match(/\.(mp3|wav|ogg|m4a|aac|opus|flac)($|\?)/i))) {
+    return 'voice message';
+  }
+  if (replyingTo.type === 'file') {
+    return 'file';
+  }
+  return 'message';
+}
 
 interface MessageQuotedPreviewProps {
   msg: Message;
@@ -17,8 +53,10 @@ interface MessageQuotedPreviewProps {
     behavior?: 'auto' | 'smooth',
     force?: boolean,
     replyingToPayload?: any
-  ) => Promise<void> | void;
+  ) => Promise<{ success: boolean; messages?: Message[] } | void> | void;
   quotedGroupInfo?: { count: number; primaryId: string; caption?: string };
+  onOpenQuotedMedia?: (targetId: string, replyingTo?: any, customMessages?: Message[]) => boolean | void;
+  onShowToast?: (msg: string) => void;
 }
 
 export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.memo(({
@@ -28,6 +66,8 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
   quotedPreviewThumbUrl,
   scrollToMessage,
   quotedGroupInfo,
+  onOpenQuotedMedia,
+  onShowToast,
 }) => {
   const [thumbLoadError, setThumbLoadError] = React.useState(false);
   const [isLocating, setIsLocating] = React.useState(false);
@@ -93,11 +133,23 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
 
   if (!msg.replyingTo) return null;
 
-  const isGroupReply = Boolean(
-    quotedGroupInfo ||
+  const isTargetDeleted = Boolean(
+    msg.replyingTo?.isDeleted ||
+    msg.replyingTo?.text === 'This message has been deleted.' ||
+    msg.replyingTo?.text === 'This message has been deleted by an admin.'
+  );
+
+  const isIndividualMediaReply = !isTargetDeleted && Boolean(
+    (msg.replyingTo?.type === 'image' || msg.replyingTo?.type === 'video') &&
+    !msg.replyingTo?.isGroup &&
+    msg.replyingTo?.type !== 'group'
+  );
+
+  const isGroupReply = !isTargetDeleted && !isIndividualMediaReply && Boolean(
     msg.replyingTo?.isGroup ||
     msg.replyingTo?.type === 'group' ||
-    (typeof msg.replyingTo?.mediaCount === 'number' && msg.replyingTo.mediaCount > 1)
+    (typeof msg.replyingTo?.mediaCount === 'number' && msg.replyingTo.mediaCount > 1) ||
+    quotedGroupInfo
   );
 
   const groupMediaCount =
@@ -126,20 +178,54 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
         e.preventDefault();
         e.stopPropagation();
         if (isLocating) return;
-        if (msg.replyingTo) {
-          const replyTargetId = resolveReplyTargetId(msg.replyingTo, msg.id);
-          quoteLog('quoted-window click', {
-            sourceMessageId: msg.id,
-            rawReplyingTo: msg.replyingTo,
-            resolvedReplyTargetId: replyTargetId,
-          });
-          if (replyTargetId) {
-            try {
-              setIsLocating(true);
-              await scrollToMessage(replyTargetId, msg.id, 'auto', true, msg.replyingTo);
-            } finally {
-              setIsLocating(false);
+        if (!msg.replyingTo) return;
+
+        const replyTargetId = resolveReplyTargetId(msg.replyingTo, msg.id);
+        quoteLog('quoted-window click', {
+          sourceMessageId: msg.id,
+          rawReplyingTo: msg.replyingTo,
+          resolvedReplyTargetId: replyTargetId,
+        });
+
+        // Guard against clicking target that was deleted for current user session
+        const deletedForMeIds = getDeletedForMeIds(currentUserId);
+        const isDeletedForMe = Boolean(
+          (replyTargetId && deletedForMeIds.has(replyTargetId)) ||
+          (msg.replyingTo.id && deletedForMeIds.has(msg.replyingTo.id)) ||
+          ((msg.replyingTo as any)._id && deletedForMeIds.has((msg.replyingTo as any)._id)) ||
+          ((msg.replyingTo as any).messageId && deletedForMeIds.has((msg.replyingTo as any).messageId)) ||
+          ((msg.replyingTo as any).clientTempId && deletedForMeIds.has((msg.replyingTo as any).clientTempId)) ||
+          (msg.replyingTo.isDeleted && msg.replyingTo.deletedBy === currentUserId)
+        );
+
+        if (isDeletedForMe) {
+          const mediaLabel = getDeletedForMeMessageLabel(msg.replyingTo);
+          onShowToast?.(`This ${mediaLabel} is deleted by you for your session.`);
+          return;
+        }
+
+        if (replyTargetId) {
+          let opened = false;
+          if (onOpenQuotedMedia) {
+            opened = Boolean(onOpenQuotedMedia(replyTargetId, msg.replyingTo));
+          }
+          try {
+            setIsLocating(true);
+            const navResult = await scrollToMessage(replyTargetId, msg.id, 'auto', true, msg.replyingTo);
+            // If target media was not in memory prior to jump (e.g. very old message history batch),
+            // open the gallery modal now using the newly loaded messages batch.
+            if (
+              !opened &&
+              onOpenQuotedMedia &&
+              navResult &&
+              typeof navResult === 'object' &&
+              'messages' in navResult &&
+              Array.isArray(navResult.messages)
+            ) {
+              onOpenQuotedMedia(replyTargetId, msg.replyingTo, navResult.messages);
             }
+          } finally {
+            setIsLocating(false);
           }
         }
       }}
@@ -153,10 +239,10 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
-            ...(msg.replyingTo.isDeleted ? { fontStyle: 'italic', opacity: 0.7 } : {})
+            ...(isTargetDeleted ? { fontStyle: 'italic', opacity: 0.7 } : {})
           }}>
-            {msg.replyingTo.isDeleted
-              ? (msg.replyingTo.deletedBy === 'admin'
+            {isTargetDeleted
+              ? (msg.replyingTo.deletedBy === 'admin' || msg.replyingTo.text === 'This message has been deleted by an admin.'
                   ? 'This message has been deleted by an admin.'
                   : (msg.replyingTo.deletedBy === currentUserId
                       ? 'You deleted this message.'
@@ -174,7 +260,7 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
                   msg.replyingTo.type === 'audio' ? 'Voice Message' :
                   msg.replyingTo.type === 'file' ? 'File' : ''))}
           </span>
-          {!msg.replyingTo.isDeleted && msg.replyingTo.type === 'audio' && Boolean(resolvedDuration && resolvedDuration > 0) && (
+          {!isTargetDeleted && msg.replyingTo.type === 'audio' && Boolean(resolvedDuration && resolvedDuration > 0) && (
             <span
               data-testid="quoted-audio-duration-badge"
               style={{
@@ -207,7 +293,7 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
           )}
         </div>
       </div>
-      {!msg.replyingTo.isDeleted && isGroupReply && (
+      {!isTargetDeleted && isGroupReply && (
         <div
           data-testid="quoted-group-media-badge"
           style={{
@@ -225,7 +311,7 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
           <MediaAlbumIcon size={20} />
         </div>
       )}
-      {!msg.replyingTo.isDeleted && !isGroupReply && msg.replyingTo.type === 'audio' && (
+      {!isTargetDeleted && !isGroupReply && msg.replyingTo.type === 'audio' && (
         <div
           style={{
             width: '40px',
@@ -247,7 +333,7 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
           </svg>
         </div>
       )}
-      {!msg.replyingTo.isDeleted && !isGroupReply && (msg.replyingTo.url || quotedPreviewThumbUrl) && (msg.replyingTo.type === 'image' || msg.replyingTo.type === 'video') && (
+      {!isTargetDeleted && !isGroupReply && (msg.replyingTo.url || quotedPreviewThumbUrl) && (msg.replyingTo.type === 'image' || msg.replyingTo.type === 'video') && (
         quotedPreviewThumbUrl && !thumbLoadError ? (
           <QuotedMediaThumb>
             <img

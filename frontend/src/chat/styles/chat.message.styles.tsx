@@ -542,8 +542,11 @@ export const LinkPreviewCard = styled.a<{ $sender: 'me' | 'other' }>`
   background: ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.18)' : 'var(--bg-hover)'};
   border: 1px solid ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.18)' : 'var(--border-primary)'};
   height: 96px;
-  width: 26rem;
+  width: 100%;
+  min-width: min(26rem, 100%);
   max-width: 100%;
+  box-sizing: border-box;
+  align-self: stretch;
   transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
   &:hover { opacity: 0.95; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
   ${props => props.$sender === 'other' && `

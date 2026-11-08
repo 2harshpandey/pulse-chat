@@ -102,7 +102,7 @@ export interface MessageItemProps {
   handleReact: (messageId: string, emoji: string, isAlbum?: boolean) => void;
   openDeleteMenu: (messageId: string) => void;
   openLightbox: (url: string) => void;
-  openMediaGallery?: (items: Message[], initialIndex: number) => void;
+  openMediaGallery?: (items: Message[], initialIndex: number, options?: { autoPlayVideo?: boolean }) => void;
   isMediaLoaded: boolean;
   onRequestMediaLoad: (messageId: string, mediaUrl?: string) => void;
   onMediaLoad?: (messageId: string) => void;
@@ -113,7 +113,7 @@ export interface MessageItemProps {
 
   deleteForMe: (messageId: string) => void;
   deleteForEveryone: (messageId: string) => void;
-  scrollToMessage: (messageId: string, sourceMessageId?: string, behavior?: 'auto' | 'smooth', force?: boolean, replyingToPayload?: any) => Promise<void> | void;
+  scrollToMessage: (messageId: string, sourceMessageId?: string, behavior?: 'auto' | 'smooth', force?: boolean, replyingToPayload?: any) => Promise<{ success: boolean; messages?: Message[] } | void> | void;
   isSelectModeActive: boolean;
   isSelected: boolean;
   handleToggleSelectMessage: (messageId: string) => void;
@@ -137,6 +137,9 @@ export interface MessageItemProps {
   onCancelUpload?: (messageId: string) => void;
   onMediaError?: (messageId: string, url?: string) => void;
   quotedGroupInfo?: { count: number; primaryId: string; caption?: string };
+  quotedPreviewThumbUrl?: string;
+  onOpenQuotedMedia?: (targetId: string, replyingTo?: any, customMessages?: Message[]) => boolean | void;
+  onShowToast?: (msg: string) => void;
 }
 
 export interface TypingIndicatorProps {

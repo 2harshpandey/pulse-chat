@@ -11,6 +11,7 @@ import {
   findMessageElement,
   isGroupStartMessage,
   getSessionToken,
+  getDeletedForMeIds,
 } from '../utils';
 import { sendClientDiagnostic } from '../telemetry';
 
@@ -305,7 +306,19 @@ export function useChatMessageNavigation({
         }
       }
 
-      if (targetId && sourceId && targetId === sourceId) return;
+      if (targetId && sourceId && targetId === sourceId) return Promise.resolve({ success: false });
+
+      if (userId) {
+        const deletedForMe = getDeletedForMeIds(userId);
+        if (
+          (targetId && deletedForMe.has(targetId)) ||
+          (replyingToPayload?.id && deletedForMe.has(replyingToPayload.id)) ||
+          (replyingToPayload?._id && deletedForMe.has(replyingToPayload._id))
+        ) {
+          quoteWarn('Target message is deleted for current user session, aborting scroll:', targetId);
+          return Promise.resolve({ success: false });
+        }
+      }
 
       if (sourceId && sourceId !== targetId) {
         const immediateElement = findMessageElement(targetId);
@@ -331,22 +344,22 @@ export function useChatMessageNavigation({
 
       setIsLocatingMessage(true);
       sendClientDiagnostic('quote_jump_to_message', { targetId, sourceId });
-      return new Promise<void>((resolve) => {
-        const finish = () => {
+      return new Promise<{ success: boolean; messages?: Message[] }>((resolve) => {
+        const finish = (result: { success: boolean; messages?: Message[] } = { success: false }) => {
           setIsLocatingMessage(false);
-          resolve();
+          resolve(result);
         };
 
         if (!targetId) {
-          finish();
+          finish({ success: false });
           return;
         }
         if (scrollToLoadedMessage(targetId, behavior, force)) {
-          requestAnimationFrame(() => finish());
+          requestAnimationFrame(() => finish({ success: true, messages: messagesRef.current }));
           return;
         }
         if (!historyLoaded) {
-          finish();
+          finish({ success: false });
           return;
         }
 
@@ -359,7 +372,7 @@ export function useChatMessageNavigation({
         );
         if (isTemporaryUploadId || isUploadingLocally) {
           quoteWarn('Target message is an in-flight temporary upload ID that cannot exist in server history:', targetId);
-          finish();
+          finish({ success: false });
           return;
         }
 
@@ -423,7 +436,7 @@ export function useChatMessageNavigation({
 
                 requestAnimationFrame(() => {
                   scrollToLoadedMessage(targetId, behavior, force);
-                  finish();
+                  finish({ success: true, messages: patched });
                 });
                 return;
               }
@@ -468,8 +481,8 @@ export function useChatMessageNavigation({
           }
 
           requestAnimationFrame(() => {
-            scrollToLoadedMessage(targetId, behavior, force);
-            finish();
+            const ok = scrollToLoadedMessage(targetId, behavior, force);
+            finish({ success: ok, messages: messagesRef.current });
           });
         })();
       });

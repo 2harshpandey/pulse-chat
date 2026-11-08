@@ -172,7 +172,11 @@ The media layer supports rich file exchange while applying strict safety and per
 
 - **WhatsApp / Telegram Style Mosaic Albums**: Consecutive media messages (photos and videos) sent within close proximity by the same user automatically merge into clean responsive albums (1-tile, 2-tile, 3-tile, 4-tile layouts).
 - **Overflow Counter Badge**: Albums with more than 4 items render an interactive `+N` badge indicating remaining media.
-- **Album Reply Quoting**: Quoting an album or grouped media item generates an SVG album stack icon with a badge "X media" preview and caption snippet with direct jump navigation.
+- **Album Reply Quoting**: Quoting an album generates an SVG album stack icon with a badge "X media" preview and caption snippet with direct jump navigation.
+- **Granular Quoted Media Preview for Grouped Albums**: Quoting an individual photo or video within an album renders the exact high-fidelity thumbnail preview of that specific media item rather than a generic album icon.
+- **Quoted Media Fullscreen Album Jump Navigation**: Clicking on the quote preview of any media from a grouped album opens the album directly in fullscreen gallery mode switched to that exact media item (preserving the album thumbnail strip), opening videos in a clean paused state.
+- **Deep Historical Album Quote Resolution**: Quoting media from older message slices outside current memory performs fast server jump-around loading, resolving the historical album and opening the gallery modal at that exact item without getting stuck on container highlights.
+- **Session-Aware "Deleted for Me" Feedback**: Clicking quoted previews for media or messages deleted for the current session suppresses scroll navigation and container highlighting, providing clean feedback via the center-bottom status toast (`This photo/video/GIF/voice message/file/message is deleted by you for your session.`).
 - **On-Demand Media Load Gating**: Grouped and individual media tiles feature on-demand "Tap to load" gating with size badges and lightweight blurred placeholder frames (~1 KB), preventing heavy background preloading and eliminating memory pressure during fast scrolling.
 - **Full-Screen Media Gallery Modal & Advanced Zoom Engine**:
   - Fullscreen gallery lightbox with touch swipe navigation, thumbnail carousel strip, download buttons, and automatic full-resolution loading.
@@ -181,8 +185,12 @@ The media layer supports rich file exchange while applying strict safety and per
   - Non-passive wheel event handling (`passive: false`) eliminating browser wheel intervention errors in Chrome and Firefox.
   - Dedicated desktop zoom toolbar featuring Zoom In (`+`), Zoom Out (`-`), and Reset (`1:1`) buttons for mouse/desktop users.
   - Multi-touch pinch-to-zoom and pan support with smooth boundary clamping.
-  - Header action bar with quick Reply, React, and Download controls.
+  - Header action bar with quick Reply, React, Download, and Delete controls.
+  - **Media Gallery Delete with Granular Confirmation**: The fullscreen media gallery modal features an integrated Delete button positioned between Download and Close, matching adjacent action buttons in aesthetic, scale animations, and styling. Initiating a delete activates the native delete confirmation modal (Delete for me / Delete for everyone within 15 minutes). Deleting an item automatically updates remaining slides, counter, and thumbnail strip or automatically closes if all items are removed.
+  - **Rapid Desktop Zoom Stepping**: Successive rapid clicks on desktop Zoom In (`+`) and Zoom Out (`-`) buttons smoothly increase or decrease zoom scale step-by-step without unwanted double-click resets or scale collapsing.
 - **Single-Click Album ZIP Downloads with Live Cancellation**: Download an entire mosaic album or selection as a compressed `.zip` archive on demand, featuring live percentage progress, duplicate filename prevention, and real-time abort cancellation via status toasts and context menus.
+- **Real-Time Synchronized Quoted Preview Deletion**: Deleting a message for everyone immediately updates all quoted previews referencing it across all client sessions to standard deleted placeholders, suppressing thumbnails, audio duration badges, and media labels.
+- **Responsive Bubble-Stretching Link Previews**: Link preview cards stretch horizontally to match the full 100% width of the message bubble on wide desktop displays, eliminating empty layout gaps.
 
 ### Custom video player
 

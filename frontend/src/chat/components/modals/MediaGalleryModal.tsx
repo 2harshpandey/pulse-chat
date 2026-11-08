@@ -28,6 +28,7 @@ export interface MediaGalleryModalProps {
   isOpen: boolean;
   items: Message[];
   initialIndex?: number;
+  autoPlayVideo?: boolean;
   onClose: () => void;
   onRequestDownload?: (messageId: string, mediaUrl: string, filename: string) => void;
   loadedMediaSrcById?: Record<string, string>;
@@ -39,12 +40,14 @@ export interface MediaGalleryModalProps {
   allMessages?: Message[];
   onSetReply?: (message: Message) => void;
   onMediaLoadError?: (messageId: string, url?: string) => void;
+  onInitiateDelete?: (message: Message) => void;
 }
 
 export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
   isOpen,
   items,
   initialIndex = 0,
+  autoPlayVideo = true,
   onClose,
   onRequestDownload,
   loadedMediaSrcById,
@@ -56,11 +59,13 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
   allMessages,
   onSetReply,
   onMediaLoadError,
+  onInitiateDelete,
 }) => {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [touchOffset, setTouchOffset] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
   const [photoBox, setPhotoBox] = useState<{ width: number; height: number } | null>(null);
+  const [userNavigated, setUserNavigated] = useState(false);
 
   const zoom = usePhotoZoom();
 
@@ -72,19 +77,51 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
   // Stable media URL per slide to prevent swapping video source mid-playback
   const activeMediaUrlRef = useRef<{ id: string; url: string } | null>(null);
 
+  const activeItems = useMemo(() => {
+    if (!allMessages || allMessages.length === 0) return items.filter((m) => !m.isDeleted);
+    const allMsgMap = new Map<string, Message>();
+    allMessages.forEach((m) => {
+      if (m.id) allMsgMap.set(m.id, m);
+      if ((m as any)._id) allMsgMap.set((m as any)._id, m);
+      if ((m as any).clientTempId) allMsgMap.set((m as any).clientTempId, m);
+    });
+    return items.filter((item) => {
+      const live =
+        allMsgMap.get(item.id) ||
+        (item._id ? allMsgMap.get(item._id) : undefined) ||
+        ((item as any).clientTempId ? allMsgMap.get((item as any).clientTempId) : undefined);
+      if (!live) return false;
+      if (live.isDeleted) return false;
+      return true;
+    });
+  }, [items, allMessages]);
+
+  useEffect(() => {
+    if (isOpen && activeItems.length === 0) {
+      onClose();
+    }
+  }, [isOpen, activeItems.length, onClose]);
+
+  useEffect(() => {
+    if (isOpen && activeItems.length > 0 && currentIndex >= activeItems.length) {
+      setCurrentIndex(activeItems.length - 1);
+    }
+  }, [isOpen, activeItems.length, currentIndex]);
+
   useEffect(() => {
     zoom.resetZoom();
   }, [currentIndex, isOpen, zoom.resetZoom]);
 
   useEffect(() => {
     if (isOpen) {
-      setCurrentIndex(Math.max(0, Math.min(initialIndex, items.length - 1)));
+      setCurrentIndex(Math.max(0, Math.min(initialIndex, (activeItems.length > 0 ? activeItems : items).length - 1)));
       setTouchOffset(0);
       setIsSwiping(false);
+      setUserNavigated(false);
     }
-  }, [isOpen, initialIndex, items.length]);
+  }, [isOpen, initialIndex, activeItems.length, items.length]);
 
-  const rawItem = items[currentIndex] || items[0];
+  const rawItem = activeItems[currentIndex] || activeItems[0] || items[currentIndex] || items[0];
   const currentItem = useMemo(() => {
     if (!rawItem) return rawItem;
     if (!allMessages || allMessages.length === 0) return rawItem;
@@ -138,12 +175,14 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
   }, [isOpen, currentIndex, currentItem?.id, isVideo]);
 
   const goToPrev = useCallback(() => {
+    setUserNavigated(true);
     setCurrentIndex((prev) => Math.max(0, prev - 1));
   }, []);
 
   const goToNext = useCallback(() => {
-    setCurrentIndex((prev) => Math.min(items.length - 1, prev + 1));
-  }, [items.length]);
+    setUserNavigated(true);
+    setCurrentIndex((prev) => Math.min(activeItems.length - 1, prev + 1));
+  }, [activeItems.length]);
 
   // Keyboard navigation: Left/Right arrows and Escape
   useEffect(() => {
@@ -195,7 +234,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     if (isHorizontalSwipeRef.current) {
       // Elastic resistance at boundaries
       let offset = deltaX;
-      if ((currentIndex === 0 && deltaX > 0) || (currentIndex === items.length - 1 && deltaX < 0)) {
+      if ((currentIndex === 0 && deltaX > 0) || (currentIndex === activeItems.length - 1 && deltaX < 0)) {
         offset = deltaX * 0.3;
       }
       setTouchOffset(offset);
@@ -210,7 +249,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
       const threshold = 50;
       if (touchOffset > threshold && currentIndex > 0) {
         goToPrev();
-      } else if (touchOffset < -threshold && currentIndex < items.length - 1) {
+      } else if (touchOffset < -threshold && currentIndex < activeItems.length - 1) {
         goToNext();
       }
     }
@@ -222,7 +261,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     }, 150);
   };
 
-  if (!isOpen || items.length === 0) return null;
+  if (!isOpen || activeItems.length === 0) return null;
 
   // Stable media URL per slide to prevent swapping video source mid-playback
   let currentSlideUrl = (loadedMediaSrcById && loadedMediaSrcById[currentItem.id]) || currentItem.url || '';
@@ -329,9 +368,9 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
       {/* Top Header Bar */}
       <MediaGalleryHeader>
         <MediaGalleryInfo>
-          {items.length > 1 && (
+          {activeItems.length > 1 && (
             <MediaGalleryCounter>
-              {currentIndex + 1} / {items.length}
+              {currentIndex + 1} / {activeItems.length}
             </MediaGalleryCounter>
           )}
           {currentItem.username && (
@@ -394,6 +433,25 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
             isGalleryHeader={true}
           />
 
+          {onInitiateDelete && (
+            <MediaGalleryActionBtn
+              type="button"
+              title="Delete media"
+              aria-label="Delete media"
+              onClick={(e) => {
+                e.stopPropagation();
+                onInitiateDelete(currentItem);
+              }}
+            >
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                <line x1="10" y1="11" x2="10" y2="17" />
+                <line x1="14" y1="11" x2="14" y2="17" />
+              </svg>
+            </MediaGalleryActionBtn>
+          )}
+
           <MediaGalleryActionBtn
             type="button"
             title="Close viewer (Esc)"
@@ -454,7 +512,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
               <VideoPlayer
                 src={safeUrl}
                 fallbackUrl={sanitizeMediaUrl(currentItem.url) || undefined}
-                autoPlay={true}
+                autoPlay={userNavigated ? true : (autoPlayVideo ?? true)}
                 isGalleryMode={true}
               />
               {renderReactionBadge(false)}
@@ -528,8 +586,14 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
               {renderReactionBadge(true)}
 
               <LightboxToolbar
+                data-toolbar="media-zoom-toolbar"
                 onClick={(e) => e.stopPropagation()}
+                onDoubleClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
                 onPointerDown={(e) => e.stopPropagation()}
+                onPointerUp={(e) => e.stopPropagation()}
                 style={{
                   top: '16px',
                   right: '16px',
@@ -541,6 +605,12 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                   aria-label="Zoom out"
                   disabled={!zoom.canZoomOut}
                   onClick={zoom.handleZoomOut}
+                  onDoubleClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onPointerUp={(e) => e.stopPropagation()}
                 >
                   <svg viewBox="0 0 24 24">
                     <line x1="5" y1="12" x2="19" y2="12" />
@@ -552,6 +622,12 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                   aria-label="Zoom in"
                   disabled={!zoom.canZoomIn}
                   onClick={zoom.handleZoomIn}
+                  onDoubleClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onPointerUp={(e) => e.stopPropagation()}
                 >
                   <svg viewBox="0 0 24 24">
                     <line x1="12" y1="5" x2="12" y2="19" />
@@ -564,7 +640,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         </MediaGallerySlide>
 
         {/* Next Button (Shown on non-touch devices) */}
-        {currentIndex < items.length - 1 && (
+        {currentIndex < activeItems.length - 1 && (
           <MediaGalleryNavBtn
             $direction="right"
             type="button"
@@ -583,7 +659,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
       </MediaGalleryViewport>
 
       {/* Bottom Thumbnail Strip and Caption */}
-      {(Boolean(currentItem.text) || items.length > 1) && (
+      {(Boolean(currentItem.text) || activeItems.length > 1) && (
         <MediaGalleryBottom
           onClick={(e) => {
             if (e.target === e.currentTarget) onClose();
@@ -593,9 +669,9 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
             <MediaGalleryCaption>{currentItem.text}</MediaGalleryCaption>
           )}
 
-          {items.length > 1 && (
+          {activeItems.length > 1 && (
             <MediaGalleryThumbsRow>
-              {items.map((item, idx) => {
+              {activeItems.map((item, idx) => {
                 const itemIsVideo =
                   item.type === 'video' ||
                   Boolean(item.url?.match(/\.(mp4|webm|mov)$/i));
@@ -624,7 +700,10 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                   <MediaGalleryThumb
                     key={item.id || idx}
                     $active={idx === currentIndex}
-                    onClick={() => setCurrentIndex(idx)}
+                    onClick={() => {
+                      setUserNavigated(true);
+                      setCurrentIndex(idx);
+                    }}
                     title={`View item ${idx + 1}`}
                   >
                     {itemIsVideo ? (

@@ -2,10 +2,11 @@ import React from 'react';
 import EmojiPicker, { EmojiClickData, EmojiStyle, Theme } from 'emoji-picker-react';
 import type { Message, Gif } from '../types';
 import { MAX_MESSAGE_LENGTH, quoteLog } from '../constants';
-import { isGiphyUrl, resolveReplyTargetId, audioDurationCache, setAudioDurationCache, subscribeAudioDuration, resolveAudioDuration } from '../utils';
+import { isGiphyUrl, resolveReplyTargetId, audioDurationCache, setAudioDurationCache, subscribeAudioDuration, resolveAudioDuration, getDeletedForMeIds } from '../utils';
 import { CANDIDATE_URL_RE, renderTextWithLinks } from '../renderMessage';
 import { FilmIcon, FileIcon } from '../TypingIndicator';
 import { MediaAlbumIcon } from './message/MediaAlbumIcon';
+import { getDeletedForMeMessageLabel } from './message/MessageQuotedPreview';
 import {
   Footer,
   SelectModeFooter,
@@ -400,7 +401,23 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
                     rawReplyingTo: replyingTo,
                     resolvedReplyTargetId: replyTargetId,
                   });
-                  if (replyTargetId) onScrollToMessage(replyTargetId, undefined, 'auto', true, replyingTo);
+                  if (replyTargetId) {
+                    const deletedForMeIds = getDeletedForMeIds(currentUserId);
+                    const isDeletedForMe = Boolean(
+                      deletedForMeIds.has(replyTargetId) ||
+                      (replyingTo.id && deletedForMeIds.has(replyingTo.id)) ||
+                      ((replyingTo as any)._id && deletedForMeIds.has((replyingTo as any)._id)) ||
+                      ((replyingTo as any).messageId && deletedForMeIds.has((replyingTo as any).messageId)) ||
+                      ((replyingTo as any).clientTempId && deletedForMeIds.has((replyingTo as any).clientTempId)) ||
+                      (replyingTo.isDeleted && replyingTo.deletedBy === currentUserId)
+                    );
+                    if (isDeletedForMe) {
+                      const mediaLabel = getDeletedForMeMessageLabel(replyingTo);
+                      onErrorToast?.(`This ${mediaLabel} is deleted by you for your session.`);
+                      return;
+                    }
+                    onScrollToMessage(replyTargetId, undefined, 'auto', true, replyingTo);
+                  }
                 }}
               >
                 {isGroupReply ? (

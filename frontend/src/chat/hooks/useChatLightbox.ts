@@ -14,11 +14,16 @@ export function useChatLightbox() {
   const [mediaGallery, setMediaGallery] = useState<{
     items: Message[];
     initialIndex: number;
+    autoPlayVideo?: boolean;
   } | null>(null);
 
-  const openMediaGallery = useCallback((items: Message[], initialIndex: number = 0) => {
+  const openMediaGallery = useCallback((items: Message[], initialIndex: number = 0, options?: { autoPlayVideo?: boolean }) => {
     sendClientDiagnostic('media_gallery_open', { totalItems: items.length, initialIndex });
-    setMediaGallery({ items, initialIndex });
+    setMediaGallery({
+      items,
+      initialIndex,
+      autoPlayVideo: options?.autoPlayVideo ?? true,
+    });
   }, []);
 
   const closeMediaGallery = useCallback(() => {
@@ -230,6 +235,10 @@ export function useChatLightbox() {
   const handleLightboxDoubleClick = useCallback(
     (e: React.MouseEvent<HTMLElement>) => {
       e.stopPropagation();
+      const target = e.target as HTMLElement | null;
+      if (target && target.closest('button, [data-toolbar], [class*="Toolbar"], [class*="Button"]')) {
+        return;
+      }
       // Guard against synthetic emulated dblclick events dispatched by mobile browsers after touch tap
       if (Date.now() - lastLightboxTouchTimeRef.current < 600) {
         return;

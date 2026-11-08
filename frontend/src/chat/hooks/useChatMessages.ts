@@ -182,12 +182,19 @@ export function useChatMessages({
       if (!m.replyingTo) return m;
 
       const targetId = normalizeMessageId(m.replyingTo.id);
-      const target = targetId ? messageById.get(targetId) : undefined;
+      const target =
+        (targetId ? messageById.get(targetId) : undefined) ||
+        (m.replyingTo._id ? messageById.get(normalizeMessageId(m.replyingTo._id)) : undefined) ||
+        ((m.replyingTo as any).messageId ? messageById.get(normalizeMessageId((m.replyingTo as any).messageId)) : undefined) ||
+        ((m.replyingTo as any).clientTempId ? messageById.get(normalizeMessageId((m.replyingTo as any).clientTempId)) : undefined);
 
       const isDeleted =
         (targetId && deletedIds.has(targetId)) ||
-        (target && target.isDeleted) ||
-        Boolean(m.replyingTo.isDeleted);
+        (m.replyingTo._id && deletedIds.has(normalizeMessageId(m.replyingTo._id))) ||
+        (target && (target.isDeleted || target.text === 'This message has been deleted.' || target.text === 'This message has been deleted by an admin.')) ||
+        Boolean(m.replyingTo.isDeleted) ||
+        m.replyingTo.text === 'This message has been deleted.' ||
+        m.replyingTo.text === 'This message has been deleted by an admin.';
 
       let changed = false;
       const updatedReply = { ...m.replyingTo };
@@ -197,12 +204,23 @@ export function useChatMessages({
         changed = true;
       }
 
+      if (isDeleted) {
+        if (updatedReply.url) {
+          updatedReply.url = undefined;
+          changed = true;
+        }
+        if (updatedReply.text) {
+          updatedReply.text = undefined;
+          changed = true;
+        }
+      }
+
       if (target) {
         if (target.id && m.replyingTo.id !== target.id) {
           updatedReply.id = target.id;
           changed = true;
         }
-        if (!m.replyingTo.isGroup && m.replyingTo.type !== 'group') {
+        if (!m.replyingTo.isGroup && m.replyingTo.type !== 'group' && !isDeleted) {
           if (target.url && (!m.replyingTo.url || m.replyingTo.url.startsWith('blob:'))) {
             updatedReply.url = target.url;
             changed = true;
@@ -237,7 +255,14 @@ export function useChatMessages({
       ? allMsgs.filter(m => m.type === 'system_notification' || new Date(m.timestamp).getTime() > clearTs)
       : allMsgs
     ).filter(m => !deletedForMeIds.has(m.id) && (m.type as string) !== 'client_diagnostic');
-    const deletedIds = new Set(filtered.filter(m => m.isDeleted).map(m => m.id));
+    const deletedIds = new Set<string>();
+    filtered.forEach((m) => {
+      if (m.isDeleted || m.text === 'This message has been deleted.' || m.text === 'This message has been deleted by an admin.') {
+        if (m.id) deletedIds.add(normalizeMessageId(m.id));
+        if (m._id) deletedIds.add(normalizeMessageId(m._id));
+        if ((m as any).clientTempId) deletedIds.add(normalizeMessageId((m as any).clientTempId));
+      }
+    });
     return markDeletedReplyTargets(filtered, deletedIds);
   }, [markDeletedReplyTargets, userId, roomId]);
 

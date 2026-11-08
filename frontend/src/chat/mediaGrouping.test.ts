@@ -519,7 +519,7 @@ describe('Media grouping logic (WhatsApp / Telegram style)', () => {
       cleanup();
     });
 
-    it('resolves group info via quotedGroupInfo and displays SVG and count even if replyingTo had single media type', async () => {
+    it('displays the exact preview picture of the quoted media even when it belongs to a grouped media album', async () => {
       const React = await import('react');
       const { render, cleanup } = await import('@testing-library/react');
       cleanup();
@@ -533,20 +533,20 @@ describe('Media grouping logic (WhatsApp / Telegram style)', () => {
         text: 'Nice shots!',
         timestamp: new Date().toISOString(),
         replyingTo: {
-          id: 'photo-1',
+          id: 'photo-2',
           username: 'Alice',
           text: '',
           type: 'image',
-          url: 'https://example.com/photo-1.jpg',
+          url: 'https://example.com/photo-2.jpg',
         },
       };
 
-      const { getByText, getByTestId } = render(
+      const { getByText, queryByTestId, container } = render(
         React.createElement(MessageQuotedPreview, {
           msg: message,
           currentUserId: 'bob',
           sender: 'me',
-          quotedPreviewThumbUrl: 'https://example.com/photo-1.jpg',
+          quotedPreviewThumbUrl: 'https://example.com/photo-2.jpg',
           scrollToMessage: () => {},
           quotedGroupInfo: {
             count: 4,
@@ -556,10 +556,14 @@ describe('Media grouping logic (WhatsApp / Telegram style)', () => {
         })
       );
 
-      // Should recognize group info and show "4 media" + "Mountain hike"
-      expect(getByText('4 media')).not.toBeNull();
-      expect(getByText(/Mountain hike/)).not.toBeNull();
-      expect(getByTestId('quoted-group-media-badge')).not.toBeNull();
+      // Should show username and Photo label
+      expect(getByText('Alice')).not.toBeNull();
+      expect(getByText('Photo')).not.toBeNull();
+      // Should NOT render the whole-album badge when a specific media was quoted
+      expect(queryByTestId('quoted-group-media-badge')).toBeNull();
+      // Should render the exact thumbnail image of photo-2
+      const thumbImg = container.querySelector('img[src="https://example.com/photo-2.jpg"]');
+      expect(thumbImg).not.toBeNull();
       cleanup();
     });
 
@@ -833,6 +837,86 @@ describe('Media grouping logic (WhatsApp / Telegram style)', () => {
       // Verify corner reaction badge is present
       const cornerBadge = getByTitle('View reactions on this media');
       expect(cornerBadge).not.toBeNull();
+
+      cleanup();
+    });
+
+    it('renders delete button in MediaGalleryModal and initiates delete for current media', async () => {
+      const React = await import('react');
+      const { render, fireEvent, cleanup } = await import('@testing-library/react');
+      cleanup();
+      const { MediaGalleryModal } = await import('./components/modals/MediaGalleryModal');
+
+      const mediaItems: Message[] = [
+        createMsg('img-1', 'user1', 'image', 0, { url: 'https://example.com/1.jpg' }),
+        createMsg('img-2', 'user1', 'image', 1, { url: 'https://example.com/2.jpg' }),
+      ];
+
+      let deletedMessage: Message | null = null;
+
+      const { getByTitle } = render(
+        React.createElement(MediaGalleryModal, {
+          isOpen: true,
+          items: mediaItems,
+          initialIndex: 1,
+          onClose: () => {},
+          onInitiateDelete: (msg: Message) => {
+            deletedMessage = msg;
+          },
+        })
+      );
+
+      const deleteBtn = getByTitle('Delete media');
+      expect(deleteBtn).not.toBeNull();
+      fireEvent.click(deleteBtn);
+      expect(deletedMessage).toEqual(mediaItems[1]);
+
+      cleanup();
+    });
+
+    it('calls onOpenQuotedMedia when quoted preview is clicked for an album media', async () => {
+      const React = await import('react');
+      const { render, fireEvent, cleanup } = await import('@testing-library/react');
+      cleanup();
+      const { MessageQuotedPreview } = await import('./components/message/MessageQuotedPreview');
+
+      const message: Message = {
+        id: 'reply-5',
+        userId: 'bob',
+        username: 'Bob',
+        type: 'text',
+        text: 'Love photo 2!',
+        timestamp: new Date().toISOString(),
+        replyingTo: {
+          id: 'photo-2',
+          username: 'Alice',
+          text: '',
+          type: 'image',
+          url: 'https://example.com/photo-2.jpg',
+        },
+      };
+
+      let openedTargetId = '';
+      const onOpenQuotedMedia = vi.fn((targetId: string) => {
+        openedTargetId = targetId;
+        return true;
+      });
+
+      const { container } = render(
+        React.createElement(MessageQuotedPreview, {
+          msg: message,
+          currentUserId: 'bob',
+          sender: 'me',
+          quotedPreviewThumbUrl: 'https://example.com/photo-2.jpg',
+          scrollToMessage: () => {},
+          onOpenQuotedMedia,
+        })
+      );
+
+      const previewContainer = container.firstChild as HTMLElement;
+      fireEvent.click(previewContainer);
+      expect(onOpenQuotedMedia).toHaveBeenCalledWith('photo-2', message.replyingTo);
+      expect(openedTargetId).toBe('photo-2');
 
       cleanup();
     });

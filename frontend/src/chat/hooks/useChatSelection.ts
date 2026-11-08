@@ -144,6 +144,25 @@ export function useChatSelection({
     setIsDeleteConfirmationVisible(true);
   }, [messages, selectedMessages, userId]);
 
+  const handleInitiateDeleteForMessage = useCallback(
+    (message: Message) => {
+      if (!message || !message.id) return;
+      setSelectedMessages([message.id]);
+      const isAuthoredByCurrentUser = message.userId === userId;
+      if (!isAuthoredByCurrentUser) {
+        setCanDeleteForEveryone(false);
+      } else {
+        const timeLimit = 15 * 60 * 1000;
+        const now = new Date().getTime();
+        const msgTime = new Date(message.timestamp || (message as any).createdAt || 0).getTime();
+        const isRecent = now - msgTime < timeLimit;
+        setCanDeleteForEveryone(isRecent && !message.isDeleted);
+      }
+      setIsDeleteConfirmationVisible(true);
+    },
+    [userId]
+  );
+
   const handleBulkDeleteForMe = useCallback(() => {
     addDeletedForMeIds(userId, selectedMessages);
     setMessages((prev) => prev.filter((m) => !selectedMessages.includes(m.id)));
@@ -258,6 +277,7 @@ export function useChatSelection({
     handleToggleSelectMessage,
     handleCancelSelectMode,
     handleInitiateDelete,
+    handleInitiateDeleteForMessage,
     handleBulkDeleteForMe,
     handleBulkDeleteForEveryone,
     handleOpenReport,
