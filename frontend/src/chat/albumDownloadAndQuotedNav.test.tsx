@@ -5,6 +5,7 @@ import { albumDownloadManager } from './albumDownloadManager';
 import { MessageQuotedPreview, getDeletedForMeMessageLabel } from './components/message/MessageQuotedPreview';
 import { findGroupAlbumForMessage } from './components/MessagesList';
 import { usePhotoZoom } from './hooks/usePhotoZoom';
+import { useChatComposer } from './hooks/useChatComposer';
 import { LinkPreviewCard } from './styles/chat.message.styles';
 import type { Message } from './types';
 
@@ -814,6 +815,130 @@ describe('Album Download Manager and Quoted Message Locating', () => {
       const individualResult = findGroupAlbumForMessage(sampleAlbumMessages, 'item-2', individualPayload);
       expect(individualResult).not.toBeNull();
       expect(individualResult?.initialIndex).toBe(1);
+    });
+
+    it('cancels edit without performing any edit operation if text is unchanged or reverted back', async () => {
+      const safeSendMock = vi.fn();
+      const cancelEditMock = vi.fn();
+      const mockWs = {
+        current: {
+          readyState: WebSocket.OPEN,
+          send: safeSendMock,
+        } as unknown as WebSocket,
+      };
+
+      const messagesRef = {
+        current: [
+          {
+            id: 'msg-1',
+            userId: 'user-1',
+            username: 'Alice',
+            type: 'text' as const,
+            text: 'Original message text',
+            timestamp: new Date().toISOString(),
+          },
+        ],
+      };
+
+      const { result, rerender } = renderHook(
+        (props: { input: string }) =>
+          useChatComposer({
+            inputMessage: props.input,
+            setInputMessage: vi.fn(),
+            inputMessageRef: { current: props.input },
+            userId: 'user-1',
+            roomId: 'room-1',
+            userProfile: { userId: 'user-1', username: 'Alice', role: 'user' } as any,
+            ws: mockWs,
+            apiBase: 'http://localhost',
+            isMobileView: false,
+            stableViewportHeightRef: { current: 800 },
+            chatContainerRef: { current: null },
+            messageInputRef: { current: null },
+            inputOverlayRef: { current: null },
+            skipNextInputLayoutSyncRef: { current: false },
+            syncInputLayerLayout: vi.fn(),
+            resetInputLayerHeight: vi.fn(),
+            handleTyping: vi.fn(),
+            setPresenceActivity: vi.fn(),
+            startSendingActivity: vi.fn(),
+            stopSendingActivity: vi.fn(),
+            editingMessageId: 'msg-1',
+            setEditingMessageId: vi.fn(),
+            editingMessageOriginalText: 'Original message text',
+            priorDraftBeforeEdit: '',
+            handleCancelEdit: cancelEditMock,
+            replyingTo: null,
+            setReplyingTo: vi.fn(),
+            stagedFile: null,
+            setStagedFile: vi.fn(),
+            stagedFiles: [],
+            setStagedFiles: vi.fn(),
+            showFilePreview: false,
+            setShowFilePreview: vi.fn(),
+            previewCaption: '',
+            setPreviewCaption: vi.fn(),
+            setPreviewActiveIndex: vi.fn(),
+            preMediaDraft: '',
+            setPreMediaDraft: vi.fn(),
+            stageFilesForPreview: vi.fn(),
+            handleRequestCloseFilePreview: vi.fn(),
+            stagedGif: null,
+            setStagedGif: vi.fn(),
+            closeGifPicker: vi.fn(),
+            gifPickerRef: { current: null },
+            lightboxUrl: null,
+            closeLightbox: vi.fn(),
+            isSelectModeActive: false,
+            isDeleteConfirmationVisible: false,
+            isUserListVisible: false,
+            deleteMenuRef: { current: null },
+            setActiveDeleteMenu: vi.fn(),
+            messagesRef,
+            setMessages: vi.fn(),
+            onMessageSent: vi.fn(),
+            onInputTextCleared: vi.fn(),
+            hasMoreNewerMessagesRef: { current: false },
+            jumpToLatestMessages: vi.fn(),
+            activeSearchQuery: '',
+            chatSearchQuery: '',
+            isSearchActive: false,
+            resetSearch: vi.fn(),
+          } as any),
+        { initialProps: { input: 'Original message text' } }
+      );
+
+      // Attempt to save unchanged edit
+      await act(async () => {
+        await result.current.handleSendMessage();
+      });
+
+      // safeSend MUST NOT be called
+      expect(safeSendMock).not.toHaveBeenCalled();
+      // handleCancelEdit MUST be called instead
+      expect(cancelEditMock).toHaveBeenCalledTimes(1);
+
+      // Test with reverted text (user typed something then reverted back to original text with whitespace)
+      rerender({ input: '   Original message text   ' });
+      await act(async () => {
+        await result.current.handleSendMessage();
+      });
+      expect(safeSendMock).not.toHaveBeenCalled();
+      expect(cancelEditMock).toHaveBeenCalledTimes(2);
+
+      // Test with actual changed text
+      rerender({ input: 'Updated message text' });
+      await act(async () => {
+        await result.current.handleSendMessage();
+      });
+      expect(safeSendMock).toHaveBeenCalledTimes(1);
+      const sentPayload = JSON.parse(safeSendMock.mock.calls[0][0]);
+      expect(sentPayload).toEqual({
+        type: 'edit',
+        messageId: 'msg-1',
+        newText: 'Updated message text',
+        roomId: 'room-1',
+      });
     });
   });
 });

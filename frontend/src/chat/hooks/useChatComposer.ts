@@ -42,6 +42,7 @@ interface UseChatComposerProps {
   stopSendingActivity: () => void;
   editingMessageId: string | null;
   setEditingMessageId: (id: string | null) => void;
+  editingMessageOriginalText?: string;
   priorDraftBeforeEdit: string;
   handleCancelEdit: () => void;
   replyingTo: Message | null;
@@ -113,6 +114,7 @@ export function useChatComposer({
   stopSendingActivity,
   editingMessageId,
   setEditingMessageId,
+  editingMessageOriginalText,
   priorDraftBeforeEdit,
   handleCancelEdit,
   replyingTo,
@@ -548,18 +550,25 @@ export function useChatComposer({
   const handleSendMessage = async () => {
     if (editingMessageId) {
       const trimmed = inputMessage.trim();
-      if (trimmed) {
-        safeSend({
-          type: 'edit',
-          messageId: editingMessageId,
-          newText: trimmed,
-          roomId,
-        });
+      const originalMessage = messagesRef?.current?.find(
+        (m) => m.id === editingMessageId || (m as any)._id === editingMessageId
+      );
+      const originalText = (originalMessage?.text || editingMessageOriginalText || '').trim();
+
+      // If nothing is changed (or changed but reverted back to original text before saving):
+      if (!trimmed || trimmed === originalText) {
+        handleCancelEdit();
+        return;
       }
-      setEditingMessageId(null);
-      setInputMessage(priorDraftBeforeEdit);
-      resetInputLayerHeight();
-      requestAnimationFrame(() => { messageInputRef.current?.focus(); });
+
+      safeSend({
+        type: 'edit',
+        messageId: editingMessageId,
+        newText: trimmed,
+        roomId,
+      });
+
+      handleCancelEdit();
       return;
     }
 

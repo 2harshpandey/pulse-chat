@@ -267,6 +267,10 @@ const handleEdit = async ({ ws, parsedMessage, wss, broadcastToAdmins }) => {
   }
 
   const oldText = msg.text;
+  if ((oldText || '').trim() === safeText) {
+    // If text is unchanged or reverted back to original, perform no edit operation
+    return;
+  }
 
   await Message.updateOne({ id: messageId, roomId }, { $set: { text: safeText, edited: true } });
 

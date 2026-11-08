@@ -293,6 +293,7 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     stopSendingActivity: socket.stopSendingActivity,
     editingMessageId: msgs.editingMessageId,
     setEditingMessageId: msgs.setEditingMessageId,
+    editingMessageOriginalText: msgs.editingMessageOriginalText,
     priorDraftBeforeEdit: msgs.priorDraftBeforeEdit,
     handleCancelEdit: msgs.handleCancelEdit,
     replyingTo: msgs.replyingTo,
