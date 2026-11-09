@@ -120,6 +120,7 @@ The messaging layer is built to support modern conversation patterns while prese
 Pulse Chat provides lightweight engagement tools designed for clarity and real-time consistency.
 
 - **Emoji Reactions**: A beautifully animated, sliding bottom-sheet emoji picker optimized for touch, ensuring reactions can be added quickly without disrupting flow.
+- **High-Contrast Quick Reaction Bar**: Features clearly defined rounded square background tiles behind each emoji and a prominent circular slot behind the plus (+) button, engineered with elevated contrast and smooth scale animations across both light and dark themes.
 - One reaction per user enforcement with toggle and replace behavior.
 - **Granular Per-Media Reactions**: Individual photos inside grouped media albums can receive their own distinct reactions. In the fullscreen gallery viewer, the reaction badge floats on the bottom-right corner of the image (`right: -10px`, `bottom: -14px`), styled consistently with message bubble reactions.
 - **Zoom-Aware Reaction Visibility**: Floating reaction badges in the gallery modal automatically hide when zooming into an image (`zoom > 1`) and seamlessly reappear upon resetting or zooming back out.

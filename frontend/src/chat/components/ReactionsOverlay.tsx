@@ -88,6 +88,8 @@ export const ReactionsOverlay: React.FC<ReactionsOverlayProps> = ({
           <ReactionEmoji
             $isPlusIcon={true}
             data-is-plus-icon="true"
+            aria-label="Add reaction"
+            title="More reactions"
             onClick={(e) => {
               e.stopPropagation();
               onOpenFullEmojiPicker(

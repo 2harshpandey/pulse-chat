@@ -608,6 +608,48 @@ describe('New Chat Features Test Suite', () => {
       expect(leftPx + 340).toBeLessThanOrEqual(window.innerWidth);
       expect(leftPx).toBeGreaterThanOrEqual(10);
     });
+
+    it('renders quick reaction emojis and plus icon button with accessibility labels and plus data attribute', async () => {
+      const { ReactionsOverlay } = await import('./components/ReactionsOverlay');
+
+      const fakeRect = {
+        top: 100,
+        bottom: 140,
+        left: 200,
+        right: 240,
+        width: 40,
+        height: 40,
+      } as DOMRect;
+
+      render(
+        <ReactionsOverlay
+          reactionPickerData={{
+            messageId: 'msg-contrast-test',
+            rect: fakeRect,
+            sender: 'me',
+          }}
+          reactionPickerRef={{ current: null } as any}
+          onReact={vi.fn()}
+          onOpenFullEmojiPicker={vi.fn()}
+          reactionsPopup={null}
+          currentUserId="user1"
+          onCloseReactionsPopup={vi.fn()}
+        />
+      );
+
+      // Verify each emoji button
+      const emojis = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+      emojis.forEach((emoji) => {
+        expect(screen.getByRole('button', { name: emoji })).toBeInTheDocument();
+      });
+
+      // Verify plus button with accessible name and data-is-plus-icon attribute
+      const plusButton = screen.getByRole('button', { name: 'Add reaction' });
+      expect(plusButton).toBeInTheDocument();
+      expect(plusButton).toHaveAttribute('data-is-plus-icon', 'true');
+      expect(plusButton).toHaveAttribute('title', 'More reactions');
+      expect(plusButton.textContent?.trim()).toBe('+');
+    });
   });
 });
 

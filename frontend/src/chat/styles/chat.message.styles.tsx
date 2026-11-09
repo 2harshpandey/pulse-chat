@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import styled from 'styled-components';
+import styled, { css } from 'styled-components';
 import {
   fadeInScale,
   modalSlideUp,
@@ -644,7 +644,8 @@ export const ReactionPicker = styled.div<{ $sender: 'me' | 'other' }>`
 
   [data-theme='dark'] & {
     background: rgba(30, 41, 59, 0.95);
-    box-shadow: 0 8px 32px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.2);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    box-shadow: 0 12px 36px rgba(0,0,0,0.45), 0 2px 10px rgba(0,0,0,0.25);
   }
 
   @media (max-width: 380px) {
@@ -667,33 +668,74 @@ export const ReactionPicker = styled.div<{ $sender: 'me' | 'other' }>`
 `;
 
 export const ReactionEmoji = styled.button<{ $isPlusIcon?: boolean }>`
-  background: ${props => props.$isPlusIcon ? 'var(--bg-hover)' : 'none'};
   border: none; 
   font-size: 24px; 
   cursor: pointer; 
-  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.2s ease, box-shadow 0.2s ease;
-  border-radius: ${props => props.$isPlusIcon ? '50%' : '8px'};
-  width: ${props => props.$isPlusIcon ? '36px' : 'auto'};
-  height: ${props => props.$isPlusIcon ? '36px' : 'auto'};
-  padding: ${props => props.$isPlusIcon ? '0' : '2px 4px'};
-  display: ${props => props.$isPlusIcon ? 'flex' : 'inline-flex'};
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+  border-radius: ${props => props.$isPlusIcon ? '50%' : '10px'};
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  min-height: 38px;
+  padding: 0;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   position: relative;
+  box-sizing: border-box;
+  user-select: none;
+  -webkit-user-select: none;
+
+  /* Default / Light mode styles */
+  background: ${props => props.$isPlusIcon ? 'rgba(15, 23, 42, 0.08)' : 'rgba(15, 23, 42, 0.05)'};
+  border: 1px solid ${props => props.$isPlusIcon ? 'rgba(15, 23, 42, 0.14)' : 'rgba(15, 23, 42, 0.08)'};
+  color: var(--text-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+
+  ${props => props.$isPlusIcon && css`
+    font-size: 22px;
+    font-weight: 500;
+    line-height: 1;
+  `}
 
   &:hover {
-    transform: scale(1.28);
-    background: ${props => props.$isPlusIcon ? 'var(--bg-hover)' : 'rgba(59, 130, 246, 0.08)'};
+    transform: ${props => props.$isPlusIcon ? 'scale(1.15)' : 'scale(1.24)'};
+    background: ${props => props.$isPlusIcon ? 'rgba(59, 130, 246, 0.18)' : 'rgba(59, 130, 246, 0.15)'};
+    border-color: ${props => props.$isPlusIcon ? 'rgba(59, 130, 246, 0.45)' : 'rgba(59, 130, 246, 0.35)'};
+    color: var(--accent-blue);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+    z-index: 2;
   }
   &:active {
     animation: ${emojiPopTap} 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
+  /* Dark mode styles */
   [data-theme='dark'] & {
-    background: ${props => props.$isPlusIcon ? 'var(--bg-hover)' : 'none'};
+    background: ${props => props.$isPlusIcon ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.09)'};
+    border: 1px solid ${props => props.$isPlusIcon ? 'rgba(255, 255, 255, 0.24)' : 'rgba(255, 255, 255, 0.14)'};
+    color: #f8fafc;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+
     &:hover {
-      background: ${props => props.$isPlusIcon ? 'var(--bg-hover)' : 'rgba(96, 165, 250, 0.12)'};
+      background: ${props => props.$isPlusIcon ? 'rgba(59, 130, 246, 0.32)' : 'rgba(59, 130, 246, 0.28)'};
+      border-color: ${props => props.$isPlusIcon ? 'rgba(96, 165, 250, 0.6)' : 'rgba(96, 165, 250, 0.55)'};
+      color: #93c5fd;
+      box-shadow: 0 4px 14px rgba(59, 130, 246, 0.35);
+      z-index: 2;
     }
+  }
+
+  @media (max-width: 380px) {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    min-height: 34px;
+    border-radius: ${props => props.$isPlusIcon ? '50%' : '8px'};
+    font-size: 20px;
+    ${props => props.$isPlusIcon && css`
+      font-size: 19px;
+    `}
   }
 `;
 

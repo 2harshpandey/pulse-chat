@@ -431,7 +431,7 @@ export const Username = styled.div<{ $sender: 'me' | 'other' }>`
 
 export const MobileReactionPicker = styled.div<{ $sender: 'me' | 'other' }>`
   position: absolute;
-  top: -44px;
+  top: -48px;
   z-index: 30;
   
   .hide-mobile-picker & {
@@ -442,15 +442,16 @@ export const MobileReactionPicker = styled.div<{ $sender: 'me' | 'other' }>`
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-radius: 24px;
-  padding: 5px 10px;
+  padding: 6px 10px;
   display: flex;
-  gap: 2px;
+  gap: 4px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.08);
   border: 1px solid var(--border-primary);
   animation: ${reactionPickerSlideIn} 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 
   [data-theme='dark'] & {
-    background: rgba(30, 41, 59, 0.92);
+    background: rgba(30, 41, 59, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.16);
     box-shadow: 0 8px 32px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.2);
   }
 

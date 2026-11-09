@@ -68,6 +68,8 @@ export const MessageReactions: React.FC<MessageReactionsProps> = React.memo(({
             <ReactionEmoji
               $isPlusIcon={true}
               data-is-plus-icon="true"
+              aria-label="Add reaction"
+              title="More reactions"
               onPointerDown={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
