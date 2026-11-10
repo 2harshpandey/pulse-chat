@@ -137,8 +137,10 @@ export function useChatWebSocket({
           console.warn('Failed to send WebSocket payload immediately:', e);
         }
       }
-      // Buffer in-flight message while connecting, closed, or awaiting auth_success
-      pendingOutgoingQueueRef.current.push(data);
+      // Buffer in-flight message while connecting, closed, or awaiting auth_success (capped at 50 frames)
+      if (pendingOutgoingQueueRef.current.length < 50) {
+        pendingOutgoingQueueRef.current.push(data);
+      }
       return false;
     },
     [ws]
@@ -876,6 +878,7 @@ export function useChatWebSocket({
 
     return () => {
       shouldReconnect = false;
+      pendingOutgoingQueueRef.current = [];
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       if (stopSendingTimeoutRef.current) clearTimeout(stopSendingTimeoutRef.current);
