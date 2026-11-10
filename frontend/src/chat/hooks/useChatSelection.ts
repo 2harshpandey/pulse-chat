@@ -117,6 +117,7 @@ export function useChatSelection({
   }, []);
 
   const handleCancelSelectMode = useCallback(() => {
+    document.body.classList.remove('hide-mobile-picker');
     if (overlayGuardPushed.current) {
       clearOverlayGuardHistoryEntry();
       overlayGuardPushed.current = false;

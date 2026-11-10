@@ -40,6 +40,8 @@ export function useMessageGestures({
   const isScrollGestureRef = useRef(false);
   const ignoreSwipeGestureRef = useRef(false);
   const swipeOffsetRef = useRef(0);
+  const keyboardWasOpenRef = useRef(false);
+  const activeInputRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     return onChatScroll(() => {
@@ -84,6 +86,16 @@ export function useMessageGestures({
     suppressTapSelectionRef.current = true;
 
     handleToggleSelectMessage(msg.id);
+
+    // If the virtual keyboard was open when the user began long-pressing, preserve focus on active input
+    if (keyboardWasOpenRef.current && activeInputRef.current) {
+      const el = activeInputRef.current;
+      requestAnimationFrame(() => {
+        try {
+          el.focus({ preventScroll: true });
+        } catch (_) {}
+      });
+    }
 
     // Provide immediate haptic feedback in exact synchronization with the reaction bar popup
     if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
@@ -224,6 +236,8 @@ export function useMessageGestures({
       ignoreSwipeGestureRef.current = false;
       touchStartPointRef.current = null;
       touchStartTimeRef.current = 0;
+      keyboardWasOpenRef.current = false;
+      activeInputRef.current = null;
       if (longPressTimerRef.current) {
         clearTimeout(longPressTimerRef.current);
         longPressTimerRef.current = null;
@@ -251,6 +265,8 @@ export function useMessageGestures({
       suppressTapSelectionRef.current = false;
       isScrollGestureRef.current = false;
       ignoreSwipeGestureRef.current = false;
+      keyboardWasOpenRef.current = false;
+      activeInputRef.current = null;
     }
   }, [isSelectModeActive]);
 
@@ -288,6 +304,13 @@ export function useMessageGestures({
     suppressTapSelectionRef.current = false;
     isScrollGestureRef.current = false;
     wasLongPressed.current = false;
+
+    const currentActive = typeof document !== 'undefined' ? document.activeElement : null;
+    keyboardWasOpenRef.current = Boolean(
+      currentActive &&
+      (currentActive.tagName === 'TEXTAREA' || currentActive.tagName === 'INPUT')
+    );
+    activeInputRef.current = keyboardWasOpenRef.current ? (currentActive as HTMLElement) : null;
 
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
@@ -352,12 +375,25 @@ export function useMessageGestures({
       }
     }
 
+    if (keyboardWasOpenRef.current && activeInputRef.current) {
+      const el = activeInputRef.current;
+      requestAnimationFrame(() => {
+        try {
+          el.focus({ preventScroll: true });
+        } catch (_) {}
+      });
+    }
+    keyboardWasOpenRef.current = false;
+    activeInputRef.current = null;
+
     touchStartPointRef.current = null;
     touchStartTimeRef.current = 0;
     isScrollGestureRef.current = false;
   };
 
   const handleLongPressCancel = () => {
+    keyboardWasOpenRef.current = false;
+    activeInputRef.current = null;
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;

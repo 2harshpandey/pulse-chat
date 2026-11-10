@@ -443,4 +443,37 @@ describe('Touch Screen Long Press & Haptic Behavior', () => {
     expect(handleReact).toHaveBeenCalledWith(mockMsg.id, '❤️');
     expect(handleCancelSelectMode).toHaveBeenCalledTimes(1);
   });
+
+  it('preserves focus on active text input when long pressing a message so virtual keyboard remains open', () => {
+    const onToggleSelect = vi.fn();
+    const inputEl = document.createElement('textarea');
+    document.body.appendChild(inputEl);
+    inputEl.focus();
+
+    const { getByTestId } = render(
+      <TestMessageGestureComponent onToggleSelect={onToggleSelect} />
+    );
+
+    const row = getByTestId('message-row');
+    const touchObj = { clientX: 100, clientY: 200, identifier: 0, target: row };
+
+    fireEvent.touchStart(row, {
+      touches: [touchObj],
+      targetTouches: [touchObj],
+      changedTouches: [touchObj],
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(LONG_PRESS_DURATION_MS);
+    });
+
+    fireEvent.touchEnd(row, {
+      touches: [],
+      changedTouches: [touchObj],
+    });
+
+    expect(onToggleSelect).toHaveBeenCalledWith(mockMsg.id);
+    expect(document.activeElement).toBe(inputEl);
+    document.body.removeChild(inputEl);
+  });
 });

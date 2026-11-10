@@ -661,12 +661,39 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     }
   }, [msgs, nav, search, viewport]);
 
+  const isUserTouchingScrollerRef = useRef(false);
+  const lastUserScrollTouchTimeRef = useRef(0);
+
+  const handleMessagesContainerTouchStart = useCallback(() => {
+    isUserTouchingScrollerRef.current = true;
+    lastUserScrollTouchTimeRef.current = Date.now();
+  }, []);
+
+  const handleMessagesContainerTouchEnd = useCallback(() => {
+    isUserTouchingScrollerRef.current = false;
+    lastUserScrollTouchTimeRef.current = Date.now();
+  }, []);
+
+  const handleMessagesContainerWheel = useCallback(() => {
+    lastUserScrollTouchTimeRef.current = Date.now();
+  }, []);
+
   const handleMessagesContainerScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     recordChatScroll();
     const target = e.target as HTMLDivElement;
+
+    // Distinguish active user touch/wheel scrolling from viewport/virtual keyboard resizes
+    const isActivelyUserDrivenScroll =
+      isUserTouchingScrollerRef.current || (Date.now() - lastUserScrollTouchTimeRef.current < 250);
+
     if (reactions.reactionPickerData && reactions.scrollAtReactionPickerRef.current !== null) {
-      if (Math.abs(target.scrollTop - reactions.scrollAtReactionPickerRef.current) > 20) {
-        reactions.setReactionPickerData(null);
+      if (isActivelyUserDrivenScroll) {
+        if (Math.abs(target.scrollTop - reactions.scrollAtReactionPickerRef.current) > 20) {
+          reactions.setReactionPickerData(null);
+        }
+      } else {
+        // Viewport resize (e.g. keyboard open/close): update baseline position
+        reactions.scrollAtReactionPickerRef.current = target.scrollTop;
       }
     }
     if (
@@ -674,8 +701,14 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
       selection.selectedMessages.length === 1 &&
       selection.scrollAtSelectModeRef.current !== null
     ) {
-      if (Math.abs(target.scrollTop - selection.scrollAtSelectModeRef.current) > 20) {
-        document.body.classList.add('hide-mobile-picker');
+      if (isActivelyUserDrivenScroll) {
+        if (Math.abs(target.scrollTop - selection.scrollAtSelectModeRef.current) > 20) {
+          document.body.classList.add('hide-mobile-picker');
+        }
+      } else {
+        // Viewport / keyboard resize: keep reaction picker visible and update baseline
+        selection.scrollAtSelectModeRef.current = target.scrollTop;
+        document.body.classList.remove('hide-mobile-picker');
       }
     }
     if (
@@ -741,6 +774,9 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     scrollToLatestTitle,
     handleJumpToNextPinned,
     handleMessagesContainerScroll,
+    handleMessagesContainerTouchStart,
+    handleMessagesContainerTouchEnd,
+    handleMessagesContainerWheel,
   };
 }
 
