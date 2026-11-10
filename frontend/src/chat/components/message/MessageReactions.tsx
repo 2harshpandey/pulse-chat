@@ -38,17 +38,28 @@ export const MessageReactions: React.FC<MessageReactionsProps> = React.memo(({
     !isDeleted && selectedMessages[0] === msg.id && selectedMessages.length === 1;
   const hasReactions = Object.keys(validReactions).length > 0;
 
+  const triggerReaction = (emoji: string, e: React.SyntheticEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleReact(msg.id, emoji);
+    handleCancelSelectMode();
+  };
+
   return (
     <>
       {isSelectedForMobilePicker && (
-        <MobileReactionPicker $sender={sender} className="mobile-reaction-picker">
+        <MobileReactionPicker $sender={sender} className="mobile-reaction-picker" data-allow-click="true">
           {QUICK_REACTIONS.map((emoji) => (
             <ReactionEmoji
               key={emoji}
+              data-allow-click="true"
+              onPointerDown={(e) => {
+                if (e.pointerType === 'touch' || e.pointerType === 'pen' || e.button === 0) {
+                  triggerReaction(emoji, e);
+                }
+              }}
               onClick={(e) => {
-                e.stopPropagation();
-                handleReact(msg.id, emoji);
-                handleCancelSelectMode();
+                triggerReaction(emoji, e);
               }}
             >
               {emoji}
@@ -56,10 +67,14 @@ export const MessageReactions: React.FC<MessageReactionsProps> = React.memo(({
           ))}
           {currentUserReaction ? (
             <ReactionEmoji
+              data-allow-click="true"
+              onPointerDown={(e) => {
+                if (e.pointerType === 'touch' || e.pointerType === 'pen' || e.button === 0) {
+                  triggerReaction(currentUserReaction, e);
+                }
+              }}
               onClick={(e) => {
-                e.stopPropagation();
-                handleReact(msg.id, currentUserReaction);
-                handleCancelSelectMode();
+                triggerReaction(currentUserReaction, e);
               }}
             >
               {currentUserReaction}
@@ -68,6 +83,7 @@ export const MessageReactions: React.FC<MessageReactionsProps> = React.memo(({
             <ReactionEmoji
               $isPlusIcon={true}
               data-is-plus-icon="true"
+              data-allow-click="true"
               aria-label="Add reaction"
               title="More reactions"
               onPointerDown={(e) => {

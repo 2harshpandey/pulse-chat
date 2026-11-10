@@ -28,3 +28,16 @@ if (typeof globalThis.localStorage === 'undefined' || typeof globalThis.localSto
     });
   } catch (_) {}
 }
+
+if (typeof (globalThis as any).PointerEvent === 'undefined') {
+  class MockPointerEvent extends MouseEvent {
+    pointerId: number;
+    pointerType: string;
+    constructor(type: string, params: any = {}) {
+      super(type, params);
+      this.pointerId = params.pointerId ?? 1;
+      this.pointerType = params.pointerType ?? 'mouse';
+    }
+  }
+  (globalThis as any).PointerEvent = MockPointerEvent;
+}

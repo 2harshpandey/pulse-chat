@@ -5,6 +5,7 @@ import { useMessageGestures } from './components/message/useMessageGestures';
 import type { Message } from './types';
 import { LONG_PRESS_DURATION_MS, LONG_PRESS_CANCEL_MOVE_PX } from './constants';
 import { recordChatScroll, resetChatScrollStateForTesting } from './chatScrollState';
+import { MessageReactions } from './components/message/MessageReactions';
 
 const mockMsg: Message = {
   id: 'msg-test-1',
@@ -20,11 +21,13 @@ function TestMessageGestureComponent({
   isSelectModeActive = false,
   onToggleSelect = vi.fn(),
   onReply = vi.fn(),
+  children,
 }: {
   isMobileView?: boolean;
   isSelectModeActive?: boolean;
   onToggleSelect?: (id: string) => void;
   onReply?: (msg: Message) => void;
+  children?: React.ReactNode;
 }) {
   const {
     messageRowRef,
@@ -52,6 +55,7 @@ function TestMessageGestureComponent({
       onTouchEnd={handleLongPressEnd}
     >
       <span>Message content</span>
+      {children}
     </div>
   );
 }
@@ -371,5 +375,72 @@ describe('Touch Screen Long Press & Haptic Behavior', () => {
     // Must NOT trigger long press!
     expect(onToggleSelect).not.toHaveBeenCalled();
     expect(vibrateMock).not.toHaveBeenCalled();
+  });
+
+  it('does NOT suppress clicks on .mobile-reaction-picker after long-pressing a message', () => {
+    const onToggleSelect = vi.fn();
+    const onReactClick = vi.fn();
+
+    const { getByTestId } = render(
+      <TestMessageGestureComponent onToggleSelect={onToggleSelect}>
+        <div className="mobile-reaction-picker">
+          <button data-testid="reaction-emoji-btn" onClick={onReactClick}>
+            ❤️
+          </button>
+        </div>
+      </TestMessageGestureComponent>
+    );
+
+    const row = getByTestId('message-row');
+    const emojiBtn = getByTestId('reaction-emoji-btn');
+
+    // 1. Long press triggers
+    const touchObj = { clientX: 100, clientY: 200, identifier: 0, target: row };
+    fireEvent.touchStart(row, {
+      touches: [touchObj],
+      targetTouches: [touchObj],
+      changedTouches: [touchObj],
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(LONG_PRESS_DURATION_MS);
+    });
+
+    // 2. User lifts finger
+    fireEvent.touchEnd(row, {
+      touches: [],
+      changedTouches: [touchObj],
+    });
+
+    // 3. User taps on the reaction emoji
+    fireEvent.click(emojiBtn);
+
+    // Click must reach the button!
+    expect(onReactClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('triggers reaction when tapping an emoji in MessageReactions on touch devices', () => {
+    const handleReact = vi.fn();
+    const handleCancelSelectMode = vi.fn();
+
+    const { getByText } = render(
+      <MessageReactions
+        msg={mockMsg}
+        sender="other"
+        isDeleted={false}
+        selectedMessages={[mockMsg.id]}
+        validReactions={{}}
+        handleReact={handleReact}
+        handleCancelSelectMode={handleCancelSelectMode}
+        handleOpenFullEmojiPicker={vi.fn()}
+        setReactionsPopup={vi.fn()}
+      />
+    );
+
+    const heartEmoji = getByText('❤️');
+    fireEvent.pointerDown(heartEmoji, { pointerType: 'touch', button: 0 });
+
+    expect(handleReact).toHaveBeenCalledWith(mockMsg.id, '❤️');
+    expect(handleCancelSelectMode).toHaveBeenCalledTimes(1);
   });
 });

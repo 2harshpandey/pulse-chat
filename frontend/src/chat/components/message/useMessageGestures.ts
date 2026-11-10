@@ -131,8 +131,9 @@ export function useMessageGestures({
       }
 
       if (tap) {
-        // If the tap was on the MobileReactionPicker, ignore it completely.
+        // If the tap was on the MobileReactionPicker, ignore it completely and reset long-press flag.
         if (target.closest('.mobile-reaction-picker')) {
+          wasLongPressed.current = false;
           return;
         }
 
@@ -387,6 +388,12 @@ export function useMessageGestures({
   }, [isMobileView, triggerLongPress]);
 
   const handleClickCapture = useCallback((e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    // Never intercept clicks on the mobile reaction picker or explicitly allowed click targets
+    if (target.closest('.mobile-reaction-picker') || target.closest('[data-allow-click]')) {
+      return;
+    }
+
     // Suppress synthetic clicks that immediately follow exiting select mode or completing a long-press
     const recentlyExitedSelectMode = Date.now() - lastSelectModeExitTimeRef.current < 300;
     const recentlyLongPressed = Date.now() - lastLongPressTriggerTimeRef.current < 400;
@@ -394,6 +401,7 @@ export function useMessageGestures({
     if (recentlyExitedSelectMode || recentlyLongPressed || wasLongPressed.current) {
       e.stopPropagation();
       e.preventDefault();
+      wasLongPressed.current = false;
     }
   }, []);
 
