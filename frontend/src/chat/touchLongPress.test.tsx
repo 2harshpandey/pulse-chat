@@ -9,8 +9,8 @@ import { MessageReactions } from './components/message/MessageReactions';
 
 const mockMsg: Message = {
   id: 'msg-test-1',
+  userId: 'user-2',
   text: 'Hello touch test',
-  sender: 'other',
   username: 'Alex',
   timestamp: new Date().toISOString(),
   type: 'text',
