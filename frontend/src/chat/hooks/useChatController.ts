@@ -3,6 +3,7 @@ import { UserContext, type PresenceActivity } from '../../UserContext';
 import { useTheme } from '../../ThemeContext';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { NEWER_LOAD_TRIGGER_PX, MAX_MESSAGES_WINDOW } from '../constants';
+import { recordChatScroll } from '../chatScrollState';
 import type { Message } from '../types';
 import { getUserId, resolveApiBaseUrl, downloadFile, findMessageElement } from '../utils';
 import { albumDownloadManager } from '../albumDownloadManager';
@@ -200,6 +201,9 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     stopSendingActivityRef.current();
   }, []);
 
+  const safeSendRef = useRef<(payload: any) => boolean>(() => false);
+  const handleSafeSend = useCallback((payload: any) => safeSendRef.current(payload), []);
+
   // Media Hook
   const media = useChatMedia({
     messages: msgs.messages,
@@ -213,6 +217,7 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     setInputMessage,
     resetInputLayerHeight: viewport.resetInputLayerHeight,
     ws,
+    safeSend: handleSafeSend,
     setPresenceActivity: handlePresenceActivity,
     startSendingActivity: handleStartSendingActivity,
     stopSendingActivity: handleStopSendingActivity,
@@ -268,6 +273,7 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
   setPresenceActivityRef.current = socket.setPresenceActivity;
   startSendingActivityRef.current = socket.startSendingActivity;
   stopSendingActivityRef.current = socket.stopSendingActivity;
+  safeSendRef.current = socket.safeSend;
 
   // Composer Hook
   const composer = useChatComposer({
@@ -278,6 +284,7 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     roomId,
     userProfile: userContext?.profile,
     ws,
+    safeSend: handleSafeSend,
     apiBase,
     isMobileView: viewport.isMobileView,
     stableViewportHeightRef: viewport.stableViewportHeightRef,
@@ -655,6 +662,7 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
   }, [msgs, nav, search, viewport]);
 
   const handleMessagesContainerScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    recordChatScroll();
     const target = e.target as HTMLDivElement;
     if (reactions.reactionPickerData && reactions.scrollAtReactionPickerRef.current !== null) {
       if (Math.abs(target.scrollTop - reactions.scrollAtReactionPickerRef.current) > 20) {

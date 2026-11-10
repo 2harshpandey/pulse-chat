@@ -171,6 +171,8 @@ const initWebSocket = (wss) => {
     ws.isAlive = true;
     ws.clientIp = extractIp(req);
     ws.clientUa = req.headers['user-agent'] || '';
+    ws.isJoining = false;
+    ws.pendingFrames = [];
     ws.on('pong', () => {
       ws.isAlive = true;
     });
@@ -205,13 +207,169 @@ const initWebSocket = (wss) => {
         }
       }
 
-      if (parsedMessage.type !== 'admin_auth' && parsedMessage.type !== 'ping' && parsedMessage.type !== 'pong' && parsedMessage.type !== 'start_typing' && parsedMessage.type !== 'stop_typing' && parsedMessage.type !== 'client_diagnostic') {
-        // Issue 17: Log only safe metadata, never the message body (text/url/replyingTo) to avoid PII in logs
-        logger.info(getWebSocketLogLabel(parsedMessage), {
-          type: parsedMessage.type,
-          roomId: ws.roomId,
-          userId: ws.userId,
-        });
+      // Helper function to dispatch an authorized action to its handler
+      async function dispatchSocketAction(actionMsg) {
+        if (actionMsg.type !== 'admin_auth' && actionMsg.type !== 'ping' && actionMsg.type !== 'pong' && actionMsg.type !== 'start_typing' && actionMsg.type !== 'stop_typing' && actionMsg.type !== 'client_diagnostic') {
+          // Issue 17: Log only safe metadata, never the message body (text/url/replyingTo) to avoid PII in logs
+          logger.info(getWebSocketLogLabel(actionMsg), {
+            type: actionMsg.type,
+            roomId: ws.roomId,
+            userId: ws.userId,
+          });
+        }
+
+        switch (actionMsg.type) {
+          case 'ping':
+            ws.isAlive = true;
+            if (ws.readyState === 1 /* WebSocket.OPEN */) {
+              try { ws.send(JSON.stringify({ type: 'pong' })); } catch (_) {}
+            }
+            break;
+
+          case 'pong':
+            ws.isAlive = true;
+            break;
+
+          case 'client_diagnostic':
+            try {
+              if (!ws.roomId || !ws.userId) break;
+              const diag = actionMsg.data || actionMsg;
+              const eventName = typeof diag.event === 'string' ? diag.event.slice(0, 50) : (typeof diag.action === 'string' ? diag.action.slice(0, 50) : 'client_action');
+              const username = ws.username || ws.user?.username || 'Anonymous';
+              const roomId = ws.roomId;
+              logger.info(`[Client-Diag] [Room: ${roomId}] ${username}: ${eventName}`, {
+                telemetry: true,
+                roomId,
+                userId: ws.userId,
+                username,
+              });
+
+              // Safe, non-sensitive live activity notifications for room moderators & super admins
+              let safeActivity = null;
+              if (eventName === 'audio_error') {
+                safeActivity = `Audio/voice playback error for user '${username}'.`;
+              } else if (eventName === 'video_error') {
+                safeActivity = `Video playback issue for user '${username}'.`;
+              } else if (eventName === 'voice_record_error') {
+                safeActivity = `Voice recording issue for user '${username}'.`;
+              } else if (eventName === 'voice_record_complete') {
+                const dur = diag.details?.durationSeconds ? ` (${Math.round(diag.details.durationSeconds)}s)` : '';
+                safeActivity = `User '${username}' recorded a voice note${dur}.`;
+              } else if (eventName === 'album_zip_download_error') {
+                safeActivity = `Media album download error for user '${username}'.`;
+              } else if (eventName === 'album_zip_download_complete') {
+                safeActivity = `User '${username}' completed downloading an album.`;
+              } else if (eventName === 'file_download_complete') {
+                const fn = typeof diag.details?.filename === 'string' ? ` '${diag.details.filename.slice(0, 50)}'` : '';
+                safeActivity = `User '${username}' downloaded file${fn}.`;
+              }
+
+              if (safeActivity && ws.roomId && ws.userId) {
+                broadcastToAdmins(ws.roomId, 'activity', safeActivity);
+              }
+            } catch (_) {}
+            break;
+
+          case 'user_join':
+            if (ws.joinPromise) {
+              await ws.joinPromise;
+              break;
+            }
+            ws.isJoining = true;
+            ws.joinPromise = handleUserJoin({
+              ws,
+              req,
+              parsedMessage: actionMsg,
+              wss,
+              broadcastToAdmins,
+              _broadcast,
+              _broadcastOnlineUsers,
+              loadPinnedMessages,
+              _getVisibleMessagesQuery,
+            });
+            try {
+              await ws.joinPromise;
+            } finally {
+              ws.isJoining = false;
+              ws.joinPromise = null;
+            }
+
+            // If the socket successfully joined, drain and process any buffered frames in strict FIFO order
+            if (ws.userId && ws.roomId && ws.pendingFrames && ws.pendingFrames.length > 0) {
+              const framesToProcess = ws.pendingFrames;
+              ws.pendingFrames = [];
+              for (const pendingMsg of framesToProcess) {
+                if (ws.readyState !== 1 /* WebSocket.OPEN */) break;
+                try {
+                  await dispatchSocketAction(pendingMsg);
+                } catch (drainErr) {
+                  logger.error('Error processing buffered WebSocket frame:', {
+                    type: pendingMsg.type,
+                    error: drainErr.message,
+                  });
+                }
+              }
+            }
+            break;
+
+          case 'react':
+            await handleReact({ ws, parsedMessage: actionMsg, wss, broadcastToAdmins });
+            break;
+
+          case 'edit':
+            await handleEdit({ ws, parsedMessage: actionMsg, wss, broadcastToAdmins });
+            break;
+
+          case 'file_picker_open':
+            handleFilePickerOpen({ ws, parsedMessage: actionMsg });
+            break;
+
+          case 'file_picker_close':
+            handleFilePickerClose({ ws });
+            break;
+
+          case 'user_logout':
+            handleUserLogout({ ws, parsedMessage: actionMsg, broadcastToAdmins, _broadcast, _broadcastOnlineUsers });
+            break;
+
+          case 'start_typing':
+            handleStartTyping({ ws, parsedMessage: actionMsg, _broadcastOnlineUsers });
+            break;
+
+          case 'stop_typing':
+            handleStopTyping({ ws, _broadcastOnlineUsers });
+            break;
+
+          case 'report_user':
+            await handleReportUser({ ws, parsedMessage: actionMsg, broadcastToAdmins });
+            break;
+
+          case 'pin_message':
+            await handlePinMessage({ ws, parsedMessage: actionMsg, broadcastPinnedMessages: _broadcastPinnedMessages, loadPinnedMessages, broadcastToAdmins });
+            break;
+
+          case 'unpin_message':
+            await handleUnpinMessage({ ws, parsedMessage: actionMsg, wss, broadcastPinnedMessages: _broadcastPinnedMessages, broadcastToAdmins });
+            break;
+
+          case 'delete_for_everyone':
+            await handleDeleteForEveryone({ ws, parsedMessage: actionMsg, wss, broadcastToAdmins });
+            break;
+
+          default:
+            // Issue 11: Only route recognized chat message types to handleNewMessage.
+            // Unknown type strings would still trigger DB queries (session lookup, reply resolution)
+            // which can be abused as a DoS amplifier even with the 50 frame/s per-socket limit.
+            {
+              const CHAT_MSG_TYPES = new Set(['message', 'text', 'image', 'video', 'audio', 'file', 'gif', 'poll']);
+              if (!CHAT_MSG_TYPES.has(actionMsg.type)) {
+                logger.warn(`Ignored unknown WebSocket message type '${actionMsg.type}' from user ${ws.userId || 'unjoined'} in room ${ws.roomId || 'none'}`);
+                break;
+              }
+              await handleNewMessage({ ws, parsedMessage: actionMsg, wss, broadcastToAdmins, _broadcastOnlineUsers });
+            }
+            break;
+        }
       }
 
       // Disallow sending user actions prior to successful user_join
@@ -221,136 +379,25 @@ const initWebSocket = (wss) => {
         parsedMessage.type !== 'pong'
       ) {
         if ((!ws.isAdmin && !ws.userId) || !ws.roomId) {
+          if (ws.isJoining) {
+            // Socket is currently in the middle of async user_join verification.
+            // Buffer in-flight action frames rather than dropping them into the void.
+            if (!ws.pendingFrames) ws.pendingFrames = [];
+            if (ws.pendingFrames.length < 25) {
+              ws.pendingFrames.push(parsedMessage);
+              logger.info(`Buffered WebSocket frame '${parsedMessage.type}' while user_join is completing for IP: ${ws.clientIp}`);
+            } else {
+              logger.warn(`Pending buffer limit reached for joining socket from IP: ${ws.clientIp}. Dropping frame '${parsedMessage.type}'.`);
+            }
+            return;
+          }
           logger.warn(`Rejected WebSocket frame '${parsedMessage.type}' from unjoined socket`);
           ws.send(JSON.stringify({ type: 'error', message: 'You must join a room before sending events.' }));
           return;
         }
       }
 
-      switch (parsedMessage.type) {
-        case 'ping':
-          ws.isAlive = true;
-          if (ws.readyState === 1 /* WebSocket.OPEN */) {
-            try { ws.send(JSON.stringify({ type: 'pong' })); } catch (_) {}
-          }
-          break;
-
-        case 'pong':
-          ws.isAlive = true;
-          break;
-
-        case 'client_diagnostic':
-          try {
-            if (!ws.roomId || !ws.userId) break;
-            const diag = parsedMessage.data || parsedMessage;
-            const eventName = typeof diag.event === 'string' ? diag.event.slice(0, 50) : (typeof diag.action === 'string' ? diag.action.slice(0, 50) : 'client_action');
-            const username = ws.username || ws.user?.username || 'Anonymous';
-            const roomId = ws.roomId;
-            logger.info(`[Client-Diag] [Room: ${roomId}] ${username}: ${eventName}`, {
-              telemetry: true,
-              roomId,
-              userId: ws.userId,
-              username,
-            });
-
-            // Safe, non-sensitive live activity notifications for room moderators & super admins
-            let safeActivity = null;
-            if (eventName === 'audio_error') {
-              safeActivity = `Audio/voice playback error for user '${username}'.`;
-            } else if (eventName === 'video_error') {
-              safeActivity = `Video playback issue for user '${username}'.`;
-            } else if (eventName === 'voice_record_error') {
-              safeActivity = `Voice recording issue for user '${username}'.`;
-            } else if (eventName === 'voice_record_complete') {
-              const dur = diag.details?.durationSeconds ? ` (${Math.round(diag.details.durationSeconds)}s)` : '';
-              safeActivity = `User '${username}' recorded a voice note${dur}.`;
-            } else if (eventName === 'album_zip_download_error') {
-              safeActivity = `Media album download error for user '${username}'.`;
-            } else if (eventName === 'album_zip_download_complete') {
-              safeActivity = `User '${username}' completed downloading an album.`;
-            } else if (eventName === 'file_download_complete') {
-              const fn = typeof diag.details?.filename === 'string' ? ` '${diag.details.filename.slice(0, 50)}'` : '';
-              safeActivity = `User '${username}' downloaded file${fn}.`;
-            }
-
-            if (safeActivity && ws.roomId && ws.userId) {
-              broadcastToAdmins(ws.roomId, 'activity', safeActivity);
-            }
-          } catch (_) {}
-          break;
-
-        case 'user_join':
-          await handleUserJoin({
-            ws,
-            req,
-            parsedMessage,
-            wss,
-            broadcastToAdmins,
-            _broadcast,
-            _broadcastOnlineUsers,
-            loadPinnedMessages,
-            _getVisibleMessagesQuery,
-          });
-          break;
-
-        case 'react':
-          await handleReact({ ws, parsedMessage, wss, broadcastToAdmins });
-          break;
-
-        case 'edit':
-          await handleEdit({ ws, parsedMessage, wss, broadcastToAdmins });
-          break;
-
-        case 'file_picker_open':
-          handleFilePickerOpen({ ws, parsedMessage });
-          break;
-
-        case 'file_picker_close':
-          handleFilePickerClose({ ws });
-          break;
-
-        case 'user_logout':
-          handleUserLogout({ ws, parsedMessage, broadcastToAdmins, _broadcast, _broadcastOnlineUsers });
-          break;
-
-        case 'start_typing':
-          handleStartTyping({ ws, parsedMessage, _broadcastOnlineUsers });
-          break;
-
-        case 'stop_typing':
-          handleStopTyping({ ws, _broadcastOnlineUsers });
-          break;
-
-        case 'report_user':
-          await handleReportUser({ ws, parsedMessage, broadcastToAdmins });
-          break;
-
-        case 'pin_message':
-          await handlePinMessage({ ws, parsedMessage, broadcastPinnedMessages: _broadcastPinnedMessages, loadPinnedMessages, broadcastToAdmins });
-          break;
-
-        case 'unpin_message':
-          await handleUnpinMessage({ ws, parsedMessage, wss, broadcastPinnedMessages: _broadcastPinnedMessages, broadcastToAdmins });
-          break;
-
-        case 'delete_for_everyone':
-          await handleDeleteForEveryone({ ws, parsedMessage, wss, broadcastToAdmins });
-          break;
-
-        default:
-          // Issue 11: Only route recognized chat message types to handleNewMessage.
-          // Unknown type strings would still trigger DB queries (session lookup, reply resolution)
-          // which can be abused as a DoS amplifier even with the 50 frame/s per-socket limit.
-          {
-            const CHAT_MSG_TYPES = new Set(['message', 'text', 'image', 'video', 'audio', 'file', 'gif', 'poll']);
-            if (!CHAT_MSG_TYPES.has(parsedMessage.type)) {
-              logger.warn(`Ignored unknown WebSocket message type '${parsedMessage.type}' from user ${ws.userId || 'unjoined'} in room ${ws.roomId || 'none'}`);
-              break;
-            }
-            await handleNewMessage({ ws, parsedMessage, wss, broadcastToAdmins, _broadcastOnlineUsers });
-          }
-          break;
-      }
+      await dispatchSocketAction(parsedMessage);
     }
 
     // Enforce handshake timeout for unjoined/unauthenticated sockets to prevent connection exhaustion
@@ -398,6 +445,8 @@ const initWebSocket = (wss) => {
 
     ws.on('close', () => {
       clearTimeout(joinTimeout);
+      ws.isJoining = false;
+      ws.pendingFrames = [];
       handleSocketClose({ ws, wss, broadcastToAdmins, _broadcast, _broadcastOnlineUsers });
     });
 

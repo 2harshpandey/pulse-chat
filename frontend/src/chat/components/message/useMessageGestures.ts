@@ -1,7 +1,8 @@
 import React, { useRef, useCallback, useEffect, useLayoutEffect } from 'react';
 import { useDrag } from '@use-gesture/react';
 import type { Message } from '../../types';
-import { LONG_PRESS_CANCEL_MOVE_PX } from '../../constants';
+import { LONG_PRESS_CANCEL_MOVE_PX, LONG_PRESS_DURATION_MS } from '../../constants';
+import { onChatScroll, isChatActivelyScrolling } from '../../chatScrollState';
 
 interface UseMessageGesturesParams {
   msg: Message;
@@ -23,6 +24,8 @@ export function useMessageGestures({
   const swipeTransitionResetTimerRef = useRef<number | null>(null);
   const wasLongPressed = useRef(false);
   const lastSelectModeExitTimeRef = useRef(0);
+  const lastLongPressTriggerTimeRef = useRef(0);
+  const touchStartTimeRef = useRef(0);
   const isSelectModeActiveRef = useRef(isSelectModeActive);
 
   useEffect(() => {
@@ -34,8 +37,21 @@ export function useMessageGestures({
 
   const touchStartPointRef = useRef<{ x: number; y: number } | null>(null);
   const suppressTapSelectionRef = useRef(false);
+  const isScrollGestureRef = useRef(false);
   const ignoreSwipeGestureRef = useRef(false);
   const swipeOffsetRef = useRef(0);
+
+  useEffect(() => {
+    return onChatScroll(() => {
+      // Whenever the chat container scrolls, immediately invalidate any active long-press timer
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+      isScrollGestureRef.current = true;
+      suppressTapSelectionRef.current = true;
+    });
+  }, []);
 
   const resetSwipePosition = useCallback((animate: boolean) => {
     if (!messageRowRef.current) return;
@@ -56,6 +72,26 @@ export function useMessageGestures({
       }, 220);
     }
   }, []);
+
+  const triggerLongPress = useCallback(() => {
+    if (wasLongPressed.current) return;
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    wasLongPressed.current = true;
+    lastLongPressTriggerTimeRef.current = Date.now();
+    suppressTapSelectionRef.current = true;
+
+    handleToggleSelectMessage(msg.id);
+
+    // Provide immediate haptic feedback in exact synchronization with the reaction bar popup
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      try {
+        navigator.vibrate(35);
+      } catch (_) {}
+    }
+  }, [msg.id, handleToggleSelectMessage]);
 
   const isSwipeQuoteIgnoredTarget = useCallback((target: HTMLElement) => {
     if (target.closest('[data-allow-quote-swipe]')) return false;
@@ -83,8 +119,12 @@ export function useMessageGestures({
         return;
       }
 
-      // If a drag gesture is active (i.e., user is scrolling), cancel the long-press timer.
-      if (active && longPressTimerRef.current) {
+      // Only cancel the long-press timer if the user performs an intentional swipe or scroll movement
+      const isHorizontalSwipe = Math.abs(mx) > Math.abs(my) && Math.abs(mx) > 10;
+      const isLargeMovement = Math.hypot(mx, my) > LONG_PRESS_CANCEL_MOVE_PX || Math.abs(my) > 12;
+
+      if (active && (isHorizontalSwipe || isLargeMovement) && longPressTimerRef.current) {
+        isScrollGestureRef.current = true;
         clearTimeout(longPressTimerRef.current);
         longPressTimerRef.current = null;
         suppressTapSelectionRef.current = true;
@@ -103,7 +143,7 @@ export function useMessageGestures({
         }
 
         // If this 'tap' is the end of a long press, reset the flag and do nothing.
-        if (wasLongPressed.current) {
+        if (wasLongPressed.current || Date.now() - lastLongPressTriggerTimeRef.current < 400) {
           wasLongPressed.current = false;
           return;
         }
@@ -120,7 +160,9 @@ export function useMessageGestures({
 
       // When a gesture ends as a drag (not a tap), clean up refs so the next tap starts fresh.
       if (last && !tap) {
-        wasLongPressed.current = false;
+        if (Date.now() - lastLongPressTriggerTimeRef.current > 400) {
+          wasLongPressed.current = false;
+        }
         suppressTapSelectionRef.current = false;
         ignoreSwipeGestureRef.current = false;
       }
@@ -177,8 +219,10 @@ export function useMessageGestures({
       prevMsgIdRef.current = msg.id;
       wasLongPressed.current = false;
       suppressTapSelectionRef.current = false;
+      isScrollGestureRef.current = false;
       ignoreSwipeGestureRef.current = false;
       touchStartPointRef.current = null;
+      touchStartTimeRef.current = 0;
       if (longPressTimerRef.current) {
         clearTimeout(longPressTimerRef.current);
         longPressTimerRef.current = null;
@@ -193,6 +237,10 @@ export function useMessageGestures({
         window.clearTimeout(swipeTransitionResetTimerRef.current);
         swipeTransitionResetTimerRef.current = null;
       }
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
     };
   }, []);
 
@@ -200,6 +248,7 @@ export function useMessageGestures({
     if (!isSelectModeActive) {
       wasLongPressed.current = false;
       suppressTapSelectionRef.current = false;
+      isScrollGestureRef.current = false;
       ignoreSwipeGestureRef.current = false;
     }
   }, [isSelectModeActive]);
@@ -225,9 +274,19 @@ export function useMessageGestures({
       return;
     }
 
+    // Do not initiate long-press if the chat is actively scrolling or user is catching an active momentum scroll
+    if (isChatActivelyScrolling(250)) {
+      isScrollGestureRef.current = true;
+      suppressTapSelectionRef.current = true;
+      return;
+    }
+
     const touch = e.touches[0];
     touchStartPointRef.current = { x: touch.clientX, y: touch.clientY };
+    touchStartTimeRef.current = Date.now();
     suppressTapSelectionRef.current = false;
+    isScrollGestureRef.current = false;
+    wasLongPressed.current = false;
 
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
@@ -235,14 +294,17 @@ export function useMessageGestures({
     }
 
     longPressTimerRef.current = setTimeout(() => {
-      if (!suppressTapSelectionRef.current) {
-        handleToggleSelectMessage(msg.id);
-        wasLongPressed.current = true;
+      if (!suppressTapSelectionRef.current && !isScrollGestureRef.current && !isChatActivelyScrolling(150)) {
+        triggerLongPress();
       }
-    }, 500);
+    }, LONG_PRESS_DURATION_MS);
   };
 
   const handleLongPressMove = (e: React.TouchEvent) => {
+    if (wasLongPressed.current || isScrollGestureRef.current) {
+      return;
+    }
+
     if (!touchStartPointRef.current || e.touches.length === 0) {
       return;
     }
@@ -250,8 +312,16 @@ export function useMessageGestures({
     const touch = e.touches[0];
     const dx = Math.abs(touch.clientX - touchStartPointRef.current.x);
     const dy = Math.abs(touch.clientY - touchStartPointRef.current.y);
+    const dist = Math.hypot(dx, dy);
 
-    if (dx > LONG_PRESS_CANCEL_MOVE_PX || dy > LONG_PRESS_CANCEL_MOVE_PX) {
+    // If movement exceeds touch slop (12px radial, 10px horizontal, 10px vertical),
+    // this gesture is an intentional scroll or swipe.
+    // Permanently mark as a scroll gesture so keeping the finger stationary on screen
+    // after scrolling will NEVER trigger a long-press!
+    const isIntentionalMove = dist > LONG_PRESS_CANCEL_MOVE_PX || dx > 10 || dy > 10;
+
+    if (isIntentionalMove) {
+      isScrollGestureRef.current = true;
       suppressTapSelectionRef.current = true;
       if (longPressTimerRef.current) {
         clearTimeout(longPressTimerRef.current);
@@ -265,7 +335,25 @@ export function useMessageGestures({
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
     }
+
+    // Resilient completion: only trigger if the user was holding still (NOT scrolling, NOT moving)
+    // and held for nearly the full duration (>= 320ms)
+    if (
+      !wasLongPressed.current &&
+      !suppressTapSelectionRef.current &&
+      !isScrollGestureRef.current &&
+      !isChatActivelyScrolling(250) &&
+      touchStartTimeRef.current > 0
+    ) {
+      const elapsed = Date.now() - touchStartTimeRef.current;
+      if (elapsed >= 320) {
+        triggerLongPress();
+      }
+    }
+
     touchStartPointRef.current = null;
+    touchStartTimeRef.current = 0;
+    isScrollGestureRef.current = false;
   };
 
   const handleLongPressCancel = () => {
@@ -274,9 +362,40 @@ export function useMessageGestures({
       longPressTimerRef.current = null;
     }
     touchStartPointRef.current = null;
+    touchStartTimeRef.current = 0;
+    isScrollGestureRef.current = true;
     suppressTapSelectionRef.current = true;
     resetSwipePosition(true);
   };
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    if (!isMobileView) return;
+    // On mobile touch devices, the browser dispatches contextmenu on long press.
+    // Suppress the default browser popup (Copy / Share / Select all).
+    e.preventDefault();
+    e.stopPropagation();
+
+    // If long press hasn't fired yet and this was NOT a scroll or move, trigger immediately!
+    if (
+      !wasLongPressed.current &&
+      !suppressTapSelectionRef.current &&
+      !isScrollGestureRef.current &&
+      !isChatActivelyScrolling(250)
+    ) {
+      triggerLongPress();
+    }
+  }, [isMobileView, triggerLongPress]);
+
+  const handleClickCapture = useCallback((e: React.MouseEvent) => {
+    // Suppress synthetic clicks that immediately follow exiting select mode or completing a long-press
+    const recentlyExitedSelectMode = Date.now() - lastSelectModeExitTimeRef.current < 300;
+    const recentlyLongPressed = Date.now() - lastLongPressTriggerTimeRef.current < 400;
+
+    if (recentlyExitedSelectMode || recentlyLongPressed || wasLongPressed.current) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }, []);
 
   return {
     messageRowRef,
@@ -287,5 +406,7 @@ export function useMessageGestures({
     handleLongPressMove,
     handleLongPressEnd,
     handleLongPressCancel,
+    handleContextMenu,
+    handleClickCapture,
   };
 }

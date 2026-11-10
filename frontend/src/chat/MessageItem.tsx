@@ -162,11 +162,12 @@ export const MessageItem = React.memo(({
 
   const {
     messageRowRef,
-    lastSelectModeExitTimeRef,
     handleLongPressStart,
     handleLongPressMove,
     handleLongPressEnd,
     handleLongPressCancel,
+    handleContextMenu,
+    handleClickCapture,
   } = useMessageGestures({
     msg,
     isMobileView,
@@ -254,14 +255,8 @@ export const MessageItem = React.memo(({
         $isSelected={isSelected}
         $isActiveDeleteMenu={activeDeleteMenu === msg.id}
         $isGrouped={!showUsername}
-        onClickCapture={(e) => {
-          // If we just exited select mode in the last 300ms, suppress this native click
-          // so it doesn't accidentally trigger a download or open a lightbox.
-          if (Date.now() - lastSelectModeExitTimeRef.current < 300) {
-            e.stopPropagation();
-            e.preventDefault();
-          }
-        }}
+        onClickCapture={handleClickCapture}
+        onContextMenu={handleContextMenu}
         onDoubleClick={(e) => {
           if (!isMobileView && !isSelectModeActive) {
             // Only quote when double-clicking *outside* the message bubble

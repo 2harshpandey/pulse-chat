@@ -59,6 +59,26 @@ Configure these in `frontend/.env` (or via deployment environment settings):
 
 ---
 
+## Troubleshooting & Installation Notes
+
+### 1. Interrupted Downloads & Native Binaries (`.node` format errors)
+Vite 8 bundles with native Rolldown and LightningCSS binaries (`.node`). If an `npm install` process is canceled mid-flight, incomplete binaries may remain on disk, causing errors such as:
+- `...\rolldown-binding.win32-x64-msvc.node is not a valid Win32 application`
+- `Cannot find module '../lightningcss.win32-x64-msvc.node'`
+
+**Fix:** Completely clear `node_modules` and re-run installation:
+```powershell
+Remove-Item -Recurse -Force node_modules
+npm install
+npm run build
+```
+
+### 2. npm Audit & `--force` Warnings
+- **Do not run `npm audit fix --force`**: It forces a major downgrade of `vite-plugin-pwa` to `v0.2.x`, which breaks the build and PWA service worker.
+- The remaining low-severity notices in `deepmerge` are build-time dependencies (`workbox-build`) that are never bundled into the client runtime.
+
+---
+
 ## Architectural Highlights
 
 - **Domain-Modular Structure**: Decomposed into focused domains: `/chat`, `/admin`, `/rooms`, `/auth`, `/home`, and `/errors`.

@@ -31,6 +31,7 @@
 - [Technology Stack](#technology-stack)
 - [Environment Configuration](#environment-configuration)
 - [Local Development](#local-development)
+- [Developer Troubleshooting & Setup Guide](#developer-troubleshooting--setup-guide)
 - [Production Build](#production-build)
 - [Project Structure](#project-structure)
 - [Operational Notes](#operational-notes)
@@ -434,6 +435,180 @@ npm run dev     # or: npm start
 ```
 
 After both services are running, open the frontend development URL shown by Vite.
+
+---
+
+## Developer Troubleshooting & Setup Guide
+
+This guide details common setup friction points, platform-specific quirks (particularly on Windows), and verified step-by-step solutions encountered during development.
+
+### 1. Windows PowerShell: Script Execution Blocked (`npm.ps1`)
+
+**Symptom:**
+Running `npm run dev` in a Windows PowerShell session fails with:
+```text
+File C:\Program Files\nodejs\npm.ps1 cannot be loaded because running scripts is disabled on this system.
+```
+
+**Cause:**
+Windows PowerShell enforces a script execution policy (`Restricted` by default) that prevents execution of `.ps1` script wrappers installed with Node.js.
+
+**Permanent Fix (Recommended):**
+Open PowerShell (administrator elevation is **not** required for user scope) and run:
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+When prompted for confirmation, type `Y` and press Enter.
+
+Verify the configuration by running:
+```powershell
+Get-ExecutionPolicy -List
+```
+You should see:
+```text
+Scope           ExecutionPolicy
+-----           ---------------
+CurrentUser     RemoteSigned
+```
+Restart your VS Code terminal and execute `npm run dev`.
+
+**Temporary Workaround:**
+Invoke the Windows Command Prompt batch wrapper directly:
+```powershell
+npm.cmd run dev
+```
+
+---
+
+### 2. Backend Dependency Installation: Peer Dependency Conflict (`ERESOLVE`)
+
+**Symptom:**
+Running `npm install` inside the `backend/` directory aborts with:
+```text
+npm error code ERESOLVE
+npm error Could not resolve dependency:
+npm error peer cloudinary@"^1.21.0" from multer-storage-cloudinary@4.0.0
+npm error Found: cloudinary@2.8.0
+```
+Subsequent commands (e.g., `npm run dev` or `node index.js`) immediately fail with:
+```text
+Error: Cannot find module 'dotenv'
+```
+because npm aborted before creating `node_modules` and installing packages.
+
+**Cause:**
+`multer-storage-cloudinary@4.0.0` declares an outdated peer dependency on `cloudinary@^1.21.0`, while the project uses modern `cloudinary@^2.8.0`.
+
+**Permanent Fix:**
+Ensure `backend/.npmrc` exists with:
+```ini
+legacy-peer-deps=true
+```
+This instructs npm to resolve the peer-dependency mismatch automatically on every `npm install`.
+
+**Command Line Alternative:**
+```powershell
+cd backend
+npm install --legacy-peer-deps
+```
+
+---
+
+### 3. Missing `.env` & Fatal `MONGODB_URI` Crash
+
+**Symptom:**
+Running `npm run dev` starts Node.js, prints:
+```text
+◇ injected env (0) from .env
+error: FATAL ERROR: MONGODB_URI environment variable is not set.
+error: The application cannot start without a database connection string.
+error: Failed to load chat states: Operation `chatstates.find()` buffering timed out after 10000ms
+info: Server is listening on port 8080
+```
+and every subsequent request to `/api` responds with HTTP 503 (`Database service is currently unavailable`).
+
+**Cause:**
+Fresh clones do not include `.env` (it is gitignored for security). `dotenv` looks for `.env`, finds 0 variables (`injected env (0)`), and `process.env.MONGODB_URI` remains undefined. Mongoose buffers queries for 10 seconds before throwing a timeout error.
+
+**Step-by-Step Resolution:**
+
+1. **Create the environment file:**
+   ```powershell
+   cd backend
+   Copy-Item .env.example .env
+   ```
+
+2. **Supply your `MONGODB_URI`:**
+   - **MongoDB Atlas (Free Cloud Database):**
+     1. Create a free M0 cluster at [MongoDB Atlas](https://www.mongodb.com/cloud/atlas).
+     2. Under **Network Access**, allow your IP or `0.0.0.0/0` for development.
+     3. Under **Database Access**, create a user and password.
+     4. Under **Clusters → Connect → Drivers**, copy your connection string and set:
+        ```env
+        MONGODB_URI="mongodb+srv://<username>:<password>@cluster0.xxxxx.mongodb.net/pulsechat?retryWrites=true&w=majority"
+        ```
+   - **Local MongoDB:**
+     If [MongoDB Community Server](https://www.mongodb.com/try/download/community) is installed locally:
+     ```env
+     MONGODB_URI="mongodb://localhost:27017/pulsechat"
+     ```
+
+3. **Verify configuration without starting the server:**
+   ```powershell
+   node -e "require('dotenv').config(); console.log('MongoDB URI loaded:', !!process.env.MONGODB_URI)"
+   ```
+   *Expected output: `MongoDB URI loaded: true`*
+
+4. **Start the backend:**
+   ```powershell
+   npm run dev
+   ```
+   *Expected output:*
+   ```text
+   info: MongoDB connected successfully.
+   info: Loaded chat state for X rooms.
+   info: Server is listening on port 8080
+   ```
+
+---
+
+### 4. Dependency Vulnerabilities & Audit Protocol
+
+**Backend: `follow-redirects` (High Severity)**
+- **Advisory:** GHSA-mrwp-f3q8-3g9p (Cross-realm `sensitiveHeaders` leak across redirects).
+- **Resolution:** `follow-redirects` is pinned to `"^1.16.3"` in `backend/package.json`. Running `npm audit` in `backend` confirms `found 0 vulnerabilities`.
+
+**Frontend: `glob` (Moderate Severity)**
+- **Advisory:** GHSA-3g3m-2fjr-6pw4 (AbortSignal cancellation bypass).
+- **Resolution:** Resolved via the `"glob": ">=14.0.4"` override inside `frontend/package.json`.
+
+> [!CAUTION]
+> **DO NOT run `npm audit fix --force` in `frontend/`.**
+> Running `--force` forces npm to downgrade `vite-plugin-pwa` to `v0.2.x`, which breaks Vite 8 / Rolldown compilation, PWA manifest generation, and service worker caching. The remaining low-severity notices in frontend are build-time devDependencies (`workbox-build` / `@rollup/plugin-node-resolve`) that are never shipped to client browsers.
+
+---
+
+### 5. Frontend: Native Binary Corruptions & Vite Build Recovery
+
+**Symptom:**
+Building or running frontend fails with:
+```text
+Error: Cannot find native binding. npm has a bug related to optional dependencies...
+Error: ...\rolldown-binding.win32-x64-msvc.node is not a valid Win32 application.
+Error: Loading PostCSS Plugin failed: Cannot find module '../lightningcss.win32-x64-msvc.node'
+```
+
+**Cause:**
+Vite 8 compiles using native precompiled C++ binaries (`rolldown` and `lightningcss`). If an `npm install` process was previously interrupted or canceled (e.g. closing the terminal or pressing Ctrl+C midway), npm can leave truncated binary files on disk (for example, a 6MB incomplete file instead of the full 23MB `.node` binary). Subsequent `npm install` invocations assume the folder exists and skip re-downloading it.
+
+**Clean Recovery Protocol:**
+```powershell
+cd frontend
+Remove-Item -Recurse -Force node_modules
+npm install
+npm run build
+```
+Verify the build completes with `✓ built in ~1-2s`.
 
 ---
 

@@ -200,11 +200,12 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
 
   const {
     messageRowRef,
-    lastSelectModeExitTimeRef,
     handleLongPressStart,
     handleLongPressMove,
     handleLongPressEnd,
     handleLongPressCancel,
+    handleContextMenu,
+    handleClickCapture,
   } = useMessageGestures({
     msg: groupReplyTarget,
     isMobileView,
@@ -331,12 +332,8 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
         $isSelected={isSelected}
         $isActiveDeleteMenu={activeDeleteMenu === primaryMessage.id}
         $isGrouped={!showUsername}
-        onClickCapture={(e) => {
-          if (Date.now() - lastSelectModeExitTimeRef.current < 300) {
-            e.stopPropagation();
-            e.preventDefault();
-          }
-        }}
+        onClickCapture={handleClickCapture}
+        onContextMenu={handleContextMenu}
         onDoubleClick={(e) => {
           if (!isMobileView && !isSelectModeActive) {
             if (messageBubbleRef.current && messageBubbleRef.current.contains(e.target as Node)) {

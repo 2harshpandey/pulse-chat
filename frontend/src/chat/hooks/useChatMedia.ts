@@ -101,6 +101,7 @@ interface UseChatMediaProps {
   setPresenceActivity: (act: PresenceActivity | null) => void;
   startSendingActivity?: (act: PresenceActivity) => void;
   stopSendingActivity?: () => void;
+  safeSend?: (payload: any) => boolean;
   messageInputRef: React.RefObject<HTMLTextAreaElement | null>;
 }
 
@@ -116,6 +117,7 @@ export function useChatMedia({
   setInputMessage,
   resetInputLayerHeight,
   ws,
+  safeSend,
   setPresenceActivity,
   startSendingActivity,
   stopSendingActivity,
@@ -569,9 +571,12 @@ export function useChatMedia({
                   isUploading: false,
                   id: uploadedFileData.id,
                 };
-                if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-                  const { localBlobUrl: _omittedBlob, ...broadcastPayload } = finalMessage as any;
-                  ws.current.send(JSON.stringify({ ...broadcastPayload, clientTempId: messageId, roomId }));
+                const { localBlobUrl: _omittedBlob, ...broadcastPayload } = finalMessage as any;
+                const wsPayload = { ...broadcastPayload, clientTempId: messageId, roomId };
+                if (safeSend) {
+                  safeSend(wsPayload);
+                } else if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+                  ws.current.send(JSON.stringify(wsPayload));
                 }
                 return finalMessage;
               }
@@ -594,7 +599,7 @@ export function useChatMedia({
           stopSendingActivity?.();
         });
     },
-    [apiBase, messages, roomId, setMessages, startSendingActivity, stopSendingActivity, userId, ws]
+    [apiBase, messages, roomId, safeSend, setMessages, startSendingActivity, stopSendingActivity, userId, ws]
   );
 
   const handleCancelUpload = useCallback((messageId: string) => {

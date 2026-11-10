@@ -6,6 +6,7 @@ import { ChatFooter } from './ChatFooter';
 import { MessagesList } from './MessagesList';
 import { TypingIndicator } from '../TypingIndicator';
 import { useAlbumDownload } from '../albumDownloadManager';
+import { recordChatScroll } from '../chatScrollState';
 import {
   ChatWindow,
   MessagesAndScrollWrapper,
@@ -130,6 +131,7 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
             }
           }}
           onTouchMove={() => {
+            recordChatScroll();
             if (chatContainerRef.current) {
               const scroller = chatContainerRef.current;
               const distanceFromBottom = scroller.scrollHeight - (scroller.scrollTop + scroller.clientHeight);

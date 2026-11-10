@@ -97,6 +97,9 @@ export function useChatWebSocket({
   const internalWs = useRef<WebSocket | null>(null);
   const ws = externalWs || internalWs;
   const [isConnected, setIsConnected] = useState(false);
+  const [isRoomJoined, setIsRoomJoined] = useState(false);
+  const isRoomJoinedRef = useRef<boolean>(false);
+  const pendingOutgoingQueueRef = useRef<string[]>([]);
   const [onlineUsers, setOnlineUsers] = useState<UserProfile[]>([]);
   const lastPingAtRef = useRef<number>(Date.now());
   const lastHiddenTimeRef = useRef<number>(Date.now());
@@ -117,6 +120,29 @@ export function useChatWebSocket({
   useEffect(() => {
     appendMessageToWindowRef.current = appendMessageToWindow;
   }, [appendMessageToWindow]);
+
+  const safeSend = useCallback(
+    (payload: any) => {
+      const data = typeof payload === 'string' ? payload : JSON.stringify(payload);
+      const socket = ws.current;
+      if (socket && socket.readyState === WebSocket.OPEN && isRoomJoinedRef.current) {
+        try {
+          while (pendingOutgoingQueueRef.current.length > 0) {
+            const queued = pendingOutgoingQueueRef.current.shift();
+            if (queued) socket.send(queued);
+          }
+          socket.send(data);
+          return true;
+        } catch (e) {
+          console.warn('Failed to send WebSocket payload immediately:', e);
+        }
+      }
+      // Buffer in-flight message while connecting, closed, or awaiting auth_success
+      pendingOutgoingQueueRef.current.push(data);
+      return false;
+    },
+    [ws]
+  );
 
   const stopHeartbeatForActivity = useCallback(() => {
     if (presenceHeartbeatIntervalRef.current) {
@@ -287,6 +313,8 @@ export function useChatWebSocket({
 
       ws.current.onopen = () => {
         setIsConnected(true);
+        isRoomJoinedRef.current = false;
+        setIsRoomJoined(false);
         lastPingAtRef.current = Date.now();
         reconnectDelayRef.current = 600;
         presenceActivityRef.current = null;
@@ -305,6 +333,8 @@ export function useChatWebSocket({
 
       ws.current.onclose = () => {
         setIsConnected(false);
+        isRoomJoinedRef.current = false;
+        setIsRoomJoined(false);
         updateTelemetryWs(null);
         if (isNativeFilePickerOpenRef.current) {
           isNativeFilePickerOpenRef.current = false;
@@ -332,6 +362,8 @@ export function useChatWebSocket({
 
       ws.current.onerror = () => {
         setIsConnected(false);
+        isRoomJoinedRef.current = false;
+        setIsRoomJoined(false);
         if (ws.current?.readyState === 1) {
           ws.current.close();
         }
@@ -360,8 +392,20 @@ export function useChatWebSocket({
           return;
         }
         if (messageData.type === 'auth_success') {
+          isRoomJoinedRef.current = true;
+          setIsRoomJoined(true);
           if (messageData.sessionToken) {
             setSessionToken(messageData.sessionToken, roomId);
+          }
+          if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+            try {
+              while (pendingOutgoingQueueRef.current.length > 0) {
+                const queued = pendingOutgoingQueueRef.current.shift();
+                if (queued) ws.current.send(queued);
+              }
+            } catch (queueErr) {
+              console.warn('Failed to flush queued outgoing frames after auth_success:', queueErr);
+            }
           }
           return;
         }
@@ -444,7 +488,17 @@ export function useChatWebSocket({
             }
           }
 
-          setMessages(processed);
+          setMessages(prev => {
+            const historyIds = new Set(processed.map(m => m.id));
+            const inFlightToKeep = prev.filter(m => {
+              if (m.isUploading || m.uploadError) return true;
+              const tempId = (m as any).clientTempId;
+              if (tempId && !historyIds.has(tempId) && !historyIds.has(m.id)) return true;
+              return false;
+            });
+            if (inFlightToKeep.length === 0) return processed;
+            return [...processed, ...inFlightToKeep];
+          });
           setNewMessagesWhileScrolledUp(0);
           messageTailSnapshotRef.current = {
             length: processed.length,
@@ -864,6 +918,9 @@ export function useChatWebSocket({
   return {
     ws,
     isConnected,
+    isRoomJoined,
+    isRoomJoinedRef,
+    safeSend,
     onlineUsers,
     lastPingAtRef,
     setPresenceActivity,

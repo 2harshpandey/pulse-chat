@@ -90,6 +90,7 @@ interface UseChatComposerProps {
   setHasMoreOlderMessages: (hasMore: boolean) => void;
   setOldestLoadedAt: (cursor: string | null) => void;
   setFirstItemIndex: (valOrUpdater: number | ((prev: number) => number)) => void;
+  safeSend?: (payload: any) => boolean;
 }
 
 export function useChatComposer({
@@ -100,6 +101,7 @@ export function useChatComposer({
   roomId,
   userProfile,
   ws,
+  safeSend: safeSendProp,
   isMobileView,
   stableViewportHeightRef,
   chatContainerRef,
@@ -336,6 +338,9 @@ export function useChatComposer({
 
   // Safe WebSocket payload transmission: handles open sockets and flushes when connecting in strict FIFO order
   const safeSend = useCallback((payload: any) => {
+    if (safeSendProp) {
+      return safeSendProp(payload);
+    }
     const data = typeof payload === 'string' ? payload : JSON.stringify(payload);
     const socket = ws.current;
     if (socket && socket.readyState === WebSocket.OPEN) {
@@ -375,7 +380,7 @@ export function useChatComposer({
       return false;
     }
     return false;
-  }, [ws]);
+  }, [safeSendProp, ws]);
 
   // Send from preview modal
   const handleSendFromPreview = async () => {
