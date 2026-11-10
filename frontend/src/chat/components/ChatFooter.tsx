@@ -289,7 +289,16 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
     <Footer style={{ position: 'relative' }}>
       {isSelectModeActive && (
         <SelectModeFooter>
-          <CancelPreviewButton onClick={onCancelSelectMode}>&times;</CancelPreviewButton>
+          <CancelPreviewButton
+            onPointerDown={(e) => {
+              if (isMobileView) {
+                e.preventDefault();
+              }
+            }}
+            onClick={onCancelSelectMode}
+          >
+            &times;
+          </CancelPreviewButton>
           <span>{selectedMessages.length} selected</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             {canEditSelectedMessage && selectedMessage && (
@@ -378,7 +387,6 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
               }
             : undefined
         }
-        aria-hidden={isSelectModeActive ? true : undefined}
       >
           {editingMessageId && (
             <EditPreviewContainer>

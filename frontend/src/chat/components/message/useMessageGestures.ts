@@ -27,8 +27,9 @@ export function useMessageGestures({
   const lastLongPressTriggerTimeRef = useRef(0);
   const touchStartTimeRef = useRef(0);
   const isSelectModeActiveRef = useRef(isSelectModeActive);
+  const keyboardResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isSelectModeActive && isSelectModeActiveRef.current) {
       lastSelectModeExitTimeRef.current = Date.now();
     }
@@ -88,13 +89,18 @@ export function useMessageGestures({
     handleToggleSelectMessage(msg.id);
 
     // If the virtual keyboard was open when the user began long-pressing, preserve focus on active input
+    // Only request focus if document.activeElement is not already the input (prevents Chromium / Brave soft keyboard animation flicker)
     if (keyboardWasOpenRef.current && activeInputRef.current) {
       const el = activeInputRef.current;
-      requestAnimationFrame(() => {
-        try {
-          el.focus({ preventScroll: true });
-        } catch (_) {}
-      });
+      if (typeof document !== 'undefined' && document.activeElement !== el) {
+        requestAnimationFrame(() => {
+          try {
+            if (document.activeElement !== el) {
+              el.focus({ preventScroll: true });
+            }
+          } catch (_) {}
+        });
+      }
     }
 
     // Provide immediate haptic feedback in exact synchronization with the reaction bar popup
@@ -166,7 +172,27 @@ export function useMessageGestures({
           if (target.closest('[data-checkbox]')) {
             return;
           }
+          lastSelectModeExitTimeRef.current = Date.now();
           handleToggleSelectMessage(msg.id);
+
+          // If the virtual keyboard was open, ensure focus remains unbroken on the input
+          if (keyboardWasOpenRef.current && activeInputRef.current) {
+            const el = activeInputRef.current;
+            requestAnimationFrame(() => {
+              try {
+                if (document.activeElement !== el) {
+                  el.focus({ preventScroll: true });
+                }
+              } catch (_) {}
+            });
+            setTimeout(() => {
+              try {
+                if (document.activeElement !== el) {
+                  el.focus({ preventScroll: true });
+                }
+              } catch (_) {}
+            }, 60);
+          }
           return;
         }
       }
@@ -256,6 +282,10 @@ export function useMessageGestures({
         clearTimeout(longPressTimerRef.current);
         longPressTimerRef.current = null;
       }
+      if (keyboardResetTimerRef.current) {
+        clearTimeout(keyboardResetTimerRef.current);
+        keyboardResetTimerRef.current = null;
+      }
     };
   }, []);
 
@@ -265,8 +295,6 @@ export function useMessageGestures({
       suppressTapSelectionRef.current = false;
       isScrollGestureRef.current = false;
       ignoreSwipeGestureRef.current = false;
-      keyboardWasOpenRef.current = false;
-      activeInputRef.current = null;
     }
   }, [isSelectModeActive]);
 
@@ -277,8 +305,22 @@ export function useMessageGestures({
     );
   }, []);
 
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (!isMobileView) return;
+    if (keyboardWasOpenRef.current || isSelectModeActive || Date.now() - lastSelectModeExitTimeRef.current < 400) {
+      e.preventDefault();
+    }
+  }, [isMobileView, isSelectModeActive]);
+
   const handleLongPressStart = (e: React.TouchEvent | React.MouseEvent) => {
-    if (!isMobileView || !('touches' in e)) {
+    if (!isMobileView) {
+      return;
+    }
+
+    if (!('touches' in e)) {
+      if (keyboardWasOpenRef.current || isSelectModeActive || Date.now() - lastSelectModeExitTimeRef.current < 400) {
+        e.preventDefault();
+      }
       return;
     }
 
@@ -305,12 +347,20 @@ export function useMessageGestures({
     isScrollGestureRef.current = false;
     wasLongPressed.current = false;
 
+    if (keyboardResetTimerRef.current) {
+      clearTimeout(keyboardResetTimerRef.current);
+      keyboardResetTimerRef.current = null;
+    }
+
     const currentActive = typeof document !== 'undefined' ? document.activeElement : null;
-    keyboardWasOpenRef.current = Boolean(
+    const isInputActive = Boolean(
       currentActive &&
       (currentActive.tagName === 'TEXTAREA' || currentActive.tagName === 'INPUT')
     );
-    activeInputRef.current = keyboardWasOpenRef.current ? (currentActive as HTMLElement) : null;
+    if (isInputActive) {
+      keyboardWasOpenRef.current = true;
+      activeInputRef.current = currentActive as HTMLElement;
+    }
 
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
@@ -377,14 +427,25 @@ export function useMessageGestures({
 
     if (keyboardWasOpenRef.current && activeInputRef.current) {
       const el = activeInputRef.current;
-      requestAnimationFrame(() => {
-        try {
-          el.focus({ preventScroll: true });
-        } catch (_) {}
-      });
+      if (typeof document !== 'undefined' && document.activeElement !== el) {
+        requestAnimationFrame(() => {
+          try {
+            if (document.activeElement !== el) {
+              el.focus({ preventScroll: true });
+            }
+          } catch (_) {}
+        });
+      }
     }
-    keyboardWasOpenRef.current = false;
-    activeInputRef.current = null;
+
+    if (keyboardResetTimerRef.current) {
+      clearTimeout(keyboardResetTimerRef.current);
+    }
+    keyboardResetTimerRef.current = setTimeout(() => {
+      keyboardWasOpenRef.current = false;
+      activeInputRef.current = null;
+      keyboardResetTimerRef.current = null;
+    }, 400);
 
     touchStartPointRef.current = null;
     touchStartTimeRef.current = 0;
@@ -430,22 +491,24 @@ export function useMessageGestures({
       return;
     }
 
-    // Suppress synthetic clicks that immediately follow exiting select mode or completing a long-press
-    const recentlyExitedSelectMode = Date.now() - lastSelectModeExitTimeRef.current < 300;
+    // Suppress synthetic clicks that immediately follow exiting select mode or completing a long-press,
+    // or when currently in select mode on mobile to prevent browser from blurring the active textarea
+    const recentlyExitedSelectMode = Date.now() - lastSelectModeExitTimeRef.current < 400;
     const recentlyLongPressed = Date.now() - lastLongPressTriggerTimeRef.current < 400;
 
-    if (recentlyExitedSelectMode || recentlyLongPressed || wasLongPressed.current) {
+    if (recentlyExitedSelectMode || recentlyLongPressed || wasLongPressed.current || isSelectModeActive) {
       e.stopPropagation();
       e.preventDefault();
       wasLongPressed.current = false;
     }
-  }, []);
+  }, [isSelectModeActive]);
 
   return {
     messageRowRef,
     wasLongPressed,
     lastSelectModeExitTimeRef,
     resetSwipePosition,
+    handleMouseDown,
     handleLongPressStart,
     handleLongPressMove,
     handleLongPressEnd,

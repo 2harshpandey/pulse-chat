@@ -108,13 +108,17 @@ export function useChatSelection({
         ? prevSelected.filter((id) => id !== messageId)
         : [...prevSelected, messageId];
       if (newSelected.length === 0) {
+        if (overlayGuardPushed.current) {
+          clearOverlayGuardHistoryEntry();
+          overlayGuardPushed.current = false;
+        }
         setIsSelectModeActive(false);
       } else if (newSelected.length > 0) {
         setIsSelectModeActive(true);
       }
       return newSelected;
     });
-  }, []);
+  }, [overlayGuardPushed]);
 
   const handleCancelSelectMode = useCallback(() => {
     document.body.classList.remove('hide-mobile-picker');
