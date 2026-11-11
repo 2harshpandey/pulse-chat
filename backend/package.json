@@ -23,7 +23,7 @@
     "express-rate-limit": "^8.5.2",
     "follow-redirects": "^1.16.3",
     "helmet": "^8.2.0",
-    "mongoose": "^8.24.1",
+    "mongoose": "^8.24.7",
     "multer": "^2.4.0",
     "multer-storage-cloudinary": "^4.0.0",
     "winston": "^3.17.0",
