@@ -80,8 +80,9 @@ const PlayerContainer = styled.div<{ $sender: 'me' | 'other' }>`
   user-select: none;
 
   @media (max-width: 480px) {
-    min-width: 210px;
+    min-width: 0;
     max-width: 100%;
+    width: 100%;
   }
 `;
 

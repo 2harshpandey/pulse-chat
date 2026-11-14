@@ -643,7 +643,7 @@ describe('Mobile virtual keyboard resize & scroll anchoring', () => {
     }
   });
 
-  it('blurs messageInput and activeElement when handleScrollToBottomButtonClick is triggered', () => {
+  it('preserves messageInput focus and scrolls to bottom when handleScrollToBottomButtonClick is triggered', () => {
     const mockTextarea = document.createElement('textarea');
     document.body.appendChild(mockTextarea);
     mockTextarea.focus();
@@ -728,7 +728,7 @@ describe('Mobile virtual keyboard resize & scroll anchoring', () => {
       result.current.handleScrollToBottomButtonClick(mockEvent);
     });
 
-    expect(document.activeElement).not.toBe(mockTextarea);
+    expect(document.activeElement).toBe(mockTextarea);
     expect(scrollToBottomMock).toHaveBeenCalledWith('auto', true);
     if (mockTextarea.parentNode) {
       document.body.removeChild(mockTextarea);

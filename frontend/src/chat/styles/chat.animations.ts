@@ -3,7 +3,7 @@ import { createGlobalStyle, keyframes } from 'styled-components';
 // --- GLOBAL STYLES ---
 export const GlobalStyle = createGlobalStyle`
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body, #root { height: 100svh; height: var(--app-height, 100svh); max-height: 100svh; max-height: var(--app-height, 100svh); width: 100%; overflow: hidden; overscroll-behavior: none; position: fixed; inset: 0; background-color: var(--bg-primary); }
+  html, body, #root { height: 100svh; height: 100dvh; height: var(--app-height, 100dvh); max-height: 100svh; max-height: 100dvh; max-height: var(--app-height, 100dvh); width: 100%; overflow: hidden; overscroll-behavior: none; position: fixed; inset: 0; background-color: var(--bg-primary); }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: var(--bg-primary); color: var(--text-primary); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; transition: background-color 0.3s ease, color 0.3s ease; }
   * { -webkit-tap-highlight-color: transparent; }
   ::-webkit-scrollbar { width: 8px; height: 8px; }

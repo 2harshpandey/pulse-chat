@@ -1133,12 +1133,9 @@ export function useChatComposer({
     e.preventDefault();
     e.stopPropagation();
 
-    // Ensure any focused input/textarea is blurred so the mobile virtual keyboard
-    // does not automatically pop up when reaching the bottom.
-    messageInputRef.current?.blur();
-    if (document.activeElement && 'blur' in document.activeElement) {
-      (document.activeElement as HTMLElement).blur();
-    }
+    // Do NOT blur messageInputRef or activeElement here.
+    // This allows the virtual keyboard to remain open across all browsers (including Firefox)
+    // while scrolling the chat directly to the bottom without interruption.
 
     const latestMessageId = messagesRef.current[messagesRef.current.length - 1]?.id || null;
     let returnTargetId: string | null = null;

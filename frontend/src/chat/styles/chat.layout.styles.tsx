@@ -94,9 +94,11 @@ export const AppContainer = styled.div`
   display: flex;
   flex-direction: column;
   height: 100svh;
-  height: var(--app-height, 100svh);
+  height: 100dvh;
+  height: var(--app-height, 100dvh);
   max-height: 100svh;
-  max-height: var(--app-height, 100svh);
+  max-height: 100dvh;
+  max-height: var(--app-height, 100dvh);
   width: 100%;
   position: absolute;
   top: var(--app-offset-top, 0px);
@@ -472,8 +474,15 @@ export const MobileReactionPicker = styled.div<{ $sender: 'me' | 'other' }>`
 
 export const MessageBubble = styled.div<{ $sender: string; $messageType: string; $isUploading?: boolean; $uploadError?: boolean; }>`
   position: relative;
-  max-width: ${props => props.$messageType === 'text' ? '62%' : props.$messageType === 'file' ? 'min(84vw, 296px)' : 'min(84vw, 356px)'};
-    padding: ${props => props.$messageType === 'text' ? '0.24rem 0.48rem 0.12rem' : '0.28rem 0.34rem'};
+  max-width: ${props =>
+    props.$messageType === 'text'
+      ? '62%'
+      : props.$messageType === 'file'
+      ? 'min(84vw, 296px)'
+      : props.$messageType === 'group'
+      ? 'min(84vw, 340px)'
+      : 'min(84vw, 356px)'};
+  padding: ${props => props.$messageType === 'text' ? '0.24rem 0.48rem 0.12rem' : '0.28rem 0.34rem'};
   border-radius: 0.82rem;
   background-color: ${props => props.$sender === 'me' ? '#3B82F6' : 'var(--bg-message-other)'};
   color: ${props => props.$sender === 'me' ? 'white' : 'var(--text-primary)'};
@@ -483,20 +492,31 @@ export const MessageBubble = styled.div<{ $sender: string; $messageType: string;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
   min-width: ${props => props.$messageType === 'text' ? '4.5rem' : '0'};
-    /* Keep message geometry and paint stable while virtualized rows are recycled.
-      Animated transitions here can look like shaking/blinking during fast scroll. */
-    transition: none;
+  box-sizing: border-box;
+  /* Keep message geometry and paint stable while virtualized rows are recycled.
+     Animated transitions here can look like shaking/blinking during fast scroll. */
+  transition: none;
   border: ${props => props.$sender === 'me' ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(15,23,42,0.08)'};
   will-change: auto;
   align-self: ${props => props.$sender === 'me' ? 'flex-end' : 'flex-start'};
   margin-right: ${props => props.$sender === 'me' ? '8px' : '0'};
 
   @media (max-width: 768px) {
-    max-width: ${props => props.$messageType === 'text' ? '68%' : 'min(76vw, 272px)'};
+    max-width: ${props =>
+      props.$messageType === 'text'
+        ? '68%'
+        : props.$messageType === 'group'
+        ? 'min(82vw, 300px)'
+        : 'min(76vw, 272px)'};
   }
 
   @media (max-width: 420px) {
-    max-width: ${props => props.$messageType === 'text' ? '72%' : 'min(72vw, 248px)'};
+    max-width: ${props =>
+      props.$messageType === 'text'
+        ? '72%'
+        : props.$messageType === 'group'
+        ? 'min(80vw, 260px)'
+        : 'min(72vw, 248px)'};
   }
 
   [data-theme='dark'] & {

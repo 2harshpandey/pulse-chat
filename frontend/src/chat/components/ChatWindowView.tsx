@@ -194,14 +194,12 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
           $isVisible={viewport.isScrollToBottomVisible}
           onClick={composer.handleScrollToBottomButtonClick}
           onPointerDown={(e) => {
-            if (isTouchDevice() || viewport.isMobileView || (messageInputRef.current && document.activeElement === messageInputRef.current)) {
-              messageInputRef.current?.blur();
-              if (document.activeElement && 'blur' in document.activeElement) {
-                (document.activeElement as HTMLElement).blur();
-              }
-            } else {
-              e.preventDefault();
-            }
+            // Prevent stealing focus from the active input/textarea.
+            // This ensures that:
+            // 1. If the virtual keyboard is already open, it stays open.
+            // 2. If the keyboard was closed, it stays unopened.
+            // 3. Firefox/Gecko does not drop or cancel the subsequent click/scroll event.
+            e.preventDefault();
           }}
           aria-label={scrollToLatestLabel}
           title={scrollToLatestTitle}

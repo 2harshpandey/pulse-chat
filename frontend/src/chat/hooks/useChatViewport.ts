@@ -322,13 +322,16 @@ export function useChatViewport({
     resizeTransitionTimerRef.current = window.setTimeout(() => {
       isViewportResizingRef.current = false;
       resizeTransitionTimerRef.current = null;
-    }, 700);
+    }, 1400);
 
     if (atBottom && scroller && !shouldSuppressProgrammaticScroll()) {
       // Actively track the keyboard opening transition via requestAnimationFrame
       // so messages shift upward in lockstep with the keyboard opening animation.
+      // Running up to 80 frames (~1300ms) ensures Gecko/Firefox on Android (and IronFox)
+      // which delay viewport events until keyboard metrics settle are captured frame-by-frame
+      // without introducing the 1-2 second lag seen previously.
       let frame = 0;
-      const maxFrames = 30; // ~500ms at 60fps
+      const maxFrames = 80;
       const syncOnKeyboardOpen = () => {
         if (!wasAtBottomBeforeResizeRef.current || shouldSuppressProgrammaticScroll()) return;
         handleViewportResizeRef.current();

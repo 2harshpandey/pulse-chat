@@ -60,6 +60,8 @@ export const FileAttachmentDetails = styled.span`
 
 export const MediaContent = styled.div`
   user-select: none;
+  max-width: 100%;
+  box-sizing: border-box;
   p { 
     margin-bottom: 0.5rem; 
     padding: 0 0.2rem;
@@ -73,6 +75,7 @@ const mediaFrameStyles = css`
   width: clamp(208px, 58vw, 320px);
   min-height: clamp(208px, 58vw, 320px);
   max-width: 100%;
+  box-sizing: border-box;
   flex: 0 0 auto;
   aspect-ratio: 1 / 1;
   border-radius: 0.75rem;
@@ -81,11 +84,13 @@ const mediaFrameStyles = css`
   @media (max-width: 768px) {
     width: clamp(192px, 70vw, 260px);
     min-height: clamp(192px, 70vw, 260px);
+    max-width: 100%;
   }
 
   @media (max-width: 420px) {
     width: clamp(176px, 72vw, 236px);
     min-height: clamp(176px, 72vw, 236px);
+    max-width: 100%;
   }
 `;
 
@@ -862,7 +867,9 @@ export const CancelPreviewButton = styled.button`
 export const MediaGroupGrid = styled.div<{ $count: number }>`
   display: grid;
   gap: 3px;
-  width: clamp(230px, 68vw, 320px);
+  width: clamp(220px, 68vw, 320px);
+  max-width: 100%;
+  box-sizing: border-box;
   border-radius: 0.75rem;
   overflow: hidden;
   background: rgba(0, 0, 0, 0.08);
@@ -894,11 +901,13 @@ export const MediaGroupGrid = styled.div<{ $count: number }>`
   }}
 
   @media (max-width: 768px) {
-    width: clamp(210px, 72vw, 280px);
+    width: clamp(200px, 72vw, 280px);
+    max-width: 100%;
   }
 
   @media (max-width: 420px) {
-    width: clamp(190px, 75vw, 250px);
+    width: 100%;
+    max-width: 100%;
   }
 `;
 
