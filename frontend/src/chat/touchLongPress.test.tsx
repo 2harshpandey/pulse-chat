@@ -443,4 +443,91 @@ describe('Touch Screen Long Press & Haptic Behavior', () => {
     expect(handleReact).toHaveBeenCalledWith(mockMsg.id, '❤️');
     expect(handleCancelSelectMode).toHaveBeenCalledTimes(1);
   });
+
+  it('restores focus on active textarea after long-press so virtual keyboard stays open', () => {
+    const onToggleSelect = vi.fn();
+    const inputEl = document.createElement('textarea');
+    document.body.appendChild(inputEl);
+    inputEl.focus();
+
+    // Simulate keyboard open: visualViewport height < innerHeight by >96px
+    Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true });
+    Object.defineProperty(window, 'visualViewport', {
+      value: { height: 450 },
+      configurable: true,
+    });
+
+    const { getByTestId } = render(
+      <TestMessageGestureComponent onToggleSelect={onToggleSelect} />
+    );
+
+    const row = getByTestId('message-row');
+    const touchObj = { clientX: 100, clientY: 200, identifier: 0, target: row };
+
+    fireEvent.touchStart(row, {
+      touches: [touchObj],
+      targetTouches: [touchObj],
+      changedTouches: [touchObj],
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(LONG_PRESS_DURATION_MS);
+    });
+
+    fireEvent.touchEnd(row, {
+      touches: [],
+      changedTouches: [touchObj],
+    });
+
+    expect(onToggleSelect).toHaveBeenCalledWith(mockMsg.id);
+
+    // Focus restore uses double-rAF — flush them
+    act(() => { vi.runAllTimers(); });
+
+    expect(document.activeElement).toBe(inputEl);
+    document.body.removeChild(inputEl);
+    // Restore
+    Object.defineProperty(window, 'visualViewport', { value: null, configurable: true });
+  });
+
+  it('does NOT attempt focus restore when keyboard was already closed before long-press', () => {
+    const onToggleSelect = vi.fn();
+    const inputEl = document.createElement('textarea');
+    document.body.appendChild(inputEl);
+    inputEl.focus();
+
+    // Simulate keyboard closed: visualViewport height equals innerHeight
+    Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true });
+    Object.defineProperty(window, 'visualViewport', {
+      value: { height: 798 },
+      configurable: true,
+    });
+
+    const focusSpy = vi.spyOn(inputEl, 'focus');
+
+    const { getByTestId } = render(
+      <TestMessageGestureComponent onToggleSelect={onToggleSelect} />
+    );
+
+    const row = getByTestId('message-row');
+    const touchObj = { clientX: 100, clientY: 200, identifier: 0, target: row };
+
+    fireEvent.touchStart(row, {
+      touches: [touchObj],
+      targetTouches: [touchObj],
+      changedTouches: [touchObj],
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(LONG_PRESS_DURATION_MS);
+    });
+
+    fireEvent.touchEnd(row, { touches: [], changedTouches: [touchObj] });
+    act(() => { vi.runAllTimers(); });
+
+    // Should not have called focus since keyboard was already closed
+    expect(focusSpy).not.toHaveBeenCalled();
+    document.body.removeChild(inputEl);
+    Object.defineProperty(window, 'visualViewport', { value: null, configurable: true });
+  });
 });

@@ -4,6 +4,15 @@ import type { Message } from '../../types';
 import { LONG_PRESS_CANCEL_MOVE_PX, LONG_PRESS_DURATION_MS } from '../../constants';
 import { onChatScroll, isChatActivelyScrolling } from '../../chatScrollState';
 
+/** Returns true if the virtual keyboard is likely open (visualViewport shrunk vs full layout height). */
+function isVirtualKeyboardOpen(): boolean {
+  if (typeof window === 'undefined') return false;
+  const vvHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+  // Keyboard is considered open when visible area is >96px shorter than the full layout height
+  return (window.innerHeight - vvHeight) > 96;
+}
+
+
 interface UseMessageGesturesParams {
   msg: Message;
   isMobileView: boolean;
@@ -40,6 +49,9 @@ export function useMessageGestures({
   const isScrollGestureRef = useRef(false);
   const ignoreSwipeGestureRef = useRef(false);
   const swipeOffsetRef = useRef(0);
+  // Tracks the focused input element at the moment a long-press starts,
+  // so we can restore keyboard focus after the state update dismisses it.
+  const activeInputAtLongPressRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     return onChatScroll(() => {
@@ -83,7 +95,30 @@ export function useMessageGestures({
     lastLongPressTriggerTimeRef.current = Date.now();
     suppressTapSelectionRef.current = true;
 
+    // Snapshot the currently-focused input before the state update causes a re-render
+    // that may blur it (dismissing the virtual keyboard on mobile).
+    const inputToRestore = activeInputAtLongPressRef.current;
+
     handleToggleSelectMessage(msg.id);
+
+    // If a text input had focus when the long-press started, restore it after the browser
+    // finishes its blur/focus cycle triggered by the React re-render. This keeps the virtual
+    // keyboard visible. We use two nested rAFs to ensure we run after React has committed and
+    // the browser has processed the resulting focus loss.
+    if (inputToRestore) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          try {
+            if (
+              document.activeElement !== inputToRestore &&
+              typeof (inputToRestore as any).focus === 'function'
+            ) {
+              (inputToRestore as any).focus({ preventScroll: true });
+            }
+          } catch (_) {}
+        });
+      });
+    }
 
     // Provide immediate haptic feedback in exact synchronization with the reaction bar popup
     if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
@@ -282,6 +317,21 @@ export function useMessageGestures({
       return;
     }
 
+    // Snapshot the currently focused input so we can restore keyboard focus after long-press fires.
+    // We only capture it when the keyboard is actually open to avoid unnecessary focus calls.
+    const focused = document.activeElement;
+    if (
+      focused instanceof HTMLElement &&
+      (focused.tagName === 'TEXTAREA' ||
+        focused.tagName === 'INPUT' ||
+        focused.isContentEditable) &&
+      isVirtualKeyboardOpen()
+    ) {
+      activeInputAtLongPressRef.current = focused;
+    } else {
+      activeInputAtLongPressRef.current = null;
+    }
+
     const touch = e.touches[0];
     touchStartPointRef.current = { x: touch.clientX, y: touch.clientY };
     touchStartTimeRef.current = Date.now();
@@ -355,6 +405,7 @@ export function useMessageGestures({
     touchStartPointRef.current = null;
     touchStartTimeRef.current = 0;
     isScrollGestureRef.current = false;
+    activeInputAtLongPressRef.current = null;
   };
 
   const handleLongPressCancel = () => {
@@ -366,6 +417,7 @@ export function useMessageGestures({
     touchStartTimeRef.current = 0;
     isScrollGestureRef.current = true;
     suppressTapSelectionRef.current = true;
+    activeInputAtLongPressRef.current = null;
     resetSwipePosition(true);
   };
 
