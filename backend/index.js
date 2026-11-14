@@ -99,6 +99,31 @@ const PORT = process.env.PORT || 8080;
 // return 500, which in turn breaks the send button, scrolling, and reconnection.
 app.set('trust proxy', 1);
 
+// Ensure req.ip is safely resolved and memoized on request arrival.
+// When clients abruptly disconnect, navigate away, or rapidly refresh, Node.js tears down
+// the underlying TCP socket. If req.ip is evaluated after socket destruction, Express's
+// proxy-addr getter encounters an undefined socket address and throws/logs
+// "invalid IP address: undefined". Caching the resolved IP (or falling back to '127.0.0.1')
+// guarantees rate limiters, loggers, and route guards never encounter an undefined IP.
+app.use((req, _res, next) => {
+  const socketIp = req.socket?.remoteAddress;
+  let resolvedIp = '127.0.0.1';
+  try {
+    resolvedIp = req.ip || socketIp || '127.0.0.1';
+  } catch (_) {
+    resolvedIp = socketIp || '127.0.0.1';
+  }
+  if (!resolvedIp || resolvedIp === 'undefined' || resolvedIp === 'unknown') {
+    resolvedIp = '127.0.0.1';
+  }
+  Object.defineProperty(req, 'ip', {
+    value: resolvedIp,
+    configurable: true,
+    writable: true,
+  });
+  next();
+});
+
 // ---------------------------------------------------------------------------
 // Global middleware
 // ---------------------------------------------------------------------------
