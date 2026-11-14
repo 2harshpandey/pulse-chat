@@ -185,7 +185,7 @@ function Chat({ isMe, isTempLink }: ChatProps = {}) {
   const roomId = isMeRoom ? 'me' : (urlRoomId || userContext?.profile?.roomId || 'me');
 
   if (!userContext?.profile) {
-    return <Auth onAuthSuccess={userContext?.login ?? (() => {})} tempToken={tempToken || null} roomId={roomId} isMeRoom={isMeRoom} />;
+    return <Auth onAuthSuccess={userContext?.login ?? (() => {})} tempToken={tempToken || null} roomId={roomId} />;
   }
 
   return (
