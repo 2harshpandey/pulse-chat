@@ -186,17 +186,17 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     fetchAndPrependOlderMessages: msgs.fetchAndPrependOlderMessages,
   });
 
-  const setPresenceActivityRef = useRef<(act: PresenceActivity | null) => void>(() => { });
+  const setPresenceActivityRef = useRef<(act: PresenceActivity | null) => void>(() => {});
   const handlePresenceActivity = useCallback((act: PresenceActivity | null) => {
     setPresenceActivityRef.current(act);
   }, []);
 
-  const startSendingActivityRef = useRef<(act: PresenceActivity) => void>(() => { });
+  const startSendingActivityRef = useRef<(act: PresenceActivity) => void>(() => {});
   const handleStartSendingActivity = useCallback((act: PresenceActivity) => {
     startSendingActivityRef.current(act);
   }, []);
 
-  const stopSendingActivityRef = useRef<() => void>(() => { });
+  const stopSendingActivityRef = useRef<() => void>(() => {});
   const handleStopSendingActivity = useCallback(() => {
     stopSendingActivityRef.current();
   }, []);
@@ -502,7 +502,7 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
             }
           });
           resizeObserver.observe(el);
-        } catch (_) { }
+        } catch (_) {}
       }
     };
 
@@ -661,38 +661,12 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     }
   }, [msgs, nav, search, viewport]);
 
-  // Track whether the user is actively touching the scroll container.
-  // This distinguishes real user-scroll from virtual-keyboard-dismiss scroll reposition.
-  const isUserTouchScrollingRef = useRef(false);
-  const lastUserTouchScrollTimeRef = useRef(0);
-
-  const handleMessagesContainerTouchStart = useCallback(() => {
-    isUserTouchScrollingRef.current = true;
-    lastUserTouchScrollTimeRef.current = Date.now();
-  }, []);
-
-  const handleMessagesContainerTouchEnd = useCallback(() => {
-    isUserTouchScrollingRef.current = false;
-    lastUserTouchScrollTimeRef.current = Date.now();
-  }, []);
-
   const handleMessagesContainerScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     recordChatScroll();
     const target = e.target as HTMLDivElement;
-
-    // Only dismiss reaction picker / hide picker when the user is *actively* touch-scrolling
-    // or used wheel/trackpad recently. Keyboard-dismiss-driven layout scrolls are ignored.
-    const isActiveUserScroll =
-      isUserTouchScrollingRef.current ||
-      Date.now() - lastUserTouchScrollTimeRef.current < 300;
-
     if (reactions.reactionPickerData && reactions.scrollAtReactionPickerRef.current !== null) {
-      if (isActiveUserScroll && Math.abs(target.scrollTop - reactions.scrollAtReactionPickerRef.current) > 20) {
+      if (Math.abs(target.scrollTop - reactions.scrollAtReactionPickerRef.current) > 20) {
         reactions.setReactionPickerData(null);
-      } else if (!isActiveUserScroll) {
-        // Keyboard open/close repositioned the scroller: update the baseline so we don't
-        // incorrectly dismiss the picker on the next genuine scroll.
-        reactions.scrollAtReactionPickerRef.current = target.scrollTop;
       }
     }
     if (
@@ -700,11 +674,8 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
       selection.selectedMessages.length === 1 &&
       selection.scrollAtSelectModeRef.current !== null
     ) {
-      if (isActiveUserScroll && Math.abs(target.scrollTop - selection.scrollAtSelectModeRef.current) > 20) {
+      if (Math.abs(target.scrollTop - selection.scrollAtSelectModeRef.current) > 20) {
         document.body.classList.add('hide-mobile-picker');
-      } else if (!isActiveUserScroll) {
-        // Update baseline for keyboard-driven reposition too
-        selection.scrollAtSelectModeRef.current = target.scrollTop;
       }
     }
     if (
@@ -770,8 +741,6 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     scrollToLatestTitle,
     handleJumpToNextPinned,
     handleMessagesContainerScroll,
-    handleMessagesContainerTouchStart,
-    handleMessagesContainerTouchEnd,
   };
 }
 
