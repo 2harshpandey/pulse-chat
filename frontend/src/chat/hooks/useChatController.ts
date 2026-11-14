@@ -670,15 +670,6 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
       }
     }
     if (
-      selection.isSelectModeActive &&
-      selection.selectedMessages.length === 1 &&
-      selection.scrollAtSelectModeRef.current !== null
-    ) {
-      if (Math.abs(target.scrollTop - selection.scrollAtSelectModeRef.current) > 20) {
-        document.body.classList.add('hide-mobile-picker');
-      }
-    }
-    if (
       msgs.historyLoaded &&
       viewport.hasInitialScrolled.current &&
       viewport.initialHistoryBottomStabilized.current &&

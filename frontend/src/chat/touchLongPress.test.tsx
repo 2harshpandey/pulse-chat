@@ -443,4 +443,36 @@ describe('Touch Screen Long Press & Haptic Behavior', () => {
     expect(handleReact).toHaveBeenCalledWith(mockMsg.id, '❤️');
     expect(handleCancelSelectMode).toHaveBeenCalledTimes(1);
   });
+
+  it('keeps MobileReactionPicker rendered and visible even after viewport resize or scroll shift when keyboard closes', () => {
+    const handleReact = vi.fn();
+    const handleCancelSelectMode = vi.fn();
+
+    const { container, getByText } = render(
+      <MessageReactions
+        msg={mockMsg}
+        sender="other"
+        isDeleted={false}
+        selectedMessages={[mockMsg.id]}
+        validReactions={{}}
+        handleReact={handleReact}
+        handleCancelSelectMode={handleCancelSelectMode}
+        handleOpenFullEmojiPicker={vi.fn()}
+        setReactionsPopup={vi.fn()}
+      />
+    );
+
+    // Verify MobileReactionPicker is present in the DOM
+    const picker = container.querySelector('.mobile-reaction-picker');
+    expect(picker).not.toBeNull();
+
+    // Verify body does not have hide-mobile-picker
+    expect(document.body.classList.contains('hide-mobile-picker')).toBe(false);
+
+    // Emoji reaction button is clickable
+    const thumbsUp = getByText('👍');
+    fireEvent.click(thumbsUp);
+    expect(handleReact).toHaveBeenCalledWith(mockMsg.id, '👍');
+    expect(handleCancelSelectMode).toHaveBeenCalledTimes(1);
+  });
 });

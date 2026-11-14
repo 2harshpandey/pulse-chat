@@ -434,10 +434,6 @@ export const MobileReactionPicker = styled.div<{ $sender: 'me' | 'other' }>`
   top: -48px;
   z-index: 30;
   
-  .hide-mobile-picker & {
-    display: none !important;
-  }
-  
   background: var(--bg-elevated);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);

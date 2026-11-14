@@ -123,6 +123,7 @@ export function useChatSelection({
     }
     setIsSelectModeActive(false);
     setSelectedMessages([]);
+    document.body.classList.remove('hide-mobile-picker');
   }, [overlayGuardPushed]);
 
   const handleInitiateDelete = useCallback(() => {
