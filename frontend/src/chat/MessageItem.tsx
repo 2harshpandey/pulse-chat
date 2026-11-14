@@ -162,7 +162,6 @@ export const MessageItem = React.memo(({
 
   const {
     messageRowRef,
-    handleMouseDown,
     handleLongPressStart,
     handleLongPressMove,
     handleLongPressEnd,
@@ -271,7 +270,7 @@ export const MessageItem = React.memo(({
             handleSetReply(msg);
           }
         }}
-        onMouseDown={handleMouseDown}
+        onMouseDown={handleLongPressStart}
         onMouseUp={handleLongPressEnd}
         onTouchStart={handleLongPressStart}
         onTouchMove={handleLongPressMove}
@@ -281,13 +280,7 @@ export const MessageItem = React.memo(({
         {isSelectModeActive && (!isMobileView || selectedMessages.length > 1) && (
           <SelectCheckboxContainer
             data-checkbox
-            onPointerDown={(e) => {
-              if (isMobileView) {
-                e.preventDefault();
-              }
-            }}
             onClick={(e) => {
-              e.preventDefault();
               e.stopPropagation();
               handleToggleSelectMessage(msg.id);
             }}

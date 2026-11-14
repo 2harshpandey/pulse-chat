@@ -52,9 +52,6 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
     scrollToLatestTitle,
     handleJumpToNextPinned,
     handleMessagesContainerScroll,
-    handleMessagesContainerTouchStart,
-    handleMessagesContainerTouchEnd,
-    handleMessagesContainerWheel,
   } = chat;
 
   const albumDownload = useAlbumDownload();
@@ -114,11 +111,7 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
           $isMobileView={viewport.isMobileView}
           ref={chatContainerRef as any}
           onScroll={handleMessagesContainerScroll}
-          onTouchStart={handleMessagesContainerTouchStart}
-          onTouchEnd={handleMessagesContainerTouchEnd}
-          onTouchCancel={handleMessagesContainerTouchEnd}
           onWheel={(e) => {
-            handleMessagesContainerWheel();
             if (e.deltaY < 0) {
               viewport.suppressInitialBottomPinRef.current = true;
               viewport.initialHistoryBottomStabilized.current = true;

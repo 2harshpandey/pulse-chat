@@ -31,7 +31,6 @@ function TestMessageGestureComponent({
 }) {
   const {
     messageRowRef,
-    handleMouseDown,
     handleLongPressStart,
     handleLongPressMove,
     handleLongPressEnd,
@@ -49,7 +48,6 @@ function TestMessageGestureComponent({
     <div
       data-testid="message-row"
       ref={messageRowRef}
-      onMouseDown={handleMouseDown}
       onClickCapture={handleClickCapture}
       onContextMenu={handleContextMenu}
       onTouchStart={handleLongPressStart}
@@ -444,112 +442,5 @@ describe('Touch Screen Long Press & Haptic Behavior', () => {
 
     expect(handleReact).toHaveBeenCalledWith(mockMsg.id, '❤️');
     expect(handleCancelSelectMode).toHaveBeenCalledTimes(1);
-  });
-
-  it('preserves focus on active text input when long pressing a message so virtual keyboard remains open', () => {
-    const onToggleSelect = vi.fn();
-    const inputEl = document.createElement('textarea');
-    document.body.appendChild(inputEl);
-    inputEl.focus();
-
-    const { getByTestId } = render(
-      <TestMessageGestureComponent onToggleSelect={onToggleSelect} />
-    );
-
-    const row = getByTestId('message-row');
-    const touchObj = { clientX: 100, clientY: 200, identifier: 0, target: row };
-
-    fireEvent.touchStart(row, {
-      touches: [touchObj],
-      targetTouches: [touchObj],
-      changedTouches: [touchObj],
-    });
-
-    act(() => {
-      vi.advanceTimersByTime(LONG_PRESS_DURATION_MS);
-    });
-
-    fireEvent.touchEnd(row, {
-      touches: [],
-      changedTouches: [touchObj],
-    });
-
-    expect(onToggleSelect).toHaveBeenCalledWith(mockMsg.id);
-    expect(document.activeElement).toBe(inputEl);
-    document.body.removeChild(inputEl);
-  });
-
-  it('does not re-invoke focus on active input if activeElement is already the input during long press (prevents Brave flicker)', () => {
-    const onToggleSelect = vi.fn();
-    const inputEl = document.createElement('textarea');
-    document.body.appendChild(inputEl);
-    inputEl.focus();
-
-    const focusSpy = vi.spyOn(inputEl, 'focus');
-
-    const { getByTestId } = render(
-      <TestMessageGestureComponent onToggleSelect={onToggleSelect} />
-    );
-
-    const row = getByTestId('message-row');
-    const touchObj = { clientX: 100, clientY: 200, identifier: 0, target: row };
-
-    fireEvent.touchStart(row, {
-      touches: [touchObj],
-      targetTouches: [touchObj],
-      changedTouches: [touchObj],
-    });
-
-    act(() => {
-      vi.advanceTimersByTime(LONG_PRESS_DURATION_MS);
-    });
-
-    fireEvent.touchEnd(row, {
-      touches: [],
-      changedTouches: [touchObj],
-    });
-
-    // Since inputEl was already focused, .focus() should NOT be repeatedly called
-    expect(focusSpy).not.toHaveBeenCalled();
-    expect(document.activeElement).toBe(inputEl);
-    document.body.removeChild(inputEl);
-  });
-
-  it('preserves focus on active text input when tapping a message to toggle/deselect in select mode', () => {
-    const onToggleSelect = vi.fn();
-    const inputEl = document.createElement('textarea');
-    document.body.appendChild(inputEl);
-    inputEl.focus();
-
-    const { getByTestId } = render(
-      <TestMessageGestureComponent isSelectModeActive={true} onToggleSelect={onToggleSelect} />
-    );
-
-    const row = getByTestId('message-row');
-    const touchObj = { clientX: 100, clientY: 200, identifier: 0, target: row };
-
-    fireEvent.touchStart(row, {
-      touches: [touchObj],
-      targetTouches: [touchObj],
-      changedTouches: [touchObj],
-    });
-
-    fireEvent.touchEnd(row, {
-      touches: [],
-      changedTouches: [touchObj],
-    });
-
-    // Simulated browser mousedown & click following touch
-    const mousedownEvent = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
-    row.dispatchEvent(mousedownEvent);
-    expect(mousedownEvent.defaultPrevented).toBe(true);
-
-    const clickEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
-    row.dispatchEvent(clickEvent);
-    expect(clickEvent.defaultPrevented).toBe(true);
-
-    expect(onToggleSelect).toHaveBeenCalledWith(mockMsg.id);
-    expect(document.activeElement).toBe(inputEl);
-    document.body.removeChild(inputEl);
   });
 });

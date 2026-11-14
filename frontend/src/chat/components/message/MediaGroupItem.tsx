@@ -200,7 +200,6 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
 
   const {
     messageRowRef,
-    handleMouseDown,
     handleLongPressStart,
     handleLongPressMove,
     handleLongPressEnd,
@@ -344,7 +343,7 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
             handleSetReply(groupReplyTarget);
           }
         }}
-        onMouseDown={handleMouseDown}
+        onMouseDown={handleLongPressStart}
         onMouseUp={handleLongPressEnd}
         onTouchStart={handleLongPressStart}
         onTouchMove={handleLongPressMove}
@@ -354,13 +353,7 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
         {isSelectModeActive && (!isMobileView || selectedMessages.length > 1) && (
           <SelectCheckboxContainer
             data-checkbox
-            onPointerDown={(e) => {
-              if (isMobileView) {
-                e.preventDefault();
-              }
-            }}
             onClick={(e) => {
-              e.preventDefault();
               e.stopPropagation();
               handleToggleSelectMessage(primaryMessage.id);
             }}

@@ -286,19 +286,10 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
   );
 
   return (
-    <Footer style={{ position: 'relative' }}>
-      {isSelectModeActive && (
+    <Footer>
+      {isSelectModeActive ? (
         <SelectModeFooter>
-          <CancelPreviewButton
-            onPointerDown={(e) => {
-              if (isMobileView) {
-                e.preventDefault();
-              }
-            }}
-            onClick={onCancelSelectMode}
-          >
-            &times;
-          </CancelPreviewButton>
+          <CancelPreviewButton onClick={onCancelSelectMode}>&times;</CancelPreviewButton>
           <span>{selectedMessages.length} selected</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             {canEditSelectedMessage && selectedMessage && (
@@ -371,23 +362,8 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
             </DeleteButton>
           </div>
         </SelectModeFooter>
-      )}
-      <div
-        style={
-          isSelectModeActive
-            ? {
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                opacity: 0,
-                pointerEvents: 'none',
-                zIndex: -1,
-              }
-            : undefined
-        }
-      >
+      ) : (
+        <div>
           {editingMessageId && (
             <EditPreviewContainer>
               <EditPreviewIcon>
@@ -847,6 +823,7 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
             </div>
           )}
         </div>
+      )}
     </Footer>
   );
 };
