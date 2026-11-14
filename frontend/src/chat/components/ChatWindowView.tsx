@@ -112,13 +112,6 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
           $isMobileView={viewport.isMobileView}
           ref={chatContainerRef as any}
           onScroll={handleMessagesContainerScroll}
-          onTouchStart={() => {
-            if (viewport.isMobileView || isTouchDevice()) {
-              if (messageInputRef.current && document.activeElement === messageInputRef.current) {
-                messageInputRef.current.blur();
-              }
-            }
-          }}
           onWheel={(e) => {
             if (e.deltaY < 0) {
               viewport.suppressInitialBottomPinRef.current = true;

@@ -55,6 +55,7 @@ export function useChatViewport({
   const isViewportResizingRef = useRef(false);
   const wasAtBottomBeforeResizeRef = useRef(true);
   const resizeTransitionTimerRef = useRef<number | null>(null);
+  const handleViewportResizeRef = useRef<() => void>(() => {});
 
   const getChatScrollerElement = useCallback((): HTMLElement | null => {
     if (!chatContainerRef.current) return null;
@@ -134,6 +135,8 @@ export function useChatViewport({
       if (shouldSuppressProgrammaticScroll()) return;
       const scroller = getChatScrollerElement();
       if (!scroller) return;
+      // Force synchronous reflow so that scroller.clientHeight reflects the updated --app-height immediately
+      void scroller.offsetHeight;
       scroller.scrollTop = scroller.scrollHeight;
       isAtBottomRef.current = true;
       lastAtBottomStateRef.current = true;
@@ -204,17 +207,25 @@ export function useChatViewport({
 
       if (isHeightChanging && wasAtBottomBeforeResizeRef.current) {
         // Chat was at bottom before keyboard/viewport resized:
-        // Ensure messages shift upward and remain anchored at the bottom.
+        // Ensure messages shift upward and remain anchored at the bottom in real time.
         pinToBottomImmediate();
         requestAnimationFrame(pinToBottomImmediate);
 
-        clearPendingBottomScrollTimers();
-        const delays = [30, 80, 160, 260, 400, 550];
-        pendingBottomScrollTimeoutsRef.current = delays.map((delay) =>
-          window.setTimeout(pinToBottomImmediate, delay)
-        );
+        if (pendingBottomScrollTimeoutsRef.current.length === 0) {
+          const delays = [20, 60, 120, 220, 360];
+          pendingBottomScrollTimeoutsRef.current = delays.map((delay, idx) =>
+            window.setTimeout(() => {
+              pinToBottomImmediate();
+              if (idx === delays.length - 1) {
+                pendingBottomScrollTimeoutsRef.current = [];
+              }
+            }, delay)
+          );
+        }
       }
     };
+
+    handleViewportResizeRef.current = handleViewportResize;
 
     const handleViewportScroll = () => {
       const isIOS =
@@ -293,6 +304,7 @@ export function useChatViewport({
       window.removeEventListener('orientationchange', handleViewportResize);
       window.removeEventListener('focus', handleViewportResize);
       document.removeEventListener('visibilitychange', handleViewportResize);
+      handleViewportResizeRef.current = () => {};
     };
   }, [clearPendingBottomScrollTimers, getChatScrollerElement, shouldSuppressProgrammaticScroll]);
 
@@ -313,14 +325,27 @@ export function useChatViewport({
     }, 700);
 
     if (atBottom && scroller && !shouldSuppressProgrammaticScroll()) {
-      requestAnimationFrame(() => {
-        if (wasAtBottomBeforeResizeRef.current && !shouldSuppressProgrammaticScroll()) {
-          scroller.scrollTop = scroller.scrollHeight;
+      // Actively track the keyboard opening transition via requestAnimationFrame
+      // so messages shift upward in lockstep with the keyboard opening animation.
+      let frame = 0;
+      const maxFrames = 30; // ~500ms at 60fps
+      const syncOnKeyboardOpen = () => {
+        if (!wasAtBottomBeforeResizeRef.current || shouldSuppressProgrammaticScroll()) return;
+        handleViewportResizeRef.current();
+        const currentScroller = getChatScrollerElement();
+        if (currentScroller) {
+          void currentScroller.offsetHeight;
+          currentScroller.scrollTop = currentScroller.scrollHeight;
           isAtBottomRef.current = true;
           lastAtBottomStateRef.current = true;
           setIsScrollToBottomVisible(false);
         }
-      });
+        frame++;
+        if (frame < maxFrames && isViewportResizingRef.current) {
+          requestAnimationFrame(syncOnKeyboardOpen);
+        }
+      };
+      requestAnimationFrame(syncOnKeyboardOpen);
     }
   }, [getChatScrollerElement, shouldSuppressProgrammaticScroll]);
 
