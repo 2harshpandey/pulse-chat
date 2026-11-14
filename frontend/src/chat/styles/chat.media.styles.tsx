@@ -867,7 +867,7 @@ export const CancelPreviewButton = styled.button`
 export const MediaGroupGrid = styled.div<{ $count: number }>`
   display: grid;
   gap: 3px;
-  width: clamp(220px, 68vw, 320px);
+  width: clamp(220px, 74vw, 300px);
   max-width: 100%;
   box-sizing: border-box;
   border-radius: 0.75rem;
@@ -901,12 +901,12 @@ export const MediaGroupGrid = styled.div<{ $count: number }>`
   }}
 
   @media (max-width: 768px) {
-    width: clamp(200px, 72vw, 280px);
+    width: clamp(200px, 76vw, 270px);
     max-width: 100%;
   }
 
   @media (max-width: 420px) {
-    width: 100%;
+    width: clamp(180px, 76vw, 246px);
     max-width: 100%;
   }
 `;

@@ -492,6 +492,7 @@ export const MessageBubble = styled.div<{ $sender: string; $messageType: string;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
   min-width: ${props => props.$messageType === 'text' ? '4.5rem' : '0'};
+  width: ${props => props.$messageType === 'group' ? 'fit-content' : 'auto'};
   box-sizing: border-box;
   /* Keep message geometry and paint stable while virtualized rows are recycled.
      Animated transitions here can look like shaking/blinking during fast scroll. */
@@ -506,7 +507,7 @@ export const MessageBubble = styled.div<{ $sender: string; $messageType: string;
       props.$messageType === 'text'
         ? '68%'
         : props.$messageType === 'group'
-        ? 'min(82vw, 300px)'
+        ? 'min(84vw, 300px)'
         : 'min(76vw, 272px)'};
   }
 
@@ -515,7 +516,7 @@ export const MessageBubble = styled.div<{ $sender: string; $messageType: string;
       props.$messageType === 'text'
         ? '72%'
         : props.$messageType === 'group'
-        ? 'min(80vw, 260px)'
+        ? 'min(84vw, 270px)'
         : 'min(72vw, 248px)'};
   }
 
