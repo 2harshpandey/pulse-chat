@@ -508,8 +508,9 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
                                   : 'Tap to load'}
                               </MediaLoadLabel>
                             </MediaLoadGate>
-                            {tileMediaSizeLabel && <MediaSizeBadge>{tileMediaSizeLabel}</MediaSizeBadge>}
-                            {isVideo && (
+                            {tileMediaSizeLabel ? (
+                              <MediaSizeBadge>{tileMediaSizeLabel}</MediaSizeBadge>
+                            ) : isVideo ? (
                               <MediaVideoCornerTag style={{ zIndex: 3 }}>
                                 <svg viewBox="0 0 24 24">
                                   <polygon points="23 7 16 12 23 17 23 7" />
@@ -517,7 +518,7 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
                                 </svg>
                                 VIDEO
                               </MediaVideoCornerTag>
-                            )}
+                            ) : null}
                           </>
                         )}
                       </>

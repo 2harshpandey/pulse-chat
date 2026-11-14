@@ -263,7 +263,7 @@ export const MediaSizeBadge = styled.span`
   border: 1px solid rgba(148, 163, 184, 0.42);
   backdrop-filter: blur(5px);
   -webkit-backdrop-filter: blur(5px);
-  box-shadow: 0 6px 18px rgba(2, 6, 23, 0.25);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
 
   @media (max-width: 768px) {
     font-size: 0.62rem;
