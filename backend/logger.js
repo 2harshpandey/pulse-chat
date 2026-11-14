@@ -1,8 +1,26 @@
 const winston = require('winston');
 
+// Suppress transient socket-teardown artifacts from aborted TCP connections.
+// When mobile devices refresh or background during TCP teardown, Node's network layer
+// may emit an unhandled ERR_INVALID_IP_ADDRESS with undefined. Filtering it out
+// prevents noisy non-actionable log pollution while keeping real errors untouched.
+const ignoreInvalidIpUndefined = winston.format((info) => {
+  const msg = String(info.message || '');
+  if (
+    msg === 'Invalid IP address: undefined' ||
+    msg === 'invalid IP address: undefined' ||
+    msg.includes('Invalid IP address: undefined') ||
+    msg.includes('invalid IP address: undefined')
+  ) {
+    return false;
+  }
+  return info;
+});
+
 const logger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(
+    ignoreInvalidIpUndefined(),
     winston.format.timestamp({
       format: () => {
         // Always display in IST (UTC+5:30) with 12-hour AM/PM format regardless of server timezone

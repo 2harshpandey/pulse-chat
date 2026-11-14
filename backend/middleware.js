@@ -34,7 +34,7 @@ const getClientIp = (req) => {
   } catch (_) {}
   // Fallback only to socket address (safe — not user-controlled)
   if (!raw) {
-    raw = req.socket?.remoteAddress || '127.0.0.1';
+    raw = req.socket?.remoteAddress || req.connection?.remoteAddress || '127.0.0.1';
   }
   // Handle bare IPv4+port:     "1.2.3.4:5678"  → "1.2.3.4"
   // Handle bracketed IPv6+port: "[::1]:5678"   → "::1"
@@ -62,7 +62,7 @@ const extractIp = (req) => {
     raw = req.ip;
   } catch (_) {}
   if (!raw) {
-    raw = req.socket?.remoteAddress || '127.0.0.1';
+    raw = req.socket?.remoteAddress || req.connection?.remoteAddress || '127.0.0.1';
   }
   const cleaned = String(raw || '127.0.0.1')
     .replace(/^\[(.+)\]:\d+$/, '$1')

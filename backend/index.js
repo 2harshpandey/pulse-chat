@@ -99,6 +99,27 @@ const PORT = process.env.PORT || 8080;
 // return 500, which in turn breaks the send button, scrolling, and reconnection.
 app.set('trust proxy', 1);
 
+// Safely patch express.request prototype 'ip' getter to ensure it NEVER throws
+// Node.js ERR_INVALID_IP_ADDRESS or evaluates proxy-addr on destroyed/undefined sockets.
+const originalIpGetter = Object.getOwnPropertyDescriptor(express.request, 'ip')?.get;
+Object.defineProperty(express.request, 'ip', {
+  configurable: true,
+  enumerable: true,
+  get() {
+    try {
+      const socketIp = this.socket?.remoteAddress || this.connection?.remoteAddress;
+      if (!socketIp) return '127.0.0.1';
+      const resolved = originalIpGetter ? originalIpGetter.call(this) : socketIp;
+      if (!resolved || resolved === 'undefined' || resolved === 'unknown') {
+        return socketIp || '127.0.0.1';
+      }
+      return resolved;
+    } catch (_) {
+      return this.socket?.remoteAddress || this.connection?.remoteAddress || '127.0.0.1';
+    }
+  },
+});
+
 // Ensure req.ip is safely resolved and memoized on request arrival.
 // When clients abruptly disconnect, navigate away, or rapidly refresh, Node.js tears down
 // the underlying TCP socket. If req.ip is evaluated after socket destruction, Express's
@@ -106,10 +127,10 @@ app.set('trust proxy', 1);
 // "invalid IP address: undefined". Caching the resolved IP (or falling back to '127.0.0.1')
 // guarantees rate limiters, loggers, and route guards never encounter an undefined IP.
 app.use((req, _res, next) => {
-  const socketIp = req.socket?.remoteAddress;
+  const socketIp = req.socket?.remoteAddress || req.connection?.remoteAddress;
   let resolvedIp = '127.0.0.1';
   try {
-    resolvedIp = req.ip || socketIp || '127.0.0.1';
+    resolvedIp = (socketIp ? req.ip : null) || socketIp || '127.0.0.1';
   } catch (_) {
     resolvedIp = socketIp || '127.0.0.1';
   }
