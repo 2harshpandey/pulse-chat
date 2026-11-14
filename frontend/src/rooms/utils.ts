@@ -22,8 +22,8 @@ export function extractRoomIdFromInput(input: string): string {
   // 2. Strip query string and hash
   val = val.split('?')[0].split('#')[0];
 
-  // 3. Match /room/<roomId> (case-insensitive)
-  const roomMatch = val.match(/(?:^|\/)room\/([^/?#]+)/i);
+  // 3. Match /room/<roomId>, /admin/<roomId>, or /join/<roomId> (case-insensitive)
+  const roomMatch = val.match(/(?:^|\/)(?:room|admin|join)\/([^/?#]+)/i);
   if (roomMatch && roomMatch[1]) {
     val = roomMatch[1];
   } else if (/(?:^|\/)me(?:\/|$)/i.test(val) || val.toLowerCase() === 'me' || val.toLowerCase() === '/me') {

@@ -295,7 +295,11 @@ const resetPasswordAttempts = (key) => {
 const adminAuth = async (req, res, next) => {
   const password = typeof req.headers['x-admin-password'] === 'string' ? req.headers['x-admin-password'] : '';
   const rawRoomId = req.headers['x-room-id'];
-  const roomId = typeof rawRoomId === 'string' && rawRoomId.trim() ? rawRoomId.trim() : 'me';
+  let roomId = typeof rawRoomId === 'string' && rawRoomId.trim() ? rawRoomId.trim() : 'me';
+  const lowerRoomId = roomId.toLowerCase();
+  if (lowerRoomId === 'me' || lowerRoomId === 'global') {
+    roomId = lowerRoomId;
+  }
   const ip = extractIp(req);
   const key = `${ip}_${roomId}`;
   req.passwordRateLimitKey = key;
@@ -388,6 +392,10 @@ const generateDeviceHash = (components) => {
 const isUserBlocked = async (roomId, userId, ip, userAgent, deviceFingerprint) => {
   if (!roomId) roomId = 'me';
   roomId = String(roomId).trim();
+  const lowerRoomId = roomId.toLowerCase();
+  if (lowerRoomId === 'me' || lowerRoomId === 'global') {
+    roomId = lowerRoomId;
+  }
 
   let canonicalRoomId = roomId;
   if (roomId !== 'me' && roomId !== 'global') {
@@ -444,6 +452,10 @@ const isUserBlocked = async (roomId, userId, ip, userAgent, deviceFingerprint) =
 const isLoginLocked = async (roomId) => {
   if (!roomId) roomId = 'me';
   roomId = String(roomId).trim();
+  const lowerRoomId = roomId.toLowerCase();
+  if (lowerRoomId === 'me' || lowerRoomId === 'global') {
+    roomId = lowerRoomId;
+  }
 
   let canonicalRoomId = roomId;
   if (roomId !== 'me' && roomId !== 'global') {

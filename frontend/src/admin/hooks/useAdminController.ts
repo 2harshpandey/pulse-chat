@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useTheme } from '../../ThemeContext';
 import { resolveApiBaseUrl } from '../../chat/utils';
+import { extractRoomIdFromInput } from '../../rooms/utils';
 import type { UserProfile, Tab } from '../types';
 import { useAdminTempLinks } from './useAdminTempLinks';
 import { useAdminSecurity } from './useAdminSecurity';
@@ -15,7 +16,13 @@ export function useAdminController() {
   const { roomId: urlRoomId } = useParams<{ roomId?: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const [roomId, setRoomId] = useState(urlRoomId || 'me');
+  const rawUrlRoomId = urlRoomId ? extractRoomIdFromInput(urlRoomId) : 'me';
+  const normalizedUrlRoomId = rawUrlRoomId.toLowerCase() === 'global'
+    ? 'global'
+    : rawUrlRoomId.toLowerCase() === 'me'
+    ? 'me'
+    : rawUrlRoomId;
+  const [roomId, setRoomId] = useState(normalizedUrlRoomId);
   const [isImpersonating] = useState(!!location.state?.isImpersonating);
   const [password, setPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);

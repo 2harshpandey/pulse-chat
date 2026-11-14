@@ -70,7 +70,11 @@ const handleAdminAuth = async (ws, rawData, broadcastToAdmins, loadPinnedMessage
     }
 
     const rawRoomId = data.roomId;
-    const roomId = typeof rawRoomId === 'string' && rawRoomId.trim() ? rawRoomId.trim() : 'me';
+    let roomId = typeof rawRoomId === 'string' && rawRoomId.trim() ? rawRoomId.trim() : 'me';
+    const lowerRoomId = roomId.toLowerCase();
+    if (lowerRoomId === 'me' || lowerRoomId === 'global') {
+      roomId = lowerRoomId;
+    }
     const password = typeof data.password === 'string' ? data.password : '';
     const clientIp = ws.clientIp || 'unknown';
 

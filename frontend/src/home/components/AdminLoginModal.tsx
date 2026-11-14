@@ -1,4 +1,5 @@
 import React from 'react';
+import { extractRoomIdFromInput } from '../../rooms/utils';
 import {
   ModalOverlay,
   ModalContent,
@@ -56,11 +57,24 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
             <Label>Room ID</Label>
             <Input
               type="text"
-              placeholder="Enter the Room ID you manage"
+              placeholder="e.g. dev_lounge, global, or full link"
               value={adminRoomId}
               onChange={(e) => {
-                setAdminRoomId(e.target.value);
+                const val = e.target.value;
+                if (val.includes('/') || val.includes(':')) {
+                  setAdminRoomId(extractRoomIdFromInput(val));
+                } else {
+                  setAdminRoomId(val.replace(/[^a-zA-Z0-9._-]/g, ''));
+                }
                 if (adminError) setAdminError('');
+              }}
+              onPaste={(e) => {
+                const pastedText = e.clipboardData.getData('text');
+                if (pastedText && (pastedText.includes('/') || pastedText.includes(':'))) {
+                  e.preventDefault();
+                  setAdminRoomId(extractRoomIdFromInput(pastedText));
+                  if (adminError) setAdminError('');
+                }
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
@@ -68,7 +82,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                   passwordInputRef.current?.focus();
                 }
               }}
-              autoFocus={!window.matchMedia('(pointer: coarse)').matches}
+              autoFocus={typeof window !== 'undefined' && !window.matchMedia?.('(pointer: coarse)')?.matches}
             />
           </FormGroup>
           <FormGroup>

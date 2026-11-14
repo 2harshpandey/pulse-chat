@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../../ThemeContext';
 import { resolveApiBaseUrl } from '../../chat/utils';
+import { extractRoomIdFromInput } from '../../rooms/utils';
 
 export const useHomeController = () => {
   const navigate = useNavigate();
@@ -22,11 +23,12 @@ export const useHomeController = () => {
 
   const handleAdminSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!adminRoomId.trim() && !adminPassword.trim()) {
+    const cleanRoomInput = extractRoomIdFromInput(adminRoomId);
+    if (!cleanRoomInput && !adminPassword.trim()) {
       setAdminError('Both Room ID and Admin Password are required.');
       return;
     }
-    if (!adminRoomId.trim()) {
+    if (!cleanRoomInput) {
       setAdminError('Please enter the Room ID.');
       return;
     }
@@ -40,7 +42,26 @@ export const useHomeController = () => {
 
     try {
       const apiBase = resolveApiBaseUrl();
-      const roomId = adminRoomId.trim();
+      const lowerInput = cleanRoomInput.toLowerCase();
+      let targetRoomId = lowerInput === 'me'
+        ? 'me'
+        : lowerInput === 'global'
+        ? 'global'
+        : cleanRoomInput;
+
+      // Check if room metadata can resolve the canonical room ID case-insensitively
+      try {
+        const metaRes = await fetch(`${apiBase}/api/rooms/${encodeURIComponent(cleanRoomInput)}/meta`);
+        if (metaRes.ok) {
+          const metaData = await metaRes.json();
+          if (metaData && metaData.id) {
+            targetRoomId = metaData.id;
+          }
+        }
+      } catch (_) {
+        // Fallback to targetRoomId
+      }
+
       const trimmedPassword = adminPassword.trim();
       const passwordAttempts = (trimmedPassword && trimmedPassword !== adminPassword)
         ? [adminPassword, trimmedPassword]
@@ -50,7 +71,7 @@ export const useHomeController = () => {
       let statusError = '';
 
       for (const candidate of passwordAttempts) {
-        const authHeaders = { 'x-admin-password': candidate, 'x-room-id': roomId };
+        const authHeaders = { 'x-admin-password': candidate, 'x-room-id': targetRoomId };
         const usersRes = await fetch(`${apiBase}/api/admin/users`, { headers: authHeaders });
 
         if (usersRes.ok) {
@@ -62,7 +83,7 @@ export const useHomeController = () => {
       }
 
       if (isValid) {
-        navigate(`/admin/${roomId}`, { state: { autoLoginPassword: adminPassword } });
+        navigate(`/admin/${targetRoomId}`, { state: { autoLoginPassword: adminPassword } });
       } else {
         setAdminError(statusError || 'Room ID or password is incorrect.');
       }

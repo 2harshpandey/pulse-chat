@@ -426,28 +426,29 @@ router.post('/admin-auth', authLimiter, checkPasswordRateLimit, async (req, res)
     return res.status(400).json({ error: 'Room ID and Admin Password must be non-empty strings.' });
   }
   const cleanRoomId = roomId.trim();
+  const lowerRoomId = cleanRoomId.toLowerCase();
 
   try {
-    if (cleanRoomId.toLowerCase() === 'me' && process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)) {
+    if ((lowerRoomId === 'me' || lowerRoomId === 'global') && process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)) {
        resetPasswordAttempts(req.passwordRateLimitKey);
-       return res.json({ success: true, roomId: 'me' });
+       return res.json({ success: true, roomId: lowerRoomId });
     }
 
     const room = await Room.findByIdOrAlias(cleanRoomId);
     if (!room) {
-      if (cleanRoomId.toLowerCase() === 'me') {
+      if (lowerRoomId === 'me' || lowerRoomId === 'global') {
         recordFailedPasswordAttempt(req.passwordRateLimitKey, req);
         const ip = extractIp(req);
         const userAgent = req.headers['user-agent'] || '';
         AuditLog.create({
-          roomId: 'me',
+          roomId: lowerRoomId,
           type: 'admin_auth_failed',
           details: { reason: 'Incorrect admin password' },
           ip,
           userAgent,
         }).then((entry) => {
-          _broadcastToAdmins('me', 'audit_log', entry);
-          _broadcastToAdmins('me', 'activity', `Security warning: Failed admin login attempt for room 'me'.`);
+          _broadcastToAdmins(lowerRoomId, 'audit_log', entry);
+          _broadcastToAdmins(lowerRoomId, 'activity', `Security warning: Failed admin login attempt for room '${lowerRoomId}'.`);
         }).catch(() => {});
         return res.status(401).json({ error: 'Invalid admin password.' });
       }
@@ -461,7 +462,7 @@ router.post('/admin-auth', authLimiter, checkPasswordRateLimit, async (req, res)
         room.save().catch((err) => logger.error('Failed to upgrade legacy admin password:', err));
         invalidateCachedRoom(room.id);
       }
-      return res.json({ success: true });
+      return res.json({ success: true, roomId: room.id });
     }
 
     recordFailedPasswordAttempt(req.passwordRateLimitKey, req);
@@ -502,18 +503,21 @@ const recordAdminAuthFailure = (req, roomId) => {
 
 // Admin room details
 router.get('/admin/details', apiLimiter, checkPasswordRateLimit, async (req, res) => {
-  const roomId = req.headers['x-room-id'];
+  const rawRoomId = req.headers['x-room-id'];
   const adminPassword = req.headers['x-admin-password'];
 
-  if (!roomId || typeof roomId !== 'string' || !roomId.trim() || !adminPassword || typeof adminPassword !== 'string') {
-    recordAdminAuthFailure(req, typeof roomId === 'string' ? roomId : 'me');
+  if (!rawRoomId || typeof rawRoomId !== 'string' || !rawRoomId.trim() || !adminPassword || typeof adminPassword !== 'string') {
+    recordAdminAuthFailure(req, typeof rawRoomId === 'string' ? rawRoomId : 'me');
     return res.status(401).json({ error: 'Unauthorized' });
   }
+
+  const roomId = rawRoomId.trim();
+  const lowerRoomId = roomId.toLowerCase();
 
   try {
      let isValid = false;
      let room = null;
-     if (roomId === 'me' && process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)) {
+     if ((lowerRoomId === 'me' || lowerRoomId === 'global') && process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)) {
         isValid = true;
      } else {
         room = await Room.findByIdOrAlias(roomId);
@@ -528,7 +532,8 @@ router.get('/admin/details', apiLimiter, checkPasswordRateLimit, async (req, res
      }
      
      resetPasswordAttempts(req.passwordRateLimitKey);
-     res.json({ id: room ? room.id : roomId, name: room ? room.name : 'Main Room', description: room?.description, alias: room?.alias, lastIdChangeAt: room?.lastIdChangeAt, isPrivate: room?.isPrivate, hasJoinPassword: !!room?.joinPassword });
+     const canonicalId = room ? room.id : (lowerRoomId === 'me' || lowerRoomId === 'global' ? lowerRoomId : roomId);
+     res.json({ id: canonicalId, name: room ? room.name : (canonicalId === 'global' ? 'Global Chat' : 'Main Room'), description: room?.description, alias: room?.alias, lastIdChangeAt: room?.lastIdChangeAt, isPrivate: room?.isPrivate, hasJoinPassword: !!room?.joinPassword });
   } catch (error) {
     res.status(500).json({ error: 'Failed to get room details' });
   }

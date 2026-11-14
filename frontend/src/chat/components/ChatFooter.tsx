@@ -473,8 +473,8 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
                         return replyingTo.deletedBy === 'admin'
                           ? 'This message has been deleted by an admin.'
                           : replyingTo.deletedBy === currentUserId
-                          ? 'You deleted this message.'
-                          : 'This message has been deleted.';
+                            ? 'You deleted this message.'
+                            : 'This message has been deleted.';
                       }
                       if (isGroupReply) {
                         return (
@@ -696,10 +696,10 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
                             !isConnected
                               ? 'Connecting...'
                               : editingMessageId
-                              ? 'Edit message...'
-                              : stagedFile || stagedGif
-                              ? 'Add a caption...'
-                              : 'Type your message...'
+                                ? 'Edit message...'
+                                : stagedFile || stagedGif
+                                  ? 'Add a caption...'
+                                  : 'Type your message...'
                           }
                           value={inputMessage}
                           onChange={onInputChange}

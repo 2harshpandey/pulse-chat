@@ -41,6 +41,37 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
   : null;
 
+const isOriginAllowed = (origin) => {
+  // Allow requests without an origin header (same-origin, curl, server-to-server, mobile native)
+  if (!origin) return true;
+
+  // Wildcard permits all origins
+  if (!allowedOrigins || allowedOrigins.includes('*')) return true;
+
+  // Direct match against explicitly configured ALLOWED_ORIGINS
+  if (allowedOrigins.includes(origin)) return true;
+
+  // Allow local development and LAN testing origins (localhost, 127.0.0.1, IPv6, 192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+  try {
+    const url = new URL(origin);
+    const hostname = url.hostname;
+    if (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '[::1]' ||
+      /^192\.168\.\d{1,3}\.\d{1,3}$/.test(hostname) ||
+      /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname) ||
+      /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(hostname)
+    ) {
+      return true;
+    }
+  } catch {
+    // Malformed origin URL
+  }
+
+  return false;
+};
+
 // ---------------------------------------------------------------------------
 // Server setup
 // ---------------------------------------------------------------------------
@@ -51,7 +82,7 @@ const wss = new WebSocketServer({
   maxPayload: 1024 * 1024, // 1MB maximum frame size to prevent OOM denial-of-service
   verifyClient: (info, callback) => {
     const origin = info.origin || info.req.headers.origin;
-    if (!origin || !allowedOrigins || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+    if (isOriginAllowed(origin)) {
       return callback(true);
     }
     logger.warn(`Blocked cross-origin WebSocket connection from disallowed origin: ${origin}`);
@@ -91,10 +122,11 @@ app.use(helmet({
 }));
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || !allowedOrigins || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+    if (isOriginAllowed(origin)) {
       return callback(null, true);
     }
-    return callback(new Error('Blocked by CORS policy'));
+    logger.warn(`Blocked cross-origin HTTP request from disallowed origin: ${origin}`);
+    return callback(new Error(`Blocked by CORS policy: origin '${origin}' is not allowed`));
   },
   methods: ['GET', 'HEAD', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-password', 'x-admin-secret', 'x-room-id', 'x-user-id', 'x-session-token', 'x-room-password', 'Range'],

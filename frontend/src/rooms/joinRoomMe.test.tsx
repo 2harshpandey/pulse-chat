@@ -29,6 +29,12 @@ describe('extractRoomIdFromInput helper', () => {
     expect(extractRoomIdFromInput('Dev_Lounge')).toBe('Dev_Lounge');
     expect(extractRoomIdFromInput('https://pulsechat.tech/room/Dev_Lounge')).toBe('Dev_Lounge');
     expect(extractRoomIdFromInput('https://pulsechat.tech/ROOM/Dev_Lounge')).toBe('Dev_Lounge');
+    expect(extractRoomIdFromInput('https://pulsechat.tech/admin/dev_lounge')).toBe('dev_lounge');
+    expect(extractRoomIdFromInput('https://pulsechat.tech/ADMIN/Dev_Lounge')).toBe('Dev_Lounge');
+    expect(extractRoomIdFromInput('https://pulsechat.tech/admin/GLOBAL')).toBe('global');
+    expect(extractRoomIdFromInput('https://pulsechat.tech/admin/ME')).toBe('me');
+    expect(extractRoomIdFromInput('/admin/dev_lounge')).toBe('dev_lounge');
+    expect(extractRoomIdFromInput('/ADMIN/GLOBAL')).toBe('global');
     expect(extractRoomIdFromInput('http://localhost:3000/Room/my_custom-room.1?token=xyz#top')).toBe('my_custom-room.1');
   });
 });
