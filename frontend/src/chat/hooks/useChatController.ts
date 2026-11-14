@@ -72,12 +72,13 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
 
   // Redirect meta roomId if needed
   useEffect(() => {
-    if (userContext?.profile && roomId && roomId !== 'me') {
+    const lowerRoom = (roomId || '').toLowerCase();
+    if (userContext?.profile && roomId && lowerRoom !== 'me') {
       fetch(`${apiBase}/api/rooms/${roomId}/meta`)
         .then((res) => res.json())
         .then((data) => {
           if (data && data.id && data.id !== roomId) {
-            navigate(`/room/${data.id}`, { replace: true, state: location.state });
+            navigate(data.id === 'me' ? '/me' : `/room/${data.id}`, { replace: true, state: location.state });
           }
         })
         .catch(console.error);

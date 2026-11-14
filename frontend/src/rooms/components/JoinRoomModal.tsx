@@ -1,4 +1,5 @@
 import React from 'react';
+import { extractRoomIdFromInput } from '../utils';
 import {
   ModalOverlay,
   ModalContent,
@@ -59,13 +60,19 @@ export const JoinRoomModal: React.FC<JoinRoomModalProps> = ({
               type="text"
               value={joinRoomId}
               onChange={e => {
-                let val = e.target.value;
-                if (val.includes('/room/')) {
-                  val = val.split('/room/').pop()?.split('?')[0]?.split('#')[0] || val;
-                } else if (val.endsWith('/me') || val.includes('/me?') || val.includes('/me#') || val === '/me') {
-                  val = 'me';
+                const val = e.target.value;
+                if (val.includes('/') || val.includes(':')) {
+                  setJoinRoomId(extractRoomIdFromInput(val));
+                } else {
+                  setJoinRoomId(val.replace(/[^a-zA-Z0-9._-]/g, ''));
                 }
-                setJoinRoomId(val.replace(/[^a-zA-Z0-9._]/g, ''));
+              }}
+              onPaste={e => {
+                const pastedText = e.clipboardData.getData('text');
+                if (pastedText && (pastedText.includes('/') || pastedText.includes(':'))) {
+                  e.preventDefault();
+                  setJoinRoomId(extractRoomIdFromInput(pastedText));
+                }
               }}
               placeholder="e.g. dev_lounge or full link"
               autoFocus={typeof window !== 'undefined' && !window.matchMedia?.('(pointer: coarse)')?.matches}

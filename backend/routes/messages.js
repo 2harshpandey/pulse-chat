@@ -39,12 +39,14 @@ const isRoomAccessAllowed = async (rawRoomId, req) => {
   const clientIp = extractIp(req);
   const userAgent = req.headers['user-agent'] || '';
 
-  let canonicalRoomId = roomId;
+  const cleanRoomId = typeof roomId === 'string' ? roomId.trim() : 'me';
+  const lowerRoomId = cleanRoomId.toLowerCase();
+  let canonicalRoomId = lowerRoomId === 'me' ? 'me' : lowerRoomId === 'global' ? 'global' : cleanRoomId;
   let room = null;
 
-  if (roomId !== 'me' && roomId !== 'global') {
+  if (canonicalRoomId !== 'me' && canonicalRoomId !== 'global') {
     try {
-      room = await getCachedRoom(roomId);
+      room = await getCachedRoom(cleanRoomId);
       if (!room) {
         return false;
       }

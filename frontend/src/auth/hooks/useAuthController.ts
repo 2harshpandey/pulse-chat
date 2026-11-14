@@ -35,8 +35,9 @@ export const useAuthController = ({
   const [requiresPassword, setRequiresPassword] = useState<boolean | null>(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('token') || tempToken) return false;
-    if (roomId === 'global') return false;
-    if (roomId === 'me') return true;
+    const lowerRoom = (roomId || '').toLowerCase();
+    if (lowerRoom === 'global') return false;
+    if (lowerRoom === 'me') return true;
     return null;
   });
   const [passwordFocused, setPasswordFocused] = useState(false);
@@ -48,18 +49,19 @@ export const useAuthController = ({
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token') || tempToken;
+    const lowerRoom = (roomId || '').toLowerCase();
     if (token) {
       setIsTempLink(true);
       setRequiresPassword(false);
-    } else if (roomId === 'global') {
+    } else if (lowerRoom === 'global') {
       setRequiresPassword(false);
-    } else if (roomId && roomId !== 'me') {
+    } else if (roomId && lowerRoom !== 'me') {
       const apiBase = resolveApiBaseUrl();
       fetch(`${apiBase}/api/rooms/${roomId}/meta`)
         .then(res => res.json())
         .then(data => {
           if (data && data.id && data.id !== roomId) {
-            navigate(`/room/${data.id}`, { replace: true, state: location.state });
+            navigate(data.id === 'me' ? '/me' : `/room/${data.id}`, { replace: true, state: location.state });
             return;
           }
           if (data && typeof data.requiresPassword === 'boolean') {

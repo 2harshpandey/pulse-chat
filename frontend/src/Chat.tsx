@@ -181,16 +181,17 @@ function ChatAuthenticated({ isMe, isTempLink }: ChatProps) {
 function Chat({ isMe, isTempLink }: ChatProps = {}) {
   const userContext = useContext(UserContext);
   const { token: tempToken, roomId: urlRoomId } = useParams<{ token?: string; roomId?: string }>();
-  const roomId = isMe ? 'me' : (urlRoomId || userContext?.profile?.roomId || 'me');
+  const isMeRoom = isMe || urlRoomId?.toLowerCase() === 'me';
+  const roomId = isMeRoom ? 'me' : (urlRoomId || userContext?.profile?.roomId || 'me');
 
   if (!userContext?.profile) {
-    return <Auth onAuthSuccess={userContext?.login ?? (() => {})} tempToken={tempToken || null} roomId={roomId} />;
+    return <Auth onAuthSuccess={userContext?.login ?? (() => {})} tempToken={tempToken || null} roomId={roomId} isMeRoom={isMeRoom} />;
   }
 
   return (
     <ChatAuthenticated
       key={`${userContext.profile.userId}_${roomId}`}
-      isMe={isMe}
+      isMe={isMeRoom}
       isTempLink={isTempLink}
     />
   );

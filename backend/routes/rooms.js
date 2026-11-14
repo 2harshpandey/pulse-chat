@@ -176,10 +176,11 @@ router.get('/check-id', apiLimiter, async (req, res) => {
 router.get('/:id/meta', apiLimiter, async (req, res) => {
   const { id } = req.params;
   try {
-    if (id === 'global') {
-      return res.json({ isPrivate: false, requiresPassword: false, name: 'Global Chat' });
+    const cleanId = String(id || '').trim();
+    if (cleanId.toLowerCase() === 'global') {
+      return res.json({ id: 'global', isPrivate: false, requiresPassword: false, name: 'Global Chat' });
     }
-    if (id === 'me') {
+    if (cleanId.toLowerCase() === 'me') {
       return res.json({
         id: 'me',
         isPrivate: true,
@@ -188,7 +189,7 @@ router.get('/:id/meta', apiLimiter, async (req, res) => {
         description: 'Direct private chat room'
       });
     }
-    const room = await Room.findByIdOrAlias(id);
+    const room = await Room.findByIdOrAlias(cleanId);
     if (!room) return res.status(404).json({ error: 'Room not found.' });
     res.json({
       id: room.id,
@@ -210,11 +211,11 @@ router.post('/verify-join', authLimiter, checkPasswordRateLimit, async (req, res
   }
   const cleanRoomId = roomId.trim();
   
-  if (cleanRoomId === 'global') {
-    return res.json({ valid: true });
+  if (cleanRoomId.toLowerCase() === 'global') {
+    return res.json({ valid: true, roomId: 'global' });
   }
 
-  if (cleanRoomId === 'me') {
+  if (cleanRoomId.toLowerCase() === 'me') {
     if (process.env.CLIENT_PASSWORD && !timingSafeEqualStr(password || '', process.env.CLIENT_PASSWORD)) {
       recordFailedPasswordAttempt(req.passwordRateLimitKey, req);
       const ip = extractIp(req);
@@ -233,7 +234,7 @@ router.post('/verify-join', authLimiter, checkPasswordRateLimit, async (req, res
       return res.status(401).json({ error: 'Incorrect password.' });
     }
     resetPasswordAttempts(req.passwordRateLimitKey);
-    return res.json({ valid: true });
+    return res.json({ valid: true, roomId: 'me' });
   }
 
   try {
@@ -368,13 +369,23 @@ router.get('/search', apiLimiter, async (req, res) => {
 router.post('/join', authLimiter, checkPasswordRateLimit, async (req, res) => {
   const { id, joinPassword } = req.body;
   if (!id) return res.status(400).json({ error: 'Room ID is required.' });
+  const cleanId = String(id).trim();
+
+  if (cleanId.toLowerCase() === 'global') return res.json({ success: true, roomId: 'global' });
+  if (cleanId.toLowerCase() === 'me') {
+    if (!process.env.CLIENT_PASSWORD || timingSafeEqualStr(joinPassword || '', process.env.CLIENT_PASSWORD)) {
+      resetPasswordAttempts(req.passwordRateLimitKey);
+      return res.json({ success: true, roomId: 'me' });
+    }
+    return res.status(401).json({ error: 'Invalid password.' });
+  }
 
   try {
-    const room = await Room.findByIdOrAlias(id);
+    const room = await Room.findByIdOrAlias(cleanId);
     if (!room) return res.status(404).json({ error: 'Room not found.' });
     
-    if (!room.isPrivate) return res.json({ success: true });
-    if (!room.joinPassword) return res.json({ success: true });
+    if (!room.isPrivate) return res.json({ success: true, roomId: room.id });
+    if (!room.joinPassword) return res.json({ success: true, roomId: room.id });
 
     if (joinPassword && verifyPassword(joinPassword, room.joinPassword)) {
       resetPasswordAttempts(req.passwordRateLimitKey);
@@ -383,7 +394,7 @@ router.post('/join', authLimiter, checkPasswordRateLimit, async (req, res) => {
         room.save().catch((err) => logger.error('Failed to upgrade legacy room password:', err));
         invalidateCachedRoom(room.id);
       }
-      return res.json({ success: true });
+      return res.json({ success: true, roomId: room.id });
     }
 
     recordFailedPasswordAttempt(req.passwordRateLimitKey, req);
@@ -417,14 +428,14 @@ router.post('/admin-auth', authLimiter, checkPasswordRateLimit, async (req, res)
   const cleanRoomId = roomId.trim();
 
   try {
-    if (cleanRoomId === 'me' && process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)) {
+    if (cleanRoomId.toLowerCase() === 'me' && process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)) {
        resetPasswordAttempts(req.passwordRateLimitKey);
-       return res.json({ success: true });
+       return res.json({ success: true, roomId: 'me' });
     }
 
     const room = await Room.findByIdOrAlias(cleanRoomId);
     if (!room) {
-      if (cleanRoomId === 'me') {
+      if (cleanRoomId.toLowerCase() === 'me') {
         recordFailedPasswordAttempt(req.passwordRateLimitKey, req);
         const ip = extractIp(req);
         const userAgent = req.headers['user-agent'] || '';

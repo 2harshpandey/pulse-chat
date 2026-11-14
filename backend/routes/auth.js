@@ -134,7 +134,11 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
     const rawInputRoomId = rawRoomId.trim();
     let cleanRoomId = rawInputRoomId;
     let roomDoc = null;
-    if (cleanRoomId !== 'me' && cleanRoomId !== 'global') {
+    if (cleanRoomId.toLowerCase() === 'me') {
+      cleanRoomId = 'me';
+    } else if (cleanRoomId.toLowerCase() === 'global') {
+      cleanRoomId = 'global';
+    } else {
       roomDoc = await Room.findByIdOrAlias(cleanRoomId);
       if (!roomDoc) {
         return res.status(404).json({ success: false, error: 'Chat room does not exist.' });

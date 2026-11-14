@@ -82,9 +82,13 @@ const handleUserJoin = async ({
   // Enforce room existence and lookup password requirements
   let requiresPassword = false;
   let roomDoc = null;
-  if (roomId === 'me') {
+  const lowerRoomId = typeof roomId === 'string' ? roomId.trim().toLowerCase() : '';
+  if (lowerRoomId === 'me') {
+    roomId = 'me';
     requiresPassword = Boolean(process.env.CLIENT_PASSWORD);
-  } else if (roomId !== 'global') {
+  } else if (lowerRoomId === 'global') {
+    roomId = 'global';
+  } else {
     try {
       roomDoc = await Room.findByIdOrAlias(roomId, { lean: true });
       if (!roomDoc) {

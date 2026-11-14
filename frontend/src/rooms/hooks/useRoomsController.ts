@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { resolveApiBaseUrl, copyTextToClipboard } from '../../chat/utils';
 import { useTheme } from '../../ThemeContext';
 import { Room, RoomsStateSnapshot } from '../types';
+import { extractRoomIdFromInput } from '../utils';
 
 const apiBase = resolveApiBaseUrl();
 
@@ -260,12 +261,7 @@ export const useRoomsController = () => {
     e.preventDefault();
     setJoinModalError('');
 
-    let targetRoom = joinRoomId.trim();
-    if (targetRoom.includes('/room/')) {
-      targetRoom = targetRoom.split('/room/').pop()?.split('?')[0]?.split('#')[0] || targetRoom;
-    } else if (targetRoom.endsWith('/me') || targetRoom === 'me' || targetRoom === '/me') {
-      targetRoom = 'me';
-    }
+    let targetRoom = extractRoomIdFromInput(joinRoomId);
 
     if (!targetRoom) {
       setJoinModalError('Room ID is required.');
@@ -303,7 +299,7 @@ export const useRoomsController = () => {
     localStorage.setItem('pulseUsername', joinUsername.trim());
     setIsJoinModalOpen(false);
     saveStateBeforeNavigating();
-    const destination = targetRoom === 'me' ? '/me' : `/room/${targetRoom}`;
+    const destination = targetRoom.toLowerCase() === 'me' ? '/me' : `/room/${targetRoom}`;
     navigate(destination, {
       state: {
         autoJoin: true,
