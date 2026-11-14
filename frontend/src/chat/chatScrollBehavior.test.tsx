@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useChatViewport, IS_AT_BOTTOM_THRESHOLD_PX } from './hooks/useChatViewport';
+import { useChatComposer } from './hooks/useChatComposer';
 import { isTouchDevice } from './constants';
 
 describe('Chat scroll behavior & auto-scroll rules', () => {
@@ -601,5 +602,137 @@ describe('Mobile virtual keyboard resize & scroll anchoring', () => {
 
     expect(result.current.isViewportResizingRef.current).toBe(false);
     expect(result.current.wasAtBottomBeforeResizeRef.current).toBe(false);
+  });
+
+  it('explicitly blurs messageInput when mobile keyboard closes (viewport expands by >80px) to prevent zombie focus', () => {
+    vi.useFakeTimers();
+    const origInnerHeight = window.innerHeight;
+    window.innerHeight = 450;
+
+    const mockContainer = document.createElement('div');
+    const mockTextarea = document.createElement('textarea');
+    document.body.appendChild(mockTextarea);
+    mockTextarea.focus();
+    expect(document.activeElement).toBe(mockTextarea);
+
+    try {
+      const containerRef = { current: mockContainer };
+      const inputRef = { current: mockTextarea };
+      renderHook(() =>
+        useChatViewport({
+          chatContainerRef: containerRef as any,
+          inputOverlayRef: { current: null },
+          messageInputRef: inputRef as any,
+        })
+      );
+
+      // Soft keyboard closes (e.g. via back button/gesture): viewport expands from 450 to 800
+      act(() => {
+        window.innerHeight = 800;
+        window.dispatchEvent(new Event('resize'));
+      });
+
+      // Textarea must be explicitly blurred to eliminate zombie focus
+      expect(document.activeElement).not.toBe(mockTextarea);
+    } finally {
+      if (mockTextarea.parentNode) {
+        document.body.removeChild(mockTextarea);
+      }
+      window.innerHeight = origInnerHeight;
+      vi.useRealTimers();
+    }
+  });
+
+  it('blurs messageInput and activeElement when handleScrollToBottomButtonClick is triggered', () => {
+    const mockTextarea = document.createElement('textarea');
+    document.body.appendChild(mockTextarea);
+    mockTextarea.focus();
+    expect(document.activeElement).toBe(mockTextarea);
+
+    const scrollToBottomMock = vi.fn();
+    const inputRef = { current: mockTextarea };
+
+    const { result } = renderHook(() =>
+      useChatComposer({
+        inputMessage: '',
+        setInputMessage: vi.fn(),
+        inputMessageRef: { current: '' },
+        userId: 'user1',
+        roomId: 'testRoom',
+        messageInputRef: inputRef as any,
+        inputOverlayRef: { current: null },
+        chatContainerRef: { current: null },
+        skipNextInputLayoutSyncRef: { current: false },
+        resetInputLayerHeight: vi.fn(),
+        syncInputOverlayScroll: vi.fn(),
+        isMobileView: true,
+        stableViewportHeightRef: { current: 800 },
+        replyingTo: null,
+        setReplyingTo: vi.fn(),
+        editingMessageId: null,
+        setEditingMessageId: vi.fn(),
+        setEditingMessageOriginalText: vi.fn(),
+        priorDraftBeforeEdit: '',
+        setPriorDraftBeforeEdit: vi.fn(),
+        stagedFile: null,
+        setStagedFile: vi.fn(),
+        stagedFiles: [],
+        setStagedFiles: vi.fn(),
+        showFilePreview: false,
+        setShowFilePreview: vi.fn(),
+        previewCaption: '',
+        setPreviewCaption: vi.fn(),
+        setPreviewActiveIndex: vi.fn(),
+        preMediaDraft: '',
+        setPreMediaDraft: vi.fn(),
+        stageFilesForPreview: vi.fn(),
+        handleRequestCloseFilePreview: vi.fn(),
+        stagedGif: null,
+        setStagedGif: vi.fn(),
+        closeGifPicker: vi.fn(),
+        gifPickerRef: { current: null },
+        lightboxUrl: null,
+        closeLightbox: vi.fn(),
+        isSelectModeActive: false,
+        isDeleteConfirmationVisible: false,
+        isUserListVisible: false,
+        deleteMenuRef: { current: null },
+        setActiveDeleteMenu: vi.fn(),
+        messagesRef: { current: [] },
+        setMessages: vi.fn(),
+        appendMessageToWindow: vi.fn(),
+        hasMoreNewerMessagesRef: { current: false },
+        jumpToLatestMessages: vi.fn(),
+        activeSearchQuery: '',
+        chatSearchQuery: '',
+        isSearchActive: false,
+        resetSearch: vi.fn(),
+        forceScrollToBottomAsync: vi.fn(),
+        scrollToBottom: scrollToBottomMock,
+        syncBottomStateFromScroller: vi.fn(),
+        quoteJumpReturnStackRef: { current: [] },
+        scrollToLoadedMessage: vi.fn(),
+        setNewMessagesWhileScrolledUp: vi.fn(),
+        clearQuoteJumpSuppression: vi.fn(),
+        setHasMoreOlderMessages: vi.fn(),
+        setOldestLoadedAt: vi.fn(),
+        setFirstItemIndex: vi.fn(),
+      })
+    );
+
+    const mockEvent = {
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn(),
+    } as unknown as React.MouseEvent<HTMLButtonElement>;
+
+    act(() => {
+      result.current.handleScrollToBottomButtonClick(mockEvent);
+    });
+
+    expect(document.activeElement).not.toBe(mockTextarea);
+    expect(scrollToBottomMock).toHaveBeenCalledWith('auto', true);
+    if (mockTextarea.parentNode) {
+      document.body.removeChild(mockTextarea);
+    }
   });
 });

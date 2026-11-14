@@ -7,6 +7,7 @@ import { MessagesList } from './MessagesList';
 import { TypingIndicator } from '../TypingIndicator';
 import { useAlbumDownload } from '../albumDownloadManager';
 import { recordChatScroll } from '../chatScrollState';
+import { isTouchDevice } from '../constants';
 import {
   ChatWindow,
   MessagesAndScrollWrapper,
@@ -111,6 +112,13 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
           $isMobileView={viewport.isMobileView}
           ref={chatContainerRef as any}
           onScroll={handleMessagesContainerScroll}
+          onTouchStart={() => {
+            if (viewport.isMobileView || isTouchDevice()) {
+              if (messageInputRef.current && document.activeElement === messageInputRef.current) {
+                messageInputRef.current.blur();
+              }
+            }
+          }}
           onWheel={(e) => {
             if (e.deltaY < 0) {
               viewport.suppressInitialBottomPinRef.current = true;
@@ -192,7 +200,16 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
         <ScrollToBottomButton
           $isVisible={viewport.isScrollToBottomVisible}
           onClick={composer.handleScrollToBottomButtonClick}
-          onPointerDown={(e) => e.preventDefault()}
+          onPointerDown={(e) => {
+            if (isTouchDevice() || viewport.isMobileView || (messageInputRef.current && document.activeElement === messageInputRef.current)) {
+              messageInputRef.current?.blur();
+              if (document.activeElement && 'blur' in document.activeElement) {
+                (document.activeElement as HTMLElement).blur();
+              }
+            } else {
+              e.preventDefault();
+            }
+          }}
           aria-label={scrollToLatestLabel}
           title={scrollToLatestTitle}
         >

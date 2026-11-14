@@ -1120,13 +1120,25 @@ export function useChatComposer({
     const isMobileOS = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
       typeof navigator !== 'undefined' ? navigator.userAgent || '' : ''
     );
-    if (isMobileOS && isTouchDevice()) return;
+    if (isMobileOS && isTouchDevice()) {
+      if (messageInputRef.current && document.activeElement === messageInputRef.current) {
+        messageInputRef.current.blur();
+      }
+      return;
+    }
     messageInputRef.current?.focus();
   }, [chatContainerRef, isDeleteConfirmationVisible, isSelectModeActive, lightboxUrl, messageInputRef]);
 
   const handleScrollToBottomButtonClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
+
+    // Ensure any focused input/textarea is blurred so the mobile virtual keyboard
+    // does not automatically pop up when reaching the bottom.
+    messageInputRef.current?.blur();
+    if (document.activeElement && 'blur' in document.activeElement) {
+      (document.activeElement as HTMLElement).blur();
+    }
 
     const latestMessageId = messagesRef.current[messagesRef.current.length - 1]?.id || null;
     let returnTargetId: string | null = null;
@@ -1159,6 +1171,7 @@ export function useChatComposer({
     clearQuoteJumpSuppression,
     hasMoreNewerMessagesRef,
     jumpToLatestMessages,
+    messageInputRef,
     messagesRef,
     quoteJumpReturnStackRef,
     scrollToBottom,

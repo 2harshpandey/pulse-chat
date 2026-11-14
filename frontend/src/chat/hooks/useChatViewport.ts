@@ -192,6 +192,16 @@ export function useChatViewport({
         window.scrollTo(0, 0);
       }
 
+      // If the viewport expanded significantly without orientation change (soft keyboard closed via
+      // Android back button/gesture or keyboard hide key), ensure any focused text input is explicitly
+      // blurred to clear zombie DOM focus and prevent subsequent scrolling/interactions from automatically
+      // reopening the virtual keyboard.
+      if (widthDelta <= 40 && heightDelta > 80) {
+        if (messageInputRef?.current && document.activeElement === messageInputRef.current) {
+          messageInputRef.current.blur();
+        }
+      }
+
       if (isHeightChanging && wasAtBottomBeforeResizeRef.current) {
         // Chat was at bottom before keyboard/viewport resized:
         // Ensure messages shift upward and remain anchored at the bottom.
