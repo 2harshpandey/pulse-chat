@@ -52,6 +52,38 @@ export function useChatViewport({
   const stableViewportWidthRef = useRef<number>(typeof window !== 'undefined' ? window.innerWidth : 400);
   const appliedViewportHeightRef = useRef<number>(0);
 
+  const isViewportResizingRef = useRef(false);
+  const wasAtBottomBeforeResizeRef = useRef(true);
+  const resizeTransitionTimerRef = useRef<number | null>(null);
+
+  const getChatScrollerElement = useCallback((): HTMLElement | null => {
+    if (!chatContainerRef.current) return null;
+    return (
+      (chatContainerRef.current.querySelector('[data-virtuoso-scroller]') as HTMLElement | null) ||
+      chatContainerRef.current
+    );
+  }, [chatContainerRef]);
+
+  const shouldSuppressProgrammaticScroll = useCallback((): boolean => {
+    return (
+      isVideoFullscreenSessionRef.current ||
+      quoteJumpLockRef.current ||
+      performance.now() < suppressProgrammaticScrollUntilRef.current
+    );
+  }, []);
+
+  const clearPendingBottomScrollTimers = useCallback(() => {
+    if (pendingBottomScrollTimeoutsRef.current.length === 0) return;
+    pendingBottomScrollTimeoutsRef.current.forEach((id) => window.clearTimeout(id));
+    pendingBottomScrollTimeoutsRef.current = [];
+  }, []);
+
+  const cancelViewportResizePinning = useCallback(() => {
+    isViewportResizingRef.current = false;
+    wasAtBottomBeforeResizeRef.current = false;
+    clearPendingBottomScrollTimers();
+  }, [clearPendingBottomScrollTimers]);
+
   // Desktop interaction detection
   useEffect(() => {
     const media = window.matchMedia?.('(hover: hover) and (pointer: fine)');
@@ -98,6 +130,16 @@ export function useChatViewport({
       applyAppHeight(newHeight);
     };
 
+    const pinToBottomImmediate = () => {
+      if (shouldSuppressProgrammaticScroll()) return;
+      const scroller = getChatScrollerElement();
+      if (!scroller) return;
+      scroller.scrollTop = scroller.scrollHeight;
+      isAtBottomRef.current = true;
+      lastAtBottomStateRef.current = true;
+      setIsScrollToBottomVisible(false);
+    };
+
     const handleViewportResize = () => {
       const isIOS =
         /iPad|iPhone|iPod/.test(navigator.userAgent) ||
@@ -110,6 +152,34 @@ export function useChatViewport({
       }
 
       const vvOffsetTop = window.visualViewport ? window.visualViewport.offsetTop : 0;
+
+      const roundedNextHeight = Math.round(visibleHeight);
+      const prevAppliedHeight = appliedViewportHeightRef.current;
+      const heightDelta = roundedNextHeight - prevAppliedHeight;
+      const isHeightChanging = prevAppliedHeight > 0 && Math.abs(heightDelta) >= 1;
+
+      if (isHeightChanging) {
+        const scroller = getChatScrollerElement();
+        const currentDist = scroller
+          ? scroller.scrollHeight - (scroller.scrollTop + scroller.clientHeight)
+          : 9999;
+
+        // If not already in an active resize transition, capture whether the chat was at bottom
+        if (!isViewportResizingRef.current) {
+          wasAtBottomBeforeResizeRef.current =
+            isAtBottomRef.current || currentDist <= IS_AT_BOTTOM_THRESHOLD_PX;
+        }
+
+        isViewportResizingRef.current = true;
+        if (resizeTransitionTimerRef.current !== null) {
+          window.clearTimeout(resizeTransitionTimerRef.current);
+        }
+        resizeTransitionTimerRef.current = window.setTimeout(() => {
+          isViewportResizingRef.current = false;
+          resizeTransitionTimerRef.current = null;
+        }, 600);
+      }
+
       applyAppHeight(visibleHeight);
 
       if (isIOS) {
@@ -120,6 +190,19 @@ export function useChatViewport({
 
       if (window.scrollY > 0) {
         window.scrollTo(0, 0);
+      }
+
+      if (isHeightChanging && wasAtBottomBeforeResizeRef.current) {
+        // Chat was at bottom before keyboard/viewport resized:
+        // Ensure messages shift upward and remain anchored at the bottom.
+        pinToBottomImmediate();
+        requestAnimationFrame(pinToBottomImmediate);
+
+        clearPendingBottomScrollTimers();
+        const delays = [30, 80, 160, 260, 400, 550];
+        pendingBottomScrollTimeoutsRef.current = delays.map((delay) =>
+          window.setTimeout(pinToBottomImmediate, delay)
+        );
       }
     };
 
@@ -182,6 +265,11 @@ export function useChatViewport({
       clearTimeout(timer4);
       window.clearInterval(pollInterval);
       window.clearTimeout(pollStopTimer);
+      if (resizeTransitionTimerRef.current !== null) {
+        window.clearTimeout(resizeTransitionTimerRef.current);
+        resizeTransitionTimerRef.current = null;
+      }
+      clearPendingBottomScrollTimers();
       resizeObserver?.disconnect();
       document.documentElement.style.removeProperty('--app-height');
       document.documentElement.style.removeProperty('--app-offset-top');
@@ -196,29 +284,64 @@ export function useChatViewport({
       window.removeEventListener('focus', handleViewportResize);
       document.removeEventListener('visibilitychange', handleViewportResize);
     };
-  }, []);
+  }, [clearPendingBottomScrollTimers, getChatScrollerElement, shouldSuppressProgrammaticScroll]);
 
-  const getChatScrollerElement = useCallback((): HTMLElement | null => {
-    if (!chatContainerRef.current) return null;
-    return (
-      (chatContainerRef.current.querySelector('[data-virtuoso-scroller]') as HTMLElement | null) ||
-      chatContainerRef.current
-    );
-  }, [chatContainerRef]);
+  const handleInputFocus = useCallback(() => {
+    const scroller = getChatScrollerElement();
+    const currentDist = scroller
+      ? scroller.scrollHeight - (scroller.scrollTop + scroller.clientHeight)
+      : 9999;
+    const atBottom = isAtBottomRef.current || currentDist <= IS_AT_BOTTOM_THRESHOLD_PX;
+    wasAtBottomBeforeResizeRef.current = atBottom;
+    isViewportResizingRef.current = true;
+    if (resizeTransitionTimerRef.current !== null) {
+      window.clearTimeout(resizeTransitionTimerRef.current);
+    }
+    resizeTransitionTimerRef.current = window.setTimeout(() => {
+      isViewportResizingRef.current = false;
+      resizeTransitionTimerRef.current = null;
+    }, 700);
 
-  const shouldSuppressProgrammaticScroll = useCallback((): boolean => {
-    return (
-      isVideoFullscreenSessionRef.current ||
-      quoteJumpLockRef.current ||
-      performance.now() < suppressProgrammaticScrollUntilRef.current
-    );
-  }, []);
+    if (atBottom && scroller && !shouldSuppressProgrammaticScroll()) {
+      requestAnimationFrame(() => {
+        if (wasAtBottomBeforeResizeRef.current && !shouldSuppressProgrammaticScroll()) {
+          scroller.scrollTop = scroller.scrollHeight;
+          isAtBottomRef.current = true;
+          lastAtBottomStateRef.current = true;
+          setIsScrollToBottomVisible(false);
+        }
+      });
+    }
+  }, [getChatScrollerElement, shouldSuppressProgrammaticScroll]);
 
-  const clearPendingBottomScrollTimers = useCallback(() => {
-    if (pendingBottomScrollTimeoutsRef.current.length === 0) return;
-    pendingBottomScrollTimeoutsRef.current.forEach((id) => window.clearTimeout(id));
-    pendingBottomScrollTimeoutsRef.current = [];
-  }, []);
+  const handleInputBlur = useCallback(() => {
+    const scroller = getChatScrollerElement();
+    const currentDist = scroller
+      ? scroller.scrollHeight - (scroller.scrollTop + scroller.clientHeight)
+      : 9999;
+    const atBottom = isAtBottomRef.current || currentDist <= IS_AT_BOTTOM_THRESHOLD_PX;
+    wasAtBottomBeforeResizeRef.current = atBottom;
+    isViewportResizingRef.current = true;
+    if (resizeTransitionTimerRef.current !== null) {
+      window.clearTimeout(resizeTransitionTimerRef.current);
+    }
+    resizeTransitionTimerRef.current = window.setTimeout(() => {
+      isViewportResizingRef.current = false;
+      resizeTransitionTimerRef.current = null;
+    }, 700);
+  }, [getChatScrollerElement]);
+
+  useEffect(() => {
+    const textarea = messageInputRef.current;
+    if (!textarea) return;
+
+    textarea.addEventListener('focus', handleInputFocus);
+    textarea.addEventListener('blur', handleInputBlur);
+    return () => {
+      textarea.removeEventListener('focus', handleInputFocus);
+      textarea.removeEventListener('blur', handleInputBlur);
+    };
+  }, [messageInputRef, handleInputFocus, handleInputBlur]);
 
   useEffect(() => {
     return () => {
@@ -262,6 +385,10 @@ export function useChatViewport({
   const scrollToBottom = useCallback(
     (behavior: 'auto' | 'smooth' = 'auto', force = false) => {
       if (!force && shouldSuppressProgrammaticScroll()) return;
+      isAtBottomRef.current = true;
+      lastAtBottomStateRef.current = true;
+      wasAtBottomBeforeResizeRef.current = true;
+      setIsScrollToBottomVisible(false);
       const applyScrollerBottom = () => {
         if (!force && shouldSuppressProgrammaticScroll()) return;
         const scroller = getChatScrollerElement();
@@ -297,6 +424,9 @@ export function useChatViewport({
     if (!scroller) return;
     const distanceFromBottom = scroller.scrollHeight - (scroller.scrollTop + scroller.clientHeight);
     const atBottom = distanceFromBottom <= IS_AT_BOTTOM_THRESHOLD_PX;
+    if (!atBottom && isViewportResizingRef.current && wasAtBottomBeforeResizeRef.current) {
+      return;
+    }
     isAtBottomRef.current = atBottom;
     lastAtBottomStateRef.current = atBottom;
     setIsScrollToBottomVisible(!atBottom);
@@ -333,6 +463,11 @@ export function useChatViewport({
         lastAtBottomStateRef.current = false;
         setIsScrollToBottomVisible(true);
       }
+      return;
+    }
+
+    // Guard against transient false-not-at-bottom drops while keyboard/viewport is actively resizing
+    if (!atBottom && isViewportResizingRef.current && wasAtBottomBeforeResizeRef.current) {
       return;
     }
 
@@ -542,5 +677,10 @@ export function useChatViewport({
     syncInputOverlayScroll,
     resetInputLayerHeight,
     syncInputLayerLayout,
+    handleInputFocus,
+    handleInputBlur,
+    cancelViewportResizePinning,
+    isViewportResizingRef,
+    wasAtBottomBeforeResizeRef,
   };
 }

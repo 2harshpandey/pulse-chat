@@ -368,3 +368,238 @@ describe('Enter key behavior and touch device detection', () => {
     expect(shouldLoadOlder(true, true, true, 100, false, true)).toBe(true);
   });
 });
+
+describe('Mobile virtual keyboard resize & scroll anchoring', () => {
+  it('pins chat to bottom when keyboard opens (viewport shrinks) IF and only IF user was at bottom', () => {
+    vi.useFakeTimers();
+    const origInnerHeight = window.innerHeight;
+    window.innerHeight = 800;
+
+    const mockContainer = document.createElement('div');
+    Object.defineProperty(mockContainer, 'scrollHeight', { value: 1500, configurable: true });
+    Object.defineProperty(mockContainer, 'clientHeight', { value: 700, writable: true, configurable: true });
+    Object.defineProperty(mockContainer, 'scrollTop', { value: 800, writable: true, configurable: true });
+
+    try {
+      const ref = { current: mockContainer };
+      const { result } = renderHook(() =>
+        useChatViewport({
+          chatContainerRef: ref as any,
+          inputOverlayRef: { current: null },
+          messageInputRef: { current: null },
+        })
+      );
+
+      // Initial state: user is at bottom (1500 - (800 + 700) = 0 <= 60)
+      act(() => {
+        result.current.syncBottomStateFromScroller();
+      });
+      expect(result.current.isAtBottomRef.current).toBe(true);
+
+      // Simulate mobile keyboard opening: viewport shrinks from 800 to 450
+      act(() => {
+        window.innerHeight = 450;
+        mockContainer.clientHeight = 350;
+        window.dispatchEvent(new Event('resize'));
+      });
+
+      // Advance timers across the keyboard slide-up animation curve
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+
+      // Messages must have shifted upwards so that scrollTop reaches scrollHeight
+      expect(mockContainer.scrollTop).toBe(1500);
+      expect(result.current.isAtBottomRef.current).toBe(true);
+      expect(result.current.isScrollToBottomVisible).toBe(false);
+    } finally {
+      window.innerHeight = origInnerHeight;
+      vi.useRealTimers();
+    }
+  });
+
+  it('does NOT scroll to bottom when keyboard opens IF user was scrolled up reading history', () => {
+    vi.useFakeTimers();
+    const origInnerHeight = window.innerHeight;
+    window.innerHeight = 800;
+
+    const mockContainer = document.createElement('div');
+    Object.defineProperty(mockContainer, 'scrollHeight', { value: 1500, configurable: true });
+    Object.defineProperty(mockContainer, 'clientHeight', { value: 700, writable: true, configurable: true });
+    // User scrolled up: scrollTop is 200 => distanceFromBottom = 1500 - (200 + 700) = 600 > 60
+    Object.defineProperty(mockContainer, 'scrollTop', { value: 200, writable: true, configurable: true });
+
+    try {
+      const ref = { current: mockContainer };
+      const { result } = renderHook(() =>
+        useChatViewport({
+          chatContainerRef: ref as any,
+          inputOverlayRef: { current: null },
+          messageInputRef: { current: null },
+        })
+      );
+
+      act(() => {
+        result.current.syncBottomStateFromScroller();
+      });
+      expect(result.current.isAtBottomRef.current).toBe(false);
+      expect(result.current.isScrollToBottomVisible).toBe(true);
+
+      // Simulate mobile keyboard opening: viewport shrinks from 800 to 450
+      act(() => {
+        window.innerHeight = 450;
+        mockContainer.clientHeight = 350;
+        window.dispatchEvent(new Event('resize'));
+      });
+
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+
+      // Scroll position MUST NOT be jumped to bottom; it must remain at 200
+      expect(mockContainer.scrollTop).toBe(200);
+      expect(result.current.isAtBottomRef.current).toBe(false);
+      expect(result.current.isScrollToBottomVisible).toBe(true);
+    } finally {
+      window.innerHeight = origInnerHeight;
+      vi.useRealTimers();
+    }
+  });
+
+  it('pins chat to bottom when keyboard closes (viewport expands) IF user was at bottom', () => {
+    vi.useFakeTimers();
+    const origInnerHeight = window.innerHeight;
+    window.innerHeight = 450;
+
+    const mockContainer = document.createElement('div');
+    Object.defineProperty(mockContainer, 'scrollHeight', { value: 1500, configurable: true });
+    Object.defineProperty(mockContainer, 'clientHeight', { value: 350, writable: true, configurable: true });
+    Object.defineProperty(mockContainer, 'scrollTop', { value: 1150, writable: true, configurable: true });
+
+    try {
+      const ref = { current: mockContainer };
+      const { result } = renderHook(() =>
+        useChatViewport({
+          chatContainerRef: ref as any,
+          inputOverlayRef: { current: null },
+          messageInputRef: { current: null },
+        })
+      );
+
+      act(() => {
+        result.current.syncBottomStateFromScroller();
+      });
+      expect(result.current.isAtBottomRef.current).toBe(true);
+
+      // Simulate mobile keyboard closing: viewport expands from 450 to 800
+      act(() => {
+        window.innerHeight = 800;
+        mockContainer.clientHeight = 700;
+        window.dispatchEvent(new Event('resize'));
+      });
+
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+
+      // Must maintain bottom position
+      expect(mockContainer.scrollTop).toBe(1500);
+      expect(result.current.isAtBottomRef.current).toBe(true);
+    } finally {
+      window.innerHeight = origInnerHeight;
+      vi.useRealTimers();
+    }
+  });
+
+  it('does NOT scroll to bottom when keyboard closes IF user was scrolled up', () => {
+    vi.useFakeTimers();
+    const origInnerHeight = window.innerHeight;
+    window.innerHeight = 450;
+
+    const mockContainer = document.createElement('div');
+    Object.defineProperty(mockContainer, 'scrollHeight', { value: 1500, configurable: true });
+    Object.defineProperty(mockContainer, 'clientHeight', { value: 350, writable: true, configurable: true });
+    Object.defineProperty(mockContainer, 'scrollTop', { value: 250, writable: true, configurable: true });
+
+    try {
+      const ref = { current: mockContainer };
+      const { result } = renderHook(() =>
+        useChatViewport({
+          chatContainerRef: ref as any,
+          inputOverlayRef: { current: null },
+          messageInputRef: { current: null },
+        })
+      );
+
+      act(() => {
+        result.current.syncBottomStateFromScroller();
+      });
+      expect(result.current.isAtBottomRef.current).toBe(false);
+
+      // Simulate mobile keyboard closing: viewport expands from 450 to 800
+      act(() => {
+        window.innerHeight = 800;
+        mockContainer.clientHeight = 700;
+        window.dispatchEvent(new Event('resize'));
+      });
+
+      act(() => {
+        vi.advanceTimersByTime(400);
+      });
+
+      // Scroll position MUST NOT jump to bottom; remains at 250
+      expect(mockContainer.scrollTop).toBe(250);
+      expect(result.current.isAtBottomRef.current).toBe(false);
+    } finally {
+      window.innerHeight = origInnerHeight;
+      vi.useRealTimers();
+    }
+  });
+
+  it('ignores transient layout shrinkage during active keyboard resize so atBottom is not prematurely cleared', () => {
+    const mockContainer = document.createElement('div');
+    const ref = { current: mockContainer };
+    const { result } = renderHook(() =>
+      useChatViewport({
+        chatContainerRef: ref as any,
+        inputOverlayRef: { current: null },
+        messageInputRef: { current: null },
+      })
+    );
+
+    result.current.isAtBottomRef.current = true;
+    result.current.isViewportResizingRef.current = true;
+    result.current.wasAtBottomBeforeResizeRef.current = true;
+
+    // A scroll event with transient atBottom = false fires during resize
+    act(() => {
+      result.current.handleAtBottomStateChange(false);
+    });
+
+    // Should remain true because we are in an active keyboard resize transition
+    expect(result.current.isAtBottomRef.current).toBe(true);
+    expect(result.current.isScrollToBottomVisible).toBe(false);
+  });
+
+  it('cancels viewport resize pinning immediately when user deliberately scrolls up', () => {
+    const mockContainer = document.createElement('div');
+    const ref = { current: mockContainer };
+    const { result } = renderHook(() =>
+      useChatViewport({
+        chatContainerRef: ref as any,
+        inputOverlayRef: { current: null },
+        messageInputRef: { current: null },
+      })
+    );
+
+    result.current.isViewportResizingRef.current = true;
+    result.current.wasAtBottomBeforeResizeRef.current = true;
+
+    act(() => {
+      result.current.cancelViewportResizePinning();
+    });
+
+    expect(result.current.isViewportResizingRef.current).toBe(false);
+    expect(result.current.wasAtBottomBeforeResizeRef.current).toBe(false);
+  });
+});

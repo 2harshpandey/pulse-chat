@@ -107,6 +107,8 @@ export interface ChatFooterProps {
   messageInputRef?: React.RefObject<HTMLTextAreaElement>;
   inputMessage: string;
   onInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  onInputFocus?: () => void;
+  onInputBlur?: () => void;
   onInputKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   onPaste: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
   onSyncInputOverlayScroll: () => void;
@@ -169,6 +171,8 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
   messageInputRef,
   inputMessage,
   onInputChange,
+  onInputFocus,
+  onInputBlur,
   onInputKeyDown,
   onPaste,
   onSyncInputOverlayScroll,
@@ -699,6 +703,8 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
                           }
                           value={inputMessage}
                           onChange={onInputChange}
+                          onFocus={onInputFocus}
+                          onBlur={onInputBlur}
                           onKeyDown={onInputKeyDown}
                           onPaste={onPaste}
                           onScroll={onSyncInputOverlayScroll}

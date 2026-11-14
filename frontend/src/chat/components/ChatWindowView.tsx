@@ -115,6 +115,7 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
             if (e.deltaY < 0) {
               viewport.suppressInitialBottomPinRef.current = true;
               viewport.initialHistoryBottomStabilized.current = true;
+              viewport.cancelViewportResizePinning();
             }
             if (
               e.deltaY < 0 &&
@@ -138,6 +139,7 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
               if (distanceFromBottom > 80) {
                 viewport.suppressInitialBottomPinRef.current = true;
                 viewport.initialHistoryBottomStabilized.current = true;
+                viewport.cancelViewportResizePinning();
               }
             }
           }}
@@ -407,6 +409,8 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
         messageInputRef={messageInputRef}
         inputMessage={inputMessage}
         onInputChange={composer.handleInputChange}
+        onInputFocus={viewport.handleInputFocus}
+        onInputBlur={viewport.handleInputBlur}
         onInputKeyDown={composer.handleInputKeyDown}
         onPaste={composer.handlePaste}
         onSyncInputOverlayScroll={viewport.syncInputOverlayScroll}
