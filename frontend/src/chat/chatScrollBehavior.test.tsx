@@ -400,7 +400,7 @@ describe('Mobile virtual keyboard resize & scroll anchoring', () => {
       // Simulate mobile keyboard opening: viewport shrinks from 800 to 450
       act(() => {
         window.innerHeight = 450;
-        mockContainer.clientHeight = 350;
+        (mockContainer as any).clientHeight = 350;
         window.dispatchEvent(new Event('resize'));
       });
 
@@ -449,7 +449,7 @@ describe('Mobile virtual keyboard resize & scroll anchoring', () => {
       // Simulate mobile keyboard opening: viewport shrinks from 800 to 450
       act(() => {
         window.innerHeight = 450;
-        mockContainer.clientHeight = 350;
+        (mockContainer as any).clientHeight = 350;
         window.dispatchEvent(new Event('resize'));
       });
 
@@ -495,7 +495,7 @@ describe('Mobile virtual keyboard resize & scroll anchoring', () => {
       // Simulate mobile keyboard closing: viewport expands from 450 to 800
       act(() => {
         window.innerHeight = 800;
-        mockContainer.clientHeight = 700;
+        (mockContainer as any).clientHeight = 700;
         window.dispatchEvent(new Event('resize'));
       });
 
@@ -540,7 +540,7 @@ describe('Mobile virtual keyboard resize & scroll anchoring', () => {
       // Simulate mobile keyboard closing: viewport expands from 450 to 800
       act(() => {
         window.innerHeight = 800;
-        mockContainer.clientHeight = 700;
+        (mockContainer as any).clientHeight = 700;
         window.dispatchEvent(new Event('resize'));
       });
 
@@ -664,7 +664,6 @@ describe('Mobile virtual keyboard resize & scroll anchoring', () => {
         chatContainerRef: { current: null },
         skipNextInputLayoutSyncRef: { current: false },
         resetInputLayerHeight: vi.fn(),
-        syncInputOverlayScroll: vi.fn(),
         isMobileView: true,
         stableViewportHeightRef: { current: 800 },
         replyingTo: null,
@@ -717,7 +716,7 @@ describe('Mobile virtual keyboard resize & scroll anchoring', () => {
         setHasMoreOlderMessages: vi.fn(),
         setOldestLoadedAt: vi.fn(),
         setFirstItemIndex: vi.fn(),
-      })
+      } as any)
     );
 
     const mockEvent = {
