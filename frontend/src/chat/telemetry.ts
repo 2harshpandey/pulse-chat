@@ -96,6 +96,8 @@ const dispatchDiagnostic = (event: string, details?: Record<string, any>) => {
     let username = context.username;
     if (!username && typeof window !== 'undefined') {
       username =
+        getStoredValue(`pulseUsername_${roomId}`) ||
+        getStoredValue('pulseUsername') ||
         getStoredValue('username') ||
         getStoredValue('pulse_username') ||
         '';
@@ -111,7 +113,7 @@ const dispatchDiagnostic = (event: string, details?: Record<string, any>) => {
       timestamp: Date.now(),
     };
 
-    if (context.ws && context.ws.readyState === WebSocket.OPEN) {
+    if (context.ws && context.ws.readyState === 1) {
       context.ws.send(JSON.stringify(payload));
       return;
     }
