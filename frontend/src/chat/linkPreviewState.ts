@@ -1,6 +1,6 @@
 import type { LinkPreviewData } from './types';
 import { MAX_LINK_PREVIEW_CACHE_ENTRIES } from './constants';
-import { resolveApiBaseUrl, getSessionToken } from './utils';
+import { resolveApiBaseUrl, getSessionToken, getStoredValue } from './utils';
 
 export const linkPreviewCache = new Map<string, LinkPreviewData | null>();
 export const linkPreviewInFlight = new Map<string, Promise<LinkPreviewData | null>>();
@@ -29,7 +29,7 @@ export const fetchLinkPreviewData = (url: string, roomId?: string): Promise<Link
   const promise = (async () => {
     try {
       const apiBase = resolveApiBaseUrl();
-      const currentRoomId = roomId || (typeof sessionStorage !== 'undefined' ? (sessionStorage.getItem('pulseRoomId') || localStorage.getItem('pulseRoomId') || sessionStorage.getItem('pulse_room_id') || localStorage.getItem('pulse_room_id')) : null) || 'me';
+      const currentRoomId = roomId || getStoredValue('pulseRoomId') || getStoredValue('pulse_room_id') || 'me';
       const previewEndpoint = `${apiBase}/api/link-preview?url=${encodeURIComponent(url)}&roomId=${encodeURIComponent(currentRoomId)}`;
       
       const headers: Record<string, string> = {
@@ -37,9 +37,7 @@ export const fetchLinkPreviewData = (url: string, roomId?: string): Promise<Link
       };
       const sessionToken = getSessionToken(currentRoomId);
       if (sessionToken) headers['x-session-token'] = sessionToken;
-      const userId = typeof sessionStorage !== 'undefined'
-        ? (sessionStorage.getItem('pulseUserId') || localStorage.getItem('pulseUserId') || sessionStorage.getItem('pulse_user_id') || localStorage.getItem('pulse_user_id'))
-        : null;
+      const userId = getStoredValue('pulseUserId') || getStoredValue('pulse_user_id');
       if (userId) headers['x-user-id'] = userId;
 
       const res = await fetch(previewEndpoint, { headers });

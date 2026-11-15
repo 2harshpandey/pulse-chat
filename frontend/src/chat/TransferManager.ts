@@ -1,22 +1,30 @@
 import { setCachedMediaBlob, removeCachedMediaBlob, getCachedMediaForUser, clearOtherSessions } from '../mediaCache';
-import { buildDownloadProxyUrl, getSessionToken } from './utils';
+import { buildDownloadProxyUrl, getSessionToken, getStoredValue } from './utils';
 
 // We use sessionStorage to maintain a unique session ID.
 // When the tab is closed, this session ID is lost.
 let currentSessionId = '';
 if (typeof window !== 'undefined') {
-  currentSessionId = sessionStorage.getItem('pulse_session_id') || '';
-  if (!currentSessionId) {
-    if (window.crypto && window.crypto.randomUUID) {
-      currentSessionId = window.crypto.randomUUID();
-    } else if (window.crypto && window.crypto.getRandomValues) {
-      const array = new Uint32Array(4);
-      window.crypto.getRandomValues(array);
-      currentSessionId = Array.from(array, dec => dec.toString(36)).join('');
-    } else {
-      currentSessionId = Date.now().toString(36) + 'fallback';
+  try {
+    currentSessionId = getStoredValue('pulse_session_id') || '';
+    if (!currentSessionId) {
+      if (window.crypto && window.crypto.randomUUID) {
+        currentSessionId = window.crypto.randomUUID();
+      } else if (window.crypto && window.crypto.getRandomValues) {
+        const array = new Uint32Array(4);
+        window.crypto.getRandomValues(array);
+        currentSessionId = Array.from(array, dec => dec.toString(36)).join('');
+      } else {
+        currentSessionId = Date.now().toString(36) + 'fallback';
+      }
+      try {
+        if (typeof sessionStorage !== 'undefined' && sessionStorage) {
+          sessionStorage.setItem('pulse_session_id', currentSessionId);
+        }
+      } catch (_) {}
     }
-    sessionStorage.setItem('pulse_session_id', currentSessionId);
+  } catch (_) {
+    currentSessionId = 'pulse_session_' + Date.now();
   }
 }
 
@@ -323,11 +331,11 @@ class TransferManager {
       if (!response || (!response.ok && response.status !== 206)) {
         const proxyUrl = buildDownloadProxyUrl(url, filename);
         const proxyHeaders = new Headers(headers);
-        const roomId = sessionStorage.getItem('pulse_room_id') || localStorage.getItem('pulse_room_id') || sessionStorage.getItem('pulseRoomId') || localStorage.getItem('pulseRoomId');
+        const roomId = getStoredValue('pulse_room_id') || getStoredValue('pulseRoomId');
         if (roomId) proxyHeaders.set('x-room-id', roomId);
         const sessionToken = getSessionToken(roomId || undefined);
         if (sessionToken) proxyHeaders.set('x-session-token', sessionToken);
-        const userId = sessionStorage.getItem('pulse_user_id') || localStorage.getItem('pulse_user_id') || sessionStorage.getItem('pulseUserId') || localStorage.getItem('pulseUserId');
+        const userId = getStoredValue('pulse_user_id') || getStoredValue('pulseUserId');
         if (userId) proxyHeaders.set('x-user-id', userId);
         response = await fetch(proxyUrl, { headers: proxyHeaders, signal: abortController.signal });
       }

@@ -1,4 +1,4 @@
-import { resolveApiBaseUrl } from './utils';
+import { resolveApiBaseUrl, getStoredValue } from './utils';
 
 interface DiagnosticContext {
   ws: WebSocket | null;
@@ -77,10 +77,8 @@ const dispatchDiagnostic = (event: string, details?: Record<string, any>) => {
         const pathMatch = window.location.pathname.match(/\/room\/([^/?#]+)/i);
         roomId =
           pathMatch?.[1] ||
-          sessionStorage.getItem('pulse_room_id') ||
-          localStorage.getItem('pulse_room_id') ||
-          sessionStorage.getItem('pulseRoomId') ||
-          localStorage.getItem('pulseRoomId') ||
+          getStoredValue('pulse_room_id') ||
+          getStoredValue('pulseRoomId') ||
           'global';
       } else {
         roomId = 'global';
@@ -90,20 +88,16 @@ const dispatchDiagnostic = (event: string, details?: Record<string, any>) => {
     let userId = context.userId;
     if (!userId && typeof window !== 'undefined') {
       userId =
-        sessionStorage.getItem('pulse_user_id') ||
-        localStorage.getItem('pulse_user_id') ||
-        sessionStorage.getItem('pulseUserId') ||
-        localStorage.getItem('pulseUserId') ||
+        getStoredValue('pulse_user_id') ||
+        getStoredValue('pulseUserId') ||
         '';
     }
 
     let username = context.username;
     if (!username && typeof window !== 'undefined') {
       username =
-        sessionStorage.getItem('username') ||
-        localStorage.getItem('username') ||
-        sessionStorage.getItem('pulse_username') ||
-        localStorage.getItem('pulse_username') ||
+        getStoredValue('username') ||
+        getStoredValue('pulse_username') ||
         '';
     }
 
