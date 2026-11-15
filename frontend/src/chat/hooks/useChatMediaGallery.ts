@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getSessionToken, getUserId, resolveApiBaseUrl, getDeletedForMeIds } from '../utils';
+import { getSessionToken, getUserId, resolveApiBaseUrl, getDeletedForMeIds, getStoredValue } from '../utils';
 
 export type GalleryFilter = 'photo' | 'video' | 'doc' | 'link' | null;
 
@@ -106,7 +106,7 @@ export function useChatMediaGallery({ roomId, isActive, userId }: UseChatMediaGa
 
         const roomKey = roomId || 'me';
         const clearTs = Number(
-          (typeof localStorage !== 'undefined' && localStorage.getItem(`pulseClearTimestamp_${effectiveUserId}_${roomKey}`)) || '0'
+          getStoredValue(`pulseClearTimestamp_${effectiveUserId}_${roomKey}`) || '0'
         );
         const deletedForMe = getDeletedForMeIds(effectiveUserId);
         const filteredNewItems = (data.items || []).filter((item) => {

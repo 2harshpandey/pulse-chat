@@ -18,6 +18,7 @@ import {
   findMessageElement,
   isGroupStartMessage,
   getSessionToken,
+  getStoredValue,
 } from '../utils';
 import { albumDownloadManager } from '../albumDownloadManager';
 
@@ -247,7 +248,7 @@ export function useChatMessages({
   const filterVisibleMessages = useCallback((allMsgs: Message[]): Message[] => {
     const roomKey = roomId || 'me';
     const clearTs = Number(
-      localStorage.getItem(`pulseClearTimestamp_${userId}_${roomKey}`) ||
+      getStoredValue(`pulseClearTimestamp_${userId}_${roomKey}`) ||
       '0'
     );
     const deletedForMeIds = getDeletedForMeIds(userId);

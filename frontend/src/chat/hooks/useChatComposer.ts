@@ -1092,7 +1092,11 @@ export function useChatComposer({
   const handleClearChat = useCallback(() => {
     if (window.confirm('Are you sure you want to clear the chat? All messages will be hidden for you on this device.')) {
       const roomKey = roomId || 'me';
-      localStorage.setItem(`pulseClearTimestamp_${userId}_${roomKey}`, Date.now().toString());
+      try {
+        if (typeof localStorage !== 'undefined' && localStorage) {
+          localStorage.setItem(`pulseClearTimestamp_${userId}_${roomKey}`, Date.now().toString());
+        }
+      } catch (_) {}
       setMessages([]);
       setHasMoreOlderMessages(false);
       setOldestLoadedAt(null);
