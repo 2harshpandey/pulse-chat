@@ -149,19 +149,13 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
           } else if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('pulse:status_toast', { detail: { message: 'Download started...' } }));
           }
-          void downloadFile(
-            safe,
-            item.originalName || 'file',
-            undefined,
-            () => {
-              if (onShowToast) {
-                onShowToast('Failed to download file');
-              } else if (typeof window !== 'undefined') {
-                window.dispatchEvent(new CustomEvent('pulse:status_toast', { detail: { message: 'Failed to download file' } }));
-              }
-            },
-            true
-          );
+          void downloadFile(safe, item.originalName || 'file', undefined, undefined, true).catch(() => {
+            if (onShowToast) {
+              onShowToast('Failed to download file');
+            } else if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('pulse:status_toast', { detail: { message: 'Failed to download file' } }));
+            }
+          });
         }
       } else if (isLink && item.text) {
         const urlStr = extractUrlFromText(item.text);
