@@ -79,9 +79,9 @@ const dispatchDiagnostic = (event: string, details?: Record<string, any>) => {
           pathMatch?.[1] ||
           getStoredValue('pulse_room_id') ||
           getStoredValue('pulseRoomId') ||
-          'global';
+          'me';
       } else {
-        roomId = 'global';
+        roomId = 'me';
       }
     }
 
