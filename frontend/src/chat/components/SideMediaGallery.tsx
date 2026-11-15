@@ -69,6 +69,14 @@ const extractUrlFromText = (text: string): string | null => {
   return raw;
 };
 
+const isPlayableType = (type?: string, url?: string): boolean => {
+  if (!type && !url) return false;
+  const t = (type || '').toLowerCase();
+  if (t === 'image' || t === 'video' || t === 'gif' || t === 'photo') return true;
+  if (url && /\.(jpe?g|png|gif|webp|svg|mp4|webm|mov|m4v)$/i.test(url)) return true;
+  return false;
+};
+
 export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
   roomId,
   isActive,
@@ -111,7 +119,7 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
   // Build playable items list for the full-screen media player
   const playableItems = useMemo<Message[]>(() => {
     return items
-      .filter((it) => it.type === 'image' || it.type === 'video' || it.type === 'gif' || it.type === 'photo')
+      .filter((it) => isPlayableType(it.type, it.url))
       .map((it) => ({
         id: it.id,
         userId: it.userId || '',
@@ -119,7 +127,7 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
         text: it.text || '',
         timestamp: it.createdAt || new Date().toISOString(),
         createdAt: it.createdAt || new Date().toISOString(),
-        type: (it.type === 'gif' || it.type === 'photo' ? 'image' : it.type) as any,
+        type: (it.type === 'video' || (it.url && /\.(mp4|webm|mov|m4v)$/i.test(it.url)) ? 'video' : 'image') as any,
         url: it.url,
         originalName: it.originalName,
         size: it.size,
@@ -130,14 +138,33 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
 
   const handleMediaClick = useCallback(
     (item: GalleryItem) => {
-      const isPlayable = item.type === 'image' || item.type === 'video' || item.type === 'gif' || item.type === 'photo';
+      const isPlayable = isPlayableType(item.type, item.url);
       const isLink = item.type === 'link' || (item.type === 'text' && Boolean(item.text && /https?:\/\//i.test(item.text)));
 
       if (isPlayable) {
-        if (openMediaGallery && playableItems.length > 0) {
-          const targetIndex = playableItems.findIndex((m) => m.id === item.id);
-          openMediaGallery(playableItems, Math.max(0, targetIndex), { autoPlayVideo: true });
-        } else if (openLightbox && item.url) {
+        const targetList =
+          playableItems.length > 0
+            ? playableItems
+            : [
+                {
+                  id: item.id,
+                  userId: item.userId || '',
+                  username: item.username || 'User',
+                  text: item.text || '',
+                  timestamp: item.createdAt || new Date().toISOString(),
+                  createdAt: item.createdAt || new Date().toISOString(),
+                  type: (item.type === 'video' || (item.url && /\.(mp4|webm|mov|m4v)$/i.test(item.url)) ? 'video' : 'image') as any,
+                  url: item.url,
+                  originalName: item.originalName,
+                  size: item.size,
+                  duration: item.duration,
+                  sender: item.userId || '',
+                },
+              ];
+        const targetIndex = targetList.findIndex((m) => m.id === item.id);
+        if (openMediaGallery) {
+          openMediaGallery(targetList, Math.max(0, targetIndex), { autoPlayVideo: true });
+        } else if (openLightbox && item.url && item.type !== 'video') {
           const safe = sanitizeMediaUrl(item.url);
           openLightbox(safe || item.url, item.url);
         }

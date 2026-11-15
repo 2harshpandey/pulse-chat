@@ -1559,6 +1559,7 @@ export const MediaGalleryTileImg = styled.img`
   height: 100%;
   object-fit: cover;
   display: block;
+  pointer-events: none;
 `;
 
 export const MediaGalleryPlayOverlay = styled.div`
@@ -1569,6 +1570,7 @@ export const MediaGalleryPlayOverlay = styled.div`
   justify-content: center;
   background: rgba(0, 0, 0, 0.3);
   transition: background 0.18s ease;
+  pointer-events: none;
 
   ${MediaGalleryTile}:hover & {
     background: rgba(0, 0, 0, 0.45);

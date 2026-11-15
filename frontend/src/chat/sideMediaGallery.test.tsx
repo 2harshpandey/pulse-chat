@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor, cleanup } from '@testing-library/react';
 import { UserSidebar } from './components/UserSidebar';
 import { SideMediaGallery } from './components/SideMediaGallery';
+import { MediaGalleryModal } from './components/modals/MediaGalleryModal';
 import type { Message } from './types';
 
 // Mock IntersectionObserver
@@ -419,5 +420,82 @@ describe('Media Viewer Side Panel and Tab Switching', () => {
 
     expect(onShowToastMock).toHaveBeenCalledWith('Download started...');
     anchorClickSpy.mockRestore();
+  });
+
+  it('opens and renders MediaGalleryModal when allMessages contains disjoint chat messages', () => {
+    const sideGalleryItems: Message[] = [
+      {
+        id: 'hist-img-1',
+        type: 'image',
+        url: 'https://res.cloudinary.com/test/image/upload/v1/hist1.jpg',
+        originalName: 'historical_vacation.jpg',
+        userId: 'u1',
+        username: 'Harsh',
+        timestamp: '2026-11-10T10:00:00.000Z',
+        createdAt: '2026-11-10T10:00:00.000Z',
+        sender: 'u1',
+        text: 'Old photo from last week',
+      },
+      {
+        id: 'hist-vid-2',
+        type: 'video',
+        url: 'https://res.cloudinary.com/test/video/upload/v1/hist2.mp4',
+        originalName: 'historical_recording.mp4',
+        userId: 'u2',
+        username: 'Alice',
+        timestamp: '2026-11-10T10:05:00.000Z',
+        createdAt: '2026-11-10T10:05:00.000Z',
+        sender: 'u2',
+        text: 'Old video',
+      },
+    ];
+
+    // Current chat feed only has recent text messages (typical production scenario)
+    const recentChatFeedMessages: Message[] = [
+      {
+        id: 'recent-txt-101',
+        type: 'text',
+        text: 'Hey are you there?',
+        userId: 'u1',
+        username: 'Harsh',
+        timestamp: '2026-11-15T18:00:00.000Z',
+        createdAt: '2026-11-15T18:00:00.000Z',
+        sender: 'u1',
+      },
+      {
+        id: 'recent-txt-102',
+        type: 'text',
+        text: 'Yes, just testing the production site!',
+        userId: 'u2',
+        username: 'Alice',
+        timestamp: '2026-11-15T18:01:00.000Z',
+        createdAt: '2026-11-15T18:01:00.000Z',
+        sender: 'u2',
+      },
+    ];
+
+    const handleClose = vi.fn();
+
+    render(
+      <MediaGalleryModal
+        isOpen={true}
+        items={sideGalleryItems}
+        initialIndex={0}
+        allMessages={recentChatFeedMessages}
+        onClose={handleClose}
+      />
+    );
+
+    // Modal must NOT auto-close when items are not in recentChatFeedMessages
+    expect(handleClose).not.toHaveBeenCalled();
+
+    // Active item photo should be displayed
+    const photo = screen.getByAltText('historical_vacation.jpg');
+    expect(photo).toBeDefined();
+    expect(photo.getAttribute('src')).toBe('https://res.cloudinary.com/test/image/upload/v1/hist1.jpg');
+
+    // Header counter and sender should be rendered
+    expect(screen.getByText('1 / 2')).toBeDefined();
+    expect(screen.getByText(/Harsh/)).toBeDefined();
   });
 });

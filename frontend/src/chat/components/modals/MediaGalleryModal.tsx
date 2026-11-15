@@ -90,9 +90,10 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         allMsgMap.get(item.id) ||
         (item._id ? allMsgMap.get(item._id) : undefined) ||
         ((item as any).clientTempId ? allMsgMap.get((item as any).clientTempId) : undefined);
-      if (!live) return false;
-      if (live.isDeleted) return false;
-      return true;
+      if (live) {
+        return !live.isDeleted;
+      }
+      return !item.isDeleted;
     });
   }, [items, allMessages]);
 
@@ -125,7 +126,15 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
   const currentItem = useMemo(() => {
     if (!rawItem) return rawItem;
     if (!allMessages || allMessages.length === 0) return rawItem;
-    return allMessages.find((m) => m.id === rawItem.id) || rawItem;
+    return (
+      allMessages.find(
+        (m) =>
+          m.id === rawItem.id ||
+          ((m as any)._id && (m as any)._id === rawItem.id) ||
+          (rawItem._id && (m.id === rawItem._id || (m as any)._id === rawItem._id)) ||
+          ((m as any).clientTempId && (m as any).clientTempId === (rawItem as any).clientTempId)
+      ) || rawItem
+    );
   }, [rawItem, allMessages]);
 
   const isVideo =
@@ -261,10 +270,10 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     }, 150);
   };
 
-  if (!isOpen || activeItems.length === 0) return null;
+  if (!isOpen || activeItems.length === 0 || !currentItem) return null;
 
   // Stable media URL per slide to prevent swapping video source mid-playback
-  let currentSlideUrl = (loadedMediaSrcById && loadedMediaSrcById[currentItem.id]) || currentItem.url || '';
+  let currentSlideUrl = (loadedMediaSrcById && currentItem.id && loadedMediaSrcById[currentItem.id]) || currentItem.url || '';
   if (isVideo) {
     if (!activeMediaUrlRef.current || activeMediaUrlRef.current.id !== currentItem.id) {
       activeMediaUrlRef.current = {
@@ -276,8 +285,9 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
   }
   const safeUrl = sanitizeMediaUrl(currentSlideUrl);
 
-  const formattedTime = currentItem.timestamp
-    ? new Date(currentItem.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const itemDate = currentItem.timestamp || (currentItem as any).createdAt;
+  const formattedTime = itemDate
+    ? new Date(itemDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : '';
 
   const renderReactionBadge = (isPhoto: boolean = false) => {
