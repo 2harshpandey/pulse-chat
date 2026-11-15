@@ -1306,6 +1306,17 @@ export const MediaGalleryFilterChip = styled.button<{ $active?: boolean }>`
   &:active {
     transform: scale(0.95);
   }
+
+  [data-theme='light'] & {
+    background: ${p => p.$active ? 'rgba(59, 130, 246, 0.15)' : 'rgba(0, 0, 0, 0.05)'};
+    color: ${p => p.$active ? '#2563eb' : 'var(--text-secondary)'};
+    border-color: ${p => p.$active ? 'rgba(59, 130, 246, 0.6)' : 'var(--border-secondary)'};
+
+    &:hover {
+      background: rgba(59, 130, 246, 0.1);
+      color: #2563eb;
+    }
+  }
 `;
 
 export const MediaGalleryScrollArea = styled.div`
@@ -1324,6 +1335,12 @@ export const MediaGalleryScrollArea = styled.div`
   &::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.12);
     border-radius: 4px;
+  }
+
+  [data-theme='light'] & {
+    &::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.15);
+    }
   }
 `;
 
@@ -1346,6 +1363,11 @@ export const MediaGalleryTile = styled.div`
   content-visibility: auto;
   contain-intrinsic-size: 100px 100px;
   transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s ease, border-color 0.22s ease;
+
+  [data-theme='light'] & {
+    background: rgba(0, 0, 0, 0.04);
+    border-color: var(--border-secondary);
+  }
 
   @keyframes mgTileFadeIn {
     from {
@@ -1479,6 +1501,16 @@ export const MediaGalleryDocCard = styled.div`
   &:focus-visible {
     outline: 2px solid rgba(59, 130, 246, 0.7);
     outline-offset: 2px;
+  }
+
+  [data-theme='light'] & {
+    background: rgba(0, 0, 0, 0.03);
+    border-color: var(--border-secondary);
+
+    &:hover {
+      background: rgba(59, 130, 246, 0.08);
+      border-color: rgba(59, 130, 246, 0.3);
+    }
   }
 `;
 

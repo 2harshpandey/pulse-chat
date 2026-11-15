@@ -104,8 +104,19 @@ export function useChatMediaGallery({ roomId, isActive, userId }: UseChatMediaGa
 
         if (!isMountedRef.current) return;
 
+        const roomKey = roomId || 'me';
+        const clearTs = Number(
+          (typeof localStorage !== 'undefined' && localStorage.getItem(`pulseClearTimestamp_${effectiveUserId}_${roomKey}`)) || '0'
+        );
         const deletedForMe = getDeletedForMeIds(effectiveUserId);
-        const filteredNewItems = (data.items || []).filter((item) => !deletedForMe.has(item.id));
+        const filteredNewItems = (data.items || []).filter((item) => {
+          if (deletedForMe.has(item.id)) return false;
+          if (clearTs > 0 && item.createdAt) {
+            const itemTime = new Date(item.createdAt).getTime();
+            if (itemTime <= clearTs) return false;
+          }
+          return true;
+        });
 
         setItems((prev) => {
           if (!append) return filteredNewItems;
@@ -137,6 +148,77 @@ export function useChatMediaGallery({ roomId, isActive, userId }: UseChatMediaGa
     setHasMore(true);
     void fetchPage(null, filter, false);
   }, [isActive, filter, fetchPage]);
+
+  // Listen for message deletion, clear chat, and new incoming media in real time
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleMessageDeleted = (e: any) => {
+      const deletedIds = new Set<string>(e?.detail?.ids || []);
+      if (deletedIds.size > 0) {
+        setItems((prev) => prev.filter((item) => !deletedIds.has(item.id)));
+      }
+    };
+
+    const handleChatCleared = (e: any) => {
+      const clearedRoom = e?.detail?.roomId;
+      const currentRoomKey = roomId || 'me';
+      if (!clearedRoom || clearedRoom === currentRoomKey) {
+        setItems([]);
+        setCursor(null);
+        setHasMore(false);
+      }
+    };
+
+    const handleNewMessage = (e: any) => {
+      const msg = e?.detail?.message;
+      const msgRoomId = e?.detail?.roomId || 'me';
+      const currentRoomKey = roomId || 'me';
+      if (!msg || msgRoomId !== currentRoomKey) return;
+      if (msg.vanished || msg.isDeleted) return;
+
+      const isImage = msg.type === 'image' || msg.type === 'photo' || msg.type === 'gif';
+      const isVideo = msg.type === 'video';
+      const isDoc = msg.type === 'file' || msg.type === 'doc';
+      const isLink =
+        (msg.type === 'link' || msg.type === 'text') &&
+        Boolean(msg.text && /(?:https?:\/\/|www\.)[^\s]+/i.test(msg.text));
+
+      if (filter === 'photo' && !isImage) return;
+      if (filter === 'video' && !isVideo) return;
+      if (filter === 'doc' && !isDoc) return;
+      if (filter === 'link' && !isLink) return;
+      if (!filter && !isImage && !isVideo && !isDoc && !isLink) return;
+
+      const newItem: GalleryItem = {
+        id: String(msg.id || msg._id || ''),
+        type: msg.type,
+        url: msg.url,
+        originalName: msg.originalName,
+        size: msg.size,
+        createdAt: msg.createdAt || msg.timestamp || new Date().toISOString(),
+        userId: msg.userId,
+        username: msg.username,
+        text: msg.text,
+        duration: msg.duration,
+      };
+
+      setItems((prev) => {
+        if (prev.some((it) => it.id === newItem.id)) return prev;
+        return [newItem, ...prev];
+      });
+    };
+
+    window.addEventListener('pulse:message_deleted', handleMessageDeleted);
+    window.addEventListener('pulse:chat_cleared', handleChatCleared);
+    window.addEventListener('pulse:new_message', handleNewMessage);
+
+    return () => {
+      window.removeEventListener('pulse:message_deleted', handleMessageDeleted);
+      window.removeEventListener('pulse:chat_cleared', handleChatCleared);
+      window.removeEventListener('pulse:new_message', handleNewMessage);
+    };
+  }, [roomId, filter]);
 
   const loadMore = useCallback(() => {
     if (!isLoading && hasMore && cursor) {

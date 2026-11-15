@@ -565,12 +565,18 @@ export function useChatWebSocket({
           setOldestLoadedAt(null);
           oldestLoadedAtRef.current = null;
           setFirstItemIndex(INITIAL_FIRST_ITEM_INDEX);
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('pulse:chat_cleared', { detail: { roomId } }));
+          }
         } else if (messageData.type === 'delete') {
           const targetId = messageData.id;
           setMessages(prev => prev.filter(m => m.id !== targetId));
           setSearchResults(prev => (prev ? prev.filter(m => m.id !== targetId) : null));
           setReplyingTo(prev => (prev && prev.id === targetId ? null : prev));
           setPinnedMessages(prev => prev.filter(p => p.id !== targetId));
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('pulse:message_deleted', { detail: { ids: [targetId] } }));
+          }
         } else if (messageData.type === 'update') {
           const normalizedUpdate = normalizeMessage(messageData.data);
           const targetMatches = (replyingTo: any, update: Message): boolean => {
@@ -759,8 +765,14 @@ export function useChatWebSocket({
             return prev;
           });
           setPinnedMessages(prev => prev.filter(p => !deletedIds.has(p.id)));
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('pulse:message_deleted', { detail: { ids: messageData.messageIds } }));
+          }
         } else {
           const normalized = normalizeMessage(messageData);
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('pulse:new_message', { detail: { message: normalized, roomId } }));
+          }
           const isJoinNotification =
             normalized.type === 'system_notification' &&
             /has joined the chat/i.test(normalized.text || '');

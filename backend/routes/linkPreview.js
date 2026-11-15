@@ -186,6 +186,25 @@ router.get('/api/link-preview', previewLimiter, async (req, res) => {
       return res.json(gdResult);
     }
 
+    const isGoogleDocs = hostnameFallback === 'docs.google.com' || hostnameFallback.endsWith('.docs.google.com');
+    if (isGoogleDocs) {
+      const isSheet = parsedUrlFallback.pathname.includes('/spreadsheets/');
+      const isForm = parsedUrlFallback.pathname.includes('/forms/');
+      const isSlide = parsedUrlFallback.pathname.includes('/presentation/');
+      const serviceName = isSheet ? 'Google Sheets' : isForm ? 'Google Forms' : isSlide ? 'Google Slides' : 'Google Docs';
+      const gDocsResult = {
+        title: `${serviceName} Document`,
+        description: `Shared ${serviceName}`,
+        image: 'https://ssl.gstatic.com/docs/doclist/images/drive_2022q3_32dp.png',
+        favicon: 'https://ssl.gstatic.com/docs/doclist/images/drive_2022q3_32dp.png',
+        hostname: hostnameFallback,
+        siteName: serviceName,
+        url: url,
+      };
+      setToPreviewCache(cacheKey, gDocsResult);
+      return res.json(gDocsResult);
+    }
+
     const MAX_REDIRECTS = 3;
     let currentUrl = url;
     let finalParsedUrl = null;

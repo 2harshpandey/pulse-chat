@@ -1097,6 +1097,9 @@ export function useChatComposer({
       setHasMoreOlderMessages(false);
       setOldestLoadedAt(null);
       setFirstItemIndex(INITIAL_FIRST_ITEM_INDEX);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('pulse:chat_cleared', { detail: { roomId: roomKey } }));
+      }
     }
   }, [setFirstItemIndex, setHasMoreOlderMessages, setMessages, setOldestLoadedAt, userId, roomId]);
 

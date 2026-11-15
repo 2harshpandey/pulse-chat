@@ -1030,6 +1030,9 @@ export function addDeletedForMeIds(userId: string, ids: string[]): void {
     const existing = getDeletedForMeIds(userId);
     ids.forEach(id => existing.add(id));
     localStorage.setItem(DELETED_FOR_ME_KEY(userId), JSON.stringify(Array.from(existing)));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('pulse:message_deleted', { detail: { ids } }));
+    }
   } catch { /* storage full — ignore */ }
 }
 

@@ -910,11 +910,11 @@ module.exports = (wss, broadcasts) => {
         query.url = { $exists: true, $nin: [null, ''] };
       } else if (cleanType === 'link') {
         query.type = { $in: ['text', 'link'] };
-        query.text = { $regex: /https?:\/\/[^\s]+/i };
+        query.text = { $regex: /(?:https?:\/\/|www\.)[^\s]+/i };
       } else {
         query.$or = [
           { type: { $in: ['image', 'video', 'file', 'gif', 'audio', 'photo', 'doc'] }, url: { $exists: true, $nin: [null, ''] } },
-          { type: 'text', text: { $regex: /https?:\/\/[^\s]+/i } }
+          { type: 'text', text: { $regex: /(?:https?:\/\/|www\.)[^\s]+/i } }
         ];
       }
 

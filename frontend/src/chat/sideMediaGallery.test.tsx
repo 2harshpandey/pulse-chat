@@ -269,4 +269,110 @@ describe('Media Viewer Side Panel and Tab Switching', () => {
     expect(initialIndexPassed).toBe(1);
     expect(optionsPassed).toEqual({ autoPlayVideo: true });
   });
+
+  it('removes item in real time when pulse:message_deleted event is dispatched', async () => {
+    const mockMediaItems = [
+      {
+        id: 'msg-img-1',
+        type: 'image',
+        url: 'https://res.cloudinary.com/test/image/upload/v1/pic1.jpg',
+        originalName: 'holiday.jpg',
+        userId: 'u1',
+        username: 'Harsh',
+        createdAt: '2026-11-15T10:00:00.000Z',
+      },
+    ];
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ items: mockMediaItems, hasMore: false }),
+      } as any)
+    );
+
+    render(<SideMediaGallery roomId="test-room" isActive={true} />);
+
+    await waitFor(() => {
+      expect(screen.getByTitle('holiday.jpg')).toBeDefined();
+    });
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent('pulse:message_deleted', { detail: { ids: ['msg-img-1'] } }));
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTitle('holiday.jpg')).toBeNull();
+    });
+  });
+
+  it('empties gallery in real time when pulse:chat_cleared event is dispatched', async () => {
+    const mockMediaItems = [
+      {
+        id: 'msg-img-1',
+        type: 'image',
+        url: 'https://res.cloudinary.com/test/image/upload/v1/pic1.jpg',
+        originalName: 'holiday.jpg',
+        userId: 'u1',
+        username: 'Harsh',
+        createdAt: '2026-11-15T10:00:00.000Z',
+      },
+    ];
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ items: mockMediaItems, hasMore: false }),
+      } as any)
+    );
+
+    render(<SideMediaGallery roomId="test-room" isActive={true} />);
+
+    await waitFor(() => {
+      expect(screen.getByTitle('holiday.jpg')).toBeDefined();
+    });
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent('pulse:chat_cleared', { detail: { roomId: 'test-room' } }));
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByTitle('holiday.jpg')).toBeNull();
+      expect(screen.getByText('No media sent in this room yet')).toBeDefined();
+    });
+  });
+
+  it('strips trailing punctuation from links before opening', async () => {
+    const mockMediaItems = [
+      {
+        id: 'msg-link-1',
+        type: 'text',
+        text: 'Check this: https://example.com/page.',
+        userId: 'u1',
+        username: 'Harsh',
+        createdAt: '2026-11-15T10:00:00.000Z',
+      },
+    ];
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ items: mockMediaItems, hasMore: false }),
+      } as any)
+    );
+
+    const windowOpenSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+
+    render(<SideMediaGallery roomId="test-room" isActive={true} />);
+
+    await waitFor(() => {
+      expect(screen.getByTitle('Open example.com')).toBeDefined();
+    });
+
+    const linkCard = screen.getByTitle('Open example.com');
+    act(() => {
+      fireEvent.click(linkCard);
+    });
+
+    expect(windowOpenSpy).toHaveBeenCalledWith('https://example.com/page', '_blank', 'noopener,noreferrer');
+  });
 });

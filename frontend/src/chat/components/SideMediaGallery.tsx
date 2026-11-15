@@ -58,6 +58,16 @@ const formatFileSize = (bytes?: number): string => {
   return `${Math.ceil(bytes / 1024)} KB`;
 };
 
+const extractUrlFromText = (text: string): string | null => {
+  const match = text.match(/(?:https?:\/\/|www\.)[^\s]+/i);
+  if (!match) return null;
+  let raw = match[0].replace(/[.,;:!?)'">\]]+$/, '');
+  if (/^www\./i.test(raw)) {
+    raw = `https://${raw}`;
+  }
+  return raw;
+};
+
 export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
   roomId,
   isActive,
@@ -135,9 +145,9 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
           void downloadFile(safe, item.originalName || 'file', undefined, undefined, true);
         }
       } else if (isLink && item.text) {
-        const match = item.text.match(/https?:\/\/[^\s]+/i);
-        if (match) {
-          const safe = sanitizeMediaUrl(match[0]);
+        const urlStr = extractUrlFromText(item.text);
+        if (urlStr) {
+          const safe = sanitizeMediaUrl(urlStr);
           if (safe) {
             window.open(safe, '_blank', 'noopener,noreferrer');
           }
@@ -289,11 +299,11 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
 
       // Links
       if (isLink && item.text) {
-        const urlMatch = item.text.match(/https?:\/\/[^\s]+/i);
+        const urlStr = extractUrlFromText(item.text);
         let domain = '';
-        if (urlMatch) {
+        if (urlStr) {
           try {
-            domain = new URL(urlMatch[0]).hostname.replace(/^www\./i, '');
+            domain = new URL(urlStr).hostname.replace(/^www\./i, '');
           } catch (_) {
             domain = 'Link';
           }
