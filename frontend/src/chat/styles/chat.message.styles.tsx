@@ -1222,6 +1222,11 @@ export const SidePanelTabBar = styled.div`
   border-radius: 10px;
   padding: 3px;
   flex-shrink: 0;
+
+  [data-theme='light'] & {
+    background: #e2e8f0;
+    border-color: #cbd5e1;
+  }
 `;
 
 export const SidePanelTab = styled.button<{ $active?: boolean }>`
@@ -1255,6 +1260,26 @@ export const SidePanelTab = styled.button<{ $active?: boolean }>`
 
   &:active {
     transform: scale(0.96);
+  }
+
+  [data-theme='light'] & {
+    color: ${p => p.$active ? '#ffffff' : '#334155'};
+    box-shadow: ${p => p.$active ? '0 2px 8px rgba(37, 99, 235, 0.25)' : 'none'};
+
+    svg {
+      opacity: ${p => p.$active ? 1 : 0.9};
+      stroke: ${p => p.$active ? '#ffffff' : '#334155'};
+    }
+
+    &:hover {
+      background: ${p => p.$active ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.95), rgba(37, 99, 235, 0.95))' : 'rgba(255, 255, 255, 0.65)'};
+      color: ${p => p.$active ? '#ffffff' : '#0f172a'};
+
+      svg {
+        stroke: ${p => p.$active ? '#ffffff' : '#0f172a'};
+        opacity: 1;
+      }
+    }
   }
 `;
 
