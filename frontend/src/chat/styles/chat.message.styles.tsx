@@ -1247,38 +1247,70 @@ export const SidePanelTab = styled.button<{ $active?: boolean }>`
   color: ${p => p.$active ? '#ffffff' : 'var(--text-secondary)'};
   box-shadow: ${p => p.$active ? '0 2px 10px rgba(59, 130, 246, 0.35)' : 'none'};
 
+  span {
+    color: inherit;
+    transition: color 0.2s ease;
+  }
+
   svg {
     width: 14px;
     height: 14px;
     opacity: ${p => p.$active ? 1 : 0.75};
+    stroke: currentColor;
+    transition: transform 0.2s ease, opacity 0.2s ease, stroke 0.2s ease;
   }
 
   &:hover {
-    background: ${p => p.$active ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.95), rgba(37, 99, 235, 0.95))' : 'rgba(255, 255, 255, 0.06)'};
+    background: ${p => p.$active ? 'linear-gradient(135deg, rgba(37, 99, 235, 1), rgba(29, 78, 216, 1))' : 'rgba(255, 255, 255, 0.08)'};
     color: ${p => p.$active ? '#ffffff' : 'var(--text-primary)'};
+    transform: translateY(-1px);
+    box-shadow: ${p => p.$active ? '0 4px 14px rgba(37, 99, 235, 0.45)' : 'none'};
+
+    svg {
+      opacity: 1;
+      transform: scale(1.08);
+    }
   }
 
   &:active {
-    transform: scale(0.96);
+    transform: translateY(0) scale(0.96);
   }
 
   [data-theme='light'] & {
-    color: ${p => p.$active ? '#ffffff' : '#334155'};
-    box-shadow: ${p => p.$active ? '0 2px 8px rgba(37, 99, 235, 0.25)' : 'none'};
+    background: ${p => p.$active ? 'linear-gradient(135deg, #3b82f6, #2563eb)' : 'transparent'};
+    color: ${p => p.$active ? '#ffffff !important' : '#475569'};
+    box-shadow: ${p => p.$active ? '0 2px 8px rgba(37, 99, 235, 0.32)' : 'none'};
+
+    span {
+      color: ${p => p.$active ? '#ffffff !important' : '#475569'};
+    }
 
     svg {
       opacity: ${p => p.$active ? 1 : 0.9};
-      stroke: ${p => p.$active ? '#ffffff' : '#334155'};
+      stroke: ${p => p.$active ? '#ffffff !important' : '#475569'};
+      color: ${p => p.$active ? '#ffffff !important' : '#475569'};
     }
 
     &:hover {
-      background: ${p => p.$active ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.95), rgba(37, 99, 235, 0.95))' : 'rgba(255, 255, 255, 0.65)'};
-      color: ${p => p.$active ? '#ffffff' : '#0f172a'};
+      background: ${p => p.$active ? 'linear-gradient(135deg, #2563eb, #1d4ed8)' : '#ffffff'};
+      color: ${p => p.$active ? '#ffffff !important' : '#0f172a'};
+      box-shadow: ${p => p.$active ? '0 4px 14px rgba(37, 99, 235, 0.45)' : '0 2px 6px rgba(0, 0, 0, 0.08)'};
+      transform: translateY(-1px);
+
+      span {
+        color: ${p => p.$active ? '#ffffff !important' : '#0f172a'};
+      }
 
       svg {
-        stroke: ${p => p.$active ? '#ffffff' : '#0f172a'};
+        stroke: ${p => p.$active ? '#ffffff !important' : '#0f172a'};
+        color: ${p => p.$active ? '#ffffff !important' : '#0f172a'};
         opacity: 1;
+        transform: scale(1.08);
       }
+    }
+
+    &:active {
+      transform: translateY(0) scale(0.96);
     }
   }
 `;
