@@ -7,6 +7,10 @@ import { ThemeProvider } from './ThemeContext';
 import reportWebVitals from './reportWebVitals';
 import { BrowserRouter } from 'react-router-dom';
 import { resolveApiBaseUrl } from './chat/utils';
+import { restorePWALocationPreRender } from './pwaLocation';
+
+// Restore PWA location before mounting BrowserRouter so initial route renders immediately
+restorePWALocationPreRender();
 
 if ('scrollRestoration' in window.history) {
   window.history.scrollRestoration = 'manual';

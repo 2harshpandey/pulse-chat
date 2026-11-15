@@ -9,6 +9,7 @@ const Admin = React.lazy(() => import('./Admin'));
 const AboutDeveloper = React.lazy(() => import('./AboutDeveloper'));
 import { GlobalStyle } from './chat/ChatStyledComponents';
 import { NotFoundPage, ForbiddenPage, ServerErrorPage, TimeoutPage, RateLimitPage, MaintenancePage } from './ErrorPages';
+import { savePWALocation, getSavedPWALocation, isRunningAsPWA } from './pwaLocation';
 
 const GlobalHomeButton = styled.button`
   position: absolute;
@@ -203,6 +204,24 @@ class RouteErrorBoundary extends React.Component<
 function AppRoutes() {
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Save current location so PWA can restore exact state when reopened
+  React.useEffect(() => {
+    const fullPath = location.pathname + location.search + location.hash;
+    savePWALocation(fullPath);
+  }, [location.pathname, location.search, location.hash]);
+
+  // Fallback client-side redirect for PWA launch if root wasn't pre-rendered
+  React.useEffect(() => {
+    if (!isRunningAsPWA()) return;
+    const currentPath = window.location.pathname;
+    if (currentPath === '/' || currentPath === '/index.html') {
+      const saved = getSavedPWALocation();
+      if (saved && saved !== '/' && saved !== '/index.html') {
+        navigate(saved, { replace: true });
+      }
+    }
+  }, [navigate]);
 
   return (
     <RouteErrorBoundary key={location.pathname}>

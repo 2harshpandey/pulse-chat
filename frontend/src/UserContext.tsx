@@ -1,6 +1,7 @@
 import React, { createContext, useState, ReactNode } from 'react';
 import { clearCachedMediaForUser } from './mediaCache';
 import { getCookie, setCookie, deleteCookie, removeSessionToken } from './chat/utils';
+import { clearSavedPWALocation } from './pwaLocation';
 
 export type PresenceActivity =
   | 'typing'
@@ -91,6 +92,7 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       sessionStorage.removeItem('chatCleared');
       deleteCookie('pulseUsername');
       deleteCookie('pulseRoomId');
+      clearSavedPWALocation();
     } catch (_) {}
     setProfile(null);
   };
