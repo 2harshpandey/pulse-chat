@@ -169,6 +169,20 @@ router.get('/api/link-preview', previewLimiter, async (req, res) => {
       }
     }
 
+    const isGoogleDrive = hostnameFallback === 'drive.google.com' || hostnameFallback.endsWith('.drive.google.com');
+    if (isGoogleDrive) {
+      fallbackSiteName = 'Google Drive';
+      if (parsedUrlFallback.pathname.includes('/folders/')) {
+        fallbackTitle = 'Google Drive Folder';
+        fallbackDescription = 'Shared Google Drive Folder';
+      } else {
+        fallbackTitle = 'Google Drive';
+        fallbackDescription = 'Google Drive Document';
+      }
+      fallbackFavicon = 'https://ssl.gstatic.com/docs/doclist/images/drive_2022q3_32dp.png';
+      fallbackImage = 'https://ssl.gstatic.com/docs/doclist/images/drive_2022q3_32dp.png';
+    }
+
     const MAX_REDIRECTS = 3;
     let currentUrl = url;
     let finalParsedUrl = null;
@@ -489,13 +503,18 @@ router.get('/api/link-preview', previewLimiter, async (req, res) => {
     siteName = siteName || fallbackSiteName;
     image = image || fallbackImage;
 
-    if (!title && !description && !image && fetchError) {
-      throw fetchError;
-    }
-
     const hostname = finalParsedUrl ? finalParsedUrl.hostname.replace(/^www\./, '') : parsedUrlFallback.hostname.replace(/^www\./, '');
+    const fallbackFavicon = finalParsedUrl ? `${finalParsedUrl.origin}/favicon.ico` : `https://${parsedUrlFallback.hostname}/favicon.ico`;
 
-    const result = { title, description, image, favicon, hostname, siteName };
+    const result = {
+      title: title || fallbackTitle || hostname,
+      description: description || fallbackDescription || null,
+      image: image || fallbackImage || null,
+      favicon: favicon || fallbackFavicon,
+      hostname,
+      siteName: siteName || fallbackSiteName || hostname,
+      url,
+    };
     setToPreviewCache(cacheKey, result);
     res.json(result);
   } catch (error) {
