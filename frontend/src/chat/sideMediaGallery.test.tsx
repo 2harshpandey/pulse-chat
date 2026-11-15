@@ -195,6 +195,17 @@ describe('Media Viewer Side Panel and Tab Switching', () => {
     expect(videosChip.getAttribute('aria-selected')).toBe('false');
   });
 
+  it('scrolls the filter bar horizontally when mouse wheel event is fired on desktop', () => {
+    render(<SideMediaGallery roomId="test-room" isActive={true} />);
+    const filterBar = screen.getByRole('tablist', { name: /media filters/i });
+    expect(filterBar.scrollLeft).toBe(0);
+
+    act(() => {
+      fireEvent.wheel(filterBar, { deltaY: 85 });
+    });
+    expect(filterBar.scrollLeft).toBe(85);
+  });
+
   it('clicking a photo or video thumbnail triggers openMediaGallery with all playable items and initialIndex', async () => {
     const mockMediaItems = [
       {

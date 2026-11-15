@@ -158,7 +158,8 @@ export const UserSidebar: React.FC<UserSidebarProps> = ({
         ) : (
           <SideMediaGallery
             roomId={roomId}
-            isActive={activeTab === 'media' && isVisible}
+            currentUserId={currentUserId}
+            isActive={activeTab === 'media'}
             openMediaGallery={openMediaGallery}
             openLightbox={openLightbox}
             loadedMediaMessageSet={loadedMediaMessageSet}

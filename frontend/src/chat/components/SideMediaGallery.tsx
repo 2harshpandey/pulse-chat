@@ -29,6 +29,7 @@ import {
 export interface SideMediaGalleryProps {
   roomId: string;
   isActive: boolean;
+  currentUserId?: string;
   openMediaGallery?: (items: Message[], initialIndex?: number, options?: { autoPlayVideo?: boolean }) => void;
   openLightbox?: (url: string, canonicalUrl?: string) => void;
   loadedMediaMessageSet?: Set<string>;
@@ -60,6 +61,7 @@ const formatFileSize = (bytes?: number): string => {
 export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
   roomId,
   isActive,
+  currentUserId,
   openMediaGallery,
   openLightbox,
   loadedMediaMessageSet,
@@ -68,6 +70,7 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
   const { items, isLoading, hasMore, filter, error, loadMore, toggleFilter, refetch } = useChatMediaGallery({
     roomId,
     isActive,
+    userId: currentUserId,
   });
 
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -96,7 +99,7 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
   // Build playable items list for the full-screen media player
   const playableItems = useMemo<Message[]>(() => {
     return items
-      .filter((it) => it.type === 'image' || it.type === 'video' || it.type === 'gif')
+      .filter((it) => it.type === 'image' || it.type === 'video' || it.type === 'gif' || it.type === 'photo')
       .map((it) => ({
         id: it.id,
         userId: it.userId || '',
@@ -104,7 +107,7 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
         text: it.text || '',
         timestamp: it.createdAt || new Date().toISOString(),
         createdAt: it.createdAt || new Date().toISOString(),
-        type: (it.type === 'gif' ? 'image' : it.type) as any,
+        type: (it.type === 'gif' || it.type === 'photo' ? 'image' : it.type) as any,
         url: it.url,
         originalName: it.originalName,
         size: it.size,
@@ -115,7 +118,8 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
 
   const handleMediaClick = useCallback(
     (item: GalleryItem) => {
-      const isPlayable = item.type === 'image' || item.type === 'video' || item.type === 'gif';
+      const isPlayable = item.type === 'image' || item.type === 'video' || item.type === 'gif' || item.type === 'photo';
+      const isLink = item.type === 'link' || (item.type === 'text' && Boolean(item.text && /https?:\/\//i.test(item.text)));
 
       if (isPlayable) {
         if (openMediaGallery && playableItems.length > 0) {
@@ -125,12 +129,12 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
           const safe = sanitizeMediaUrl(item.url);
           openLightbox(safe || item.url, item.url);
         }
-      } else if (item.type === 'file' && item.url) {
+      } else if ((item.type === 'file' || item.type === 'doc') && item.url) {
         const safe = sanitizeMediaUrl(item.url);
         if (safe) {
           void downloadFile(safe, item.originalName || 'file');
         }
-      } else if (item.type === 'link' && item.text) {
+      } else if (isLink && item.text) {
         const match = item.text.match(/https?:\/\/[^\s]+/i);
         if (match) {
           const safe = sanitizeMediaUrl(match[0]);
@@ -150,10 +154,10 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
 
   const renderItem = useCallback(
     (item: GalleryItem) => {
-      const isImage = item.type === 'image' || item.type === 'gif';
+      const isImage = item.type === 'image' || item.type === 'gif' || item.type === 'photo';
       const isVideo = item.type === 'video';
-      const isFile = item.type === 'file';
-      const isLink = item.type === 'link' || (item.type === 'text' && item.text && /https?:\/\//i.test(item.text));
+      const isFile = item.type === 'file' || item.type === 'doc';
+      const isLink = item.type === 'link' || (item.type === 'text' && Boolean(item.text && /https?:\/\//i.test(item.text)));
 
       // Photos
       if (isImage) {
@@ -334,7 +338,15 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
 
   return (
     <MediaGalleryPanelRoot>
-      <MediaGalleryFilterBar role="tablist" aria-label="Media filters">
+      <MediaGalleryFilterBar
+        role="tablist"
+        aria-label="Media filters"
+        onWheel={(e) => {
+          if (e.deltaY !== 0) {
+            e.currentTarget.scrollLeft += e.deltaY;
+          }
+        }}
+      >
         {FILTERS.map(({ label, value }) => (
           <MediaGalleryFilterChip
             key={value}
@@ -381,3 +393,4 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
     </MediaGalleryPanelRoot>
   );
 };
+

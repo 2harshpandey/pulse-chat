@@ -19,9 +19,10 @@ export interface GalleryItem {
 export interface UseChatMediaGalleryProps {
   roomId: string;
   isActive: boolean;
+  userId?: string;
 }
 
-export function useChatMediaGallery({ roomId, isActive }: UseChatMediaGalleryProps) {
+export function useChatMediaGallery({ roomId, isActive, userId }: UseChatMediaGalleryProps) {
   const [items, setItems] = useState<GalleryItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -53,10 +54,17 @@ export function useChatMediaGallery({ roomId, isActive }: UseChatMediaGalleryPro
 
       try {
         const apiBase = resolveApiBaseUrl();
-        const userId = getUserId();
+        const effectiveUserId = userId || getUserId();
         const sessionToken = getSessionToken(roomId);
 
         const params = new URLSearchParams();
+        params.set('roomId', roomId);
+        if (effectiveUserId) {
+          params.set('userId', effectiveUserId);
+        }
+        if (sessionToken) {
+          params.set('sessionToken', sessionToken);
+        }
         if (filterParam) {
           params.set('type', filterParam);
         }
@@ -67,7 +75,7 @@ export function useChatMediaGallery({ roomId, isActive }: UseChatMediaGalleryPro
 
         const headers: Record<string, string> = {
           'x-room-id': roomId,
-          'x-user-id': userId,
+          'x-user-id': effectiveUserId,
           'Content-Type': 'application/json',
         };
         if (sessionToken) {
@@ -96,7 +104,7 @@ export function useChatMediaGallery({ roomId, isActive }: UseChatMediaGalleryPro
 
         if (!isMountedRef.current) return;
 
-        const deletedForMe = getDeletedForMeIds(userId);
+        const deletedForMe = getDeletedForMeIds(effectiveUserId);
         const filteredNewItems = (data.items || []).filter((item) => !deletedForMe.has(item.id));
 
         setItems((prev) => {
@@ -118,7 +126,7 @@ export function useChatMediaGallery({ roomId, isActive }: UseChatMediaGalleryPro
         }
       }
     },
-    [roomId]
+    [roomId, userId]
   );
 
   // Fetch when tab becomes active or filter changes

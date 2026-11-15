@@ -174,6 +174,7 @@ app.use(cors({
     logger.warn(`Blocked cross-origin HTTP request from disallowed origin: ${origin}`);
     return callback(new Error(`Blocked by CORS policy: origin '${origin}' is not allowed`));
   },
+  credentials: true,
   methods: ['GET', 'HEAD', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-password', 'x-admin-secret', 'x-room-id', 'x-user-id', 'x-session-token', 'x-room-password', 'Range'],
 }));

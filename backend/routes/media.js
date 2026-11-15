@@ -836,8 +836,12 @@ module.exports = (wss, broadcasts) => {
     try {
       const rawRoomId = req.headers['x-room-id'] || req.query.roomId;
       let roomId = typeof rawRoomId === 'string' && rawRoomId.trim() ? rawRoomId.trim() : 'me';
+      const callerUserId = req.headers['x-user-id'] || req.query.userId;
+      logger.info(`[MediaGallery] Request for room: ${roomId}, caller: ${callerUserId}, type: ${req.query.type}`);
+
       const allowed = await isRoomAccessAllowed(roomId, req);
       if (!allowed) {
+        logger.warn(`[MediaGallery] Access denied for room: ${roomId}, caller: ${callerUserId}`);
         return res.status(401).json({ error: 'Access denied: authentication or room password required' });
       }
 
@@ -893,23 +897,23 @@ module.exports = (wss, broadcasts) => {
 
       const cleanType = typeof type === 'string' ? type.toLowerCase() : null;
       if (cleanType === 'photo' || cleanType === 'image') {
-        query.type = { $in: ['image', 'gif'] };
-        query.url = { $exists: true, $ne: null };
+        query.type = { $in: ['image', 'gif', 'photo'] };
+        query.url = { $exists: true, $nin: [null, ''] };
       } else if (cleanType === 'video') {
         query.type = 'video';
-        query.url = { $exists: true, $ne: null };
+        query.url = { $exists: true, $nin: [null, ''] };
       } else if (cleanType === 'audio') {
         query.type = 'audio';
-        query.url = { $exists: true, $ne: null };
+        query.url = { $exists: true, $nin: [null, ''] };
       } else if (cleanType === 'doc' || cleanType === 'file') {
-        query.type = 'file';
-        query.url = { $exists: true, $ne: null };
+        query.type = { $in: ['file', 'doc'] };
+        query.url = { $exists: true, $nin: [null, ''] };
       } else if (cleanType === 'link') {
-        query.type = 'text';
+        query.type = { $in: ['text', 'link'] };
         query.text = { $regex: /https?:\/\/[^\s]+/i };
       } else {
         query.$or = [
-          { type: { $in: ['image', 'video', 'file', 'gif', 'audio'] }, url: { $exists: true, $ne: null } },
+          { type: { $in: ['image', 'video', 'file', 'gif', 'audio', 'photo', 'doc'] }, url: { $exists: true, $nin: [null, ''] } },
           { type: 'text', text: { $regex: /https?:\/\/[^\s]+/i } }
         ];
       }
@@ -940,6 +944,7 @@ module.exports = (wss, broadcasts) => {
         duration: typeof item.duration === 'number' ? item.duration : undefined,
       }));
 
+      logger.info(`[MediaGallery] Returning ${items.length} items for room ${roomId}`);
       res.status(200).json({ items, hasMore, nextCursor });
     } catch (error) {
       logger.error('Failed to fetch media gallery items:', error);

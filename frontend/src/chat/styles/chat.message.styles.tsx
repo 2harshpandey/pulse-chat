@@ -1268,23 +1268,26 @@ export const MediaGalleryPanelRoot = styled.div`
 
 export const MediaGalleryFilterBar = styled.div`
   display: flex;
-  gap: 5px;
+  gap: 4px;
   padding-bottom: 8px;
   flex-shrink: 0;
   overflow-x: auto;
+  overflow-y: hidden;
+  scroll-behavior: smooth;
   scrollbar-width: none;
+  -ms-overflow-style: none;
   &::-webkit-scrollbar {
     display: none;
   }
 `;
 
 export const MediaGalleryFilterChip = styled.button<{ $active?: boolean }>`
-  padding: 4px 10px;
+  padding: 4px 8px;
   border-radius: 999px;
   border: 1px solid ${p => p.$active ? 'rgba(59, 130, 246, 0.8)' : 'var(--border-primary)'};
   background: ${p => p.$active ? 'rgba(59, 130, 246, 0.22)' : 'rgba(15, 23, 42, 0.3)'};
   color: ${p => p.$active ? '#93c5fd' : 'var(--text-secondary)'};
-  font-size: 0.72rem;
+  font-size: 0.70rem;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
