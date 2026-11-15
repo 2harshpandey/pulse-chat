@@ -132,7 +132,7 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
       } else if ((item.type === 'file' || item.type === 'doc') && item.url) {
         const safe = sanitizeMediaUrl(item.url);
         if (safe) {
-          void downloadFile(safe, item.originalName || 'file');
+          void downloadFile(safe, item.originalName || 'file', undefined, undefined, true);
         }
       } else if (isLink && item.text) {
         const match = item.text.match(/https?:\/\/[^\s]+/i);
