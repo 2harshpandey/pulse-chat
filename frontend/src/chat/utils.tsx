@@ -413,11 +413,27 @@ export const buildDownloadProxyUrl = (resourceUrl: string, filename?: string): s
   const params = new URLSearchParams({ url: resourceUrl });
   if (filename) params.set('filename', filename);
   if (typeof window !== 'undefined') {
-    const roomId = sessionStorage.getItem('pulse_room_id') || localStorage.getItem('pulse_room_id') || sessionStorage.getItem('pulseRoomId') || localStorage.getItem('pulseRoomId');
+    const getStoredValue = (key: string): string | null => {
+      try {
+        if (typeof sessionStorage !== 'undefined' && sessionStorage) {
+          const val = sessionStorage.getItem(key);
+          if (val) return val;
+        }
+      } catch (_) {}
+      try {
+        if (typeof localStorage !== 'undefined' && localStorage) {
+          const val = localStorage.getItem(key);
+          if (val) return val;
+        }
+      } catch (_) {}
+      return null;
+    };
+
+    const roomId = getStoredValue('pulse_room_id') || getStoredValue('pulseRoomId');
     if (roomId) params.set('roomId', roomId);
     const sessionToken = getSessionToken(roomId || undefined);
     if (sessionToken) params.set('sessionToken', sessionToken);
-    const userId = sessionStorage.getItem('pulse_user_id') || localStorage.getItem('pulse_user_id') || sessionStorage.getItem('pulseUserId') || localStorage.getItem('pulseUserId');
+    const userId = getStoredValue('pulse_user_id') || getStoredValue('pulseUserId');
     if (userId) params.set('userId', userId);
   }
   return `${endpoint}?${params.toString()}`;

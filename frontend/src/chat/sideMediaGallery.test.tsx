@@ -375,4 +375,49 @@ describe('Media Viewer Side Panel and Tab Switching', () => {
 
     expect(windowOpenSpy).toHaveBeenCalledWith('https://example.com/page', '_blank', 'noopener,noreferrer');
   });
+
+  it('triggers onShowToast with download message when clicking a doc item', async () => {
+    const mockMediaItems = [
+      {
+        id: 'msg-doc-1',
+        type: 'file',
+        originalName: 'notes.pdf',
+        url: 'https://res.cloudinary.com/test/raw/upload/v1/notes.pdf',
+        userId: 'u1',
+        username: 'Harsh',
+        size: 1024 * 500,
+        createdAt: '2026-11-15T10:00:00.000Z',
+      },
+    ];
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ items: mockMediaItems, hasMore: false }),
+      } as any)
+    );
+
+    const onShowToastMock = vi.fn();
+    const anchorClickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    render(
+      <SideMediaGallery
+        roomId="test-room"
+        isActive={true}
+        onShowToast={onShowToastMock}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTitle('Download notes.pdf')).toBeDefined();
+    });
+
+    const docCard = screen.getByTitle('Download notes.pdf');
+    act(() => {
+      fireEvent.click(docCard);
+    });
+
+    expect(onShowToastMock).toHaveBeenCalledWith('Download started...');
+    anchorClickSpy.mockRestore();
+  });
 });

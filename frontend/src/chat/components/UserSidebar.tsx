@@ -63,6 +63,7 @@ export interface UserSidebarProps {
   openLightbox?: (url: string, canonicalUrl?: string) => void;
   loadedMediaMessageSet?: Set<string>;
   loadedMediaSrcById?: Record<string, string>;
+  onShowToast?: (msg: string) => void;
 }
 
 export const UserSidebar: React.FC<UserSidebarProps> = ({
@@ -77,6 +78,7 @@ export const UserSidebar: React.FC<UserSidebarProps> = ({
   openLightbox,
   loadedMediaMessageSet,
   loadedMediaSrcById,
+  onShowToast,
 }) => {
   const [activeTab, setActiveTab] = useState<'online' | 'media'>('online');
 
@@ -166,6 +168,7 @@ export const UserSidebar: React.FC<UserSidebarProps> = ({
             openLightbox={openLightbox}
             loadedMediaMessageSet={loadedMediaMessageSet}
             loadedMediaSrcById={loadedMediaSrcById}
+            onShowToast={onShowToast}
           />
         )}
 

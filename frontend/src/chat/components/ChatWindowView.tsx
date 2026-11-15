@@ -80,6 +80,20 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleStatusToast = (e: any) => {
+      const msg = e?.detail?.message;
+      if (typeof msg === 'string') {
+        msgs.triggerAlbumDownloadToast(msg);
+      }
+    };
+    window.addEventListener('pulse:status_toast', handleStatusToast);
+    return () => {
+      window.removeEventListener('pulse:status_toast', handleStatusToast);
+    };
+  }, [msgs]);
+
   const isStatusToastVisible = Boolean(
     statusErrorToast || nav.isLocatingMessage || msgs.albumDownloadToast || albumDownload.isDownloading
   );
@@ -278,6 +292,20 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
             style={{ width: '18px', height: '18px', animation: 'spin 1s linear infinite' }}
           >
             <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+          </svg>
+        ) : statusToastText.toLowerCase().includes('download') ? (
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#38bdf8"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ width: '18px', height: '18px' }}
+          >
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
           </svg>
         ) : (
           <svg

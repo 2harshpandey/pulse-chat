@@ -150,6 +150,7 @@ function ChatAuthenticated({ isMe, isTempLink }: ChatProps) {
             openLightbox={c.media.openLightbox}
             loadedMediaMessageSet={c.loadedMediaMessageSet}
             loadedMediaSrcById={c.media.loadedMediaSrcById}
+            onShowToast={c.msgs.triggerAlbumDownloadToast}
             onLogout={() => {
               localStorage.removeItem(getInputDraftKey(c.userIdRef.current, c.roomId));
               localStorage.removeItem(getInputDraftKey(c.userIdRef.current));

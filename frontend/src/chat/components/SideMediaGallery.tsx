@@ -34,6 +34,7 @@ export interface SideMediaGalleryProps {
   openLightbox?: (url: string, canonicalUrl?: string) => void;
   loadedMediaMessageSet?: Set<string>;
   loadedMediaSrcById?: Record<string, string>;
+  onShowToast?: (msg: string) => void;
 }
 
 const FILTERS: { label: string; value: GalleryFilter }[] = [
@@ -76,6 +77,7 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
   openLightbox,
   loadedMediaMessageSet,
   loadedMediaSrcById,
+  onShowToast,
 }) => {
   const { items, isLoading, hasMore, filter, error, loadMore, toggleFilter, refetch } = useChatMediaGallery({
     roomId,
@@ -142,7 +144,24 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
       } else if ((item.type === 'file' || item.type === 'doc') && item.url) {
         const safe = sanitizeMediaUrl(item.url);
         if (safe) {
-          void downloadFile(safe, item.originalName || 'file', undefined, undefined, true);
+          if (onShowToast) {
+            onShowToast('Download started...');
+          } else if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('pulse:status_toast', { detail: { message: 'Download started...' } }));
+          }
+          void downloadFile(
+            safe,
+            item.originalName || 'file',
+            undefined,
+            () => {
+              if (onShowToast) {
+                onShowToast('Failed to download file');
+              } else if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('pulse:status_toast', { detail: { message: 'Failed to download file' } }));
+              }
+            },
+            true
+          );
         }
       } else if (isLink && item.text) {
         const urlStr = extractUrlFromText(item.text);
