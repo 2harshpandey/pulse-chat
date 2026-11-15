@@ -95,6 +95,7 @@ router.get('/api/link-preview', previewLimiter, async (req, res) => {
     let fallbackDescription = null;
     let fallbackSiteName = null;
     let fallbackImage = null;
+    let fallbackFavicon = null;
 
     const isAmazon = hostnameFallback === 'amazon.com' || hostnameFallback.endsWith('.amazon.com') || /(?:^|\.)amazon\.[a-z]{2,3}(?:\.[a-z]{2})?$/.test(hostnameFallback) || hostnameFallback === 'amzn.in' || hostnameFallback === 'amzn.to';
     if (isAmazon) {
@@ -504,13 +505,14 @@ router.get('/api/link-preview', previewLimiter, async (req, res) => {
     image = image || fallbackImage;
 
     const hostname = finalParsedUrl ? finalParsedUrl.hostname.replace(/^www\./, '') : parsedUrlFallback.hostname.replace(/^www\./, '');
-    const fallbackFavicon = finalParsedUrl ? `${finalParsedUrl.origin}/favicon.ico` : `https://${parsedUrlFallback.hostname}/favicon.ico`;
+    const defaultFavicon = finalParsedUrl ? `${finalParsedUrl.origin}/favicon.ico` : `https://${parsedUrlFallback.hostname}/favicon.ico`;
+    const resolvedFavicon = favicon || fallbackFavicon || defaultFavicon;
 
     const result = {
       title: title || fallbackTitle || hostname,
       description: description || fallbackDescription || null,
       image: image || fallbackImage || null,
-      favicon: favicon || fallbackFavicon,
+      favicon: resolvedFavicon,
       hostname,
       siteName: siteName || fallbackSiteName || hostname,
       url,
