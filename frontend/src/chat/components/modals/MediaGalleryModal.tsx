@@ -76,6 +76,8 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
   const requestedLoadIdsRef = useRef<Set<string>>(new Set());
   // Stable media URL per slide to prevent swapping video source mid-playback
   const activeMediaUrlRef = useRef<{ id: string; url: string } | null>(null);
+  const thumbsRowRef = useRef<HTMLDivElement>(null);
+  const thumbRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
   const activeItems = useMemo(() => {
     if (!allMessages || allMessages.length === 0) return items.filter((m) => !m.isDeleted);
@@ -121,6 +123,50 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
       setUserNavigated(false);
     }
   }, [isOpen, initialIndex, activeItems.length, items.length]);
+
+  const centerActiveThumb = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    const container = thumbsRowRef.current;
+    const activeEl = thumbRefs.current.get(currentIndex);
+    if (!container || !activeEl) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const activeRect = activeEl.getBoundingClientRect();
+    if (containerRect.width <= 0) return;
+
+    const activeCenter = activeRect.left + activeRect.width / 2;
+    const containerCenter = containerRect.left + containerRect.width / 2;
+    const delta = activeCenter - containerCenter;
+
+    container.scrollTo({
+      left: Math.max(0, container.scrollLeft + delta),
+      behavior,
+    });
+  }, [currentIndex]);
+
+  // Center active thumbnail horizontally in filmstrip so active media is in middle with neighbors on left and right
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const behavior: ScrollBehavior = userNavigated ? 'smooth' : 'auto';
+    const rafId = requestAnimationFrame(() => {
+      centerActiveThumb(behavior);
+    });
+    const timerId = setTimeout(() => {
+      centerActiveThumb(behavior);
+    }, 60);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      clearTimeout(timerId);
+    };
+  }, [currentIndex, isOpen, activeItems.length, userNavigated, centerActiveThumb]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleResize = () => centerActiveThumb('auto');
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [isOpen, centerActiveThumb]);
 
   const rawItem = activeItems[currentIndex] || activeItems[0] || items[currentIndex] || items[0];
   const currentItem = useMemo(() => {
@@ -680,7 +726,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
           )}
 
           {activeItems.length > 1 && (
-            <MediaGalleryThumbsRow>
+            <MediaGalleryThumbsRow ref={thumbsRowRef}>
               {activeItems.map((item, idx) => {
                 const itemIsVideo =
                   item.type === 'video' ||
@@ -709,6 +755,13 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                 return (
                   <MediaGalleryThumb
                     key={item.id || idx}
+                    ref={(el) => {
+                      if (el) {
+                        thumbRefs.current.set(idx, el);
+                      } else {
+                        thumbRefs.current.delete(idx);
+                      }
+                    }}
                     $active={idx === currentIndex}
                     onClick={() => {
                       setUserNavigated(true);

@@ -498,4 +498,45 @@ describe('Media Viewer Side Panel and Tab Switching', () => {
     expect(screen.getByText('1 / 2')).toBeDefined();
     expect(screen.getByText(/Harsh/)).toBeDefined();
   });
+
+  it('automatically centers the active thumbnail in the bottom filmstrip', async () => {
+    const scrollToMock = vi.fn();
+    window.HTMLElement.prototype.scrollTo = scrollToMock;
+
+    const manyItems: Message[] = Array.from({ length: 15 }, (_, i) => ({
+      id: `item-${i + 1}`,
+      type: 'image',
+      url: `https://res.cloudinary.com/test/image/upload/v1/pic${i + 1}.jpg`,
+      originalName: `photo_${i + 1}.jpg`,
+      userId: 'u1',
+      username: 'Harsh',
+      timestamp: '2026-11-15T10:00:00.000Z',
+      createdAt: '2026-11-15T10:00:00.000Z',
+      sender: 'u1',
+    }));
+
+    const origGetBoundingClientRect = window.HTMLElement.prototype.getBoundingClientRect;
+    window.HTMLElement.prototype.getBoundingClientRect = function () {
+      return { left: 200, top: 505, width: 48, height: 48, right: 248, bottom: 553 } as DOMRect;
+    };
+
+    render(
+      <MediaGalleryModal
+        isOpen={true}
+        items={manyItems}
+        initialIndex={7}
+        onClose={() => {}}
+      />
+    );
+
+    // Initial index is 7, so item 8 is active
+    expect(screen.getByText('8 / 15')).toBeDefined();
+
+    // scrollTo should be called to center the active thumbnail
+    await waitFor(() => {
+      expect(scrollToMock).toHaveBeenCalled();
+    });
+
+    window.HTMLElement.prototype.getBoundingClientRect = origGetBoundingClientRect;
+  });
 });

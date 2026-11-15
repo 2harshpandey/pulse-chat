@@ -1226,12 +1226,15 @@ export const MediaGalleryCaption = styled.div`
 `;
 
 export const MediaGalleryThumbsRow = styled.div`
+  position: relative;
   display: flex;
+  align-items: center;
   gap: 8px;
   overflow-x: auto;
   max-width: 92vw;
-  padding: 4px;
+  padding: 6px 10px;
   scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
   &::-webkit-scrollbar { display: none; }
 `;
 
@@ -1243,7 +1246,7 @@ export const MediaGalleryThumb = styled.div<{ $active: boolean }>`
   cursor: pointer;
   flex-shrink: 0;
   position: relative;
-  transition: all 0.2s ease;
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease, border-color 0.2s ease, box-shadow 0.22s ease;
   border: 2px solid ${props => props.$active ? '#3b82f6' : 'transparent'};
   opacity: ${props => props.$active ? 1 : 0.5};
   transform: ${props => props.$active ? 'scale(1.08)' : 'scale(1)'};
@@ -1258,6 +1261,7 @@ export const MediaGalleryThumb = styled.div<{ $active: boolean }>`
     height: 100%;
     object-fit: cover;
     display: block;
+    pointer-events: none;
   }
 `;
 
