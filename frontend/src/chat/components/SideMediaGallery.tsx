@@ -172,7 +172,7 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
         }
       }
     },
-    [openMediaGallery, openLightbox, playableItems]
+    [openMediaGallery, openLightbox, playableItems, onShowToast]
   );
 
   const renderItem = useCallback(

@@ -837,7 +837,6 @@ module.exports = (wss, broadcasts) => {
       const rawRoomId = req.headers['x-room-id'] || req.query.roomId;
       let roomId = typeof rawRoomId === 'string' && rawRoomId.trim() ? rawRoomId.trim() : 'me';
       const callerUserId = req.headers['x-user-id'] || req.query.userId;
-      logger.info(`[MediaGallery] Request for room: ${roomId}, caller: ${callerUserId}, type: ${req.query.type}`);
 
       const allowed = await isRoomAccessAllowed(roomId, req);
       if (!allowed) {
@@ -945,7 +944,6 @@ module.exports = (wss, broadcasts) => {
         duration: typeof item.duration === 'number' ? item.duration : undefined,
       }));
 
-      logger.info(`[MediaGallery] Returning ${items.length} items for room ${roomId}`);
       res.status(200).json({ items, hasMore, nextCursor });
     } catch (error) {
       logger.error('Failed to fetch media gallery items:', error);
