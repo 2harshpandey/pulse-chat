@@ -927,8 +927,9 @@ module.exports = (wss, broadcasts) => {
       const hasMore = messages.length > limit;
       const results = hasMore ? messages.slice(0, limit) : messages;
       const lastItem = results.length > 0 ? results[results.length - 1] : null;
-      const nextCursor = lastItem && lastItem.createdAt
-        ? new Date(lastItem.createdAt).toISOString()
+      const cursorDate = lastItem ? (lastItem.createdAt || lastItem.timestamp) : null;
+      const nextCursor = cursorDate
+        ? new Date(cursorDate).toISOString()
         : null;
 
       const items = results.map((item) => ({

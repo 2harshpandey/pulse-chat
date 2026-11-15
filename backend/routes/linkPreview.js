@@ -172,16 +172,18 @@ router.get('/api/link-preview', previewLimiter, async (req, res) => {
 
     const isGoogleDrive = hostnameFallback === 'drive.google.com' || hostnameFallback.endsWith('.drive.google.com');
     if (isGoogleDrive) {
-      fallbackSiteName = 'Google Drive';
-      if (parsedUrlFallback.pathname.includes('/folders/')) {
-        fallbackTitle = 'Google Drive Folder';
-        fallbackDescription = 'Shared Google Drive Folder';
-      } else {
-        fallbackTitle = 'Google Drive';
-        fallbackDescription = 'Google Drive Document';
-      }
-      fallbackFavicon = 'https://ssl.gstatic.com/docs/doclist/images/drive_2022q3_32dp.png';
-      fallbackImage = 'https://ssl.gstatic.com/docs/doclist/images/drive_2022q3_32dp.png';
+      const isFolder = parsedUrlFallback.pathname.includes('/folders/');
+      const gdResult = {
+        title: isFolder ? 'Google Drive Folder' : 'Google Drive Document',
+        description: isFolder ? 'Shared Google Drive Folder' : 'Google Drive Document',
+        image: 'https://ssl.gstatic.com/docs/doclist/images/drive_2022q3_32dp.png',
+        favicon: 'https://ssl.gstatic.com/docs/doclist/images/drive_2022q3_32dp.png',
+        hostname: hostnameFallback,
+        siteName: 'Google Drive',
+        url: url,
+      };
+      setToPreviewCache(cacheKey, gdResult);
+      return res.json(gdResult);
     }
 
     const MAX_REDIRECTS = 3;
