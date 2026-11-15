@@ -6,7 +6,8 @@ We actively maintain and provide security patches for the following versions of 
 
 | Version | Supported          | Security Status                                        |
 | ------- | ------------------ | ------------------------------------------------------ |
-| 3.0.x   | :white_check_mark: | Active support; latest major stable release.           |
+| 3.1.x   | :white_check_mark: | Active support; latest major stable release.           |
+| 3.0.x   | :white_check_mark: | Maintenance support.                                   |
 | 2.3.x   | :white_check_mark: | Maintenance support.                                   |
 | 2.2.x   | :x:                | End of life; please upgrade to the latest 3.0 release. |
 | 2.1.x   | :x:                | End of life; please upgrade to the latest 3.0 release. |
