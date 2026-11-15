@@ -16,6 +16,20 @@ The real-time server application for **Pulse Chat**, engineered with Node.js, Ex
 
 ---
 
+## Core API Endpoints
+
+| Endpoint | Method | Description |
+| --- | --- | --- |
+| `/api/messages` | `GET` | Paginated chat message history with room authorization |
+| `/api/media/gallery` | `GET` | Cursor-paginated room media items (photos, videos, docs, links) |
+| `/api/upload` | `POST` | Chunked multipart media upload to Cloudinary CDN |
+| `/api/download` | `GET` | Secure download proxy with host allowlisting & filename sanitization |
+| `/api/link-preview` | `GET` | SSRF-hardened Open Graph & favicon metadata extractor |
+| `/api/rooms` | `GET`, `POST` | Room discovery, joining, password verification, and creation |
+| `/api/admin/*` | `*` | Protected administrative endpoints for moderation & telemetry |
+
+---
+
 ## Quick Start
 
 ### 1. Configure Environment

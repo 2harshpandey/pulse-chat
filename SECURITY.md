@@ -65,4 +65,6 @@ Pulse Chat implements defense-in-depth measures across all tiers:
 - **Multi-Tier Rate Limiting:** Layered protections on HTTP authentication, room joining, media uploads, and administrative endpoints.
 - **Memory Hygiene & Stale State Pruning:** Automated periodic sweeps clean up disconnected sockets, expired typing states, and dangling promises.
 - **Session-Scoped Message Isolation & Client Bounds:** Messages deleted locally ("Delete for me") are isolated per user session, strictly preventing client quote traversal, scroll hijacking, or unauthorized element exposure across message history.
+- **Media Gallery & File Access Controls:** The `/api/media/gallery` endpoint enforces room password verification, sanitized field projections (preventing sensitive metadata exposure), and automated suppression of deleted and vanished assets.
+- **Hardened Download Proxy:** Document and attachment downloads route through `/api/download` with strict hostname allowlisting, private IP blocking, and sanitized filename normalization, mitigating direct cross-origin token leakage and path traversal.
 - **Device & IP Fingerprinting:** Real-time abuse mitigation leveraging device hashes and IP tracking with instant moderation enforcement.

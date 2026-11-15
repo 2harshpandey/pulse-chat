@@ -82,6 +82,7 @@ npm run build
 ## Architectural Highlights
 
 - **Domain-Modular Structure**: Decomposed into focused domains: `/chat`, `/admin`, `/rooms`, `/auth`, `/home`, and `/errors`.
+- **Side Panel Media Viewer**: Side drawer/sidebar view switch ("Online" and "Media") featuring 4 filter categories (Photos, Videos, Docs, Links), smooth horizontal mouse-wheel scrolling on desktop, infinite cursor pagination, real-time message sync, and direct proxy download triggers for documents.
 - **Grouped Media Mosaic Albums**: WhatsApp and Telegram inspired dynamic multi-photo album grids (1 to 4+ tiles) with automatic layout calculations and `+N` overflow counters.
 - **Interactive Lightbox Gallery & Zoom Engine**: Fullscreen multi-photo gallery viewer featuring thumbnail carousels, keyboard navigation, non-passive wheel zoom scaling without browser intervention warnings, dedicated desktop zoom toolbar buttons (+ / - / 1:1), rapid-click zoom stepping without unwanted double-click resets, and multi-touch pinch-to-zoom.
 - **Granular Per-Media & Single-Media Actions**: Floating reaction pills placed precisely on the bottom-right corner of individual photos inside albums, auto-hiding while zoomed in, aggregated reaction banners with per-item breakdown tabs in modal popups, plus header quick actions (reply, react, download, delete) for single sent media and gallery viewer slides.
