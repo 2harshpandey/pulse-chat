@@ -100,6 +100,7 @@ export const UserSidebar: React.FC<UserSidebarProps> = ({
             type="button"
             role="tab"
             aria-selected={activeTab === 'online'}
+            data-active={activeTab === 'online'}
             $active={activeTab === 'online'}
             onClick={() => setActiveTab('online')}
           >
@@ -122,6 +123,7 @@ export const UserSidebar: React.FC<UserSidebarProps> = ({
             type="button"
             role="tab"
             aria-selected={activeTab === 'media'}
+            data-active={activeTab === 'media'}
             $active={activeTab === 'media'}
             onClick={() => setActiveTab('media')}
           >

@@ -1243,9 +1243,6 @@ export const SidePanelTab = styled.button<{ $active?: boolean }>`
   gap: 6px;
   transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   letter-spacing: 0.01em;
-  background: ${p => p.$active ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.95), rgba(37, 99, 235, 0.95))' : 'transparent'};
-  color: ${p => p.$active ? '#ffffff' : 'var(--text-secondary)'};
-  box-shadow: ${p => p.$active ? '0 2px 10px rgba(59, 130, 246, 0.35)' : 'none'};
 
   span {
     color: inherit;
@@ -1255,16 +1252,28 @@ export const SidePanelTab = styled.button<{ $active?: boolean }>`
   svg {
     width: 14px;
     height: 14px;
-    opacity: ${p => p.$active ? 1 : 0.75};
     stroke: currentColor;
-    transition: transform 0.2s ease, opacity 0.2s ease, stroke 0.2s ease;
+    transition: transform 0.2s ease, opacity 0.2s ease;
+  }
+
+  &:active {
+    transform: translateY(0) scale(0.96);
+  }
+
+  /* ─────────────── DARK MODE (DEFAULT) ─────────────── */
+  /* Inactive state */
+  background: transparent;
+  color: var(--text-secondary);
+  box-shadow: none;
+
+  svg {
+    opacity: 0.75;
   }
 
   &:hover {
-    background: ${p => p.$active ? 'linear-gradient(135deg, rgba(37, 99, 235, 1), rgba(29, 78, 216, 1))' : 'rgba(255, 255, 255, 0.08)'};
-    color: ${p => p.$active ? '#ffffff' : 'var(--text-primary)'};
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
     transform: translateY(-1px);
-    box-shadow: ${p => p.$active ? '0 4px 14px rgba(37, 99, 235, 0.45)' : 'none'};
 
     svg {
       opacity: 1;
@@ -1272,47 +1281,137 @@ export const SidePanelTab = styled.button<{ $active?: boolean }>`
     }
   }
 
-  &:active {
-    transform: translateY(0) scale(0.96);
-  }
-
-  [data-theme='light'] & {
-    background: ${p => p.$active ? 'linear-gradient(135deg, #3b82f6, #2563eb)' : 'transparent'};
-    color: ${p => p.$active ? '#ffffff !important' : '#475569'};
-    box-shadow: ${p => p.$active ? '0 2px 8px rgba(37, 99, 235, 0.32)' : 'none'};
-
-    span {
-      color: ${p => p.$active ? '#ffffff !important' : '#475569'};
-    }
+  /* Active state */
+  &[aria-selected='true'],
+  &[data-active='true'] {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.95), rgba(37, 99, 235, 0.95));
+    color: #ffffff;
+    box-shadow: 0 2px 10px rgba(59, 130, 246, 0.35);
 
     svg {
-      opacity: ${p => p.$active ? 1 : 0.9};
-      stroke: ${p => p.$active ? '#ffffff !important' : '#475569'};
-      color: ${p => p.$active ? '#ffffff !important' : '#475569'};
+      opacity: 1;
+      stroke: #ffffff;
     }
 
     &:hover {
-      background: ${p => p.$active ? 'linear-gradient(135deg, #2563eb, #1d4ed8)' : '#ffffff'};
-      color: ${p => p.$active ? '#ffffff !important' : '#0f172a'};
-      box-shadow: ${p => p.$active ? '0 4px 14px rgba(37, 99, 235, 0.45)' : '0 2px 6px rgba(0, 0, 0, 0.08)'};
+      background: linear-gradient(135deg, rgba(37, 99, 235, 1), rgba(29, 78, 216, 1));
+      color: #ffffff;
       transform: translateY(-1px);
-
-      span {
-        color: ${p => p.$active ? '#ffffff !important' : '#0f172a'};
-      }
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.45);
 
       svg {
-        stroke: ${p => p.$active ? '#ffffff !important' : '#0f172a'};
-        color: ${p => p.$active ? '#ffffff !important' : '#0f172a'};
         opacity: 1;
+        stroke: #ffffff;
         transform: scale(1.08);
       }
     }
+  }
 
-    &:active {
-      transform: translateY(0) scale(0.96);
+  /* ─────────────── LIGHT MODE ─────────────── */
+  /* Inactive state - high contrast dark slate on light grey container */
+  [data-theme='light'] & {
+    background: transparent;
+    color: #334155;
+    box-shadow: none;
+
+    svg {
+      opacity: 0.85;
+      stroke: #334155;
+    }
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.75);
+      color: #0f172a;
+      transform: translateY(-1px);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+
+      svg {
+        opacity: 1;
+        stroke: #0f172a;
+        transform: scale(1.08);
+      }
     }
   }
+
+  /* Active state - vibrant blue gradient with crisp white text and icon */
+  [data-theme='light'] &[aria-selected='true'],
+  [data-theme='light'] &[data-active='true'] {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    color: #ffffff;
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
+
+    svg {
+      opacity: 1;
+      stroke: #ffffff;
+    }
+
+    &:hover {
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      color: #ffffff;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.45);
+
+      svg {
+        opacity: 1;
+        stroke: #ffffff;
+        transform: scale(1.08);
+      }
+    }
+  }
+
+  ${p => p.$active && css`
+    &[aria-selected='true'],
+    &[data-active='true'],
+    & {
+      background: linear-gradient(135deg, rgba(59, 130, 246, 0.95), rgba(37, 99, 235, 0.95));
+      color: #ffffff;
+      box-shadow: 0 2px 10px rgba(59, 130, 246, 0.35);
+
+      svg {
+        opacity: 1;
+        stroke: #ffffff;
+      }
+
+      &:hover {
+        background: linear-gradient(135deg, rgba(37, 99, 235, 1), rgba(29, 78, 216, 1));
+        color: #ffffff;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 14px rgba(37, 99, 235, 0.45);
+
+        svg {
+          opacity: 1;
+          stroke: #ffffff;
+          transform: scale(1.08);
+        }
+      }
+    }
+
+    [data-theme='light'] &[aria-selected='true'],
+    [data-theme='light'] &[data-active='true'],
+    [data-theme='light'] & {
+      background: linear-gradient(135deg, #3b82f6, #2563eb);
+      color: #ffffff;
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
+
+      svg {
+        opacity: 1;
+        stroke: #ffffff;
+      }
+
+      &:hover {
+        background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        color: #ffffff;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 14px rgba(37, 99, 235, 0.45);
+
+        svg {
+          opacity: 1;
+          stroke: #ffffff;
+          transform: scale(1.08);
+        }
+      }
+    }
+  `}
 `;
 
 export const MediaGalleryPanelRoot = styled.div`
