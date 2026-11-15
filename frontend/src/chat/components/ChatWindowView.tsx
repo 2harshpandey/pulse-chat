@@ -101,14 +101,14 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
   const statusToastText = statusErrorToast
     ? statusErrorToast
     : nav.isLocatingMessage
-    ? 'Locating quoted message...'
-    : msgs.albumDownloadToast
-    ? msgs.albumDownloadToast
-    : albumDownload.isDownloading
-    ? (albumDownload.progress > 0.08
-        ? `Preparing ZIP... ${Math.round(albumDownload.progress * 100)}%`
-        : 'Preparing ZIP...')
-    : '';
+      ? 'Locating quoted message...'
+      : msgs.albumDownloadToast
+        ? msgs.albumDownloadToast
+        : albumDownload.isDownloading
+          ? (albumDownload.progress > 0.08
+            ? `Preparing ZIP... ${Math.round(albumDownload.progress * 100)}%`
+            : 'Preparing ZIP...')
+          : '';
 
   return (
     <ChatWindow>
