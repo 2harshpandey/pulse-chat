@@ -1208,3 +1208,415 @@ export const ReportActions = styled.div`
   justify-content: flex-end;
   gap: 0.6rem;
 `;
+
+// ==========================================
+// --- Side Panel Media Gallery Styles ---
+// ==========================================
+
+export const SidePanelTabBar = styled.div`
+  display: flex;
+  gap: 4px;
+  margin-bottom: 0.85rem;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid var(--border-primary);
+  border-radius: 10px;
+  padding: 3px;
+  flex-shrink: 0;
+`;
+
+export const SidePanelTab = styled.button<{ $active?: boolean }>`
+  flex: 1;
+  padding: 6px 0;
+  border-radius: 7px;
+  border: none;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  letter-spacing: 0.01em;
+  background: ${p => p.$active ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.95), rgba(37, 99, 235, 0.95))' : 'transparent'};
+  color: ${p => p.$active ? '#ffffff' : 'var(--text-secondary)'};
+  box-shadow: ${p => p.$active ? '0 2px 10px rgba(59, 130, 246, 0.35)' : 'none'};
+
+  svg {
+    width: 14px;
+    height: 14px;
+    opacity: ${p => p.$active ? 1 : 0.75};
+  }
+
+  &:hover {
+    background: ${p => p.$active ? 'linear-gradient(135deg, rgba(59, 130, 246, 0.95), rgba(37, 99, 235, 0.95))' : 'rgba(255, 255, 255, 0.06)'};
+    color: ${p => p.$active ? '#ffffff' : 'var(--text-primary)'};
+  }
+
+  &:active {
+    transform: scale(0.96);
+  }
+`;
+
+export const MediaGalleryPanelRoot = styled.div`
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+`;
+
+export const MediaGalleryFilterBar = styled.div`
+  display: flex;
+  gap: 5px;
+  padding-bottom: 8px;
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+`;
+
+export const MediaGalleryFilterChip = styled.button<{ $active?: boolean }>`
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid ${p => p.$active ? 'rgba(59, 130, 246, 0.8)' : 'var(--border-primary)'};
+  background: ${p => p.$active ? 'rgba(59, 130, 246, 0.22)' : 'rgba(15, 23, 42, 0.3)'};
+  color: ${p => p.$active ? '#93c5fd' : 'var(--text-secondary)'};
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  box-shadow: ${p => p.$active ? '0 0 10px rgba(59, 130, 246, 0.25)' : 'none'};
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  letter-spacing: 0.01em;
+
+  &:hover {
+    border-color: rgba(59, 130, 246, 0.6);
+    background: rgba(59, 130, 246, 0.12);
+    color: #93c5fd;
+    transform: scale(1.03);
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+`;
+
+export const MediaGalleryScrollArea = styled.div`
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 2px;
+  min-height: 0;
+
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+  }
+`;
+
+export const MediaGalleryGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  align-content: start;
+`;
+
+export const MediaGalleryTile = styled.div`
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(15, 23, 42, 0.6);
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  contain: content;
+  content-visibility: auto;
+  contain-intrinsic-size: 100px 100px;
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s ease, border-color 0.22s ease;
+
+  @keyframes mgTileFadeIn {
+    from {
+      opacity: 0;
+      transform: scale(0.92);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  animation: mgTileFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+
+  &:hover {
+    transform: scale(1.03);
+    z-index: 2;
+    border-color: rgba(59, 130, 246, 0.5);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  }
+
+  &:active {
+    transform: scale(0.97);
+  }
+
+  &:focus-visible {
+    outline: 2px solid rgba(59, 130, 246, 0.7);
+    outline-offset: 2px;
+  }
+`;
+
+export const MediaGalleryTileImg = styled.img`
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+`;
+
+export const MediaGalleryPlayOverlay = styled.div`
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+  transition: background 0.18s ease;
+
+  ${MediaGalleryTile}:hover & {
+    background: rgba(0, 0, 0, 0.45);
+  }
+`;
+
+export const MediaGalleryPlayIconCircle = styled.div`
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+
+  svg {
+    width: 13px;
+    height: 13px;
+    fill: #ffffff;
+    margin-left: 2px;
+  }
+
+  ${MediaGalleryTile}:hover & {
+    transform: scale(1.12);
+  }
+`;
+
+export const MediaGalleryDurationBadge = styled.div`
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  color: #f1f5f9;
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+`;
+
+export const MediaGalleryDocCard = styled.div`
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid var(--border-primary);
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+
+  @keyframes mgDocFadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  animation: mgDocFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+
+  &:hover {
+    background: rgba(59, 130, 246, 0.09);
+    border-color: rgba(59, 130, 246, 0.35);
+    color: var(--text-primary);
+    transform: translateX(2px);
+  }
+
+  &:active {
+    transform: scale(0.98);
+  }
+
+  &:focus-visible {
+    outline: 2px solid rgba(59, 130, 246, 0.7);
+    outline-offset: 2px;
+  }
+`;
+
+export const MediaGalleryDocIcon = styled.div`
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #60a5fa;
+
+  svg {
+    width: 17px;
+    height: 17px;
+  }
+`;
+
+export const MediaGalleryDocInfo = styled.div`
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+`;
+
+export const MediaGalleryDocName = styled.div`
+  font-weight: 600;
+  font-size: 0.75rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+export const MediaGalleryDocMeta = styled.div`
+  font-size: 0.67rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 1px;
+`;
+
+export const MediaGalleryLinkCard = styled(MediaGalleryDocCard)`
+  &:hover {
+    border-color: rgba(56, 189, 248, 0.4);
+    background: rgba(56, 189, 248, 0.08);
+  }
+`;
+
+export const MediaGalleryLinkIcon = styled(MediaGalleryDocIcon)`
+  background: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.25);
+  color: #38bdf8;
+`;
+
+export const MediaGalleryEmptyState = styled.div`
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px 16px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-align: center;
+
+  svg {
+    opacity: 0.4;
+    color: var(--text-muted);
+    width: 36px;
+    height: 36px;
+  }
+
+  span {
+    max-width: 180px;
+    line-height: 1.4;
+  }
+`;
+
+export const MediaGalleryErrorState = styled.div`
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px 12px;
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  font-size: 0.76rem;
+  text-align: center;
+
+  button {
+    margin-top: 4px;
+    padding: 3px 10px;
+    border-radius: 6px;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    background: rgba(239, 68, 68, 0.2);
+    color: #ffffff;
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: all 0.18s ease;
+
+    &:hover {
+      background: rgba(239, 68, 68, 0.35);
+    }
+  }
+`;
+
+export const MediaGallerySpinner = styled.div`
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 0;
+
+  &::after {
+    content: '';
+    width: 22px;
+    height: 22px;
+    border: 2px solid rgba(59, 130, 246, 0.2);
+    border-top-color: #3b82f6;
+    border-radius: 50%;
+    animation: mgSpin 0.7s linear infinite;
+  }
+
+  @keyframes mgSpin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+`;
+
+export const MediaGallerySentinel = styled.div`
+  height: 2px;
+  grid-column: 1 / -1;
+`;
+

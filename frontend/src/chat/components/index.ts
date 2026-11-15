@@ -1,6 +1,7 @@
 export * from './ChatHeader';
 export * from './PinnedMessageBanner';
 export * from './UserSidebar';
+export * from './SideMediaGallery';
 export * from './ChatFooter';
 export * from './MessagesList';
 export * from './ReactionsOverlay';

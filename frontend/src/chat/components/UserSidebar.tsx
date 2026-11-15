@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import type { Message } from '../types';
 import { copyTextToClipboard } from '../utils';
+import { SideMediaGallery } from './SideMediaGallery';
 import {
   SidebarBackdrop,
   UserSidebar as StyledUserSidebar,
@@ -10,6 +12,8 @@ import {
   PremiumCopyButton,
   PremiumCopyNumber,
   PremiumCopyLabel,
+  SidePanelTabBar,
+  SidePanelTab,
 } from '../Chat.styles';
 
 export function CopyIdButton() {
@@ -55,6 +59,10 @@ export interface UserSidebarProps {
   roomId: string;
   onClearChat: () => void;
   onLogout: () => void;
+  openMediaGallery?: (items: Message[], initialIndex?: number, options?: { autoPlayVideo?: boolean }) => void;
+  openLightbox?: (url: string, canonicalUrl?: string) => void;
+  loadedMediaMessageSet?: Set<string>;
+  loadedMediaSrcById?: Record<string, string>;
 }
 
 export const UserSidebar: React.FC<UserSidebarProps> = ({
@@ -65,7 +73,20 @@ export const UserSidebar: React.FC<UserSidebarProps> = ({
   roomId,
   onClearChat,
   onLogout,
+  openMediaGallery,
+  openLightbox,
+  loadedMediaMessageSet,
+  loadedMediaSrcById,
 }) => {
+  const [activeTab, setActiveTab] = useState<'online' | 'media'>('online');
+
+  // Reset to Online tab whenever side panel is opened (including on mobile devices)
+  useEffect(() => {
+    if (isVisible) {
+      setActiveTab('online');
+    }
+  }, [isVisible]);
+
   const currentUser = onlineUsers.find((user) => user.userId === currentUserId);
   const otherUsers = onlineUsers.filter((user) => user.userId !== currentUserId);
   const sortedUsers = currentUser ? [currentUser, ...otherUsers] : otherUsers;
@@ -74,17 +95,76 @@ export const UserSidebar: React.FC<UserSidebarProps> = ({
     <>
       <SidebarBackdrop $isVisible={isVisible} onClick={onClose} />
       <StyledUserSidebar $isVisible={isVisible}>
-        <h2>Online ({onlineUsers.length})</h2>
-        <UserList>
-          {sortedUsers.map((user, index) => (
-            <UserListItem key={user.userId} index={index}>
-              {user.username}
-              {user.userId === currentUserId ? ' (You)' : ''}
-            </UserListItem>
-          ))}
-        </UserList>
+        <SidePanelTabBar role="tablist" aria-label="Side panel view switch">
+          <SidePanelTab
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'online'}
+            $active={activeTab === 'online'}
+            onClick={() => setActiveTab('online')}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+            <span>Online</span>
+          </SidePanelTab>
+          <SidePanelTab
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'media'}
+            $active={activeTab === 'media'}
+            onClick={() => setActiveTab('media')}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <polyline points="21 15 16 10 5 21" />
+            </svg>
+            <span>Media</span>
+          </SidePanelTab>
+        </SidePanelTabBar>
 
-        {roomId === 'me' && <CopyIdButton />}
+        {activeTab === 'online' ? (
+          <>
+            <h2>Online ({onlineUsers.length})</h2>
+            <UserList>
+              {sortedUsers.map((user, index) => (
+                <UserListItem key={user.userId} index={index}>
+                  {user.username}
+                  {user.userId === currentUserId ? ' (You)' : ''}
+                </UserListItem>
+              ))}
+            </UserList>
+
+            {roomId === 'me' && <CopyIdButton />}
+          </>
+        ) : (
+          <SideMediaGallery
+            roomId={roomId}
+            isActive={activeTab === 'media' && isVisible}
+            openMediaGallery={openMediaGallery}
+            openLightbox={openLightbox}
+            loadedMediaMessageSet={loadedMediaMessageSet}
+            loadedMediaSrcById={loadedMediaSrcById}
+          />
+        )}
 
         <ClearChatButton onClick={onClearChat}>
           <svg
@@ -128,3 +208,4 @@ export const UserSidebar: React.FC<UserSidebarProps> = ({
     </>
   );
 };
+

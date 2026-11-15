@@ -831,6 +831,122 @@ module.exports = (wss, broadcasts) => {
     }
   });
 
+  // --- Room Media Gallery ---
+  router.get('/api/media/gallery', apiLimiter, async (req, res) => {
+    try {
+      const rawRoomId = req.headers['x-room-id'] || req.query.roomId;
+      let roomId = typeof rawRoomId === 'string' && rawRoomId.trim() ? rawRoomId.trim() : 'me';
+      const allowed = await isRoomAccessAllowed(roomId, req);
+      if (!allowed) {
+        return res.status(401).json({ error: 'Access denied: authentication or room password required' });
+      }
+
+      if (roomId !== 'me' && roomId !== 'global') {
+        try {
+          const roomDoc = await getCachedRoom(roomId);
+          if (roomDoc) roomId = roomDoc.id;
+        } catch (_) {}
+      }
+
+      const { type, before, limit: rawLimit } = req.query;
+      const validTypes = new Set(['photo', 'image', 'video', 'audio', 'doc', 'file', 'link']);
+
+      if (type !== undefined && type !== null && type !== '') {
+        if (typeof type !== 'string' || !validTypes.has(type.toLowerCase())) {
+          return res.status(400).json({ error: 'Invalid type parameter' });
+        }
+      }
+
+      let beforeDate = null;
+      if (before !== undefined && before !== null && before !== '') {
+        if (typeof before !== 'string') {
+          return res.status(400).json({ error: 'Invalid before cursor' });
+        }
+        beforeDate = new Date(before);
+        if (Number.isNaN(beforeDate.getTime())) {
+          return res.status(400).json({ error: 'Invalid before cursor date' });
+        }
+      }
+
+      const requestedLimit = parseInt(rawLimit, 10);
+      const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
+        ? Math.min(requestedLimit, 80)
+        : 40;
+
+      const { frontendHiddenBefore } = getRoomState(roomId);
+      const query = {
+        roomId,
+        vanished: { $ne: true },
+        isDeleted: { $ne: true },
+      };
+
+      const createdAtFilter = {};
+      if (frontendHiddenBefore instanceof Date && !Number.isNaN(frontendHiddenBefore.getTime())) {
+        createdAtFilter.$gt = frontendHiddenBefore;
+      }
+      if (beforeDate) {
+        createdAtFilter.$lt = beforeDate;
+      }
+      if (Object.keys(createdAtFilter).length > 0) {
+        query.createdAt = createdAtFilter;
+      }
+
+      const cleanType = typeof type === 'string' ? type.toLowerCase() : null;
+      if (cleanType === 'photo' || cleanType === 'image') {
+        query.type = { $in: ['image', 'gif'] };
+        query.url = { $exists: true, $ne: null };
+      } else if (cleanType === 'video') {
+        query.type = 'video';
+        query.url = { $exists: true, $ne: null };
+      } else if (cleanType === 'audio') {
+        query.type = 'audio';
+        query.url = { $exists: true, $ne: null };
+      } else if (cleanType === 'doc' || cleanType === 'file') {
+        query.type = 'file';
+        query.url = { $exists: true, $ne: null };
+      } else if (cleanType === 'link') {
+        query.type = 'text';
+        query.text = { $regex: /https?:\/\/[^\s]+/i };
+      } else {
+        query.$or = [
+          { type: { $in: ['image', 'video', 'file', 'gif', 'audio'] }, url: { $exists: true, $ne: null } },
+          { type: 'text', text: { $regex: /https?:\/\/[^\s]+/i } }
+        ];
+      }
+
+      const messages = await Message.find(query)
+        .select('id _id type url originalName size createdAt timestamp userId username text duration')
+        .sort({ createdAt: -1 })
+        .limit(limit + 1)
+        .lean();
+
+      const hasMore = messages.length > limit;
+      const results = hasMore ? messages.slice(0, limit) : messages;
+      const lastItem = results.length > 0 ? results[results.length - 1] : null;
+      const nextCursor = lastItem && lastItem.createdAt
+        ? new Date(lastItem.createdAt).toISOString()
+        : null;
+
+      const items = results.map((item) => ({
+        id: String(item.id || item._id || ''),
+        type: item.type,
+        url: typeof item.url === 'string' ? item.url : undefined,
+        originalName: typeof item.originalName === 'string' ? item.originalName.slice(0, 500) : undefined,
+        size: typeof item.size === 'number' ? item.size : undefined,
+        createdAt: item.createdAt ? new Date(item.createdAt).toISOString() : (item.timestamp ? new Date(item.timestamp).toISOString() : undefined),
+        userId: typeof item.userId === 'string' ? item.userId : undefined,
+        username: typeof item.username === 'string' ? item.username.slice(0, 200) : undefined,
+        text: typeof item.text === 'string' ? item.text.slice(0, 1000) : undefined,
+        duration: typeof item.duration === 'number' ? item.duration : undefined,
+      }));
+
+      res.status(200).json({ items, hasMore, nextCursor });
+    } catch (error) {
+      logger.error('Failed to fetch media gallery items:', error);
+      res.status(500).json({ error: 'Failed to fetch media gallery' });
+    }
+  });
+
   // Mount modular sub-routers
   router.use('/', require('./gifs'));
 

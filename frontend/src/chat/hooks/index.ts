@@ -16,3 +16,4 @@ export * from './useChatMessageNavigation';
 export * from './useVoiceRecorder';
 export * from './useChatController';
 export * from './usePhotoZoom';
+export * from './useChatMediaGallery';
