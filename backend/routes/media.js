@@ -476,6 +476,10 @@ module.exports = (wss, broadcasts) => {
           return res.status(400).json({ error: 'Missing or invalid chunk data' });
         }
 
+        if (originalname && !isSafeUploadFile(mimetype, originalname)) {
+          return res.status(400).json({ error: 'File type not allowed for upload.' });
+        }
+
         const allowed = await isRoomAccessAllowed(roomId, req);
         if (!allowed) {
           return res.status(401).json({ error: 'Upload denied: room authentication required.' });
@@ -543,6 +547,12 @@ module.exports = (wss, broadcasts) => {
           const safeName = sanitizeUploadFilename(originalname || 'file');
           const fileMime = mimetype || 'application/octet-stream';
           const fileSize = stats.size;
+
+          if (!isSafeUploadFile(fileMime, safeName)) {
+            try { await fs.promises.unlink(tmpPath); } catch (_) {}
+            trackUploadEnd(scopeHash, safeUploadId);
+            return res.status(400).json({ error: 'File type not allowed for upload.' });
+          }
 
           let canonicalRoomId = roomId;
           if (roomId !== 'me' && roomId !== 'global') {
