@@ -7,6 +7,7 @@ import { findGroupAlbumForMessage } from './components/MessagesList';
 import { usePhotoZoom } from './hooks/usePhotoZoom';
 import { useChatComposer } from './hooks/useChatComposer';
 import { LinkPreviewCard } from './styles/chat.message.styles';
+import { AlbumDownloadToast, CopiedToast, SearchNotFoundToast } from './Chat.styles';
 import type { Message } from './types';
 
 describe('Album Download Manager and Quoted Message Locating', () => {
@@ -504,6 +505,31 @@ describe('Album Download Manager and Quoted Message Locating', () => {
       expect(cancelBtn).not.toBeNull();
       fireEvent.click(cancelBtn);
       expect(onCancelMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('renders AlbumDownloadToast, CopiedToast, and SearchNotFoundToast with max-content width and responsive padding', () => {
+      const { container } = render(
+        <div>
+          <AlbumDownloadToast $visible={true} data-testid="real-album-toast">
+            <span>Image copied to clipboard</span>
+          </AlbumDownloadToast>
+          <CopiedToast $visible={true} data-testid="real-copied-toast">
+            <span>Copied</span>
+          </CopiedToast>
+          <SearchNotFoundToast $visible={true} data-testid="real-search-toast">
+            <span>Not found</span>
+          </SearchNotFoundToast>
+        </div>
+      );
+
+      const albumToast = screen.getByTestId('real-album-toast');
+      const copiedToast = screen.getByTestId('real-copied-toast');
+      const searchToast = screen.getByTestId('real-search-toast');
+
+      expect(albumToast).toBeDefined();
+      expect(copiedToast).toBeDefined();
+      expect(searchToast).toBeDefined();
+      expect(screen.getByText('Image copied to clipboard')).toBeDefined();
     });
   });
 

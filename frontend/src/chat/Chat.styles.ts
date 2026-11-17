@@ -109,11 +109,16 @@ export const SearchNotFoundToast = styled.div<{ $visible: boolean }>`
   z-index: 1000;
   backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.1);
+  width: max-content;
+  max-width: min(calc(100vw - 48px), 640px);
+  box-sizing: border-box;
   
   @media (max-width: 768px) {
     bottom: 80px;
     padding: 8px 18px;
     font-size: 0.88rem;
+    width: max-content;
+    max-width: calc(100vw - 32px);
   }
 `;
 
@@ -139,11 +144,16 @@ export const CopiedToast = styled.div<{ $visible: boolean }>`
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.15);
+  width: max-content;
+  max-width: min(calc(100vw - 48px), 640px);
+  box-sizing: border-box;
 
   @media (max-width: 768px) {
     bottom: 80px;
     padding: 8px 18px;
     font-size: 0.86rem;
+    width: max-content;
+    max-width: calc(100vw - 32px);
   }
 `;
 
@@ -200,9 +210,9 @@ export const AlbumDownloadToast = styled.div<{ $visible: boolean; $isError?: boo
 
   @media (max-width: 768px) {
     bottom: 82px;
-    padding: 11px 18px;
+    padding: 9px 18px;
     font-size: 0.83rem;
-    width: calc(100vw - 32px);
+    width: max-content;
     max-width: calc(100vw - 32px);
     border-radius: 24px;
   }
