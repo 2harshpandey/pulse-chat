@@ -922,7 +922,8 @@ module.exports = (wss, broadcasts) => {
         query.text = { $regex: /(?:https?:\/\/|www\.)[^\s]+/i };
       } else {
         query.$or = [
-          { type: { $in: ['image', 'video', 'file', 'gif', 'audio', 'photo', 'doc'] }, url: { $exists: true, $nin: [null, ''] } },
+          { type: { $in: ['image', 'video', 'file', 'gif', 'photo', 'doc'] }, url: { $exists: true, $nin: [null, ''] } },
+          { type: 'link' },
           { type: 'text', text: { $regex: /(?:https?:\/\/|www\.)[^\s]+/i } }
         ];
       }

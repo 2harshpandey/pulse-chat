@@ -5,7 +5,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor, cleanup } from '@testing-library/react';
 import { UserSidebar } from './components/UserSidebar';
-import { SideMediaGallery, getMediaDateGroupLabel } from './components/SideMediaGallery';
+import { SideMediaGallery, getMediaDateGroupLabel, isDisplayableMediaItem } from './components/SideMediaGallery';
 import { MediaGalleryModal } from './components/modals/MediaGalleryModal';
 import type { Message } from './types';
 
@@ -674,6 +674,67 @@ describe('Media Viewer Side Panel and Tab Switching', () => {
 
       // Older date divider (e.g. Nov 7, 2026)
       expect(screen.getByText(olderDateLabel)).toBeDefined();
+    });
+
+    it('does NOT render empty date dividers when intermediate items are non-displayable audio or text', async () => {
+      const mockItems = [
+        {
+          id: 'item-doc-1',
+          type: 'file',
+          originalName: 'ClipToast_app_1.1.0.zip',
+          url: 'https://res.cloudinary.com/test/raw/upload/v1/ClipToast.zip',
+          size: 73 * 1024,
+          createdAt: '2026-10-27T14:00:00.000Z',
+        },
+        {
+          id: 'item-audio-1',
+          type: 'audio',
+          url: 'https://res.cloudinary.com/test/video/upload/v1/voice1.webm',
+          createdAt: '2026-10-26T12:00:00.000Z',
+        },
+        {
+          id: 'item-audio-2',
+          type: 'audio',
+          url: 'https://res.cloudinary.com/test/video/upload/v1/voice2.webm',
+          createdAt: '2026-10-25T11:00:00.000Z',
+        },
+        {
+          id: 'item-audio-3',
+          type: 'audio',
+          url: 'https://res.cloudinary.com/test/video/upload/v1/voice3.webm',
+          createdAt: '2026-07-12T09:00:00.000Z',
+        },
+        {
+          id: 'item-link-1',
+          type: 'text',
+          text: 'https://www.youtube.com/watch?v=example',
+          createdAt: '2026-07-12T10:00:00.000Z',
+        },
+      ];
+
+      vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ items: mockItems, hasMore: false }),
+        } as any)
+      );
+
+      render(<SideMediaGallery roomId="test-room" isActive={true} />);
+
+      await waitFor(() => {
+        expect(screen.getByTitle('Download ClipToast_app_1.1.0.zip')).toBeDefined();
+        expect(screen.getByTitle('Open youtube.com')).toBeDefined();
+      });
+
+      // Oct 26 and Oct 25 had only audio, so they must NOT have dividers!
+      expect(screen.queryByText('Oct 26, 2026')).toBeNull();
+      expect(screen.queryByText('Oct 25, 2026')).toBeNull();
+
+      // Exactly 2 dividers should exist: one for Oct 27 (zip) and one for Jul 12 (youtube.com)
+      const separators = screen.getAllByRole('separator');
+      expect(separators.length).toBe(2);
+      expect(screen.getByText(getMediaDateGroupLabel('2026-10-27T14:00:00.000Z'))).toBeDefined();
+      expect(screen.getByText(getMediaDateGroupLabel('2026-07-12T10:00:00.000Z'))).toBeDefined();
     });
   });
 });

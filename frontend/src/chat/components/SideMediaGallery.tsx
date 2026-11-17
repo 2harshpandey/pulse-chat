@@ -107,6 +107,27 @@ const isPlayableType = (type?: string, url?: string): boolean => {
   return false;
 };
 
+export const isDisplayableMediaItem = (item?: GalleryItem | null): boolean => {
+  if (!item || !item.id) return false;
+  const isImage = item.type === 'image' || item.type === 'gif' || item.type === 'photo';
+  if (isImage) {
+    return Boolean(item.url);
+  }
+  const isVideo = item.type === 'video';
+  if (isVideo) {
+    return Boolean(item.url);
+  }
+  const isFile = item.type === 'file' || item.type === 'doc';
+  if (isFile) {
+    return Boolean(item.url);
+  }
+  const isLink = item.type === 'link' || (item.type === 'text' && Boolean(item.text && /(?:https?:\/\/|www\.)[^\s]+/i.test(item.text)));
+  if (isLink) {
+    return Boolean(item.url || (item.text && extractUrlFromText(item.text)));
+  }
+  return false;
+};
+
 export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
   roomId,
   isActive,
@@ -146,9 +167,14 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
     return () => observer.disconnect();
   }, [hasMore, isLoading, loadMore, isActive]);
 
+  // Filter items to strictly renderable media so empty dates never appear
+  const displayableItems = useMemo(() => {
+    return items.filter(isDisplayableMediaItem);
+  }, [items]);
+
   // Build playable items list for the full-screen media player
   const playableItems = useMemo<Message[]>(() => {
-    return items
+    return displayableItems
       .filter((it) => isPlayableType(it.type, it.url))
       .map((it) => ({
         id: it.id,
@@ -164,12 +190,12 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
         duration: it.duration,
         sender: it.userId || '',
       }));
-  }, [items]);
+  }, [displayableItems]);
 
   const handleMediaClick = useCallback(
     (item: GalleryItem) => {
       const isPlayable = isPlayableType(item.type, item.url);
-      const isLink = item.type === 'link' || (item.type === 'text' && Boolean(item.text && /https?:\/\//i.test(item.text)));
+      const isLink = item.type === 'link' || (item.type === 'text' && Boolean(item.text && /(?:https?:\/\/|www\.)[^\s]+/i.test(item.text)));
 
       if (isPlayable) {
         const targetList =
@@ -214,8 +240,9 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
             }
           });
         }
-      } else if (isLink && item.text) {
-        const urlStr = extractUrlFromText(item.text);
+      } else if (isLink) {
+        const rawText = item.text || item.url || '';
+        const urlStr = extractUrlFromText(rawText) || item.url;
         if (urlStr) {
           const safe = sanitizeMediaUrl(urlStr);
           if (safe) {
@@ -368,8 +395,9 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
       }
 
       // Links
-      if (isLink && item.text) {
-        const urlStr = extractUrlFromText(item.text);
+      if (isLink) {
+        const rawText = item.text || item.url || '';
+        const urlStr = extractUrlFromText(rawText) || item.url || '';
         let domain = '';
         if (urlStr) {
           try {
@@ -403,7 +431,7 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
               <MediaGalleryDocName style={{ color: '#38bdf8' }}>{domain || 'External Link'}</MediaGalleryDocName>
               <MediaGalleryDocMeta>
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {item.text.slice(0, 90)}
+                  {(item.text || item.url || '').slice(0, 90)}
                 </span>
               </MediaGalleryDocMeta>
             </MediaGalleryDocInfo>
@@ -443,9 +471,9 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
 
       <MediaGalleryScrollArea>
         <MediaGalleryGrid>
-          {items.map((item, index) => {
+          {displayableItems.map((item, index) => {
             const currentLabel = getMediaDateGroupLabel(item.createdAt);
-            const prevLabel = index > 0 ? getMediaDateGroupLabel(items[index - 1].createdAt) : null;
+            const prevLabel = index > 0 ? getMediaDateGroupLabel(displayableItems[index - 1].createdAt) : null;
             const showDivider = Boolean(currentLabel && currentLabel !== prevLabel);
 
             return (
@@ -460,7 +488,7 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
             );
           })}
 
-          {!isLoading && !error && items.length === 0 && (
+          {!isLoading && !error && displayableItems.length === 0 && (
             <MediaGalleryEmptyState>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
