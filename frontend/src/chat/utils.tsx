@@ -1123,7 +1123,7 @@ export const isNonTouchDevice = (): boolean => {
 /**
  * Checks if a message is specifically a photo or GIF (not video, audio, or document).
  */
-export const isPhotoOrGif = (msg?: { type?: string; url?: string; originalName?: string } | null): boolean => {
+export const isPhotoOrGif = (msg?: { type?: string; url?: string; originalName?: string; [key: string]: any } | null): boolean => {
   if (!msg) return false;
   const type = (msg.type || '').toLowerCase();
   const url = (msg.url || '').toLowerCase();
@@ -1153,7 +1153,7 @@ export const isPhotoOrGif = (msg?: { type?: string; url?: string; originalName?:
 /**
  * Checks if a message has any media attachment (photo, gif, video, audio, or document).
  */
-export const hasMediaAttachment = (msg?: { type?: string; url?: string; originalName?: string } | null): boolean => {
+export const hasMediaAttachment = (msg?: { type?: string; url?: string; originalName?: string; [key: string]: any } | null): boolean => {
   if (!msg) return false;
   const type = (msg.type || '').toLowerCase();
   const url = (msg.url || '').toLowerCase();

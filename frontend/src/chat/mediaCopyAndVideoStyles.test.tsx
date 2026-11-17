@@ -4,7 +4,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { isNonTouchDevice, isPhotoOrGif, hasMediaAttachment, copyImageToClipboard } from './utils';
 import { MessageActionMenuPortal } from './components/message/MessageActionMenuPortal';
 import { MediaGalleryModal } from './components/modals/MediaGalleryModal';
-import { ChatFooter } from './components/ChatFooter';
+import { ChatFooter, type ChatFooterProps } from './components/ChatFooter';
 import { CVPBottomRow, CVPIconBtn } from './styles/chat.video.styles';
 import type { Message } from './types';
 
@@ -221,17 +221,14 @@ describe('MessageActionMenuPortal Copy Image Option', () => {
       <MessageActionMenuPortal
         msg={baseMsg}
         currentUserId="user-1"
-        isMobileView={false}
-        menuPos={{ x: 100, y: 100 }}
-        activeDeleteMenu="msg-1"
+        canEdit={false}
+        menuPos={{ top: 100, left: 100 }}
         setActiveDeleteMenu={vi.fn()}
         handleSetReply={vi.fn()}
         handleToggleSelectMessage={vi.fn()}
         handleCopy={vi.fn()}
         handleOpenReport={vi.fn()}
         handleStartEdit={vi.fn()}
-        deleteForMe={vi.fn()}
-        deleteForEveryone={vi.fn()}
         deleteMenuRef={{ current: null }}
       />
     );
@@ -257,17 +254,14 @@ describe('MessageActionMenuPortal Copy Image Option', () => {
       <MessageActionMenuPortal
         msg={baseMsg}
         currentUserId="user-1"
-        isMobileView={true}
-        menuPos={{ x: 100, y: 100 }}
-        activeDeleteMenu="msg-1"
+        canEdit={false}
+        menuPos={{ top: 100, left: 100 }}
         setActiveDeleteMenu={vi.fn()}
         handleSetReply={vi.fn()}
         handleToggleSelectMessage={vi.fn()}
         handleCopy={vi.fn()}
         handleOpenReport={vi.fn()}
         handleStartEdit={vi.fn()}
-        deleteForMe={vi.fn()}
-        deleteForEveryone={vi.fn()}
         deleteMenuRef={{ current: null }}
       />
     );
@@ -298,17 +292,14 @@ describe('MessageActionMenuPortal Copy Image Option', () => {
       <MessageActionMenuPortal
         msg={videoMsg}
         currentUserId="user-1"
-        isMobileView={false}
-        menuPos={{ x: 100, y: 100 }}
-        activeDeleteMenu="msg-1"
+        canEdit={false}
+        menuPos={{ top: 100, left: 100 }}
         setActiveDeleteMenu={vi.fn()}
         handleSetReply={vi.fn()}
         handleToggleSelectMessage={vi.fn()}
         handleCopy={vi.fn()}
         handleOpenReport={vi.fn()}
         handleStartEdit={vi.fn()}
-        deleteForMe={vi.fn()}
-        deleteForEveryone={vi.fn()}
         deleteMenuRef={{ current: null }}
       />
     );
@@ -337,17 +328,14 @@ describe('MessageActionMenuPortal Copy Image Option', () => {
       <MessageActionMenuPortal
         msg={photoWithCaption}
         currentUserId="user-1"
-        isMobileView={false}
-        menuPos={{ x: 100, y: 100 }}
-        activeDeleteMenu="msg-1"
+        canEdit={false}
+        menuPos={{ top: 100, left: 100 }}
         setActiveDeleteMenu={vi.fn()}
         handleSetReply={vi.fn()}
         handleToggleSelectMessage={vi.fn()}
         handleCopy={vi.fn()}
         handleOpenReport={vi.fn()}
         handleStartEdit={vi.fn()}
-        deleteForMe={vi.fn()}
-        deleteForEveryone={vi.fn()}
         deleteMenuRef={{ current: null }}
       />
     );
@@ -381,17 +369,14 @@ describe('MessageActionMenuPortal Copy Image Option', () => {
       <MessageActionMenuPortal
         msg={videoWithCaption}
         currentUserId="user-1"
-        isMobileView={true}
-        menuPos={{ x: 100, y: 100 }}
-        activeDeleteMenu="msg-1"
+        canEdit={false}
+        menuPos={{ top: 100, left: 100 }}
         setActiveDeleteMenu={vi.fn()}
         handleSetReply={vi.fn()}
         handleToggleSelectMessage={vi.fn()}
         handleCopy={vi.fn()}
         handleOpenReport={vi.fn()}
         handleStartEdit={vi.fn()}
-        deleteForMe={vi.fn()}
-        deleteForEveryone={vi.fn()}
         deleteMenuRef={{ current: null }}
       />
     );
@@ -522,7 +507,7 @@ describe('Video Player Control Styles', () => {
 });
 
 describe('ChatFooter Select Mode Copy Behavior on Touch/Mobile', () => {
-  const baseFooterProps = {
+  const baseFooterProps: ChatFooterProps = {
     isSelectModeActive: true,
     selectedMessages: ['m-1'],
     canEditSelectedMessage: false,
@@ -549,7 +534,20 @@ describe('ChatFooter Select Mode Copy Behavior on Touch/Mobile', () => {
     isPlusMenuOpen: false,
     onTogglePlusMenu: vi.fn(),
     isConnected: true,
+    onFileChange: vi.fn(),
+    onAddFilesChange: vi.fn(),
+    onNotifyNativeFilePickerOpen: vi.fn(),
+    normalizedOverlayMessage: '',
     inputMessage: '',
+    onInputChange: vi.fn(),
+    onInputKeyDown: vi.fn(),
+    onPaste: vi.fn(),
+    onSyncInputOverlayScroll: vi.fn(),
+    onSendMessage: vi.fn(),
+    onSendVoiceNote: vi.fn(),
+    isEmojiPickerOpen: false,
+    onEmojiClick: vi.fn(),
+    isDark: true,
   };
 
   const originalClipboard = navigator.clipboard;

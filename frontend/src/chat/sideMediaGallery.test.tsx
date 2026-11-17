@@ -433,7 +433,6 @@ describe('Media Viewer Side Panel and Tab Switching', () => {
         username: 'Harsh',
         timestamp: '2026-11-10T10:00:00.000Z',
         createdAt: '2026-11-10T10:00:00.000Z',
-        sender: 'u1',
         text: 'Old photo from last week',
       },
       {
@@ -445,7 +444,6 @@ describe('Media Viewer Side Panel and Tab Switching', () => {
         username: 'Alice',
         timestamp: '2026-11-10T10:05:00.000Z',
         createdAt: '2026-11-10T10:05:00.000Z',
-        sender: 'u2',
         text: 'Old video',
       },
     ];
@@ -460,7 +458,6 @@ describe('Media Viewer Side Panel and Tab Switching', () => {
         username: 'Harsh',
         timestamp: '2026-11-15T18:00:00.000Z',
         createdAt: '2026-11-15T18:00:00.000Z',
-        sender: 'u1',
       },
       {
         id: 'recent-txt-102',
@@ -470,7 +467,6 @@ describe('Media Viewer Side Panel and Tab Switching', () => {
         username: 'Alice',
         timestamp: '2026-11-15T18:01:00.000Z',
         createdAt: '2026-11-15T18:01:00.000Z',
-        sender: 'u2',
       },
     ];
 
