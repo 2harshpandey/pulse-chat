@@ -9,6 +9,8 @@ import {
   formatMediaSize,
   getMediaGatePreviewUrl,
   withCloudinaryTransform,
+  isNonTouchDevice,
+  isPhotoOrGif,
 } from '../../utils';
 import { useAlbumDownload } from '../../albumDownloadManager';
 import {
@@ -41,6 +43,7 @@ import {
   MessageDesktopActions,
   useMessageGestures,
   MediaDownloadButton,
+  MediaCopyButton,
 } from './index';
 
 const DownloadSvg = () => (
@@ -570,21 +573,36 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
                             +{overflowCount}
                           </MediaGroupOverflowOverlay>
                         ) : (
-                          <MediaDownloadButton
-                            messageId={item.id}
-                            url={item.url}
-                            filename={item.originalName}
-                            isVideo={isVideo}
-                            onRequestDownload={onRequestDownload}
-                            style={{
-                              position: 'absolute',
-                              top: '6px',
-                              left: '6px',
-                              width: '30px',
-                              height: '30px',
-                              zIndex: 3,
-                            }}
-                          />
+                          <>
+                            <MediaDownloadButton
+                              messageId={item.id}
+                              url={item.url}
+                              filename={item.originalName}
+                              isVideo={isVideo}
+                              onRequestDownload={onRequestDownload}
+                              style={{
+                                position: 'absolute',
+                                top: '6px',
+                                left: '6px',
+                                width: '30px',
+                                height: '30px',
+                                zIndex: 3,
+                              }}
+                            />
+                            {isNonTouchDevice() && isPhotoOrGif(item) && Boolean(item.url) && (
+                              <MediaCopyButton
+                                url={item.url}
+                                style={{
+                                  position: 'absolute',
+                                  top: '6px',
+                                  left: '42px',
+                                  width: '30px',
+                                  height: '30px',
+                                  zIndex: 3,
+                                }}
+                              />
+                            )}
+                          </>
                         )}
                       </>
                     )}

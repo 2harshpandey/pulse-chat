@@ -1093,3 +1093,147 @@ export const getPresenceActivityForFiles = (files: File[]): PresenceActivity => 
   return 'sending_file';
 };
 
+/**
+ * Detects whether the user is on a non-touch or mixed device (e.g. PC, desktop, laptop,
+ * including touchscreen laptops with trackpad/mouse).
+ * Touch-only devices (mobile phones, tablets) return false.
+ */
+export const isNonTouchDevice = (): boolean => {
+  if (typeof window === 'undefined') return true;
+
+  // Laptops and desktops (including touch-screen laptops) have a fine pointer (trackpad/mouse) or hover support
+  const hasFinePointer = window.matchMedia?.('(pointer: fine)').matches ?? false;
+  const hasHover = window.matchMedia?.('(hover: hover)').matches ?? false;
+
+  if (hasFinePointer || hasHover) {
+    return true;
+  }
+
+  // Pure touch devices (smartphones, tablets) have a coarse primary pointer and no hover
+  const isCoarse = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+  if (isCoarse) {
+    return false;
+  }
+
+  // Fallback for older browsers
+  const hasTouch = 'ontouchstart' in window || ((navigator.maxTouchPoints || 0) > 0);
+  return !hasTouch;
+};
+
+/**
+ * Checks if a message is specifically a photo or GIF (not video, audio, or document).
+ */
+export const isPhotoOrGif = (msg?: { type?: string; url?: string; originalName?: string } | null): boolean => {
+  if (!msg) return false;
+  const type = (msg.type || '').toLowerCase();
+  const url = (msg.url || '').toLowerCase();
+  const name = (msg.originalName || '').toLowerCase();
+
+  // Exclude videos, audios, and documents
+  if (type === 'video' || type === 'audio' || type === 'file' || type === 'doc') {
+    return false;
+  }
+  if (/\.(mp4|webm|mov|m4v|mp3|wav|ogg|m4a|pdf|docx?|xlsx?|zip|rar|tar|gz)($|\?)/i.test(url) ||
+      /\.(mp4|webm|mov|m4v|mp3|wav|ogg|m4a|pdf|docx?|xlsx?|zip|rar|tar|gz)$/i.test(name)) {
+    return false;
+  }
+
+  // Photos & GIFs
+  if (type === 'image' || type === 'photo' || type === 'gif') {
+    return true;
+  }
+  if (/\.(jpe?g|png|gif|webp|svg|bmp|avif)($|\?)/i.test(url) ||
+      /\.(jpe?g|png|gif|webp|svg|bmp|avif)$/i.test(name)) {
+    return true;
+  }
+
+  return false;
+};
+
+/**
+ * Copies an image or GIF to the OS clipboard directly as a binary image (PNG).
+ * Dispatches a status toast upon completion.
+ */
+export async function copyImageToClipboard(
+  imageUrl: string,
+  onToast?: (msg: string) => void
+): Promise<boolean> {
+  if (!imageUrl || typeof window === 'undefined') return false;
+  const safeUrl = sanitizeMediaUrl(imageUrl) || imageUrl;
+
+  const notify = (msg: string) => {
+    if (onToast) {
+      onToast(msg);
+    } else if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('pulse:status_toast', { detail: { message: msg } }));
+    }
+  };
+
+  if (typeof navigator !== 'undefined' && navigator.clipboard?.write && window.isSecureContext && typeof ClipboardItem !== 'undefined') {
+    try {
+      const res = await fetch(safeUrl, { mode: 'cors' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const rawBlob = await res.blob();
+
+      let pngBlob: Blob;
+      if (rawBlob.type === 'image/png') {
+        pngBlob = rawBlob;
+      } else {
+        pngBlob = await new Promise<Blob>((resolve, reject) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          const objectUrl = URL.createObjectURL(rawBlob);
+          img.onload = () => {
+            try {
+              const canvas = document.createElement('canvas');
+              canvas.width = img.naturalWidth || img.width || 300;
+              canvas.height = img.naturalHeight || img.height || 300;
+              const ctx = canvas.getContext('2d');
+              if (!ctx) {
+                URL.revokeObjectURL(objectUrl);
+                return reject(new Error('Canvas context unavailable'));
+              }
+              ctx.drawImage(img, 0, 0);
+              canvas.toBlob((b) => {
+                URL.revokeObjectURL(objectUrl);
+                if (b) resolve(b);
+                else reject(new Error('Canvas toBlob failed'));
+              }, 'image/png');
+            } catch (err) {
+              URL.revokeObjectURL(objectUrl);
+              reject(err);
+            }
+          };
+          img.onerror = () => {
+            URL.revokeObjectURL(objectUrl);
+            reject(new Error('Image load failed'));
+          };
+          img.src = objectUrl;
+        });
+      }
+
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': pngBlob }),
+      ]);
+      notify('Image copied to clipboard');
+      return true;
+    } catch (err) {
+      console.warn('[copyImageToClipboard] Direct blob copy failed, falling back:', err);
+    }
+  }
+
+  // Fallback: Copy URL as text if direct binary write is unavailable
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(safeUrl);
+      notify('Image link copied to clipboard');
+      return true;
+    }
+  } catch (err) {
+    console.error('[copyImageToClipboard] All clipboard copy strategies failed:', err);
+  }
+
+  notify('Failed to copy image');
+  return false;
+}
+

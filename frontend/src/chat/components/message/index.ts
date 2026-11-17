@@ -7,3 +7,4 @@ export * from './MediaGroupItem';
 export * from './MediaDownloadButton';
 export * from './AudioMessagePlayer';
 export * from './MediaAlbumIcon';
+export * from './MediaCopyButton';

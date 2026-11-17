@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { Message, ReactionsPopupData } from '../../types';
 import { filterValidReactions } from '../../constants';
-import { sanitizeMediaUrl, withCloudinaryTransform, getMediaGatePreviewUrl } from '../../utils';
+import { sanitizeMediaUrl, withCloudinaryTransform, getMediaGatePreviewUrl, isNonTouchDevice, isPhotoOrGif, copyImageToClipboard } from '../../utils';
 import { VideoPlayer } from '../../VideoPlayer';
 import { MediaDownloadButton } from '../message';
 import { usePhotoZoom } from '../../hooks/usePhotoZoom';
@@ -476,6 +476,27 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                 <path d="M8 14s1.5 2 4 2 4-2 4-2" />
                 <line x1="9" y1="9" x2="9.01" y2="9" strokeWidth="2.5" />
                 <line x1="15" y1="9" x2="15.01" y2="9" strokeWidth="2.5" />
+              </svg>
+            </MediaGalleryActionBtn>
+          )}
+
+          {/* Copy Image Button: only for photos and GIFs, and strictly on non-touch devices (laptops/PCs) */}
+          {isPhotoOrGif(currentItem) && isNonTouchDevice() && Boolean(safeUrl) && (
+            <MediaGalleryActionBtn
+              type="button"
+              title="Copy image"
+              aria-label="Copy image"
+              data-testid="gallery-copy-image-btn"
+              onClick={async (e) => {
+                e.stopPropagation();
+                if (safeUrl) {
+                  await copyImageToClipboard(safeUrl);
+                }
+              }}
+            >
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
               </svg>
             </MediaGalleryActionBtn>
           )}

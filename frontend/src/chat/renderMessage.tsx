@@ -4,6 +4,7 @@ import {
   sanitizeMediaUrl, getMediaGatePreviewUrl,
   formatMediaSize, getFileContainerLabel,
   downloadFile, wrapEmojis, getDisplayFilename, EMOJI_SEQUENCE_RE,
+  isNonTouchDevice, isPhotoOrGif,
 } from './utils';
 import {
   MediaContent, MediaImageWrapper, MediaVideoWrapperDiv, MediaLoadGate, MediaLoadPreview,
@@ -13,6 +14,7 @@ import {
 } from './ChatStyledComponents';
 import { VideoPlayer } from './VideoPlayer';
 import { AudioMessagePlayer } from './components/message/AudioMessagePlayer';
+import { MediaCopyButton } from './components/message/MediaCopyButton';
 import type { TransferInfo } from './TransferManager';
 
 // --- URL Detection helpers ---
@@ -351,6 +353,12 @@ export const renderMessageContent = (
             <MediaDownloadOverlayBtn
               title={isDownloadInProgress ? 'Tap to cancel' : 'Download'}
               aria-label={isDownloadInProgress ? 'Cancel download' : 'Download image'}
+              style={{
+                position: 'absolute',
+                top: '6px',
+                left: '6px',
+                zIndex: 3,
+              }}
               onPointerDown={(e) => {
                 // Instantly register the action before high-frequency re-renders can drop the subsequent mouseup/click event
                 e.stopPropagation();
@@ -364,6 +372,17 @@ export const renderMessageContent = (
             >
               {isDownloadInProgress ? <RingedProgressIcon progress={clampedDownloadProgress} isPaused={transferInfo?.type === 'download' && transferInfo?.state === 'paused'} /> : <DownloadSvg />}
             </MediaDownloadOverlayBtn>
+          )}
+          {msg.url && !shouldGateMedia && isNonTouchDevice() && isPhotoOrGif(msg) && (
+            <MediaCopyButton
+              url={msg.url}
+              style={{
+                position: 'absolute',
+                top: '6px',
+                left: '46px',
+                zIndex: 3,
+              }}
+            />
           )}
         </MediaImageWrapper>
         {msg.text && (

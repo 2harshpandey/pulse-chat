@@ -182,8 +182,10 @@ export const CVPBottomRow = styled.div`
   gap: var(--cvp-row-gap, 2px);
   flex-wrap: nowrap;
   min-width: 0;
-  overflow: hidden;
-  padding-right: var(--cvp-edge-pad-right, 2px);
+  overflow: visible;
+  position: relative;
+  z-index: 2;
+  padding: 3px var(--cvp-edge-pad-right, 2px) 3px 2px;
 
   /* Shrink icon buttons on small frames */
   @media (max-width: 420px) {
@@ -203,8 +205,10 @@ export const CVPIconBtn = styled.button<{ $active?: boolean }>`
   border-radius: 50%;
   transition: background 0.15s ease, transform 0.15s ease;
   flex-shrink: 0;
+  position: relative;
+  z-index: 1;
   svg { width: var(--cvp-icon-size, 16px); height: var(--cvp-icon-size, 16px); overflow: visible; }
-  &:hover { background: rgba(255,255,255,0.15); transform: scale(1.12); }
+  &:hover { background: rgba(255,255,255,0.15); transform: scale(1.12); z-index: 3; }
   &:active { transform: scale(0.9); }
   &:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
 `;

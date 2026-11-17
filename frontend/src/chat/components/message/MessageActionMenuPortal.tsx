@@ -2,6 +2,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import type { Message } from '../../types';
 import { DeleteMenu, DeleteMenuItem } from '../../ChatStyledComponents';
+import { isNonTouchDevice, isPhotoOrGif, copyImageToClipboard } from '../../utils';
 
 interface MessageActionMenuPortalProps {
   msg: Message;
@@ -133,10 +134,30 @@ export const MessageActionMenuPortal: React.FC<MessageActionMenuPortalProps> = R
                 Edit
               </DeleteMenuItem>
             )}
-            {(msg.type === 'text' || msg.type === 'image' || Boolean(msg.text)) && (
-              <DeleteMenuItem onClick={() => { handleCopy(msg); setActiveDeleteMenu(null); }}>
+            {/* Copy image: strictly for photos/GIFs, only on non-touch devices (never on touch devices / mobile) */}
+            {isPhotoOrGif(msg) && isNonTouchDevice() && Boolean(msg.url) && (
+              <DeleteMenuItem
+                data-testid="copy-image-menu-item"
+                onClick={() => {
+                  if (msg.url) void copyImageToClipboard(msg.url);
+                  setActiveDeleteMenu(null);
+                }}
+              >
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                Copy
+                Copy image
+              </DeleteMenuItem>
+            )}
+            {/* Copy text: for messages with text (plain text or media captions) */}
+            {Boolean(msg.text) && (
+              <DeleteMenuItem
+                data-testid="copy-text-menu-item"
+                onClick={() => {
+                  handleCopy(msg);
+                  setActiveDeleteMenu(null);
+                }}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                {isPhotoOrGif(msg) ? 'Copy caption' : 'Copy'}
               </DeleteMenuItem>
             )}
             {msg.userId !== currentUserId && (

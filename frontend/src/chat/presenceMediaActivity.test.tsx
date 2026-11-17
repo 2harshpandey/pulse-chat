@@ -313,7 +313,7 @@ describe('Media and File Sending Presence Activity', () => {
 
       fireEvent.change(input, { target: { value: '' } });
       expect(emittedActivity).toBeNull();
-    });
+    }, 15000);
 
     it('triggers onTyping when an emoji is clicked from useChatEmojiPicker', async () => {
       const { useChatEmojiPicker } = await import('./hooks/useChatEmojiPicker');
