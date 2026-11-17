@@ -1507,6 +1507,86 @@ export const MediaGalleryGrid = styled.div`
   align-content: start;
 `;
 
+export const MediaGalleryDateDivider = styled.div`
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  margin: 14px 0 6px 0;
+  padding: 0 4px;
+  user-select: none;
+
+  &:first-child {
+    margin-top: 4px;
+  }
+
+  &::before,
+  &::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(
+      to right,
+      rgba(255, 255, 255, 0),
+      rgba(255, 255, 255, 0.08) 25%,
+      rgba(255, 255, 255, 0.14) 75%,
+      rgba(255, 255, 255, 0)
+    );
+
+    [data-theme='light'] & {
+      background: linear-gradient(
+        to right,
+        rgba(0, 0, 0, 0),
+        rgba(0, 0, 0, 0.07) 25%,
+        rgba(0, 0, 0, 0.12) 75%,
+        rgba(0, 0, 0, 0)
+      );
+    }
+  }
+
+  @keyframes mgDateFadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+  animation: mgDateFadeIn 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+`;
+
+export const MediaGalleryDateBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 10px;
+  border-radius: 9999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: capitalize;
+  color: var(--text-secondary);
+  background: rgba(30, 41, 59, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
+  margin: 0 8px;
+  white-space: nowrap;
+  pointer-events: none;
+  transition: all 0.2s ease;
+
+  [data-theme='light'] & {
+    background: rgba(241, 245, 249, 0.92);
+    border-color: rgba(0, 0, 0, 0.08);
+    color: #475569;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+  }
+`;
+
 export const MediaGalleryTile = styled.div`
   position: relative;
   aspect-ratio: 1 / 1;

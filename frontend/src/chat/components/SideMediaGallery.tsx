@@ -24,6 +24,8 @@ import {
   MediaGalleryErrorState,
   MediaGallerySpinner,
   MediaGallerySentinel,
+  MediaGalleryDateDivider,
+  MediaGalleryDateBadge,
 } from '../styles/chat.message.styles';
 
 export interface SideMediaGalleryProps {
@@ -57,6 +59,34 @@ const formatFileSize = (bytes?: number): string => {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   }
   return `${Math.ceil(bytes / 1024)} KB`;
+};
+
+export const getMediaDateGroupLabel = (timestamp?: string | number | Date): string => {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  if (isNaN(date.getTime())) return '';
+
+  const now = new Date();
+  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dateMidnight = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+  const diffMs = todayMidnight.getTime() - dateMidnight.getTime();
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays <= 0) {
+    return 'Today';
+  }
+  if (diffDays === 1) {
+    return 'Yesterday';
+  }
+  if (diffDays >= 2 && diffDays < 7) {
+    return date.toLocaleDateString(undefined, { weekday: 'long' });
+  }
+  return date.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 };
 
 const extractUrlFromText = (text: string): string | null => {
@@ -413,7 +443,22 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
 
       <MediaGalleryScrollArea>
         <MediaGalleryGrid>
-          {items.map((item) => renderItem(item))}
+          {items.map((item, index) => {
+            const currentLabel = getMediaDateGroupLabel(item.createdAt);
+            const prevLabel = index > 0 ? getMediaDateGroupLabel(items[index - 1].createdAt) : null;
+            const showDivider = Boolean(currentLabel && currentLabel !== prevLabel);
+
+            return (
+              <React.Fragment key={item.id}>
+                {showDivider && (
+                  <MediaGalleryDateDivider role="separator" aria-label={currentLabel}>
+                    <MediaGalleryDateBadge>{currentLabel}</MediaGalleryDateBadge>
+                  </MediaGalleryDateDivider>
+                )}
+                {renderItem(item)}
+              </React.Fragment>
+            );
+          })}
 
           {!isLoading && !error && items.length === 0 && (
             <MediaGalleryEmptyState>

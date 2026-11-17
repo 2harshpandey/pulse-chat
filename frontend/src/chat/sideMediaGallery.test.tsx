@@ -5,7 +5,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor, cleanup } from '@testing-library/react';
 import { UserSidebar } from './components/UserSidebar';
-import { SideMediaGallery } from './components/SideMediaGallery';
+import { SideMediaGallery, getMediaDateGroupLabel } from './components/SideMediaGallery';
 import { MediaGalleryModal } from './components/modals/MediaGalleryModal';
 import type { Message } from './types';
 
@@ -538,5 +538,142 @@ describe('Media Viewer Side Panel and Tab Switching', () => {
     });
 
     window.HTMLElement.prototype.getBoundingClientRect = origGetBoundingClientRect;
+  });
+
+  describe('Media Gallery Date Dividers and Grouping', () => {
+    it('correctly calculates date labels in getMediaDateGroupLabel', () => {
+      const now = new Date();
+
+      // Empty or invalid
+      expect(getMediaDateGroupLabel('')).toBe('');
+      expect(getMediaDateGroupLabel(undefined)).toBe('');
+      expect(getMediaDateGroupLabel('invalid-date')).toBe('');
+
+      // Today
+      expect(getMediaDateGroupLabel(now.toISOString())).toBe('Today');
+
+      // Future (e.g. slight clock skew)
+      const future = new Date(now.getTime() + 1000 * 60 * 5);
+      expect(getMediaDateGroupLabel(future.toISOString())).toBe('Today');
+
+      // Yesterday
+      const yesterday = new Date(now);
+      yesterday.setDate(now.getDate() - 1);
+      expect(getMediaDateGroupLabel(yesterday.toISOString())).toBe('Yesterday');
+
+      // 2 days ago (weekday)
+      const twoDaysAgo = new Date(now);
+      twoDaysAgo.setDate(now.getDate() - 2);
+      const expectedWeekday2 = twoDaysAgo.toLocaleDateString(undefined, { weekday: 'long' });
+      expect(getMediaDateGroupLabel(twoDaysAgo.toISOString())).toBe(expectedWeekday2);
+
+      // 4 days ago (weekday)
+      const fourDaysAgo = new Date(now);
+      fourDaysAgo.setDate(now.getDate() - 4);
+      const expectedWeekday4 = fourDaysAgo.toLocaleDateString(undefined, { weekday: 'long' });
+      expect(getMediaDateGroupLabel(fourDaysAgo.toISOString())).toBe(expectedWeekday4);
+
+      // 6 days ago (weekday)
+      const sixDaysAgo = new Date(now);
+      sixDaysAgo.setDate(now.getDate() - 6);
+      const expectedWeekday6 = sixDaysAgo.toLocaleDateString(undefined, { weekday: 'long' });
+      expect(getMediaDateGroupLabel(sixDaysAgo.toISOString())).toBe(expectedWeekday6);
+
+      // 7 days ago (older -> formatted date)
+      const sevenDaysAgo = new Date(now);
+      sevenDaysAgo.setDate(now.getDate() - 7);
+      const expectedDate7 = sevenDaysAgo.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      expect(getMediaDateGroupLabel(sevenDaysAgo.toISOString())).toBe(expectedDate7);
+
+      // 30 days ago (older -> formatted date)
+      const thirtyDaysAgo = new Date(now);
+      thirtyDaysAgo.setDate(now.getDate() - 30);
+      const expectedDate30 = thirtyDaysAgo.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      expect(getMediaDateGroupLabel(thirtyDaysAgo.toISOString())).toBe(expectedDate30);
+    });
+
+    it('renders date dividers grouping items by Today, Yesterday, Day of Week, and older Date in SideMediaGallery', async () => {
+      const now = new Date();
+      const yesterday = new Date(now);
+      yesterday.setDate(now.getDate() - 1);
+      const threeDaysAgo = new Date(now);
+      threeDaysAgo.setDate(now.getDate() - 3);
+      const tenDaysAgo = new Date(now);
+      tenDaysAgo.setDate(now.getDate() - 10);
+
+      const weekdayLabel = threeDaysAgo.toLocaleDateString(undefined, { weekday: 'long' });
+      const olderDateLabel = tenDaysAgo.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+
+      const mockItems = [
+        {
+          id: 'item-today-1',
+          type: 'image',
+          url: 'https://res.cloudinary.com/test/image/upload/v1/pic1.jpg',
+          originalName: 'today_photo1.jpg',
+          createdAt: now.toISOString(),
+        },
+        {
+          id: 'item-today-2',
+          type: 'video',
+          url: 'https://res.cloudinary.com/test/video/upload/v1/vid1.mp4',
+          originalName: 'today_video2.mp4',
+          createdAt: now.toISOString(),
+        },
+        {
+          id: 'item-yesterday-1',
+          type: 'image',
+          url: 'https://res.cloudinary.com/test/image/upload/v1/pic2.jpg',
+          originalName: 'yesterday_photo.jpg',
+          createdAt: yesterday.toISOString(),
+        },
+        {
+          id: 'item-weekday-1',
+          type: 'file',
+          url: 'https://res.cloudinary.com/test/raw/upload/v1/report.pdf',
+          originalName: 'report.pdf',
+          createdAt: threeDaysAgo.toISOString(),
+        },
+        {
+          id: 'item-older-1',
+          type: 'text',
+          text: 'Visit https://pulsechat.tech for updates',
+          createdAt: tenDaysAgo.toISOString(),
+        },
+      ];
+
+      vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ items: mockItems, hasMore: false }),
+        } as any)
+      );
+
+      render(<SideMediaGallery roomId="test-room" isActive={true} />);
+
+      await waitFor(() => {
+        expect(screen.getByTitle('today_photo1.jpg')).toBeDefined();
+        expect(screen.getByTitle('today_video2.mp4')).toBeDefined();
+        expect(screen.getByTitle('yesterday_photo.jpg')).toBeDefined();
+        expect(screen.getByTitle('Download report.pdf')).toBeDefined();
+        expect(screen.getByTitle('Open pulsechat.tech')).toBeDefined();
+      });
+
+      // Verify separator dividers
+      const separators = screen.getAllByRole('separator');
+      expect(separators.length).toBe(4);
+
+      // Today divider (only once, even though there are 2 items for today)
+      expect(screen.getByText('Today')).toBeDefined();
+      expect(screen.getAllByText('Today').length).toBe(1);
+
+      // Yesterday divider
+      expect(screen.getByText('Yesterday')).toBeDefined();
+
+      // Weekday divider (e.g. Sunday/Monday/etc.)
+      expect(screen.getByText(weekdayLabel)).toBeDefined();
+
+      // Older date divider (e.g. Nov 7, 2026)
+      expect(screen.getByText(olderDateLabel)).toBeDefined();
+    });
   });
 });
