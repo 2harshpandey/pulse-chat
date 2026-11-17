@@ -1151,6 +1151,37 @@ export const isPhotoOrGif = (msg?: { type?: string; url?: string; originalName?:
 };
 
 /**
+ * Checks if a message has any media attachment (photo, gif, video, audio, or document).
+ */
+export const hasMediaAttachment = (msg?: { type?: string; url?: string; originalName?: string } | null): boolean => {
+  if (!msg) return false;
+  const type = (msg.type || '').toLowerCase();
+  const url = (msg.url || '').toLowerCase();
+  const name = (msg.originalName || '').toLowerCase();
+
+  if (
+    type === 'image' ||
+    type === 'photo' ||
+    type === 'gif' ||
+    type === 'video' ||
+    type === 'audio' ||
+    type === 'file' ||
+    type === 'doc'
+  ) {
+    return true;
+  }
+
+  if (
+    /\.(jpe?g|png|gif|webp|svg|bmp|avif|mp4|webm|mov|m4v|mp3|wav|ogg|m4a|pdf|docx?|xlsx?|zip|rar|tar|gz)($|\?)/i.test(url) ||
+    /\.(jpe?g|png|gif|webp|svg|bmp|avif|mp4|webm|mov|m4v|mp3|wav|ogg|m4a|pdf|docx?|xlsx?|zip|rar|tar|gz)$/i.test(name)
+  ) {
+    return true;
+  }
+
+  return Boolean(msg.url);
+};
+
+/**
  * Copies an image or GIF to the OS clipboard directly as a binary image (PNG).
  * Dispatches a status toast upon completion.
  */

@@ -2,7 +2,7 @@ import React from 'react';
 import EmojiPicker, { EmojiClickData, EmojiStyle, Theme } from 'emoji-picker-react';
 import type { Message, Gif } from '../types';
 import { MAX_MESSAGE_LENGTH, quoteLog } from '../constants';
-import { isGiphyUrl, resolveReplyTargetId, audioDurationCache, setAudioDurationCache, subscribeAudioDuration, resolveAudioDuration, getDeletedForMeIds } from '../utils';
+import { isGiphyUrl, resolveReplyTargetId, audioDurationCache, setAudioDurationCache, subscribeAudioDuration, resolveAudioDuration, getDeletedForMeIds, isPhotoOrGif, hasMediaAttachment, isNonTouchDevice, copyImageToClipboard, copyTextToClipboard } from '../utils';
 import { CANDIDATE_URL_RE, renderTextWithLinks } from '../renderMessage';
 import { FilmIcon, FileIcon } from '../TypingIndicator';
 import { MediaAlbumIcon } from './message/MediaAlbumIcon';
@@ -13,6 +13,9 @@ import {
   CancelPreviewButton,
   EditButton,
   CopyButton,
+  CopyOptionsPopover,
+  CopyOptionItem,
+  CopyOptionDivider,
   ReportButton,
   DownloadAllButton,
   DeleteButton,
@@ -265,6 +268,31 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
     }
   }, [isSelectModeActive, recorder]);
 
+  // Copy options popover state for photo/GIF with caption
+  const [isCopyMenuOpen, setIsCopyMenuOpen] = React.useState(false);
+  const copyMenuRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!isSelectModeActive) {
+      setIsCopyMenuOpen(false);
+    }
+  }, [isSelectModeActive]);
+
+  React.useEffect(() => {
+    if (!isCopyMenuOpen) return;
+    const handleOutsideClick = (e: MouseEvent | TouchEvent) => {
+      if (copyMenuRef.current && !copyMenuRef.current.contains(e.target as Node)) {
+        setIsCopyMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('touchstart', handleOutsideClick);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('touchstart', handleOutsideClick);
+    };
+  }, [isCopyMenuOpen]);
+
   // Pressing Enter while recording sends the voice message
   React.useEffect(() => {
     if (!recorder.isRecording) return;
@@ -282,7 +310,7 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
   }, [recorder, onSendVoiceNote]);
 
   const hasSendableContent = Boolean(
-    inputMessage.trim() ||
+    (inputMessage || '').trim() ||
     stagedFile ||
     stagedGif ||
     stagedFiles.length > 0 ||
@@ -311,21 +339,170 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
                 </svg>
               </EditButton>
             )}
-            {isMobileView && selectedMessages.length === 1 && selectedMessage && !selectedMessage.isDeleted && (selectedMessage.type === 'text' || selectedMessage.type === 'image') && (
-              <CopyButton
-                onClick={() => {
-                  onCopyMessage(selectedMessage);
+            {(() => {
+              if (!selectedMessage || selectedMessage.isDeleted || selectedMessages.length !== 1) return null;
+              if (!isMobileView && isNonTouchDevice()) return null;
+
+              const isPhotoGif = isPhotoOrGif(selectedMessage);
+              const hasCaption = Boolean(selectedMessage.text?.trim());
+              const hasMedia = hasMediaAttachment(selectedMessage);
+
+              // 1. Photo or GIF with caption: show two options (Copy caption / Copy image)
+              const isPhotoGifWithCaption = isPhotoGif && hasCaption;
+
+              // 2. Photo or GIF without caption: show single button that copies the photo/GIF
+              const isPhotoGifWithoutCaption = isPhotoGif && !hasCaption;
+
+              // 3. Media other than photo/GIF with caption: show single button that copies the caption
+              const isOtherMediaWithCaption = hasMedia && !isPhotoGif && hasCaption;
+
+              // 4. Plain text message: show single button that copies text
+              const isPlainText = !hasMedia && hasCaption;
+
+              // 5. Media without caption (not photo/GIF): DO NOT SHOW COPY BUTTON
+              const canShowCopy = isPhotoGifWithCaption || isPhotoGifWithoutCaption || isOtherMediaWithCaption || isPlainText;
+
+              if (!canShowCopy) return null;
+
+              const handleCopyClick = async (e: React.MouseEvent) => {
+                e.stopPropagation();
+                e.preventDefault();
+
+                // Case 1: Photo or GIF with caption -> toggle animated 2-option popover menu
+                if (isPhotoGifWithCaption) {
+                  setIsCopyMenuOpen((prev) => !prev);
+                  return;
+                }
+
+                // Case 2: Photo or GIF without caption -> copy image directly
+                if (isPhotoGifWithoutCaption && selectedMessage.url) {
+                  await copyImageToClipboard(selectedMessage.url);
                   onCancelSelectMode();
-                }}
-                title="Copy"
-                aria-label="Copy selected message"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                </svg>
-              </CopyButton>
-            )}
+                  return;
+                }
+
+                // Case 3 & 4: Caption or plain text -> copy text directly
+                const textToCopy = selectedMessage.text || '';
+                if (textToCopy) {
+                  const success = await copyTextToClipboard(textToCopy);
+                  if (success && typeof window !== 'undefined') {
+                    window.dispatchEvent(
+                      new CustomEvent('pulse:status_toast', {
+                        detail: {
+                          message: isOtherMediaWithCaption ? 'Caption copied to clipboard' : 'Copied to clipboard',
+                        },
+                      })
+                    );
+                  }
+                }
+                onCancelSelectMode();
+              };
+
+              const handleCopyImageOption = async (e: React.MouseEvent) => {
+                e.stopPropagation();
+                e.preventDefault();
+                setIsCopyMenuOpen(false);
+                if (selectedMessage.url) {
+                  await copyImageToClipboard(selectedMessage.url);
+                }
+                onCancelSelectMode();
+              };
+
+              const handleCopyCaptionOption = async (e: React.MouseEvent) => {
+                e.stopPropagation();
+                e.preventDefault();
+                setIsCopyMenuOpen(false);
+                if (selectedMessage.text) {
+                  const success = await copyTextToClipboard(selectedMessage.text);
+                  if (success && typeof window !== 'undefined') {
+                    window.dispatchEvent(
+                      new CustomEvent('pulse:status_toast', {
+                        detail: { message: 'Caption copied to clipboard' },
+                      })
+                    );
+                  }
+                }
+                onCancelSelectMode();
+              };
+
+              return (
+                <div style={{ position: 'relative' }} ref={copyMenuRef}>
+                  <CopyButton
+                    data-testid="select-copy-btn"
+                    onClick={handleCopyClick}
+                    title={
+                      isPhotoGifWithCaption
+                        ? 'Copy options'
+                        : isPhotoGifWithoutCaption
+                        ? 'Copy image'
+                        : isOtherMediaWithCaption
+                        ? 'Copy caption'
+                        : 'Copy'
+                    }
+                    aria-label={
+                      isPhotoGifWithCaption
+                        ? 'Copy options'
+                        : isPhotoGifWithoutCaption
+                        ? 'Copy image'
+                        : isOtherMediaWithCaption
+                        ? 'Copy caption'
+                        : 'Copy'
+                    }
+                    style={
+                      isCopyMenuOpen
+                        ? {
+                            backgroundColor: '#475569',
+                            boxShadow: '0 0 0 2px rgba(56, 189, 248, 0.45)',
+                          }
+                        : undefined
+                    }
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                  </CopyButton>
+
+                  {isPhotoGifWithCaption && isCopyMenuOpen && (
+                    <CopyOptionsPopover
+                      data-testid="copy-options-popover"
+                      role="menu"
+                      aria-label="Copy options"
+                    >
+                      <CopyOptionItem
+                        type="button"
+                        role="menuitem"
+                        data-testid="popover-copy-image-btn"
+                        onClick={handleCopyImageOption}
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                          <circle cx="8.5" cy="8.5" r="1.5" />
+                          <polyline points="21 15 16 10 5 21" />
+                        </svg>
+                        <span>Copy image</span>
+                      </CopyOptionItem>
+                      <CopyOptionDivider />
+                      <CopyOptionItem
+                        type="button"
+                        role="menuitem"
+                        data-testid="popover-copy-caption-btn"
+                        onClick={handleCopyCaptionOption}
+                      >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <polyline points="14 2 14 8 20 8" />
+                          <line x1="16" y1="13" x2="8" y2="13" />
+                          <line x1="16" y1="17" x2="8" y2="17" />
+                          <line x1="10" y1="9" x2="8" y2="9" />
+                        </svg>
+                        <span>Copy caption</span>
+                      </CopyOptionItem>
+                    </CopyOptionsPopover>
+                  )}
+                </div>
+              );
+            })()}
             {hasSelectedMedia && onDownloadSelectedMedia && (
               <DownloadAllButton
                 onClick={() => {

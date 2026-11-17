@@ -1,4 +1,4 @@
-import styled, { css } from 'styled-components';
+import styled, { css, keyframes } from 'styled-components';
 import {
   fadeInScale, slideIn, subtleSlideUp, shimmerOverlay, speakerPulse, speakerWave,
   inputFocusGlow, sendPulse, staggerFadeIn, reactionPickerSlideIn,
@@ -1111,6 +1111,90 @@ export const DeleteButton = styled(SendButton)`
 export const CopyButton = styled(SendButton)`
   background-color: #64748B;
   &:hover:not(:disabled) { background-color: #475569; box-shadow: 0 4px 16px rgba(100, 116, 139, 0.35); }
+`;
+
+const copyMenuSlideUp = keyframes`
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.93);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+`;
+
+export const CopyOptionsPopover = styled.div`
+  position: absolute;
+  bottom: calc(100% + 12px);
+  right: -8px;
+  background: var(--bg-elevated, #0f172a);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-primary, rgba(255, 255, 255, 0.14));
+  border-radius: 14px;
+  box-shadow: 0 12px 32px -4px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  min-width: 154px;
+  z-index: 1000;
+  animation: ${copyMenuSlideUp} 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  pointer-events: auto;
+
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: -5px;
+    right: 22px;
+    transform: rotate(45deg);
+    width: 10px;
+    height: 10px;
+    background: inherit;
+    border-right: 1px solid var(--border-primary, rgba(255, 255, 255, 0.14));
+    border-bottom: 1px solid var(--border-primary, rgba(255, 255, 255, 0.14));
+  }
+`;
+
+export const CopyOptionItem = styled.button`
+  background: none;
+  border: none;
+  color: var(--text-primary, #f8fafc);
+  font-size: 0.82rem;
+  font-weight: 500;
+  padding: 8px 12px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  width: 100%;
+  text-align: left;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+
+  svg {
+    width: 17px;
+    height: 17px;
+    flex-shrink: 0;
+    color: #38bdf8;
+  }
+
+  &:hover {
+    background: rgba(56, 189, 248, 0.14);
+    color: #38bdf8;
+  }
+
+  &:active {
+    transform: scale(0.97);
+    background: rgba(56, 189, 248, 0.22);
+  }
+`;
+
+export const CopyOptionDivider = styled.div`
+  height: 1px;
+  background: var(--border-primary, rgba(255, 255, 255, 0.1));
+  margin: 3px 0;
 `;
 
 export const EditButton = styled(SendButton)`
