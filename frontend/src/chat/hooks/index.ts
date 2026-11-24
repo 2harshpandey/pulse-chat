@@ -17,3 +17,4 @@ export * from './useVoiceRecorder';
 export * from './useChatController';
 export * from './usePhotoZoom';
 export * from './useChatMediaGallery';
+export * from './useTabSessionLock';

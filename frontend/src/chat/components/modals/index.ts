@@ -7,3 +7,4 @@ export * from './FilePreviewModal';
 export * from './FullEmojiPickerModal';
 export * from './MediaGalleryModal';
 export * from './PhotoCropper';
+export * from './OtherTabOverlay';

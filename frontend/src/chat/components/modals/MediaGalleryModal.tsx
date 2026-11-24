@@ -591,6 +591,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                 fallbackUrl={sanitizeMediaUrl(currentItem.url) || undefined}
                 autoPlay={userNavigated ? true : (autoPlayVideo ?? true)}
                 isGalleryMode={true}
+                timestamp={currentItem.timestamp || (currentItem as any).createdAt}
               />
               {renderReactionBadge(false)}
             </MediaGalleryVideoWrapper>

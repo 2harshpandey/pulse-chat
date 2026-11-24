@@ -328,8 +328,6 @@ export const buildDownloadProxyUrl = (resourceUrl: string, filename?: string): s
   if (typeof window !== 'undefined') {
     const roomId = getStoredValue('pulse_room_id') || getStoredValue('pulseRoomId');
     if (roomId) params.set('roomId', roomId);
-    const sessionToken = getSessionToken(roomId || undefined);
-    if (sessionToken) params.set('sessionToken', sessionToken);
     const userId = getStoredValue('pulse_user_id') || getStoredValue('pulseUserId');
     if (userId) params.set('userId', userId);
   }
@@ -537,9 +535,11 @@ export const downloadFile = async (
         return;
       }
       onProgress?.(0);
-      // Last-resort browser navigation fallback. This keeps file clicks useful even
-      // if the proxy fetch is blocked by CORS/provider behavior in production.
-      triggerAnchorDownload(buildDownloadProxyUrl(parsed.href, safeFilename), safeFilename);
+      // Last-resort browser navigation fallback. Avoid hitting /api/download without
+      // headers in private rooms (where session tokens are sent via headers only).
+      const activeRoomId = typeof window !== 'undefined' ? (getStoredValue('pulse_room_id') || getStoredValue('pulseRoomId')) : null;
+      const needsHeaderAuth = Boolean(activeRoomId && activeRoomId.toLowerCase() !== 'global' && getSessionToken(activeRoomId));
+      triggerAnchorDownload(needsHeaderAuth ? parsed.href : buildDownloadProxyUrl(parsed.href, safeFilename), safeFilename);
       return;
     }
   }
@@ -1266,5 +1266,46 @@ export async function copyImageToClipboard(
 
   notify('Failed to copy image');
   return false;
+}
+
+export const MESSAGE_EDIT_WINDOW_MS = 15 * 60 * 1000;
+
+/**
+ * Checks whether a message can be edited by the given user right now
+ * (author match, non-deleted/non-vanished, non-system, settled upload,
+ * non-empty text, and within the 15-minute edit window).
+ */
+export function canEditMessage(
+  msg: Message | null | undefined,
+  userId: string | null | undefined,
+  nowMs: number = Date.now()
+): boolean {
+  if (!msg || !userId) return false;
+  if (msg.isDeleted || msg.vanished || msg.isUploading || msg.uploadError) return false;
+  if (msg.type === 'system_notification') return false;
+  if (msg.userId !== userId) return false;
+  if (typeof msg.text !== 'string' || !msg.text.trim()) return false;
+  const sentAt = new Date(msg.timestamp).getTime();
+  if (!Number.isFinite(sentAt)) return false;
+  return nowMs - sentAt < MESSAGE_EDIT_WINDOW_MS;
+}
+
+/**
+ * Finds the most recent editable message sent by the given user
+ * by scanning loaded messages from newest to oldest.
+ */
+export function findLastEditableSentMessage(
+  messages: Message[] | null | undefined,
+  userId: string | null | undefined,
+  nowMs: number = Date.now()
+): Message | null {
+  if (!Array.isArray(messages) || !userId) return null;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const candidate = messages[i];
+    if (canEditMessage(candidate, userId, nowMs)) {
+      return candidate;
+    }
+  }
+  return null;
 }
 

@@ -8,6 +8,7 @@ const BlockedUser = require('./models/blockedUser');
 const LoginLockdown = require('./models/loginLockdown');
 const Room = require('./models/room');
 const AuditLog = require('./models/auditLog');
+const { getCachedRoom } = require('./state');
 const { timingSafeEqualStr, verifyPassword } = require('./security');
 
 let _broadcastToAdmins = () => {};
@@ -169,47 +170,63 @@ if (typeof setInterval !== 'undefined') {
   }, 10 * 60 * 1000).unref();
 }
 
-const checkPasswordRateLimit = (req, res, next) => {
-  const ip = extractIp(req);
-  const roomId = req.body?.roomId || req.body?.id || req.headers['x-room-id'] || 'me';
-  const key = `${ip}_${roomId}`;
+const resolveCanonicalLockRoomKey = async (rawRoomId) => {
+  const clean = typeof rawRoomId === 'string' && rawRoomId.trim() ? rawRoomId.trim() : 'me';
+  const lower = clean.toLowerCase();
+  if (lower === 'me' || lower === 'global') return lower;
+  try {
+    const room = await getCachedRoom(clean);
+    if (room && room.id) return String(room.id).trim().toLowerCase();
+  } catch (_) {}
+  return lower;
+};
 
-  // Prune expired entries if map grows large to prevent memory leak
-  if (passwordAttemptLocks.size > 2000) {
-    const now = Date.now();
-    for (const [k, v] of passwordAttemptLocks.entries()) {
-      if (v.lockUntil <= now) {
-        passwordAttemptLocks.delete(k);
+const checkPasswordRateLimit = async (req, res, next) => {
+  try {
+    const ip = extractIp(req);
+    const rawRoomId = req.body?.roomId || req.body?.id || req.headers['x-room-id'] || 'me';
+    const roomId = await resolveCanonicalLockRoomKey(rawRoomId);
+    const key = `${ip}_${roomId}`;
+
+    // Prune expired entries if map grows large to prevent memory leak
+    if (passwordAttemptLocks.size > 2000) {
+      const now = Date.now();
+      for (const [k, v] of passwordAttemptLocks.entries()) {
+        if ((v.lockUntil > 0 && v.lockUntil <= now) || (!v.lastAttempt || now - v.lastAttempt > 10 * 60 * 1000)) {
+          passwordAttemptLocks.delete(k);
+        }
       }
     }
-  }
 
-  const record = passwordAttemptLocks.get(key);
-  if (record && record.lockUntil > Date.now()) {
-    const remaining = Math.ceil((record.lockUntil - Date.now()) / 1000);
-    AuditLog.create({
-      roomId,
-      type: 'join_failed_rate_limit',
-      details: {
-        reason: `Temporary lockout active due to repeated failed attempts (${remaining}s remaining)`,
-        remainingSeconds: remaining,
-        username: req.body?.username,
-      },
-      ip,
-      userAgent: req.headers['user-agent'] || '',
-    }).then((entry) => {
-      _broadcastToAdmins(roomId, 'audit_log', entry);
-    }).catch(() => {});
+    const record = passwordAttemptLocks.get(key);
+    if (record && record.lockUntil > Date.now()) {
+      const remaining = Math.ceil((record.lockUntil - Date.now()) / 1000);
+      AuditLog.create({
+        roomId,
+        type: 'join_failed_rate_limit',
+        details: {
+          reason: `Temporary lockout active due to repeated failed attempts (${remaining}s remaining)`,
+          remainingSeconds: remaining,
+          username: req.body?.username,
+        },
+        ip,
+        userAgent: req.headers['user-agent'] || '',
+      }).then((entry) => {
+        _broadcastToAdmins(roomId, 'audit_log', entry);
+      }).catch(() => {});
 
-    return res.status(429).json({ error: `Too many failed attempts. Locked out for ${remaining} seconds.` });
+      return res.status(429).json({ error: `Too many failed attempts. Locked out for ${remaining} seconds.` });
+    }
+
+    if (record && record.lockUntil > 0 && record.lockUntil <= Date.now()) {
+      passwordAttemptLocks.delete(key);
+    }
+
+    req.passwordRateLimitKey = key;
+    next();
+  } catch (err) {
+    next(err);
   }
-  
-  if (record && record.lockUntil <= Date.now()) {
-    passwordAttemptLocks.delete(key);
-  }
-  
-  req.passwordRateLimitKey = key;
-  next();
 };
 
 const recordFailedPasswordAttempt = (key, req) => {
@@ -301,7 +318,8 @@ const adminAuth = async (req, res, next) => {
     roomId = lowerRoomId;
   }
   const ip = extractIp(req);
-  const key = `${ip}_${roomId}`;
+  const canonicalLockKey = await resolveCanonicalLockRoomKey(roomId);
+  const key = `${ip}_${canonicalLockKey}`;
   req.passwordRateLimitKey = key;
 
 

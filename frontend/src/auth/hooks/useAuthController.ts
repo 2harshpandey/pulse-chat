@@ -4,6 +4,7 @@ import { UserProfile } from '../../UserContext';
 import { useTheme } from '../../ThemeContext';
 import { resolveApiBaseUrl } from '../../chat/utils';
 import { getUserId, setCookie, collectFingerprint, setSessionToken } from '../AuthStyledComponents';
+import { getSessionToken } from '../utils';
 
 interface UseAuthControllerProps {
   onAuthSuccess: (profile: UserProfile) => void;
@@ -89,14 +90,36 @@ export const useAuthController = ({
   }, []);
 
   const handleLogin = async () => {
-    if (!isTempLink && roomId === 'me' && !password) { setError('Please enter a password.'); return; }
-    if (!username.trim()) { setError('Please enter a username.'); return; }
-    if (username.length > 30) { setError('Username cannot exceed 30 characters.'); return; }
+    const clearRouterSecretState = () => {
+      if (routerState?.password || routerState?.autoJoin) {
+        navigate(location.pathname, { replace: true, state: {} });
+      }
+    };
+    if (!isTempLink && roomId === 'me' && !password) {
+      clearRouterSecretState();
+      setError('Please enter a password.');
+      return;
+    }
+    if (!username.trim()) {
+      clearRouterSecretState();
+      setError('Please enter a username.');
+      return;
+    }
+    if (username.length > 30) {
+      clearRouterSecretState();
+      setError('Username cannot exceed 30 characters.');
+      return;
+    }
     setIsLoading(true);
     setError('');
     try {
       const apiBase = resolveApiBaseUrl();
       const fingerprint = collectFingerprint();
+      const existingSessionToken = getSessionToken(roomId);
+      const authHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (existingSessionToken) {
+        authHeaders['x-session-token'] = existingSessionToken;
+      }
 
       if (isTempLink) {
         let token = new URLSearchParams(window.location.search).get('token') || tempToken || '';
@@ -104,7 +127,7 @@ export const useAuthController = ({
         const submittingUserId = getUserId();
         const resp = await fetch(`${apiBase}/api/auth/verify-temp`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders,
           body: JSON.stringify({ token, username: username.trim(), userId: submittingUserId, fingerprint, roomId }),
         });
         if (resp.ok) {
@@ -116,9 +139,6 @@ export const useAuthController = ({
           localStorage.setItem(`pulseUsername_${roomId}`, username.trim());
           if (data.roomId) {
             localStorage.setItem('pulseRoomId', data.roomId);
-          }
-          if (routerState?.autoJoin) {
-            navigate(location.pathname, { replace: true, state: {} });
           }
           const verifiedUserId = data.userId || submittingUserId;
           localStorage.setItem('pulseUserId', verifiedUserId);
@@ -136,7 +156,7 @@ export const useAuthController = ({
         const submittingUserId = getUserId();
         const resp = await fetch(`${apiBase}/api/auth/verify`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: authHeaders,
           body: JSON.stringify({ password, username: username.trim(), userId: submittingUserId, fingerprint, roomId }),
         });
         if (resp.ok) {
@@ -149,9 +169,6 @@ export const useAuthController = ({
           localStorage.setItem(`pulseUsername_${resolvedRoomId}`, username.trim());
           if (resolvedRoomId) {
             localStorage.setItem('pulseRoomId', resolvedRoomId);
-          }
-          if (routerState?.autoJoin) {
-            navigate(location.pathname, { replace: true, state: {} });
           }
           const verifiedUserId = data.userId || submittingUserId;
           localStorage.setItem('pulseUserId', verifiedUserId);
@@ -175,6 +192,7 @@ export const useAuthController = ({
     } catch {
       setError('Could not connect to the server. Please try again.');
     } finally {
+      clearRouterSecretState();
       setIsLoading(false);
     }
   };

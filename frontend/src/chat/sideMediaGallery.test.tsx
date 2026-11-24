@@ -5,7 +5,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor, cleanup } from '@testing-library/react';
 import { UserSidebar } from './components/UserSidebar';
-import { SideMediaGallery, getMediaDateGroupLabel, isDisplayableMediaItem } from './components/SideMediaGallery';
+import { SideMediaGallery, getMediaDateGroupLabel } from './components/SideMediaGallery';
 import { MediaGalleryModal } from './components/modals/MediaGalleryModal';
 import type { Message } from './types';
 

@@ -4,7 +4,6 @@ const express = require('express');
 const mongoose = require('mongoose');
 const logger = require('../logger');
 const Message = require('../models/message');
-const Room = require('../models/room');
 const User = require('../models/user');
 const { verifyPassword, timingSafeEqualStr, verifySignedSessionToken, hashSessionToken } = require('../security');
 const {
@@ -69,7 +68,7 @@ const isRoomAccessAllowed = async (rawRoomId, req) => {
     return false;
   }
 
-  if (roomId === 'global') return true;
+  if (canonicalRoomId === 'global') return true;
 
   // Check admin authorization header
   const adminPassword = req.headers['x-admin-password'];
@@ -83,7 +82,7 @@ const isRoomAccessAllowed = async (rawRoomId, req) => {
   }
 
   // Check room password requirements
-  const requiresPassword = roomId === 'me'
+  const requiresPassword = canonicalRoomId === 'me'
     ? Boolean(process.env.CLIENT_PASSWORD)
     : Boolean(room && room.isPrivate);
 
@@ -92,7 +91,7 @@ const isRoomAccessAllowed = async (rawRoomId, req) => {
   }
 
   // Check if requesting user has an active authenticated session using canonical room state
-  const rawSessionToken = req.headers['x-session-token'] || req.query?.sessionToken || req.body?.sessionToken;
+  const rawSessionToken = req.headers['x-session-token'] || req.body?.sessionToken;
   const sessionToken = typeof rawSessionToken === 'string' && rawSessionToken.trim() ? rawSessionToken.trim() : null;
 
   if (typeof userId === 'string' && userId.trim() && sessionToken) {
@@ -177,7 +176,10 @@ router.get('/api/messages/search', apiLimiter, async (req, res) => {
     return res.status(401).json({ error: 'Access denied: authentication or room password required' });
   }
 
-  if (roomId !== 'me' && roomId !== 'global') {
+  const lowerRoomId = roomId.toLowerCase();
+  if (lowerRoomId === 'me' || lowerRoomId === 'global') {
+    roomId = lowerRoomId;
+  } else {
     const roomDoc = await getCachedRoom(roomId);
     if (roomDoc) roomId = roomDoc.id;
   }
@@ -217,7 +219,10 @@ router.get('/api/messages', apiLimiter, async (req, res) => {
     return res.status(401).json({ error: 'Access denied: authentication or room password required' });
   }
 
-  if (roomId !== 'me' && roomId !== 'global') {
+  const lowerRoomId = roomId.toLowerCase();
+  if (lowerRoomId === 'me' || lowerRoomId === 'global') {
+    roomId = lowerRoomId;
+  } else {
     const roomDoc = await getCachedRoom(roomId);
     if (roomDoc) roomId = roomDoc.id;
   }

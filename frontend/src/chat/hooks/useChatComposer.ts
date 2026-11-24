@@ -14,6 +14,7 @@ import {
   resolveAudioDuration,
   getPresenceActivityForFile,
   getPresenceActivityForFiles,
+  findLastEditableSentMessage,
 } from '../utils';
 import { transferManager } from '../TransferManager';
 import { useChatDrafts } from './useChatDrafts';
@@ -44,6 +45,7 @@ interface UseChatComposerProps {
   setEditingMessageId: (id: string | null) => void;
   editingMessageOriginalText?: string;
   priorDraftBeforeEdit: string;
+  handleStartEdit?: (message: Message) => void;
   handleCancelEdit: () => void;
   replyingTo: Message | null;
   setReplyingTo: (msg: Message | null) => void;
@@ -118,6 +120,7 @@ export function useChatComposer({
   setEditingMessageId,
   editingMessageOriginalText,
   priorDraftBeforeEdit,
+  handleStartEdit,
   handleCancelEdit,
   replyingTo,
   setReplyingTo,
@@ -262,6 +265,58 @@ export function useChatComposer({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [closeEmojiPicker, closeGifPicker, deleteMenuRef, gifPickerRef, setActiveDeleteMenu]);
 
+  const tryEditLastSentMessage = useCallback((): boolean => {
+    if (!handleStartEdit || editingMessageId) return false;
+    if ((inputMessageRef.current || inputMessage).length > 0) return false;
+    if (stagedFile || stagedFiles.length > 0 || stagedGif || showFilePreview) return false;
+    if (isSelectModeActive || lightboxUrl || isDeleteConfirmationVisible || isUserListVisible || isSearchActive) {
+      return false;
+    }
+
+    const lastEditable = findLastEditableSentMessage(messagesRef.current, userId);
+    if (!lastEditable) return false;
+
+    if (replyingTo) {
+      setReplyingTo(null);
+    }
+    if (emojiPickerPosition) {
+      closeEmojiPicker(false);
+    }
+    if (isPlusMenuOpen) {
+      setIsPlusMenuOpen(false);
+    }
+
+    handleStartEdit(lastEditable);
+    handleTyping(null);
+    if (lastEditable.id) {
+      scrollToLoadedMessage?.(lastEditable.id, 'auto', false);
+    }
+    return true;
+  }, [
+    closeEmojiPicker,
+    editingMessageId,
+    emojiPickerPosition,
+    handleStartEdit,
+    handleTyping,
+    inputMessage,
+    inputMessageRef,
+    isDeleteConfirmationVisible,
+    isPlusMenuOpen,
+    isSearchActive,
+    isSelectModeActive,
+    isUserListVisible,
+    lightboxUrl,
+    messagesRef,
+    replyingTo,
+    scrollToLoadedMessage,
+    setReplyingTo,
+    showFilePreview,
+    stagedFile,
+    stagedFiles.length,
+    stagedGif,
+    userId,
+  ]);
+
   // Escape key handler
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -271,7 +326,9 @@ export function useChatComposer({
         } else if (lightboxUrl) {
           closeLightbox();
         } else if (editingMessageId) {
+          e.preventDefault();
           handleCancelEdit();
+          handleTyping(null);
         } else if (replyingTo) {
           setReplyingTo(null);
         }
@@ -284,29 +341,42 @@ export function useChatComposer({
     closeLightbox,
     editingMessageId,
     handleCancelEdit,
+    handleTyping,
     replyingTo,
     showFilePreview,
     setReplyingTo,
     lightboxUrl,
   ]);
 
-  // WhatsApp-style auto-focus (desktop only)
+  // WhatsApp / Telegram-style keyboard shortcuts (desktop only):
+  // - ArrowUp (when box is empty and body is focused): edit last sent message
+  // - Printable character (when outside inputs): focus composer automatically
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key.length !== 1 || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if ((e as any).isComposing || e.keyCode === 229) return;
       if (document.activeElement === messageInputRef.current) return;
       const tag = (document.activeElement as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (document.activeElement as HTMLElement)?.isContentEditable) return;
       if (isSelectModeActive || !!lightboxUrl || isDeleteConfirmationVisible || isUserListVisible) return;
       const isMobileOS = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
         typeof navigator !== 'undefined' ? navigator.userAgent || '' : ''
       );
       if (isMobileOS && isTouchDevice()) return;
+
+      if (e.key === 'ArrowUp' && !e.shiftKey) {
+        if (document.activeElement === document.body && tryEditLastSentMessage()) {
+          e.preventDefault();
+        }
+        return;
+      }
+
+      if (e.key.length !== 1) return;
       messageInputRef.current?.focus();
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [isSelectModeActive, lightboxUrl, isDeleteConfirmationVisible, isUserListVisible, messageInputRef]);
+  }, [isSelectModeActive, lightboxUrl, isDeleteConfirmationVisible, isUserListVisible, messageInputRef, tryEditLastSentMessage]);
 
   // Reset input helper
   const resetInput = useCallback(() => {
@@ -427,7 +497,6 @@ export function useChatComposer({
           else if (replyingTo.type === 'video') replyText = 'Video';
           else if (replyingTo.type === 'audio') replyText = 'Voice Message';
           else if (replyingTo.type === 'file') replyText = replyingTo.originalName || 'File';
-          else if (replyingTo.type === 'poll') replyText = replyingTo.poll?.question || 'Poll';
           else replyText = 'Message';
         }
         const resolvedReplyDuration = replyingTo.duration ||
@@ -623,8 +692,6 @@ export function useChatComposer({
             replyText = 'Voice Message';
           } else if (replyingTo.type === 'file') {
             replyText = replyingTo.originalName || 'File';
-          } else if (replyingTo.type === 'poll') {
-            replyText = replyingTo.poll?.question || 'Poll';
           } else {
             replyText = 'Message';
           }
@@ -827,8 +894,6 @@ export function useChatComposer({
             replyText = 'Voice Message';
           } else if (replyingTo.type === 'file') {
             replyText = replyingTo.originalName || 'File';
-          } else if (replyingTo.type === 'poll') {
-            replyText = replyingTo.poll?.question || 'Poll';
           } else {
             replyText = 'Message';
           }
@@ -960,10 +1025,22 @@ export function useChatComposer({
   };
 
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.nativeEvent && ((e.nativeEvent as any).isComposing || (e as any).keyCode === 229)) {
+      return;
+    }
     if (e.key === 'Escape' && editingMessageId) {
       e.preventDefault();
+      e.stopPropagation();
       handleCancelEdit();
+      handleTyping(null);
       return;
+    }
+    if (e.key === 'ArrowUp' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (tryEditLastSentMessage()) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
     }
     const isEnter =
       e.key === 'Enter' ||

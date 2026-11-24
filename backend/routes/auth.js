@@ -86,7 +86,7 @@ async function resolveUsernameCollision({ roomId, username, userId, ip, userAgen
   );
   if (!isTokenMatch && incomingToken) {
     const verified = verifySignedSessionToken(incomingToken);
-    if (verified && verified.userId === takenUser.userId && (verified.roomId === roomId || verified.roomId === 'me')) {
+    if (verified && verified.userId === takenUser.userId && verified.roomId === roomId) {
       isTokenMatch = true;
     }
   }
@@ -122,10 +122,29 @@ async function resolveUsernameCollision({ roomId, username, userId, ip, userAgen
   return false;
 }
 
+const isActiveSessionConflict = ({ userId, roomId, roomState, incomingToken }) => {
+  const { onlineUsers, loggedInUsers, pendingDisconnects, filePickerPresenceGrace } = roomState;
+  const isUserActiveOnline = onlineUsers.has(userId) && !pendingDisconnects?.has(userId);
+  if (!isUserActiveOnline) return false;
+
+  const activeSess = loggedInUsers.get(userId);
+  const hasPickerGraceForId = (filePickerPresenceGrace?.get(userId) || 0) > Date.now();
+  const cleanIncoming = typeof incomingToken === 'string' && incomingToken.trim() ? incomingToken.trim() : null;
+  const incomingTokenHash = cleanIncoming ? hashSessionToken(cleanIncoming) : null;
+  const tokenMatches = Boolean(
+    cleanIncoming &&
+    activeSess &&
+    ((activeSess.sessionToken && timingSafeEqualStr(cleanIncoming, activeSess.sessionToken)) ||
+     (activeSess.sessionTokenHash && incomingTokenHash && timingSafeEqualStr(incomingTokenHash, activeSess.sessionTokenHash)))
+  );
+  return !tokenMatches && !hasPickerGraceForId;
+};
+
 // --- Client Auth Verification ---
 router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req, res) => {
   try {
-    const { password, username, userId, fingerprint, roomId: rawRoomId = 'me' } = req.body;
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const { password, username, userId, fingerprint, roomId: rawRoomId = 'me' } = body;
 
     // Strict type validation to prevent NoSQL injection and DoS crashes
     if (typeof rawRoomId !== 'string' || !rawRoomId.trim()) {
@@ -185,13 +204,13 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
     let isResumingSession = false;
     const existingSession = loggedInUsers.get(userId);
     if (existingSession && existingSession.sessionToken) {
-      const incomingToken = req.headers['x-session-token'] || req.body?.sessionToken;
+      const incomingToken = req.headers['x-session-token'] || body?.sessionToken;
       if (typeof incomingToken === 'string') {
         if (timingSafeEqualStr(incomingToken, existingSession.sessionToken)) {
           isResumingSession = true;
         } else {
           const verified = verifySignedSessionToken(incomingToken);
-          if (verified && verified.userId === userId && (verified.roomId === roomId || verified.roomId === 'me')) {
+          if (verified && verified.userId === userId && verified.roomId === roomId) {
             isResumingSession = true;
           }
         }
@@ -232,9 +251,16 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
     }
 
     if (isPasswordValid) {
+      const fullRoomState = getRoomState(roomId);
+      const incomingSessionToken = req.headers['x-session-token'] || body?.sessionToken;
+
+      // Prevent hijacking an actively connected user's userId via /api/auth/verify
+      if (isActiveSessionConflict({ userId, roomId, roomState: fullRoomState, incomingToken: incomingSessionToken })) {
+        return res.status(409).json({ success: false, error: 'That user session is already active. Please try again.' });
+      }
+
       // If the client sends a username, verify it is not already in use.
       if (username) {
-        const incomingSessionToken = req.headers['x-session-token'] || req.body?.sessionToken;
         const roomState = { onlineUsers, loggedInUsers, pendingDisconnects, filePickerPresenceByUsername };
         const allowed = await resolveUsernameCollision({
           roomId, username, userId, ip, userAgent, roomState, viaTempLink: false, fingerprint, incomingSessionToken
@@ -308,7 +334,8 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
 // --- Temp Link Auth Verification ---
 router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
   try {
-    const { token, username, userId, fingerprint, roomId: reqRoomId } = req.body;
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const { token, username, userId, fingerprint, roomId: reqRoomId } = body;
     const ip = extractIp(req);
     const userAgent = req.headers['user-agent'] || '';
 
@@ -367,13 +394,13 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
     let isResumingSession = false;
     const existingSession = loggedInUsers.get(userId);
     if (existingSession && existingSession.sessionToken) {
-      const incomingToken = req.headers['x-session-token'] || req.body?.sessionToken;
+      const incomingToken = req.headers['x-session-token'] || body?.sessionToken;
       if (typeof incomingToken === 'string') {
         if (timingSafeEqualStr(incomingToken, existingSession.sessionToken)) {
           isResumingSession = true;
         } else {
           const verified = verifySignedSessionToken(incomingToken);
-          if (verified && verified.userId === userId && (verified.roomId === roomId || verified.roomId === 'me')) {
+          if (verified && verified.userId === userId && verified.roomId === roomId) {
             isResumingSession = true;
           }
         }
@@ -423,8 +450,14 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
       return res.status(410).json({ success: false, error: 'This access link has reached its maximum usage limit.' });
     }
 
+    // Prevent hijacking an actively connected user's userId
+    const fullRoomState = getRoomState(roomId);
+    const incomingSessionToken = req.headers['x-session-token'] || body?.sessionToken;
+    if (isActiveSessionConflict({ userId, roomId, roomState: fullRoomState, incomingToken: incomingSessionToken })) {
+      return res.status(409).json({ success: false, error: 'That user session is already active. Please try again.' });
+    }
+
     // Check username availability
-    const incomingSessionToken = req.headers['x-session-token'] || req.body?.sessionToken;
     const roomState = { onlineUsers, loggedInUsers, pendingDisconnects, filePickerPresenceByUsername };
     const allowed = await resolveUsernameCollision({
       roomId, username: username.trim(), userId, ip, userAgent, roomState, viaTempLink: true, fingerprint, incomingSessionToken

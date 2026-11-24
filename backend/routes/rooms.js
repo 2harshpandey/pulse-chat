@@ -7,7 +7,7 @@ const Message = require('../models/message');
 const MessageEvent = require('../models/messageEvent');
 const AuditLog = require('../models/auditLog');
 const { getRoomState, invalidateCachedRoom } = require('../state');
-const { authLimiter, apiLimiter, extractIp, generateDeviceHash, checkPasswordRateLimit, recordFailedPasswordAttempt, resetPasswordAttempts } = require('../middleware');
+const { authLimiter, apiLimiter, adminLimiter, extractIp, generateDeviceHash, checkPasswordRateLimit, recordFailedPasswordAttempt, resetPasswordAttempts } = require('../middleware');
 const { timingSafeEqualStr, hashPassword, verifyPassword } = require('../security');
 
 const router = express.Router();
@@ -377,6 +377,7 @@ router.post('/join', authLimiter, checkPasswordRateLimit, async (req, res) => {
       resetPasswordAttempts(req.passwordRateLimitKey);
       return res.json({ success: true, roomId: 'me' });
     }
+    recordFailedPasswordAttempt(req.passwordRateLimitKey, req);
     return res.status(401).json({ error: 'Invalid password.' });
   }
 
@@ -502,7 +503,7 @@ const recordAdminAuthFailure = (req, roomId) => {
 };
 
 // Admin room details
-router.get('/admin/details', apiLimiter, checkPasswordRateLimit, async (req, res) => {
+router.get('/admin/details', adminLimiter, checkPasswordRateLimit, async (req, res) => {
   const rawRoomId = req.headers['x-room-id'];
   const adminPassword = req.headers['x-admin-password'];
 
@@ -539,7 +540,7 @@ router.get('/admin/details', apiLimiter, checkPasswordRateLimit, async (req, res
   }
 });
 
-router.put('/admin/details', apiLimiter, checkPasswordRateLimit, async (req, res) => {
+router.put('/admin/details', adminLimiter, checkPasswordRateLimit, async (req, res) => {
   const roomId = req.headers['x-room-id'];
   const adminPassword = req.headers['x-admin-password'];
   const { name, description } = req.body;
@@ -583,7 +584,7 @@ router.put('/admin/details', apiLimiter, checkPasswordRateLimit, async (req, res
   }
 });
 
-router.put('/admin/roomId', apiLimiter, checkPasswordRateLimit, async (req, res) => {
+router.put('/admin/roomId', adminLimiter, checkPasswordRateLimit, async (req, res) => {
   const roomId = req.headers['x-room-id'];
   const adminPassword = req.headers['x-admin-password'];
   const { newRoomId } = req.body;
@@ -593,7 +594,7 @@ router.put('/admin/roomId', apiLimiter, checkPasswordRateLimit, async (req, res)
     return res.status(401).json({ error: 'Unauthorized' });
   }
   const cleanRoomId = roomId.trim();
-  if (!newRoomId) return res.status(400).json({ error: 'New Room ID is required.' });
+  if (typeof newRoomId !== 'string' || !newRoomId.trim()) return res.status(400).json({ error: 'New Room ID is required.' });
 
   try {
     const room = await Room.findByIdOrAlias(cleanRoomId);
@@ -651,7 +652,7 @@ router.put('/admin/roomId', apiLimiter, checkPasswordRateLimit, async (req, res)
   }
 });
 
-router.put('/admin/joinPassword', apiLimiter, checkPasswordRateLimit, async (req, res) => {
+router.put('/admin/joinPassword', adminLimiter, checkPasswordRateLimit, async (req, res) => {
   const roomId = req.headers['x-room-id'];
   const adminPassword = req.headers['x-admin-password'];
   const { currentPassword, newPassword } = req.body;
@@ -700,7 +701,7 @@ router.put('/admin/joinPassword', apiLimiter, checkPasswordRateLimit, async (req
   }
 });
 
-router.delete('/admin/joinPassword', apiLimiter, checkPasswordRateLimit, async (req, res) => {
+router.delete('/admin/joinPassword', adminLimiter, checkPasswordRateLimit, async (req, res) => {
   const roomId = req.headers['x-room-id'];
   const adminPassword = req.headers['x-admin-password'];
 

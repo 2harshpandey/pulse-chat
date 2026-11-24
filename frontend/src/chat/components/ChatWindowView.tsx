@@ -7,7 +7,6 @@ import { MessagesList } from './MessagesList';
 import { TypingIndicator } from '../TypingIndicator';
 import { useAlbumDownload } from '../albumDownloadManager';
 import { recordChatScroll } from '../chatScrollState';
-import { isTouchDevice } from '../constants';
 import {
   ChatWindow,
   MessagesAndScrollWrapper,

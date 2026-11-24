@@ -472,6 +472,9 @@ export const TypingIndicatorContainer = styled.div`
 export const ReplyPreviewContainer = styled.div`
   padding: 10px 1rem; border-bottom: 1px solid var(--border-primary); background-color: var(--bg-tertiary); display: flex; align-items: center; gap: 10px; overflow: hidden; transition: background-color 0.3s ease, border-color 0.3s ease;
   cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
   animation: ${replySlideIn} 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 `;
 
@@ -493,6 +496,8 @@ export const QuotedMessageContainer = styled.div<{ $sender: 'me' | 'other' }>`
   gap: 8px;
   overflow: hidden;
   touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
   transition: all 0.2s ease;
   &:hover { opacity: 0.85; transform: scale(0.99); }
   &:active { transform: scale(0.97); }

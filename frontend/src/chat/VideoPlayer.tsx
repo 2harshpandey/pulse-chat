@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { SPEEDS } from './constants';
-import { sanitizeMediaUrl } from './utils';
+import { sanitizeMediaUrl, isNonTouchDevice } from './utils';
 import { sendClientDiagnostic } from './telemetry';
 import {
   VideoPlayerWrapper, CVPContainer, CVPControls, CVPTimelineWrapper, CVPTimelineTrack,
@@ -25,7 +25,32 @@ export interface VideoPlayerProps {
   isSelectModeActive?: boolean;
   autoPlay?: boolean;
   isGalleryMode?: boolean;
+  timestamp?: string | number;
 }
+
+const RECENT_RETRY_DELAYS_MS = [1000, 1500, 2000, 2500, 3000, 3000, 4000, 4000, 5000, 5000, 5000, 5000];
+const STANDARD_RETRY_DELAYS_MS = [500, 1000];
+
+const SpinnerSvg = () => (
+  <svg viewBox="0 0 24 24" fill="none" style={{ width: 34, height: 34 }}>
+    <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.22)" strokeWidth="2.5" />
+    <path
+      d="M12 3a9 9 0 0 1 9 9"
+      stroke="#ffffff"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+    >
+      <animateTransform
+        attributeName="transform"
+        type="rotate"
+        from="0 12 12"
+        to="360 12 12"
+        dur="0.85s"
+        repeatCount="indefinite"
+      />
+    </path>
+  </svg>
+);
 
 export const VideoPlayer = ({
   src,
@@ -37,6 +62,7 @@ export const VideoPlayer = ({
   isSelectModeActive,
   autoPlay = false,
   isGalleryMode = false,
+  timestamp,
 }: VideoPlayerProps) => {
   const containerRef = useRef<HTMLDivElement>(null!);
   const videoRef = useRef<HTMLVideoElement>(null!);
@@ -55,6 +81,8 @@ export const VideoPlayer = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
   const retryCountRef = useRef(0);
   const hideControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const doubleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -62,21 +90,60 @@ export const VideoPlayer = ({
   const lastTapXRef = useRef(0);
   const centerPlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const volumeCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const volumeDragCleanupRef = useRef<(() => void) | null>(null);
+  const [isVolumeOpen, setIsVolumeOpen] = useState(false);
+  const isVolumeOpenRef = useRef(false);
+  const isVolumeHoveredRef = useRef(false);
+  const isVolumeDraggingRef = useRef(false);
+  const pendingPlayRef = useRef(false);
+  const isMountedRef = useRef(true);
+  const effectiveSrcRef = useRef(effectiveSrc);
+  effectiveSrcRef.current = effectiveSrc;
+
+  const isRecentUpload = useMemo(() => {
+    if (!timestamp) return true;
+    const ts = typeof timestamp === 'number' ? timestamp : new Date(timestamp).getTime();
+    if (!Number.isFinite(ts)) return true;
+    return Date.now() - ts < 5 * 60 * 1000;
+  }, [timestamp]);
+  const isRecentUploadRef = useRef(isRecentUpload);
+  isRecentUploadRef.current = isRecentUpload;
 
   const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     setEffectiveSrc(src);
     setHasTriedFallback(false);
     setHasError(false);
+    setIsRetrying(false);
+    setIsBuffering(false);
+    pendingPlayRef.current = false;
     retryCountRef.current = 0;
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
   }, [src]);
 
   const resetControlsTimer = useCallback(() => {
     if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current);
     setShowControls(true);
     if (isPlaying) {
-      hideControlsTimerRef.current = setTimeout(() => setShowControls(false), 3000);
+      hideControlsTimerRef.current = setTimeout(() => {
+        if (isVolumeOpenRef.current || isVolumeDraggingRef.current) {
+          resetControlsTimer();
+          return;
+        }
+        setShowControls(false);
+      }, 3000);
     }
   }, [isPlaying]);
 
@@ -106,35 +173,66 @@ export const VideoPlayer = ({
     const onLoadedMetadata = () => {
       setDuration(video.duration);
       setHasError(false);
+      setIsRetrying(false);
+      setIsBuffering(false);
       retryCountRef.current = 0;
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
       if (pendingResumeTimeRef.current > 0) {
         try {
           video.currentTime = pendingResumeTimeRef.current;
         } catch (_) {}
         pendingResumeTimeRef.current = 0;
       }
-      if (autoPlay) {
+      if (autoPlay || pendingPlayRef.current) {
+        pendingPlayRef.current = false;
         const p = video.play();
         if (p) p.catch(() => {});
       } else {
         video.currentTime = 0.01;
       }
     };
+    const onCanPlay = () => {
+      setIsBuffering(false);
+      setIsRetrying(false);
+      setHasError(false);
+      if (pendingPlayRef.current) {
+        pendingPlayRef.current = false;
+        const p = video.play();
+        if (p) p.catch(() => {});
+      }
+    };
+    const onPlaying = () => {
+      setIsBuffering(false);
+      setIsRetrying(false);
+      setHasError(false);
+      pendingPlayRef.current = false;
+    };
+    const onWaiting = () => {
+      if (!video.paused) {
+        setIsBuffering(true);
+      }
+    };
     const onPlay = () => {
       setIsPlaying(true);
+      setIsBuffering(false);
+      setIsRetrying(false);
       resetControlsTimer();
       sendClientDiagnostic('video_play', {
-        src: sanitizeMediaUrl(effectiveSrc),
+        src: sanitizeMediaUrl(effectiveSrcRef.current),
         duration: Math.round(video.duration || 0),
         currentTime: Math.round(video.currentTime),
       });
     };
     const onPause = () => {
       setIsPlaying(false);
+      setIsBuffering(false);
       setShowControls(true);
       if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current);
       sendClientDiagnostic('video_pause', {
-        src: sanitizeMediaUrl(effectiveSrc),
+        src: sanitizeMediaUrl(effectiveSrcRef.current),
         currentTime: Math.round(video.currentTime),
         duration: Math.round(video.duration || 0),
       });
@@ -147,17 +245,58 @@ export const VideoPlayer = ({
       setIsPlaying(false);
       setShowControls(true);
       sendClientDiagnostic('video_ended', {
-        src: sanitizeMediaUrl(effectiveSrc),
+        src: sanitizeMediaUrl(effectiveSrcRef.current),
         totalDuration: Math.round(video.duration || 0),
       });
     };
     const onVolumeChange = () => { setVolume(video.volume); setIsMuted(video.muted); };
+
+    const scheduleRetry = (targetSrc: string) => {
+      const delays = isRecentUploadRef.current ? RECENT_RETRY_DELAYS_MS : STANDARD_RETRY_DELAYS_MS;
+      if (retryCountRef.current >= delays.length) {
+        setIsRetrying(false);
+        setIsBuffering(false);
+        setHasError(true);
+        return;
+      }
+      const delay = delays[retryCountRef.current];
+      retryCountRef.current += 1;
+      setIsRetrying(true);
+      setHasError(false);
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = setTimeout(async () => {
+        if (!isMountedRef.current || !videoRef.current || effectiveSrcRef.current !== targetSrc) {
+          return;
+        }
+        const safeTarget = sanitizeMediaUrl(targetSrc);
+        if (safeTarget && /^https?:\/\//i.test(safeTarget) && typeof fetch === 'function') {
+          try {
+            const res = await fetch(safeTarget, { method: 'HEAD', cache: 'no-store' });
+            if (!isMountedRef.current || !videoRef.current || effectiveSrcRef.current !== targetSrc) {
+              return;
+            }
+            if (res.ok) {
+              videoRef.current.load();
+              return;
+            }
+            scheduleRetry(targetSrc);
+            return;
+          } catch {
+            // CORS or network error: fall through to direct video.load()
+          }
+        }
+        if (isMountedRef.current && videoRef.current && effectiveSrcRef.current === targetSrc) {
+          videoRef.current.load();
+        }
+      }, delay);
+    };
+
     const onError = () => {
+      const currentSrc = video.src || effectiveSrcRef.current || '';
       sendClientDiagnostic('video_error', {
-        src: sanitizeMediaUrl(effectiveSrc),
+        src: sanitizeMediaUrl(currentSrc),
         error: video.error?.message || 'Video error',
       });
-      const currentSrc = video.src || effectiveSrc || '';
       // If a blob URL failed, and we have a fallback remote URL (e.g. Cloudinary stream), fallback immediately!
       if (fallbackUrl && currentSrc.startsWith('blob:') && !hasTriedFallback && fallbackUrl !== currentSrc) {
         setHasTriedFallback(true);
@@ -165,26 +304,20 @@ export const VideoPlayer = ({
         return;
       }
 
-      // blob: URLs that fail are dead references — retrying is pointless.
+      // blob: URLs that fail are dead references: retrying is pointless.
       if (currentSrc.startsWith('blob:')) {
+        setIsRetrying(false);
+        setIsBuffering(false);
         setHasError(true);
         return;
       }
-      // Auto-retry up to 2 times for non-blob sources (real network errors)
-      if (retryCountRef.current < 2) {
-        retryCountRef.current += 1;
-        if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
-        retryTimerRef.current = setTimeout(() => {
-          if (videoRef.current) {
-            videoRef.current.load();
-          }
-        }, 500 * retryCountRef.current);
-      } else {
-        setHasError(true);
-      }
+      scheduleRetry(effectiveSrcRef.current);
     };
     video.addEventListener('timeupdate', onTimeUpdate);
     video.addEventListener('loadedmetadata', onLoadedMetadata);
+    video.addEventListener('canplay', onCanPlay);
+    video.addEventListener('playing', onPlaying);
+    video.addEventListener('waiting', onWaiting);
     video.addEventListener('play', onPlay);
     video.addEventListener('pause', onPause);
     video.addEventListener('ended', onEnded);
@@ -193,13 +326,16 @@ export const VideoPlayer = ({
     return () => {
       video.removeEventListener('timeupdate', onTimeUpdate);
       video.removeEventListener('loadedmetadata', onLoadedMetadata);
+      video.removeEventListener('canplay', onCanPlay);
+      video.removeEventListener('playing', onPlaying);
+      video.removeEventListener('waiting', onWaiting);
       video.removeEventListener('play', onPlay);
       video.removeEventListener('pause', onPause);
       video.removeEventListener('ended', onEnded);
       video.removeEventListener('volumechange', onVolumeChange);
       video.removeEventListener('error', onError);
     };
-  }, [resetControlsTimer]);
+  }, [resetControlsTimer, autoPlay, fallbackUrl, hasTriedFallback]);
 
   // Fullscreen change tracking
   useEffect(() => {
@@ -275,28 +411,39 @@ export const VideoPlayer = ({
       if (doubleTapTimerRef.current) clearTimeout(doubleTapTimerRef.current);
       if (centerPlayTimerRef.current) clearTimeout(centerPlayTimerRef.current);
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      if (volumeCloseTimerRef.current) clearTimeout(volumeCloseTimerRef.current);
+      if (volumeDragCleanupRef.current) volumeDragCleanupRef.current();
     };
   }, []);
   useEffect(() => { resetControlsTimer(); }, [isPlaying, resetControlsTimer]);
 
   const togglePlay = () => {
     const v = videoRef.current;
-    if (!v) return;
-    // If the video is in an error state or has no data, try reloading before playing
+    if (!v || isRetrying) return;
+    // If the video is in an error state or has no data, reload and auto-play when ready
     if (hasError || v.readyState === 0) {
       setHasError(false);
+      setIsBuffering(true);
+      pendingPlayRef.current = true;
       retryCountRef.current = 0;
       v.load();
       v.play().catch(() => { });
       return;
     }
     if (v.paused) {
+      if (v.readyState < 3) {
+        setIsBuffering(true);
+      }
       v.play().catch(() => {
-        // play() failed — try forcing a reload and then playing
+        // play() failed: reload and play once ready
+        setIsBuffering(true);
+        pendingPlayRef.current = true;
         v.load();
         v.play().catch(() => { });
       });
     } else {
+      pendingPlayRef.current = false;
+      setIsBuffering(false);
       v.pause();
     }
   };
@@ -410,6 +557,65 @@ export const VideoPlayer = ({
     v.muted = val === 0;
   };
 
+  const openVolumeMenu = useCallback(() => {
+    if (volumeCloseTimerRef.current) {
+      clearTimeout(volumeCloseTimerRef.current);
+      volumeCloseTimerRef.current = null;
+    }
+    isVolumeHoveredRef.current = true;
+    isVolumeOpenRef.current = true;
+    setIsVolumeOpen(true);
+    resetControlsTimer();
+  }, [resetControlsTimer]);
+
+  const scheduleVolumeClose = useCallback(() => {
+    if (volumeCloseTimerRef.current) clearTimeout(volumeCloseTimerRef.current);
+    volumeCloseTimerRef.current = setTimeout(() => {
+      if (isVolumeDraggingRef.current || isVolumeHoveredRef.current) return;
+      isVolumeOpenRef.current = false;
+      setIsVolumeOpen(false);
+    }, 140);
+  }, []);
+
+  const handleVolumeWrapperMouseLeave = useCallback(() => {
+    isVolumeHoveredRef.current = false;
+    scheduleVolumeClose();
+  }, [scheduleVolumeClose]);
+
+  const handleVolumeRangePointerDown = useCallback((e: React.SyntheticEvent) => {
+    e.stopPropagation();
+    if (volumeCloseTimerRef.current) {
+      clearTimeout(volumeCloseTimerRef.current);
+      volumeCloseTimerRef.current = null;
+    }
+    if (volumeDragCleanupRef.current) {
+      volumeDragCleanupRef.current();
+    }
+    isVolumeOpenRef.current = true;
+    setIsVolumeOpen(true);
+    resetControlsTimer();
+    isVolumeDraggingRef.current = true;
+    const endDrag = () => {
+      isVolumeDraggingRef.current = false;
+      if (volumeDragCleanupRef.current === cleanup) {
+        volumeDragCleanupRef.current = null;
+      }
+      window.removeEventListener('pointerup', endDrag);
+      window.removeEventListener('mouseup', endDrag);
+      if (!isVolumeHoveredRef.current) {
+        scheduleVolumeClose();
+      }
+    };
+    const cleanup = () => {
+      isVolumeDraggingRef.current = false;
+      window.removeEventListener('pointerup', endDrag);
+      window.removeEventListener('mouseup', endDrag);
+    };
+    volumeDragCleanupRef.current = cleanup;
+    window.addEventListener('pointerup', endDrag);
+    window.addEventListener('mouseup', endDrag);
+  }, [resetControlsTimer, scheduleVolumeClose]);
+
   const handleContainerTap = (e: React.MouseEvent<HTMLDivElement>) => {
     // Ignore clicks on control buttons
     if ((e.target as HTMLElement).closest('button, input, [data-cvp-controls]')) return;
@@ -478,8 +684,33 @@ export const VideoPlayer = ({
           style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000', display: 'block' }}
         />
 
-        {/* Error overlay: shown when the video src is unloadable (e.g. expired blob: URL) */}
-        {hasError && (
+        {/* Processing overlay: shown while async server processing finishes for newly uploaded videos */}
+        {!isUploading && isRetrying && !hasError && (
+          <div style={{
+            position: 'absolute', inset: 0,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(0,0,0,0.68)', color: 'rgba(255,255,255,0.9)', gap: '8px', pointerEvents: 'none',
+          }}>
+            <SpinnerSvg />
+            <span style={{ fontSize: 13, fontWeight: 600 }}>Processing video...</span>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.62)' }}>Preparing for playback</span>
+          </div>
+        )}
+
+        {/* Buffering overlay: shown when playback is waiting for initial or buffered frames */}
+        {!isUploading && !isRetrying && !hasError && isBuffering && (
+          <div style={{
+            position: 'absolute', inset: 0,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            background: 'rgba(0,0,0,0.45)', color: 'rgba(255,255,255,0.9)', gap: '8px', pointerEvents: 'none',
+          }}>
+            <SpinnerSvg />
+            <span style={{ fontSize: 12, fontWeight: 500 }}>Loading video...</span>
+          </div>
+        )}
+
+        {/* Error overlay: shown when the video src is unloadable after retries */}
+        {!isUploading && !isRetrying && hasError && (
           <div style={{
             position: 'absolute', inset: 0,
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -515,7 +746,7 @@ export const VideoPlayer = ({
 
         {/* Center play/pause flash/button */}
         <CVPCenterPlayBtn
-          $visible={!isUploading && (!isPlaying || showCenterPlay || (isTouchDevice && showControls))}
+          $visible={!isUploading && !isRetrying && !isBuffering && !hasError && (!isPlaying || showCenterPlay || (isTouchDevice && showControls))}
           onClick={(e) => { e.stopPropagation(); togglePlay(); }}
           aria-label={isPlaying ? 'Pause' : 'Play'}
         >
@@ -580,7 +811,13 @@ export const VideoPlayer = ({
             </CVPIconBtn>
 
             {/* Volume/Mute - desktop: hover shows vertical slider + mouse-wheel; mobile: tap toggles mute */}
-            <CVPVolumeWrapper onWheel={handleVolumeWheel}>
+            <CVPVolumeWrapper
+              $volumeOpen={isVolumeOpen}
+              data-volume-open={isVolumeOpen ? 'true' : undefined}
+              onWheel={handleVolumeWheel}
+              onMouseEnter={() => { if (isNonTouchDevice()) openVolumeMenu(); }}
+              onMouseLeave={() => { if (isNonTouchDevice()) handleVolumeWrapperMouseLeave(); }}
+            >
               <CVPIconBtn onClick={toggleMute} title={isMuted ? 'Unmute' : 'Mute'} aria-label={isMuted ? 'Unmute' : 'Mute'}>
                 {isMuted || volume === 0
                   ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><line x1="23" y1="9" x2="17" y2="15" /><line x1="17" y1="9" x2="23" y2="15" /></svg>
@@ -595,6 +832,8 @@ export const VideoPlayer = ({
                   max={1}
                   step={0.02}
                   value={isMuted ? 0 : volume}
+                  onPointerDown={handleVolumeRangePointerDown}
+                  onMouseDown={handleVolumeRangePointerDown}
                   onChange={handleVolumeSliderChange}
                   onClick={(e) => e.stopPropagation()}
                   aria-label="Volume"

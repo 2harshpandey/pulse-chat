@@ -1,7 +1,7 @@
 'use strict';
 
 const logger = require('./logger');
-const { getRoomState } = require('./state');
+const { roomStates, getRoomState } = require('./state');
 const { getVisibleMessagesQuery } = require('./routes/media');
 const { extractIp } = require('./middleware');
 
@@ -71,10 +71,6 @@ function getWebSocketLogLabel(msg) {
       return 'Delete-for-me request:';
     case 'edit_message':
       return 'Edit message request:';
-    case 'poll_vote':
-      return 'Poll vote event:';
-    case 'create_poll':
-      return 'Create poll event:';
     case 'pin_message':
       return 'Pin message request:';
     case 'unpin_message':
@@ -134,11 +130,28 @@ const initWebSocket = (wss) => {
     }
   }, 5 * 60 * 1000).unref();
 
-  // --- WebSocket Heartbeat (Ping/Pong) ---
+  // --- WebSocket Heartbeat (Ping/Pong with App-Level Liveness Verification) ---
   const heartbeatInterval = setInterval(function ping() {
+    const now = Date.now();
     wss.clients.forEach(function each(ws) {
-      if (ws.isAlive === false) {
-        logger.warn('Heartbeat: Terminating dead connection.');
+      let hasPickerGrace = false;
+      if (ws.userId && ws.roomId) {
+        const graceUntil = getRoomState(ws.roomId)?.filePickerPresenceGrace?.get(ws.userId) || 0;
+        hasPickerGrace = graceUntil > now;
+      }
+      // Mobile OS / proxies can keep answering low-level WebSocket pong frames long after
+      // a PWA/mobile browser tab is suspended or closed. Require application-level JSON frames
+      // (such as { type: 'pong' }) within 35s (or 120s while file picker grace is active).
+      const appTimeoutMs = hasPickerGrace ? 120000 : 35000;
+      const isAppStale = Boolean(
+        (ws.userId || ws.isAdmin) &&
+        ws.lastAppMessageAt &&
+        (now - ws.lastAppMessageAt > appTimeoutMs)
+      );
+
+      if (ws.isAlive === false || isAppStale) {
+        logger.warn(`Heartbeat: Terminating ${isAppStale ? 'stale/suspended' : 'dead'} connection (userId: ${ws.userId || 'unjoined'}).`);
+        ws.terminatedByHeartbeat = true;
         return ws.terminate();
       }
       ws.isAlive = false;
@@ -151,6 +164,32 @@ const initWebSocket = (wss) => {
         } catch (_) {}
       }
     });
+
+    // Sweep orphaned onlineUsers entries that have neither a live socket nor a pending disconnect timer
+    for (const [rId, state] of roomStates.entries()) {
+      if (!state.onlineUsers || state.onlineUsers.size === 0) continue;
+      let prunedAny = false;
+      for (const [uid, uInfo] of state.onlineUsers.entries()) {
+        if (state.pendingDisconnects?.has(uid)) continue;
+        const hasLiveSocket = Array.from(wss.clients).some(
+          (c) => c.readyState <= 1 && c.roomId === rId && c.userId === uid && !c.terminatedByHeartbeat
+        );
+        if (!hasLiveSocket) {
+          state.onlineUsers.delete(uid);
+          state.typingUsers?.delete(uid);
+          if (state.typingTimeouts?.has(uid)) {
+            clearTimeout(state.typingTimeouts.get(uid));
+            state.typingTimeouts.delete(uid);
+          }
+          state.filePickerPresenceGrace?.delete(uid);
+          prunedAny = true;
+          logger.info(`Pruned orphaned offline user '${uInfo?.username || uid}' from room ${rId}.`);
+        }
+      }
+      if (prunedAny) {
+        _broadcastOnlineUsers(rId);
+      }
+    }
   }, 15000);
   if (heartbeatInterval && typeof heartbeatInterval.unref === 'function') {
     heartbeatInterval.unref();
@@ -169,6 +208,8 @@ const initWebSocket = (wss) => {
       req.socket.setNoDelay(true);
     }
     ws.isAlive = true;
+    ws.lastAppMessageAt = Date.now();
+    ws.terminatedByHeartbeat = false;
     ws.clientIp = extractIp(req);
     ws.clientUa = req.headers['user-agent'] || '';
     ws.isJoining = false;
@@ -190,6 +231,7 @@ const initWebSocket = (wss) => {
       }
       if (!parsedMessage || typeof parsedMessage !== 'object') return;
       ws.isAlive = true;
+      ws.lastAppMessageAt = Date.now();
 
       // Per-socket rate limiter: max 50 frames per second to prevent DoS flooding
       const now = Date.now();
@@ -361,7 +403,7 @@ const initWebSocket = (wss) => {
             // Unknown type strings would still trigger DB queries (session lookup, reply resolution)
             // which can be abused as a DoS amplifier even with the 50 frame/s per-socket limit.
             {
-              const CHAT_MSG_TYPES = new Set(['message', 'text', 'image', 'video', 'audio', 'file', 'gif', 'poll']);
+              const CHAT_MSG_TYPES = new Set(['message', 'text', 'image', 'video', 'audio', 'file', 'gif']);
               if (!CHAT_MSG_TYPES.has(actionMsg.type)) {
                 logger.warn(`Ignored unknown WebSocket message type '${actionMsg.type}' from user ${ws.userId || 'unjoined'} in room ${ws.roomId || 'none'}`);
                 break;

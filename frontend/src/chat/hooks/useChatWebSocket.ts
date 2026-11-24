@@ -49,6 +49,12 @@ interface UseChatWebSocketProps {
   setReportTargetMessage: React.Dispatch<React.SetStateAction<Message | null>>;
   setIsReportModalVisible: React.Dispatch<React.SetStateAction<boolean>>;
   isNativeFilePickerOpenRef: React.MutableRefObject<boolean>;
+  tabId?: string;
+  isTabBlockedRef?: React.MutableRefObject<boolean>;
+  isCheckingTabLockRef?: React.MutableRefObject<boolean>;
+  forceTakeoverRef?: React.MutableRefObject<boolean>;
+  tabClaimEpoch?: number;
+  onSessionDisplaced?: () => void;
 }
 
 export function useChatWebSocket({
@@ -61,6 +67,7 @@ export function useChatWebSocket({
   overlayGuardPushed,
   playNotificationSound,
   setMessages,
+  messagesRef,
   setPinnedMessages,
   setCurrentPinnedIndex,
   setHistoryLoaded,
@@ -93,6 +100,12 @@ export function useChatWebSocket({
   setReportTargetMessage,
   setIsReportModalVisible,
   isNativeFilePickerOpenRef,
+  tabId,
+  isTabBlockedRef,
+  isCheckingTabLockRef,
+  forceTakeoverRef,
+  tabClaimEpoch = 0,
+  onSessionDisplaced,
 }: UseChatWebSocketProps) {
   const internalWs = useRef<WebSocket | null>(null);
   const ws = externalWs || internalWs;
@@ -154,7 +167,7 @@ export function useChatWebSocket({
   }, []);
 
   const startHeartbeatForActivity = useCallback(
-    (activity: PresenceActivity) => {
+    () => {
       stopHeartbeatForActivity();
       presenceHeartbeatIntervalRef.current = setInterval(() => {
         if (!ws.current || ws.current.readyState !== WebSocket.OPEN) return;
@@ -189,7 +202,7 @@ export function useChatWebSocket({
         if (nextActivity) {
           ws.current.send(JSON.stringify({ type: 'start_typing', activity: nextActivity, roomId }));
           if (nextActivity !== 'typing') {
-            startHeartbeatForActivity(nextActivity);
+            startHeartbeatForActivity();
           } else {
             stopHeartbeatForActivity();
           }
@@ -294,6 +307,9 @@ export function useChatWebSocket({
     let shouldReconnect = true;
 
     const connect = () => {
+      if (isTabBlockedRef?.current || isCheckingTabLockRef?.current) {
+        return;
+      }
       if (
         ws.current &&
         (ws.current.readyState === WebSocket.OPEN || ws.current.readyState === WebSocket.CONNECTING)
@@ -322,6 +338,10 @@ export function useChatWebSocket({
         presenceActivityRef.current = null;
         initTelemetryContext(ws.current, roomId, effectiveUserId, userProfile?.username);
         const sessionToken = getSessionToken(roomId);
+        const shouldForceTakeover = Boolean(forceTakeoverRef?.current);
+        if (forceTakeoverRef) {
+          forceTakeoverRef.current = false;
+        }
         ws.current?.send(
           JSON.stringify({
             type: 'user_join',
@@ -329,6 +349,8 @@ export function useChatWebSocket({
             userId: effectiveUserId,
             roomId,
             sessionToken,
+            ...(tabId ? { tabId } : {}),
+            ...(shouldForceTakeover ? { forceTakeover: true } : {}),
           })
         );
       };
@@ -420,6 +442,23 @@ export function useChatWebSocket({
           logout();
           return;
         }
+        if (messageData.type === 'session_displaced') {
+          shouldReconnect = false;
+          if (reconnectTimerRef.current) {
+            clearTimeout(reconnectTimerRef.current);
+            reconnectTimerRef.current = null;
+          }
+          if (ws.current) {
+            ws.current.onclose = null;
+            ws.current.close();
+            ws.current = null;
+          }
+          setIsConnected(false);
+          isRoomJoinedRef.current = false;
+          setIsRoomJoined(false);
+          onSessionDisplaced?.();
+          return;
+        }
         if (messageData.type === 'username_taken') {
           console.warn('Username collision detected - terminating reconnect loop');
           if (reconnectTimerRef.current) {
@@ -491,15 +530,32 @@ export function useChatWebSocket({
           }
 
           setMessages(prev => {
-            const historyIds = new Set(processed.map(m => m.id));
+            const historyIds = new Set<string>();
+            const historyTempIds = new Set<string>();
+            for (const m of processed) {
+              if (m.id) historyIds.add(normalizeMessageId(m.id));
+              if ((m as any)._id) historyIds.add(normalizeMessageId((m as any)._id));
+              if ((m as any).clientTempId) historyTempIds.add(normalizeMessageId((m as any).clientTempId));
+            }
             const inFlightToKeep = prev.filter(m => {
+              const normId = normalizeMessageId(m.id);
+              const normMongoId = (m as any)._id ? normalizeMessageId((m as any)._id) : '';
+              const rawTempId = (m as any).clientTempId;
+              const normTempId = rawTempId ? normalizeMessageId(rawTempId) : '';
+              const alreadyInHistory = Boolean(
+                (normId && (historyIds.has(normId) || historyTempIds.has(normId))) ||
+                (normMongoId && (historyIds.has(normMongoId) || historyTempIds.has(normMongoId))) ||
+                (normTempId && (historyIds.has(normTempId) || historyTempIds.has(normTempId)))
+              );
+              if (alreadyInHistory) return false;
               if (m.isUploading || m.uploadError) return true;
-              const tempId = (m as any).clientTempId;
-              if (tempId && !historyIds.has(tempId) && !historyIds.has(m.id)) return true;
-              return false;
+              // Never carry forward already-persisted old DB messages that happen to have a clientTempId;
+              // only keep genuine local optimistic messages whose id is still the temporary clientTempId.
+              return Boolean(normTempId && normId === normTempId && !normMongoId);
             });
-            if (inFlightToKeep.length === 0) return processed;
-            return [...processed, ...inFlightToKeep];
+            const merged = inFlightToKeep.length === 0 ? processed : [...processed, ...inFlightToKeep];
+            if (messagesRef) messagesRef.current = merged;
+            return merged;
           });
           setNewMessagesWhileScrolledUp(0);
           messageTailSnapshotRef.current = {
@@ -533,9 +589,20 @@ export function useChatWebSocket({
           transferManager.restoreSessionUploads().then((restoredUploads) => {
             if (restoredUploads.length > 0) {
               setMessages(prev => {
-                const existingIds = new Set(prev.map(m => m.id));
-                const uniqueRestored = restoredUploads.filter(m => !existingIds.has(m.id));
-                return [...prev, ...uniqueRestored];
+                const existingIds = new Set<string>();
+                for (const m of prev) {
+                  if (m.id) existingIds.add(normalizeMessageId(m.id));
+                  if ((m as any).clientTempId) existingIds.add(normalizeMessageId((m as any).clientTempId));
+                }
+                const uniqueRestored = restoredUploads.filter(m => {
+                  const nId = normalizeMessageId(m.id);
+                  const nTemp = (m as any).clientTempId ? normalizeMessageId((m as any).clientTempId) : '';
+                  return (!nId || !existingIds.has(nId)) && (!nTemp || !existingIds.has(nTemp));
+                });
+                if (uniqueRestored.length === 0) return prev;
+                const merged = [...prev, ...uniqueRestored];
+                if (messagesRef) messagesRef.current = merged;
+                return merged;
               });
             }
           });
@@ -782,34 +849,64 @@ export function useChatWebSocket({
             void playNotificationSound(isJoinNotification ? 'join' : 'message');
           }
           if (messageData.clientTempId) {
-            setMessages(prev => {
-              let matched = false;
-              const updated = prev.map(m => {
-                if (m.id === messageData.clientTempId || (m as any).clientTempId === messageData.clientTempId) {
-                  matched = true;
-                  return {
-                    ...normalized,
-                    clientTempId: messageData.clientTempId,
-                    localBlobUrl: (m as any).localBlobUrl || (normalized as any).localBlobUrl,
-                  };
-                }
-                if (m.replyingTo && (m.replyingTo.id === messageData.clientTempId || (m.replyingTo as any).clientTempId === messageData.clientTempId)) {
-                  const isGroup = Boolean(m.replyingTo.isGroup || m.replyingTo.type === 'group');
-                  return {
-                    ...m,
-                    replyingTo: {
-                      ...m.replyingTo,
-                      id: normalized.id,
-                      url: isGroup ? undefined : (normalized.url || m.replyingTo.url),
-                      type: isGroup ? 'group' : (normalized.type !== 'system_notification' ? normalized.type : m.replyingTo.type),
-                    }
-                  };
-                }
-                return m;
+            const incomingTempId = normalizeMessageId(messageData.clientTempId);
+            const hasLocalOptimisticMatch = Boolean(
+              incomingTempId &&
+              messagesRef?.current?.some(
+                m =>
+                  normalizeMessageId(m.id) === incomingTempId ||
+                  normalizeMessageId((m as any).clientTempId) === incomingTempId ||
+                  (m.replyingTo &&
+                    (normalizeMessageId(m.replyingTo.id) === incomingTempId ||
+                      normalizeMessageId((m.replyingTo as any).clientTempId) === incomingTempId))
+              )
+            );
+            if (hasLocalOptimisticMatch) {
+              setMessages(prev => {
+                let matched = false;
+                const updated = prev.map(m => {
+                  if (
+                    normalizeMessageId(m.id) === incomingTempId ||
+                    normalizeMessageId((m as any).clientTempId) === incomingTempId
+                  ) {
+                    matched = true;
+                    return {
+                      ...normalized,
+                      clientTempId: messageData.clientTempId,
+                      localBlobUrl: (m as any).localBlobUrl || (normalized as any).localBlobUrl,
+                    };
+                  }
+                  if (
+                    m.replyingTo &&
+                    (normalizeMessageId(m.replyingTo.id) === incomingTempId ||
+                      normalizeMessageId((m.replyingTo as any).clientTempId) === incomingTempId)
+                  ) {
+                    const isGroup = Boolean(m.replyingTo.isGroup || m.replyingTo.type === 'group');
+                    return {
+                      ...m,
+                      replyingTo: {
+                        ...m.replyingTo,
+                        id: normalized.id,
+                        url: isGroup ? undefined : (normalized.url || m.replyingTo.url),
+                        type: isGroup ? 'group' : (normalized.type !== 'system_notification' ? normalized.type : m.replyingTo.type),
+                      },
+                    };
+                  }
+                  return m;
+                });
+                const next = matched ? updated : [...updated, normalized];
+                if (messagesRef) messagesRef.current = next;
+                return next;
               });
-              return matched ? updated : [...updated, normalized];
-            });
-            return;
+              if (!hasMoreNewerMessagesRef.current) {
+                const newCursor = getMessageCursor(normalized) || normalized.createdAt || normalized.timestamp || null;
+                if (newCursor) {
+                  newestLoadedAtRef.current = newCursor;
+                  setNewestLoadedAt(newCursor);
+                }
+              }
+              return;
+            }
           }
           appendMessageToWindowRef.current(normalized);
         }
@@ -831,16 +928,23 @@ export function useChatWebSocket({
           setPresenceActivity(null, true);
         }
       } else if (document.visibilityState === 'visible') {
+        if (isTabBlockedRef?.current || isCheckingTabLockRef?.current) return;
         const timeHidden = Date.now() - lastHiddenTimeRef.current;
-        if (timeHidden > 0 && timeHidden < 5000) return;
+        const isSocketOpen = ws.current !== null && ws.current.readyState === WebSocket.OPEN;
+        if (isSocketOpen && timeHidden > 0 && timeHidden < 5000) return;
         if (ws.current !== null && ws.current.readyState === WebSocket.CONNECTING) return;
 
         const socketIsAlive =
-          ws.current !== null &&
-          ws.current.readyState === WebSocket.OPEN &&
+          isSocketOpen &&
           Date.now() - lastPingAtRef.current < 35000;
 
-        if (socketIsAlive) return;
+        if (socketIsAlive && ws.current) {
+          // Probe socket liveness and refresh app-level heartbeat on resume
+          try {
+            ws.current.send(JSON.stringify({ type: 'ping' }));
+          } catch (_) {}
+          return;
+        }
 
         if (ws.current) {
           ws.current.onclose = null;
@@ -876,10 +980,15 @@ export function useChatWebSocket({
 
     const handleOnline = () => connect();
 
-    const handlePageHide = () => {
+    const handlePageHide = (e: PageTransitionEvent) => {
       if (presenceActivityRef.current && ws.current && ws.current.readyState === WebSocket.OPEN) {
         try {
           ws.current.send(JSON.stringify({ type: 'stop_typing', roomId }));
+        } catch (_) {}
+      }
+      if (!e.persisted && !isNativeFilePickerOpenRef.current && ws.current && ws.current.readyState === WebSocket.OPEN) {
+        try {
+          ws.current.close(1000, 'page_unloading');
         } catch (_) {}
       }
     };
@@ -913,7 +1022,7 @@ export function useChatWebSocket({
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('pagehide', handlePageHide);
     };
-  }, [userProfile, roomId, tempToken, userId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [userProfile, roomId, tempToken, userId, tabClaimEpoch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Watchdog
   useEffect(() => {

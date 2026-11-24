@@ -15,7 +15,7 @@ module.exports = (wss, broadcasts) => {
   router.get('/api/admin/users', adminLimiter, adminAuth, async (req, res) => {
     const roomId = req.roomId;
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 500, 1), 1000);
-    const users = await User.find({ roomId }).sort({ createdAt: -1 }).limit(limit).lean();
+    const users = await User.find({ roomId }).select('-sessionToken -sessionTokenHash').sort({ createdAt: -1 }).limit(limit).lean();
     res.json(users);
   });
 

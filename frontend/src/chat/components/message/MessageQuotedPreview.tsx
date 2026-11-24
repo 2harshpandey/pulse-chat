@@ -9,7 +9,7 @@ import {
   getDeletedForMeIds,
   isGiphyUrl,
 } from '../../utils';
-import { quoteLog } from '../../constants';
+import { quoteLog, isTouchDevice } from '../../constants';
 import { QuotedMessageContainer, QuotedMediaThumb } from '../../ChatStyledComponents';
 import { formatAudioDuration } from './AudioMessagePlayer';
 import { MediaAlbumIcon } from './MediaAlbumIcon';
@@ -57,6 +57,7 @@ interface MessageQuotedPreviewProps {
   quotedGroupInfo?: { count: number; primaryId: string; caption?: string };
   onOpenQuotedMedia?: (targetId: string, replyingTo?: any, customMessages?: Message[]) => boolean | void;
   onShowToast?: (msg: string) => void;
+  constrainWidth?: boolean;
 }
 
 export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.memo(({
@@ -68,6 +69,7 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
   quotedGroupInfo,
   onOpenQuotedMedia,
   onShowToast,
+  constrainWidth = false,
 }) => {
   const [thumbLoadError, setThumbLoadError] = React.useState(false);
   const [isLocating, setIsLocating] = React.useState(false);
@@ -159,14 +161,21 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
   const rawCaption = (quotedGroupInfo?.caption || msg.replyingTo?.text || '').trim();
   const displayCaption = rawCaption && !/^\d+\s+media$/i.test(rawCaption) ? rawCaption : '';
 
-  return (
+  const previewNode = (
     <QuotedMessageContainer
       $sender={sender}
       data-quote-swipe-ignore
       role="button"
-      tabIndex={0}
+      tabIndex={isTouchDevice() ? undefined : 0}
       style={isLocating ? { cursor: 'wait', opacity: 0.88 } : undefined}
-      onPointerDown={(e: React.PointerEvent) => e.stopPropagation()}
+      onPointerDown={(e: React.PointerEvent) => {
+        e.stopPropagation();
+        e.preventDefault();
+      }}
+      onMouseDown={(e: React.MouseEvent) => {
+        e.stopPropagation();
+        e.preventDefault();
+      }}
       onKeyDown={(e: React.KeyboardEvent) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
@@ -402,6 +411,19 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
       )}
     </QuotedMessageContainer>
   );
+
+  if (constrainWidth) {
+    return (
+      <div
+        data-quoted-width-constrain="true"
+        style={{ width: 0, minWidth: '100%', maxWidth: '100%' }}
+      >
+        {previewNode}
+      </div>
+    );
+  }
+
+  return previewNode;
 });
 
 MessageQuotedPreview.displayName = 'MessageQuotedPreview';

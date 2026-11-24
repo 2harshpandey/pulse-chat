@@ -10,7 +10,7 @@ const UserReport = require('../../models/userReport');
 const ChatState = require('../../models/chatState');
 const User = require('../../models/user');
 const TempLink = require('../../models/tempLink');
-const { parseCloudinaryAssetFromUrl, batchDeleteCloudinaryAssets } = require('../../security');
+const { batchDeleteCloudinaryAssets } = require('../../security');
 const { deleteRoomState } = require('../../state');
 const { adminLimiter, adminAuth, extractIp } = require('../../middleware');
 

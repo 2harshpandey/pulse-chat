@@ -20,6 +20,7 @@ import {
   ReactionsOverlay,
   ChatModals,
   ChatWindowView,
+  OtherTabOverlay,
 } from './chat/components';
 import { useChatController } from './chat/hooks';
 
@@ -178,6 +179,11 @@ function ChatAuthenticated({ isMe, isTempLink }: ChatProps) {
         onCaptionTyping={c.socket.handleTyping}
         onSetReply={c.msgs.handleSetReply}
         allMessages={c.msgs.messages}
+      />
+
+      <OtherTabOverlay
+        isOpen={c.isDisplacedByOtherTab}
+        onUseHere={c.handleClaimTabHere}
       />
     </>
   );

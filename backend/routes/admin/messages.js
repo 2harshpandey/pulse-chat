@@ -7,7 +7,7 @@ const Room = require('../../models/room');
 const { getRoomState } = require('../../state');
 const { adminLimiter, adminAuth, extractIp, toClientMessage } = require('../../middleware');
 const { unpinIfPinned } = require('../../websocket/pinnedManager');
-const { parseCloudinaryAssetFromUrl, batchDeleteCloudinaryAssets } = require('../../security');
+const { batchDeleteCloudinaryAssets } = require('../../security');
 
 module.exports = (wss, broadcasts) => {
   const { broadcastToAdmins, broadcast } = broadcasts;

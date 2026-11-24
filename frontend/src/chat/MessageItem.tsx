@@ -7,6 +7,9 @@ import {
   inferredContentLengthByUrlCache,
   buildDownloadProxyUrl, normalizeMessageId,
   downloadFile,
+  canEditMessage,
+  getSessionToken,
+  getStoredValue,
 } from './utils';
 import {
   MessageRow, MessageBubble, Username, FooterContainer, Timestamp,
@@ -126,9 +129,17 @@ export const MessageItem = React.memo(({
 
     const abortController = new AbortController();
     const metadataUrl = buildDownloadProxyUrl(safeUrl, msg.originalName);
+    const headers: Record<string, string> = {};
+    const activeRoomId = getStoredValue('pulse_room_id') || getStoredValue('pulseRoomId');
+    if (activeRoomId) headers['x-room-id'] = activeRoomId;
+    const sessionToken = getSessionToken(activeRoomId || undefined);
+    if (sessionToken) headers['x-session-token'] = sessionToken;
+    const activeUserId = getStoredValue('pulse_user_id') || getStoredValue('pulseUserId');
+    if (activeUserId) headers['x-user-id'] = activeUserId;
 
     void fetch(metadataUrl, {
       method: 'HEAD',
+      headers,
       mode: 'cors',
       credentials: 'omit',
       cache: 'force-cache',
@@ -210,10 +221,21 @@ export const MessageItem = React.memo(({
 
   const sender = msg.userId === currentUserId ? 'me' : 'other';
 
-  const messageTime = new Date(msg.timestamp).getTime();
-  const now = new Date().getTime();
-  const canEdit = msg.userId === currentUserId && (now - messageTime) < 15 * 60 * 1000 && msg.text && !msg.isDeleted;
+  const now = Date.now();
+  const canEdit = canEditMessage(msg, currentUserId, now);
   const isDeleted = msg.isDeleted;
+  const isAudioMessage = msg.type === 'audio' || Boolean(
+    (!msg.type || msg.type === 'file') && (
+      msg.url?.match(/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)($|\?)/i) ||
+      msg.originalName?.match(/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i) ||
+      (msg.originalName?.toLowerCase().includes('voice') && msg.url?.match(/\.(webm|ogg|mp4|m4a)($|\?)/i))
+    )
+  );
+  const hasConstrainedMediaFrame = !isDeleted && !isAudioMessage && Boolean(msg.url) && (
+    msg.type === 'video' ||
+    msg.type === 'image' ||
+    Boolean(msg.url?.match(/\.(mp4|webm|mov|jpeg|jpg|gif|png|svg)$/i))
+  );
   const handleVideoFullscreenEnterForMessage = useCallback(() => {
     onVideoFullscreenEnter?.(msg.id);
   }, [onVideoFullscreenEnter, msg.id]);
@@ -323,6 +345,7 @@ export const MessageItem = React.memo(({
               quotedGroupInfo={quotedGroupInfo}
               onOpenQuotedMedia={onOpenQuotedMedia}
               onShowToast={onShowToast}
+              constrainWidth={hasConstrainedMediaFrame}
             />
             {isDeleted ? (
               <>

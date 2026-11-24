@@ -8,7 +8,7 @@ const net = require('net');
 const axios = require('axios');
 const logger = require('../logger');
 const { isPrivateOrInternalIp } = require('../security');
-const { apiLimiter, extractIp, getClientIp } = require('../middleware');
+const { getClientIp } = require('../middleware');
 // Issue 6: Tighter, dedicated rate limiter for link-preview — this endpoint fetches
 // external URLs on behalf of the user and can amplify DoS/enumeration if abused.
 const rateLimit = require('express-rate-limit');

@@ -242,7 +242,7 @@ export const CVPSpeedBtn = styled.button`
 `;
 
 /* Volume slider wrapper - only shown on non-touch (pointer: fine) devices */
-export const CVPVolumeWrapper = styled.div`
+export const CVPVolumeWrapper = styled.div<{ $volumeOpen?: boolean }>`
   position: relative;
   display: flex;
   align-items: center;
@@ -268,11 +268,31 @@ export const CVPVolumeWrapper = styled.div`
     z-index: 10;
   }
 
+  /* Invisible hover bridge spanning the gap between speaker button and slider panel
+     so moving the pointer upward onto the slider never drops hover on desktop */
+  .cvp-volume-slider-panel::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: -10px;
+    right: -10px;
+    height: 14px;
+    background: transparent;
+  }
+
   &:hover .cvp-volume-slider-panel,
-  &:focus-within .cvp-volume-slider-panel {
+  &:focus-within .cvp-volume-slider-panel,
+  &[data-volume-open='true'] .cvp-volume-slider-panel {
     opacity: 1;
     pointer-events: all;
   }
+
+  ${p => p.$volumeOpen ? `
+    .cvp-volume-slider-panel {
+      opacity: 1;
+      pointer-events: all;
+    }
+  ` : ''}
 
   /* Only show volume panel on fine pointer (mouse) devices */
   @media (pointer: coarse) {

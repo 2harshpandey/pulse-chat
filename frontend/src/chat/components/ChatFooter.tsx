@@ -557,7 +557,7 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
                 <p>Editing message</p>
                 <span>{editingMessageOriginalText || 'Message'}</span>
               </EditPreviewText>
-              <EditPreviewDismiss onClick={onCancelEdit} title="Cancel editing" aria-label="Cancel editing">
+              <EditPreviewDismiss onClick={onCancelEdit} title="Cancel editing (Esc)" aria-label="Cancel editing">
                 &times;
               </EditPreviewDismiss>
             </EditPreviewContainer>
@@ -576,6 +576,8 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
             return (
               <ReplyPreviewContainer
                 ref={replyPreviewRef}
+                onPointerDown={(e) => e.preventDefault()}
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
                   const replyTargetId = resolveReplyTargetId(replyingTo);
                   quoteLog('reply-preview click', {
@@ -696,6 +698,14 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
                   </span>
                 </ReplyText>
                 <CancelPreviewButton
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
                   onClick={(e) => {
                     e.stopPropagation();
                     onCancelReply();

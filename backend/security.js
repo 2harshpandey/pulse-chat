@@ -41,7 +41,6 @@ const isPrivateOrInternalIp = (ip) => {
 
 const SAFE_HOSTS_MAP = {
   'res.cloudinary.com': 'res.cloudinary.com',
-  'api.cloudinary.com': 'api.cloudinary.com',
   'giphy.com': 'giphy.com',
   'media.giphy.com': 'media.giphy.com',
   'media0.giphy.com': 'media0.giphy.com',
@@ -51,6 +50,22 @@ const SAFE_HOSTS_MAP = {
   'media4.giphy.com': 'media4.giphy.com',
   'media5.giphy.com': 'media5.giphy.com',
   'i.giphy.com': 'i.giphy.com',
+};
+
+const isTrustedMediaUrl = (targetUrl) => {
+  if (!targetUrl || typeof targetUrl !== 'string') return false;
+  try {
+    const parsed = new URL(targetUrl.trim());
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
+    const host = parsed.hostname.toLowerCase();
+    return (
+      host === 'res.cloudinary.com' ||
+      host === 'giphy.com' ||
+      host.endsWith('.giphy.com')
+    );
+  } catch {
+    return false;
+  }
 };
 
 const getAllowedDownloadHost = (hostname) => {
@@ -158,6 +173,46 @@ const sanitizeDownloadFilename = (name, fallback = 'download') => {
     .trim()
     .slice(0, 140);
   return cleaned || fallback;
+};
+
+/**
+ * Sanitizes an asset name for use in Cloudinary public_id.
+ * Normalizes unicode (converting mathematical italic/bold, full-width, and accented characters to ASCII),
+ * and strictly restricts characters to [a-zA-Z0-9_-] as mandated by Cloudinary.
+ *
+ * @param {string} name
+ * @param {string} fallback
+ * @returns {string}
+ */
+const sanitizePublicIdBase = (name, fallback = 'file') => {
+  const normalized = String(name || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9_-]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 60);
+  return normalized || fallback;
+};
+
+/**
+ * Generates a fully safe, unique Cloudinary public_id and extension.
+ *
+ * @param {string} originalName
+ * @param {string} resourceType
+ * @returns {{ publicId: string, fullPublicId: string, ext: string }}
+ */
+const generateSafePublicId = (originalName = 'file', resourceType = 'image') => {
+  const parsedName = path.parse(originalName || 'file');
+  const safeBase = sanitizePublicIdBase(parsedName.name || 'file', 'file');
+  const safeExt = parsedName.ext
+    ? parsedName.ext.replace(/^\./, '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10)
+    : '';
+  const timestamp = Date.now();
+  const randomHex = crypto.randomBytes(16).toString('hex');
+  const publicId = `pulse-chat/${safeBase}-${timestamp}-${randomHex}`;
+  const fullPublicId = resourceType === 'raw' && safeExt ? `${publicId}.${safeExt}` : publicId;
+  return { publicId, fullPublicId, ext: safeExt };
 };
 
 const parseCloudinaryAssetFromUrl = (assetUrl) => {
@@ -397,8 +452,11 @@ module.exports = {
   isPrivateOrInternalIp,
   getAllowedDownloadHost,
   isAllowedDownloadHost,
+  isTrustedMediaUrl,
   runWithSafeRedirects,
   sanitizeDownloadFilename,
+  sanitizePublicIdBase,
+  generateSafePublicId,
   parseCloudinaryAssetFromUrl,
   getSignedCloudinaryDownloadUrl,
   timingSafeEqualStr,
@@ -407,7 +465,6 @@ module.exports = {
   generateSessionToken,
   verifySignedSessionToken,
   hashSessionToken,
-  SESSION_TOKEN_TTL_MS,
   batchDeleteCloudinaryAssets,
 };
 

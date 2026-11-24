@@ -5,7 +5,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { NEWER_LOAD_TRIGGER_PX, MAX_MESSAGES_WINDOW } from '../constants';
 import { recordChatScroll } from '../chatScrollState';
 import type { Message } from '../types';
-import { getUserId, resolveApiBaseUrl, downloadFile, findMessageElement } from '../utils';
+import { getUserId, resolveApiBaseUrl, downloadFile, findMessageElement, canEditMessage } from '../utils';
 import { albumDownloadManager } from '../albumDownloadManager';
 import {
   useChatAudio,
@@ -20,6 +20,7 @@ import {
   useChatOverlayGuard,
   useChatComposer,
   useChatMessageNavigation,
+  useTabSessionLock,
 } from './';
 
 export interface UseChatControllerProps {
@@ -225,6 +226,25 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     messageInputRef,
   });
 
+  // Same-browser multi-tab session coordination
+  const tabLock = useTabSessionLock({
+    userId: activeUserId,
+    roomId,
+    enabled: Boolean(userContext?.profile),
+    onDisplaced: () => {
+      if (ws.current) {
+        try {
+          ws.current.onclose = null;
+          ws.current.close(1000, 'another_tab');
+        } catch (_) {}
+        ws.current = null;
+      }
+      if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+    },
+  });
+
   // WebSocket Hook
   const socket = useChatWebSocket({
     ws,
@@ -269,6 +289,12 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     setReportTargetMessage: selection.setReportTargetMessage,
     setIsReportModalVisible: selection.setIsReportModalVisible,
     isNativeFilePickerOpenRef: media.isNativeFilePickerOpenRef,
+    tabId: tabLock.tabId,
+    isTabBlockedRef: tabLock.isTabBlockedRef,
+    isCheckingTabLockRef: tabLock.isCheckingTabLockRef,
+    forceTakeoverRef: tabLock.forceTakeoverRef,
+    tabClaimEpoch: tabLock.tabClaimEpoch,
+    onSessionDisplaced: tabLock.markDisplacedExternally,
   });
 
   setPresenceActivityRef.current = socket.setPresenceActivity;
@@ -303,6 +329,7 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     setEditingMessageId: msgs.setEditingMessageId,
     editingMessageOriginalText: msgs.editingMessageOriginalText,
     priorDraftBeforeEdit: msgs.priorDraftBeforeEdit,
+    handleStartEdit: msgs.handleStartEdit,
     handleCancelEdit: msgs.handleCancelEdit,
     replyingTo: msgs.replyingTo,
     setReplyingTo: msgs.setReplyingTo,
@@ -576,11 +603,8 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
 
   const canEditSelectedMessage =
     selection.selectedMessages.length === 1 &&
-    selectedMessage &&
-    !selectedMessage.isDeleted &&
-    selectedMessage.userId === userIdRef.current &&
-    selectedMessage.text &&
-    new Date().getTime() - new Date(selectedMessage.timestamp).getTime() < 15 * 60 * 1000;
+    Boolean(selectedMessage) &&
+    canEditMessage(selectedMessage, userIdRef.current);
 
   const selectedMediaMessages = useMemo(() => {
     if (selection.selectedMessages.length === 0) return [];
@@ -733,6 +757,8 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
     scrollToLatestTitle,
     handleJumpToNextPinned,
     handleMessagesContainerScroll,
+    isDisplacedByOtherTab: tabLock.isDisplacedByOtherTab,
+    handleClaimTabHere: tabLock.claimHere,
   };
 }
 

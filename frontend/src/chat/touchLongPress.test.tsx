@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent, act } from '@testing-library/react';
 import { useMessageGestures } from './components/message/useMessageGestures';
 import type { Message } from './types';
-import { LONG_PRESS_DURATION_MS, LONG_PRESS_CANCEL_MOVE_PX } from './constants';
+import { LONG_PRESS_DURATION_MS } from './constants';
 import { recordChatScroll, resetChatScrollStateForTesting } from './chatScrollState';
 import { MessageReactions } from './components/message/MessageReactions';
 

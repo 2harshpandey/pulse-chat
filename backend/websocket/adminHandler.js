@@ -7,7 +7,7 @@ const AuditLog = require('../models/auditLog');
 const logger = require('../logger');
 const { getRoomState } = require('../state');
 const { timingSafeEqualStr, verifyPassword } = require('../security');
-const { isPasswordLocked, recordFailedPasswordAttempt, recordFailedAdminAttempt, resetPasswordAttempts, toSafeLoggedInUserList } = require('../middleware');
+const { isPasswordLocked, recordFailedAdminAttempt, resetPasswordAttempts, toSafeLoggedInUserList } = require('../middleware');
 
 /**
  * Configure and register an authenticated admin client.
@@ -21,7 +21,7 @@ const setupAdmin = (ws, roomId, adminClients, loggedInUsers, onlineUsers, broadc
   logger.info(`An admin client authenticated and connected to room ${roomId}!`);
   logger.info(`Online users snapshot for admin (room ${roomId}): ${onlineUsers.size} user(s)`);
   broadcastToAdmins(roomId, 'activity', `An admin client connected to admin channel.`);
-  User.find({ roomId }).sort({ lastSeen: -1 }).limit(500).lean().then(allDbUsers => {
+  User.find({ roomId }).select('-sessionToken -sessionTokenHash').sort({ lastSeen: -1 }).limit(500).lean().then(allDbUsers => {
     if (ws.readyState === 1) {
       ws.send(JSON.stringify({ type: 'users', data: allDbUsers }));
     }

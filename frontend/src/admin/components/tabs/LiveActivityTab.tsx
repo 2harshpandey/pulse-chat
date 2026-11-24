@@ -31,9 +31,6 @@ function getActivityIcon(text: string): string {
   if (lower.includes('file') || lower.includes('document') || lower.includes('album') || lower.includes('download')) {
     return '📎';
   }
-  if (lower.includes('poll')) {
-    return '📊';
-  }
   if (lower.includes('react') || lower.includes('reaction')) {
     return '✨';
   }

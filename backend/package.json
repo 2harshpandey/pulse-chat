@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "dev:nodemon": "nodemon index.js"
+    "dev:nodemon": "nodemon index.js",
+    "test": "node --test"
   },
   "keywords": [],
   "author": "",

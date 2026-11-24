@@ -61,7 +61,13 @@ export function useChatMessages({
   const [isJumpingToPinned, setIsJumpingToPinned] = useState(false);
 
   const [historyLoaded, setHistoryLoaded] = useState(false);
-  const [historySessionId, setHistorySessionId] = useState(0);
+  const [historySessionId, setHistorySessionIdState] = useState(0);
+  const historyEpochRef = useRef(0);
+
+  const setHistorySessionId = useCallback((valOrUpdater: number | ((prev: number) => number)) => {
+    historyEpochRef.current += 1;
+    setHistorySessionIdState(valOrUpdater);
+  }, []);
 
   const [firstItemIndex, setFirstItemIndexState] = useState(INITIAL_FIRST_ITEM_INDEX);
   const firstItemIndexRef = useRef(INITIAL_FIRST_ITEM_INDEX);
@@ -348,6 +354,7 @@ export function useChatMessages({
 
   // Prepend older messages
   const fetchAndPrependOlderMessages = useCallback(async (beforeCursor: string, limitOverride?: number) => {
+    const startEpoch = historyEpochRef.current;
     const before = encodeURIComponent(beforeCursor);
     const limit = limitOverride || HISTORY_PAGE_SIZE;
     const res = await fetch(`${apiBase}/api/messages?before=${before}&limit=${limit}`, {
@@ -356,6 +363,10 @@ export function useChatMessages({
     if (!res.ok) throw new Error('Failed to fetch older messages');
 
     const payload = await res.json();
+    // Abort applying stale pagination if a reconnect history reset happened mid-flight
+    if (startEpoch !== historyEpochRef.current) {
+      return { prependedCount: 0, hasMore: hasMoreOlderMessagesRef.current, nextCursor: oldestLoadedAtRef.current };
+    }
     const rawBatch: any[] = Array.isArray(payload)
       ? payload
       : (Array.isArray(payload.messages) ? payload.messages : []);
@@ -467,6 +478,7 @@ export function useChatMessages({
 
   // Append newer messages
   const fetchAndAppendNewerMessages = useCallback(async (afterCursor: string, limitOverride?: number) => {
+    const startEpoch = historyEpochRef.current;
     const after = encodeURIComponent(afterCursor);
     const limit = limitOverride || HISTORY_PAGE_SIZE;
     const res = await fetch(`${apiBase}/api/messages?after=${after}&limit=${limit}`, {
@@ -475,6 +487,7 @@ export function useChatMessages({
     if (!res.ok) throw new Error('Failed to fetch newer messages');
 
     const payload = await res.json();
+    if (startEpoch !== historyEpochRef.current) return;
     const rawBatch: any[] = Array.isArray(payload)
       ? payload
       : (Array.isArray(payload.messages) ? payload.messages : []);
@@ -561,6 +574,7 @@ export function useChatMessages({
         headers: getAuthHeaders(),
       });
       if (!res.ok) return;
+      historyEpochRef.current += 1;
       const payload = await res.json();
       const rawBatch: any[] = Array.isArray(payload)
         ? payload
@@ -704,13 +718,26 @@ export function useChatMessages({
   }, [inputMessageRef, messageInputRef, setInputMessage, syncInputLayerLayout]);
 
   const handleCancelEdit = useCallback(() => {
+    const restoredDraft = priorDraftBeforeEdit;
     setEditingMessageId(null);
     setEditingMessageOriginalText('');
-    setInputMessage(priorDraftBeforeEdit);
+    setInputMessage(restoredDraft);
     setPriorDraftBeforeEdit('');
-    resetInputLayerHeight();
-    requestAnimationFrame(() => { messageInputRef.current?.focus(); });
-  }, [messageInputRef, priorDraftBeforeEdit, resetInputLayerHeight, setInputMessage]);
+    if (!restoredDraft) {
+      resetInputLayerHeight();
+    }
+    requestAnimationFrame(() => {
+      const ta = messageInputRef.current;
+      if (ta) {
+        ta.focus();
+        if (restoredDraft) {
+          const len = ta.value.length;
+          ta.setSelectionRange(len, len);
+          syncInputLayerLayout(ta, restoredDraft, true);
+        }
+      }
+    });
+  }, [messageInputRef, priorDraftBeforeEdit, resetInputLayerHeight, setInputMessage, syncInputLayerLayout]);
 
   // Copy handler
   const handleCopy = useCallback(async (message: Message) => {

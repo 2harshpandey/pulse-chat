@@ -6,6 +6,8 @@ import { MessageActionMenuPortal } from './components/message/MessageActionMenuP
 import { MediaGalleryModal } from './components/modals/MediaGalleryModal';
 import { ChatFooter, type ChatFooterProps } from './components/ChatFooter';
 import { CVPBottomRow, CVPIconBtn } from './styles/chat.video.styles';
+import { VideoPlayer } from './VideoPlayer';
+import { MessageItem } from './MessageItem';
 import type { Message } from './types';
 
 describe('isNonTouchDevice helper', () => {
@@ -729,5 +731,266 @@ describe('ChatFooter Select Mode Copy Behavior on Touch/Mobile', () => {
     fireEvent.click(copyBtn);
     await waitFor(() => expect(writeTextMock).toHaveBeenCalledWith('Good morning everyone!'));
     await waitFor(() => expect(onCancel).toHaveBeenCalled());
+  });
+});
+
+describe('VideoPlayer async processing & buffering states', () => {
+  const originalFetch = globalThis.fetch;
+  const originalIntersectionObserver = globalThis.IntersectionObserver;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    globalThis.IntersectionObserver = class {
+      observe = vi.fn();
+      unobserve = vi.fn();
+      disconnect = vi.fn();
+    } as unknown as typeof IntersectionObserver;
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query.includes('(pointer: fine)'),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    globalThis.fetch = originalFetch;
+    globalThis.IntersectionObserver = originalIntersectionObserver;
+    vi.restoreAllMocks();
+  });
+
+  it('shows "Processing video..." instead of "Media unavailable" when a newly sent video errors initially, and recovers once ready', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 404 })
+      .mockResolvedValueOnce({ ok: true, status: 200 });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const { container } = render(
+      <VideoPlayer
+        src="https://res.cloudinary.com/demo/video/upload/v1/pulse-chat/big_video.mp4"
+        timestamp={new Date().toISOString()}
+      />
+    );
+
+    const videoEl = container.querySelector('video') as HTMLVideoElement;
+    expect(videoEl).toBeTruthy();
+    const loadSpy = vi.spyOn(videoEl, 'load').mockImplementation(() => {});
+
+    // Simulate initial 404 from Cloudinary while async processing is in progress
+    fireEvent.error(videoEl);
+
+    expect(screen.getByText('Processing video...')).toBeDefined();
+    expect(screen.queryByText('Media unavailable')).toBeNull();
+
+    // First retry at 1000ms -> fetch returns 404 (still processing)
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByText('Processing video...')).toBeDefined();
+
+    // Second retry at 1500ms -> fetch returns 200 (ready!) and triggers video.load()
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(loadSpy).toHaveBeenCalledTimes(1);
+
+    // Simulate browser finishing metadata load
+    fireEvent.loadedMetadata(videoEl);
+    expect(screen.queryByText('Processing video...')).toBeNull();
+    expect(screen.queryByText('Media unavailable')).toBeNull();
+  });
+
+  it('shows "Loading video..." when play is clicked before metadata is ready and auto-plays on canplay', () => {
+    const { container } = render(
+      <VideoPlayer
+        src="https://res.cloudinary.com/demo/video/upload/v1/pulse-chat/video.mp4"
+        timestamp={new Date().toISOString()}
+      />
+    );
+
+    const videoEl = container.querySelector('video') as HTMLVideoElement;
+    vi.spyOn(videoEl, 'load').mockImplementation(() => {});
+    const playSpy = vi.spyOn(videoEl, 'play').mockResolvedValue(undefined);
+
+    const playButtons = screen.getAllByLabelText('Play');
+    fireEvent.click(playButtons[0]);
+
+    expect(screen.getByText('Loading video...')).toBeDefined();
+
+    fireEvent.canPlay(videoEl);
+    expect(screen.queryByText('Loading video...')).toBeNull();
+    expect(playSpy).toHaveBeenCalled();
+  });
+
+  it('shows "Media unavailable" for old videos after exhausting quick retries', async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({ ok: false, status: 404 }) as unknown as typeof fetch;
+
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    const { container } = render(
+      <VideoPlayer
+        src="https://res.cloudinary.com/demo/video/upload/v1/pulse-chat/old_deleted.mp4"
+        timestamp={twoHoursAgo}
+      />
+    );
+
+    const videoEl = container.querySelector('video') as HTMLVideoElement;
+    fireEvent.error(videoEl);
+
+    await vi.advanceTimersByTimeAsync(500);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(screen.getByText('Media unavailable')).toBeDefined();
+    expect(screen.queryByText('Processing video...')).toBeNull();
+  });
+
+  it('keeps desktop volume slider open while moving up onto slider or dragging thumb', async () => {
+    const { container } = render(
+      <VideoPlayer
+        src="https://res.cloudinary.com/demo/video/upload/v1/pulse-chat/clip.mp4"
+        timestamp={new Date().toISOString()}
+      />
+    );
+
+    const sliderInput = container.querySelector('input.cvp-vol-range') as HTMLInputElement;
+    expect(sliderInput).toBeTruthy();
+    const volumeWrapper = sliderInput.closest('.cvp-volume-slider-panel')?.parentElement as HTMLElement;
+    expect(volumeWrapper).toBeTruthy();
+
+    // Hovering speaker button opens the volume panel
+    fireEvent.mouseEnter(volumeWrapper);
+    expect(volumeWrapper.getAttribute('data-volume-open')).toBe('true');
+
+    // Leaving wrapper briefly (e.g. moving toward the slider) keeps it open during grace window
+    fireEvent.mouseLeave(volumeWrapper);
+    await vi.advanceTimersByTimeAsync(60);
+    expect(volumeWrapper.getAttribute('data-volume-open')).toBe('true');
+
+    // Re-entering slider panel cancels pending close and stays open
+    fireEvent.mouseEnter(volumeWrapper);
+    await vi.advanceTimersByTimeAsync(200);
+    expect(volumeWrapper.getAttribute('data-volume-open')).toBe('true');
+
+    // Dragging slider thumb keeps menu open even if pointer leaves wrapper horizontally
+    fireEvent.pointerDown(sliderInput);
+    fireEvent.mouseLeave(volumeWrapper);
+    await vi.advanceTimersByTimeAsync(300);
+    expect(volumeWrapper.getAttribute('data-volume-open')).toBe('true');
+
+    // Releasing drag closes after grace period when pointer is outside
+    fireEvent(window, new Event('pointerup'));
+    await vi.advanceTimersByTimeAsync(200);
+    expect(volumeWrapper.getAttribute('data-volume-open')).toBeNull();
+  });
+});
+
+describe('Quoted media bubble width constraint', () => {
+  const originalIntersectionObserver = globalThis.IntersectionObserver;
+
+  beforeEach(() => {
+    globalThis.IntersectionObserver = class {
+      observe = vi.fn();
+      unobserve = vi.fn();
+      disconnect = vi.fn();
+    } as unknown as typeof IntersectionObserver;
+  });
+
+  afterEach(() => {
+    globalThis.IntersectionObserver = originalIntersectionObserver;
+    vi.restoreAllMocks();
+  });
+
+  const makeBaseItemProps = (msg: Message) => ({
+    msg,
+    showUsername: true,
+    currentUserId: 'user-1',
+    activeDeleteMenu: null,
+    deleteMenuRef: { current: document.createElement('div') },
+    handleSetReply: vi.fn(),
+    handleReact: vi.fn(),
+    openDeleteMenu: vi.fn(),
+    openLightbox: vi.fn(),
+    isMediaLoaded: true,
+    onRequestMediaLoad: vi.fn(),
+    isMediaLoadInProgress: false,
+    mediaLoadProgress: 0,
+    onRequestDownload: vi.fn(),
+    deleteForMe: vi.fn(),
+    deleteForEveryone: vi.fn(),
+    scrollToMessage: vi.fn(),
+    isSelectModeActive: false,
+    isSelected: false,
+    handleToggleSelectMessage: vi.fn(),
+    setActiveDeleteMenu: vi.fn(),
+    handleCopy: vi.fn(),
+    handleOpenReport: vi.fn(),
+    handleStartEdit: vi.fn(),
+    handleCancelSelectMode: vi.fn(),
+    isMobileView: false,
+    onOpenReactionPicker: vi.fn(),
+    setReactionsPopup: vi.fn(),
+    selectedMessages: [] as string[],
+    handleOpenFullEmojiPicker: vi.fn(),
+    reactionPickerData: null,
+    editingMessageId: null,
+    handleSetEditingMessageId: vi.fn(),
+    handleCancelEdit: vi.fn(),
+  });
+
+  it('constrains quoted preview width on video and image messages so long quoted text cannot stretch the bubble', () => {
+    const longQuote = {
+      id: 'quoted-text-1',
+      username: 'Harsh',
+      text: 'https://drive.google.com/drive/folders/1tLa44OT7VeryLongShareUrlThatShouldNotStretchVideoBubbles',
+      type: 'text' as const,
+    };
+
+    const videoMsg: Message = {
+      id: 'video-msg-1',
+      userId: 'user-1',
+      username: 'Harsh',
+      type: 'video',
+      url: 'https://res.cloudinary.com/demo/video/upload/v1/pulse-chat/clip.mp4',
+      text: 'dsds',
+      timestamp: new Date().toISOString(),
+      replyingTo: longQuote,
+    };
+
+    const { container: videoContainer } = render(<MessageItem {...makeBaseItemProps(videoMsg)} />);
+    const constrainedEl = videoContainer.querySelector('[data-quoted-width-constrain="true"]') as HTMLElement | null;
+    expect(constrainedEl).toBeTruthy();
+    expect(constrainedEl?.style.width).toBe('0px');
+    expect(constrainedEl?.style.minWidth).toBe('100%');
+
+    const imageMsg: Message = {
+      ...videoMsg,
+      id: 'image-msg-1',
+      type: 'image',
+      url: 'https://res.cloudinary.com/demo/image/upload/v1/pulse-chat/photo.jpg',
+    };
+    const { container: imageContainer } = render(<MessageItem {...makeBaseItemProps(imageMsg)} />);
+    expect(imageContainer.querySelector('[data-quoted-width-constrain="true"]')).toBeTruthy();
+  });
+
+  it('does not constrain quoted preview width on pure text messages', () => {
+    const textMsg: Message = {
+      id: 'text-msg-1',
+      userId: 'user-1',
+      username: 'Harsh',
+      type: 'text',
+      text: 'ok',
+      timestamp: new Date().toISOString(),
+      replyingTo: {
+        id: 'quoted-text-2',
+        username: 'Alice',
+        text: 'This is a normal longer text message that should expand the reply bubble comfortably.',
+        type: 'text',
+      },
+    };
+
+    const { container } = render(<MessageItem {...makeBaseItemProps(textMsg)} />);
+    expect(container.querySelector('[data-quoted-width-constrain="true"]')).toBeNull();
   });
 });

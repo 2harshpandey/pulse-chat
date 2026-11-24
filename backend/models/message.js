@@ -6,18 +6,6 @@ const reactionSchema = new mongoose.Schema({
   isAlbum: { type: Boolean, default: false },
 }, { _id: false, strict: false });
 
-// Issue 8: Explicit sub-schemas for poll data instead of free-form { type: Object }.
-// This enforces field constraints and prevents arbitrary key injection into MongoDB.
-const pollOptionSchema = new mongoose.Schema({
-  text:  { type: String, maxlength: 200, default: '' },
-  votes: { type: [{ type: String, maxlength: 64 }], default: [] },
-}, { _id: false });
-
-const pollSchema = new mongoose.Schema({
-  question: { type: String, maxlength: 300, default: 'Poll' },
-  options:  { type: [pollOptionSchema], default: [] },
-}, { _id: false });
-
 const replyingToSchema = new mongoose.Schema({
   id:         { type: String, maxlength: 255 },
   text:       { type: String, maxlength: 500 },
@@ -68,7 +56,6 @@ const messageSchema = new mongoose.Schema({
     type: Map,
     of: [reactionSchema],
   },
-  poll: { type: pollSchema, default: null }
 }, { timestamps: true });
 
 // Supports fast reverse-chronological pagination for chat history.

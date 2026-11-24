@@ -404,6 +404,7 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
               quotedGroupInfo={quotedGroupInfo}
               onOpenQuotedMedia={onOpenQuotedMedia}
               onShowToast={onShowToast}
+              constrainWidth={true}
             />
 
             {!isMobileView && (

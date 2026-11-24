@@ -9,7 +9,7 @@ const MessageEvent = require('../models/messageEvent');
 const UserReport = require('../models/userReport');
 const cloudinary = require('cloudinary').v2;
 const { toClientMessage } = require('../middleware');
-const { timingSafeEqualStr, parseCloudinaryAssetFromUrl, verifySignedSessionToken, hashSessionToken } = require('../security');
+const { timingSafeEqualStr, parseCloudinaryAssetFromUrl, verifySignedSessionToken, hashSessionToken, isTrustedMediaUrl } = require('../security');
 const { normalizeReactionEmoji, filterValidReactions, toReactionMap } = require('../reactions');
 const {
   getRoomState,
@@ -816,12 +816,14 @@ const handleNewMessage = async ({ ws, parsedMessage, wss, broadcastToAdmins, _br
     return;
   }
 
-  // Sanitise media and reply URLs: strictly allow http, https, and internal /api/ endpoints
+  // Sanitise media and reply URLs: strictly allow trusted CDN/GIF hosts (res.cloudinary.com, *.giphy.com)
   const sanitisedMessage = { ...parsedMessage };
   if (typeof sanitisedMessage.url === 'string') {
     const trimmedUrl = sanitisedMessage.url.trim();
-    if (trimmedUrl.startsWith('blob:') || !/^(https?:\/\/|\/api\/)/i.test(trimmedUrl)) {
+    if (!isTrustedMediaUrl(trimmedUrl)) {
       sanitisedMessage.url = undefined;
+    } else {
+      sanitisedMessage.url = trimmedUrl;
     }
   }
 
@@ -862,7 +864,7 @@ const handleNewMessage = async ({ ws, parsedMessage, wss, broadcastToAdmins, _br
     }
     if (typeof sanitisedMessage.replyingTo.url === 'string') {
       const trimmedReplyUrl = sanitisedMessage.replyingTo.url.trim();
-      if (trimmedReplyUrl.startsWith('blob:') || !/^(https?:\/\/|\/api\/)/i.test(trimmedReplyUrl)) {
+      if (!isTrustedMediaUrl(trimmedReplyUrl)) {
         sanitisedMessage.replyingTo.url = undefined;
       }
     }
@@ -882,39 +884,12 @@ const handleNewMessage = async ({ ws, parsedMessage, wss, broadcastToAdmins, _br
     ? String(sanitisedMessage.id).trim().slice(0, 255)
     : Date.now().toString();
 
-  const safeType = typeof sanitisedMessage.type === 'string' && ['text', 'image', 'video', 'audio', 'file', 'poll', 'gif'].includes(sanitisedMessage.type)
+  const safeType = typeof sanitisedMessage.type === 'string' && ['text', 'image', 'video', 'audio', 'file', 'gif'].includes(sanitisedMessage.type)
     ? sanitisedMessage.type
     : 'text';
 
   const verifiedUserId = String(ws.userId || '').trim();
   const verifiedUsername = String(ws.username || 'Anonymous').trim();
-
-  let safePoll = null;
-  if (safeType === 'poll' && sanitisedMessage.poll && typeof sanitisedMessage.poll === 'object') {
-    const q = typeof sanitisedMessage.poll.question === 'string'
-      ? sanitisedMessage.poll.question.trim().slice(0, 300)
-      : 'Poll';
-    const opts = Array.isArray(sanitisedMessage.poll.options)
-      ? sanitisedMessage.poll.options.slice(0, 10).map((opt) => {
-          if (typeof opt === 'string') {
-            return { text: opt.trim().slice(0, 200), votes: [] };
-          }
-          if (opt && typeof opt === 'object') {
-            return {
-              text: typeof opt.text === 'string' ? opt.text.trim().slice(0, 200) : '',
-              votes: Array.isArray(opt.votes)
-                ? opt.votes
-                    .filter((v) => typeof v === 'string' && v.trim().length > 0 && v.trim().length <= 64)
-                    .map((v) => v.trim())
-                    .slice(0, 100)
-                : [],
-            };
-          }
-          return { text: '', votes: [] };
-        })
-      : [];
-    safePoll = { question: q, options: opts };
-  }
 
   const safeWaveform = Array.isArray(sanitisedMessage.waveform)
     ? sanitisedMessage.waveform
@@ -923,8 +898,8 @@ const handleNewMessage = async ({ ws, parsedMessage, wss, broadcastToAdmins, _br
         .filter((n) => Number.isFinite(n) && n >= 0 && n <= 1)
     : undefined;
 
-  // Reject empty text messages that contain no text and no poll
-  if (safeType === 'text' && !rawText.trim() && !safePoll) {
+  // Reject empty text messages
+  if (safeType === 'text' && !rawText.trim()) {
     logger.warn(`Rejected empty text message from user '${verifiedUsername}' (${verifiedUserId}) in room '${roomId}'`);
     return;
   }
@@ -952,8 +927,7 @@ const handleNewMessage = async ({ ws, parsedMessage, wss, broadcastToAdmins, _br
     waveform: safeWaveform,
     clientTempId: typeof sanitisedMessage.clientTempId === 'string' ? sanitisedMessage.clientTempId.slice(0, 64) : null,
     replyingTo: buildSafeReplyingTo(sanitisedMessage.replyingTo),
-    poll: safePoll,
-    reactions: toReactionMap(sanitisedMessage.reactions),
+    reactions: new Map(),
     // Administrative and state properties are strictly controlled server-side
     isDeleted: false,
     deletedBy: null,
@@ -973,23 +947,28 @@ const handleNewMessage = async ({ ws, parsedMessage, wss, broadcastToAdmins, _br
     return;
   }
 
-  // Reconcile replies in database that quoted this message's clientTempId
+  // Reconcile replies in database that quoted this user's own in-flight clientTempId
   if (typeof sanitisedMessage.clientTempId === 'string' && sanitisedMessage.clientTempId.trim()) {
     const safeClientTempId = String(sanitisedMessage.clientTempId).trim();
-    try {
-      await Message.updateMany(
-        { roomId: String(roomId), 'replyingTo.id': { $eq: safeClientTempId } },
-        {
-          $set: {
-            'replyingTo.id': messageDoc.id,
-            'replyingTo.url': messageDoc.url || '',
-            'replyingTo.type': messageDoc.type,
-            'replyingTo.duration': messageDoc.duration,
-          }
+    if (safeClientTempId !== messageDoc.id) {
+      try {
+        const existingTarget = await Message.exists({ roomId: String(roomId), id: { $eq: safeClientTempId } });
+        if (!existingTarget) {
+          await Message.updateMany(
+            { roomId: String(roomId), userId: verifiedUserId, 'replyingTo.id': { $eq: safeClientTempId } },
+            {
+              $set: {
+                'replyingTo.id': messageDoc.id,
+                'replyingTo.url': messageDoc.url || '',
+                'replyingTo.type': messageDoc.type,
+                'replyingTo.duration': messageDoc.duration,
+              }
+            }
+          );
         }
-      );
-    } catch (reconcileErr) {
-      logger.error('Failed to reconcile clientTempId in replies:', reconcileErr);
+      } catch (reconcileErr) {
+        logger.error('Failed to reconcile clientTempId in replies:', reconcileErr);
+      }
     }
   }
 
@@ -1020,8 +999,6 @@ const handleNewMessage = async ({ ws, parsedMessage, wss, broadcastToAdmins, _br
     } else if (messageDoc.type === 'file') {
       const name = messageDoc.originalName ? ` ('${messageDoc.originalName}')` : '';
       messageSummary = `User '${username}' shared a file${name}.`;
-    } else if (messageDoc.type === 'poll') {
-      messageSummary = `User '${username}' created a poll: "${messageDoc.poll?.question || 'Untitled'}".`;
     } else {
       const textPreview = messageDoc.text ? (messageDoc.text.length > 80 ? messageDoc.text.slice(0, 80) + '...' : messageDoc.text) : '[Message]';
       messageSummary = `New message from '${username}': "${textPreview}"`;

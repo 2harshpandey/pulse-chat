@@ -3,8 +3,6 @@
 /** WhatsApp-equivalent message character limit. */
 export const MAX_MESSAGE_LENGTH = 65536;
 
-export const GIF_FETCH_LIMIT = 80;
-
 export const getInputDraftKey = (userId: string, roomId?: string): string => {
   const cleanRoom = typeof roomId === 'string' && roomId.trim() ? roomId.trim() : '';
   return cleanRoom ? `pulseInputDraft_${cleanRoom}_${userId}` : `pulseInputDraft_${userId}`;
@@ -99,19 +97,10 @@ export const quoteWarn = (..._args: unknown[]) => {};
 
 export const MAX_LINK_PREVIEW_CACHE_ENTRIES = 250;
 
-export const VIRTUOSO_OVERSCAN_DESKTOP = 128;
-export const VIRTUOSO_OVERSCAN_MOBILE = 4000; // Massive overscan on mobile to ensure all fetched messages mount AT REST.
-export const VIRTUOSO_VIEWPORT_BY_DESKTOP = { top: 240, bottom: 160 };
-export const VIRTUOSO_VIEWPORT_BY_MOBILE = { top: 180, bottom: 120 };
-
 export const MAX_NEW_MESSAGE_INDICATOR_COUNT = 99;
 export const MAX_LOADED_MEDIA_TRACKING = 800;
 export const MAX_QUOTE_JUMP_STACK_DEPTH = 64;
 export const MAX_QUOTE_AUTO_LOAD_PAGES = 120;
-export const QUOTE_JUMP_TARGET_TOP_RATIO = 0.42;
-
-export const FULLSCREEN_RESTORE_VISIBILITY_MARGIN = 12;
-export const FULLSCREEN_RESTORE_FALLBACK_DELAY_MS = 180;
 
 export const PHOTO_LIGHTBOX_MIN_SCALE = 1;
 export const PHOTO_LIGHTBOX_MAX_SCALE = 5;

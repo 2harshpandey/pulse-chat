@@ -435,6 +435,7 @@ export const renderMessageContent = (
                 isUploading={msg.isUploading}
                 onLoadedData={onMediaLoad}
                 isSelectModeActive={isSelectModeActive}
+                timestamp={msg.timestamp}
               />
               {msg.isUploading && (
                 <MediaLoadGate

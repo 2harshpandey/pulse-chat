@@ -85,6 +85,10 @@ router.all('/api/download', apiLimiter, async (req, res) => {
       }).lean();
     }
 
+    if (associatedMessage && (associatedMessage.vanished || associatedMessage.isDeleted)) {
+      return res.status(404).json({ error: 'Media not found or access denied.' });
+    }
+
     if (associatedMessage && associatedMessage.roomId) {
       targetRoomId = associatedMessage.roomId;
     } else if (parsedAsset) {

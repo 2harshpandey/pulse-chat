@@ -217,8 +217,4 @@ export const MaintenancePage: React.FC = () => (
   <ErrorPage code={503} showHomeButton={false} showRefreshButton autoRedirectSeconds={60} />
 );
 
-export const GenericErrorPage: React.FC<ErrorPageProps> = (props) => (
-  <ErrorPage {...props} />
-);
-
 export default ErrorPage;

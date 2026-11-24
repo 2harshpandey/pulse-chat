@@ -6,8 +6,10 @@ import { MessageQuotedPreview, getDeletedForMeMessageLabel } from './components/
 import { findGroupAlbumForMessage } from './components/MessagesList';
 import { usePhotoZoom } from './hooks/usePhotoZoom';
 import { useChatComposer } from './hooks/useChatComposer';
+import { findLastEditableSentMessage, canEditMessage } from './utils';
 import { LinkPreviewCard } from './styles/chat.message.styles';
 import { AlbumDownloadToast, CopiedToast, SearchNotFoundToast } from './Chat.styles';
+import { ChatFooter } from './components/ChatFooter';
 import type { Message } from './types';
 
 describe('Album Download Manager and Quoted Message Locating', () => {
@@ -965,6 +967,484 @@ describe('Album Download Manager and Quoted Message Locating', () => {
         newText: 'Updated message text',
         roomId: 'room-1',
       });
+    });
+  });
+
+  describe('Touch keyboard preservation on quoted preview click', () => {
+    it('prevents default on pointerDown and mouseDown for MessageQuotedPreview so active textarea focus is preserved without focusing when blurred', async () => {
+      const scrollToMessageMock = vi.fn().mockResolvedValue({ success: true });
+      const msg: Message = {
+        id: 'reply-msg-kbd',
+        userId: 'user-2',
+        username: 'Bob',
+        type: 'text',
+        text: 'Check this out',
+        timestamp: new Date().toISOString(),
+        replyingTo: {
+          id: 'target-msg-kbd',
+          username: 'Alice',
+          type: 'text',
+          text: 'Original message',
+        },
+      };
+
+      const { container } = render(
+        <div>
+          <textarea data-testid="composer-input" />
+          <MessageQuotedPreview
+            msg={msg}
+            currentUserId="user-1"
+            sender="other"
+            quotedPreviewThumbUrl=""
+            scrollToMessage={scrollToMessageMock}
+          />
+        </div>
+      );
+
+      const textarea = screen.getByTestId('composer-input') as HTMLTextAreaElement;
+      const previewEl = container.querySelector('[data-quote-swipe-ignore]') as HTMLElement;
+      expect(previewEl).toBeTruthy();
+
+      // Case 1: Keyboard open (textarea focused) -> pointerdown & mousedown preventDefault, textarea remains activeElement
+      textarea.focus();
+      expect(document.activeElement).toBe(textarea);
+
+      const mouseDownEvt = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+      previewEl.dispatchEvent(mouseDownEvt);
+      expect(mouseDownEvt.defaultPrevented).toBe(true);
+
+      await act(async () => {
+        fireEvent.click(previewEl);
+      });
+      expect(scrollToMessageMock).toHaveBeenCalledTimes(1);
+      expect(document.activeElement).toBe(textarea);
+
+      // Case 2: Keyboard closed (textarea blurred) -> clicking quoted preview must NOT open keyboard (focus textarea)
+      textarea.blur();
+      expect(document.activeElement).not.toBe(textarea);
+      await act(async () => {
+        fireEvent.click(previewEl);
+      });
+      expect(scrollToMessageMock).toHaveBeenCalledTimes(2);
+      expect(document.activeElement).not.toBe(textarea);
+    });
+
+    it('prevents default on pointerDown and mouseDown for composer ReplyPreviewContainer above text box', () => {
+      const scrollToMessageMock = vi.fn();
+      const inputRef = React.createRef<HTMLTextAreaElement>();
+      const noop = () => {};
+
+      render(
+        <ChatFooter
+          isSelectModeActive={false}
+          selectedMessages={[]}
+          canEditSelectedMessage={false}
+          isMobileView={true}
+          currentUserId="u1"
+          onCancelSelectMode={noop}
+          onStartEdit={noop}
+          onCopyMessage={noop}
+          onOpenReport={noop}
+          onInitiateDelete={noop}
+          hasSelectedMedia={false}
+          selectedMediaCount={0}
+          onDownloadSelectedMedia={noop}
+          onSendVoiceNote={async () => {}}
+          editingMessageId={null}
+          editingMessageOriginalText=""
+          onCancelEdit={noop}
+          replyingTo={{
+            id: 'target-reply-1',
+            userId: 'u2',
+            username: 'Alice',
+            type: 'text',
+            text: 'Quoted text above composer',
+            timestamp: new Date().toISOString(),
+          }}
+          onCancelReply={noop}
+          onScrollToMessage={scrollToMessageMock}
+          replyPreviewRef={{ current: null }}
+          stagedFile={null}
+          onCancelStagedFile={noop}
+          stagedFiles={[]}
+          onCancelStagedFiles={noop}
+          showFilePreview={false}
+          stagedGif={null}
+          onCancelStagedGif={noop}
+          plusMenuRef={{ current: null }}
+          plusButtonRef={{ current: null }}
+          isPlusMenuOpen={false}
+          onTogglePlusMenu={noop}
+          isConnected={true}
+          emojiButtonRef={{ current: null }}
+          onEmojiPointerDown={noop}
+          onGifPointerDown={noop}
+          fileInputRef={{ current: null }}
+          addFileInputRef={{ current: null }}
+          onFileChange={noop}
+          onAddFilesChange={noop}
+          onNotifyNativeFilePickerOpen={noop}
+          normalizedOverlayMessage=""
+          inputOverlayRef={{ current: null }}
+          messageInputRef={inputRef}
+          inputMessage=""
+          onInputChange={noop}
+          onInputFocus={noop}
+          onInputBlur={noop}
+          onInputKeyDown={noop}
+          onPaste={noop}
+          onSyncInputOverlayScroll={noop}
+          onSendMessage={noop}
+          isEmojiPickerOpen={false}
+          onEmojiClick={noop}
+          isDark={false}
+        />
+      );
+
+      const replyTitle = screen.getByText('Replying to Alice');
+      const previewContainer = replyTitle.closest('div')?.parentElement as HTMLElement;
+      expect(previewContainer).toBeTruthy();
+
+      const textarea = inputRef.current!;
+      textarea.focus();
+      expect(document.activeElement).toBe(textarea);
+
+      const mouseDownEvt = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+      previewContainer.dispatchEvent(mouseDownEvt);
+      expect(mouseDownEvt.defaultPrevented).toBe(true);
+
+      fireEvent.click(previewContainer);
+      expect(scrollToMessageMock).toHaveBeenCalledTimes(1);
+      expect(document.activeElement).toBe(textarea);
+
+      textarea.blur();
+      fireEvent.click(previewContainer);
+      expect(document.activeElement).not.toBe(textarea);
+    });
+  });
+
+  describe('ArrowUp to edit last sent message & Escape to cancel editing', () => {
+    it('findLastEditableSentMessage selects the newest eligible message of the user within 15 minutes', () => {
+      const now = Date.now();
+      const recentTs = new Date(now - 2 * 60 * 1000).toISOString();
+      const expiredTs = new Date(now - 20 * 60 * 1000).toISOString();
+
+      const messages: Message[] = [
+        { id: 'm0', userId: 'me', username: 'Me', type: 'text', text: 'Too old', timestamp: expiredTs },
+        { id: 'm1', userId: 'me', username: 'Me', type: 'text', text: 'Last editable text', timestamp: recentTs },
+        { id: 'm2', userId: 'other', username: 'Bob', type: 'text', text: 'Bob reply', timestamp: recentTs },
+        { id: 'm3', userId: 'me', username: 'Me', type: 'image', url: 'https://example.com/a.jpg', text: '', timestamp: recentTs },
+        { id: 'm4', userId: 'me', username: 'Me', type: 'text', text: 'Deleted msg', timestamp: recentTs, isDeleted: true },
+        { id: 'm5', userId: 'me', username: 'Me', type: 'text', text: 'Uploading...', timestamp: recentTs, isUploading: true },
+      ];
+
+      const picked = findLastEditableSentMessage(messages, 'me', now);
+      expect(picked?.id).toBe('m1');
+
+      expect(canEditMessage(messages[0], 'me', now)).toBe(false);
+      expect(canEditMessage(messages[1], 'me', now)).toBe(true);
+      expect(canEditMessage(messages[2], 'me', now)).toBe(false);
+      expect(canEditMessage(messages[3], 'me', now)).toBe(false);
+    });
+
+    it('starts editing last sent message on ArrowUp when composer is empty, and cancels + closes on Escape', () => {
+      const nowIso = new Date().toISOString();
+      const targetMsg: Message = {
+        id: 'my-last-msg',
+        userId: 'user-1',
+        username: 'Alice',
+        type: 'text',
+        text: 'Hello before typo',
+        timestamp: nowIso,
+      };
+      const messagesRef = {
+        current: [
+          targetMsg,
+          {
+            id: 'other-msg',
+            userId: 'user-2',
+            username: 'Bob',
+            type: 'text',
+            text: 'Hey!',
+            timestamp: nowIso,
+          } as Message,
+        ],
+      };
+
+      const startEditMock = vi.fn();
+      const cancelEditMock = vi.fn();
+      const handleTypingMock = vi.fn();
+      const setReplyingToMock = vi.fn();
+      const scrollToLoadedMessageMock = vi.fn().mockReturnValue(true);
+
+      const renderComposer = (opts: { input: string; editingMessageId: string | null }) =>
+        renderHook(
+          (props: { input: string; editingMessageId: string | null }) =>
+            useChatComposer({
+              inputMessage: props.input,
+              setInputMessage: vi.fn(),
+              inputMessageRef: { current: props.input },
+              userId: 'user-1',
+              roomId: 'room-1',
+              userProfile: { userId: 'user-1', username: 'Alice', role: 'user' } as any,
+              ws: { current: { readyState: WebSocket.OPEN, send: vi.fn() } as any },
+              apiBase: 'http://localhost',
+              isMobileView: false,
+              stableViewportHeightRef: { current: 800 },
+              chatContainerRef: { current: null },
+              messageInputRef: { current: null },
+              inputOverlayRef: { current: null },
+              skipNextInputLayoutSyncRef: { current: false },
+              syncInputLayerLayout: vi.fn(),
+              resetInputLayerHeight: vi.fn(),
+              handleTyping: handleTypingMock,
+              setPresenceActivity: vi.fn(),
+              startSendingActivity: vi.fn(),
+              stopSendingActivity: vi.fn(),
+              editingMessageId: props.editingMessageId,
+              setEditingMessageId: vi.fn(),
+              editingMessageOriginalText: props.editingMessageId ? (targetMsg.text || '') : '',
+              priorDraftBeforeEdit: '',
+              handleStartEdit: startEditMock,
+              handleCancelEdit: cancelEditMock,
+              replyingTo: null,
+              setReplyingTo: setReplyingToMock,
+              stagedFile: null,
+              setStagedFile: vi.fn(),
+              stagedFiles: [],
+              setStagedFiles: vi.fn(),
+              showFilePreview: false,
+              setShowFilePreview: vi.fn(),
+              previewCaption: '',
+              setPreviewCaption: vi.fn(),
+              setPreviewActiveIndex: vi.fn(),
+              preMediaDraft: '',
+              setPreMediaDraft: vi.fn(),
+              stageFilesForPreview: vi.fn(),
+              handleRequestCloseFilePreview: vi.fn(),
+              stagedGif: null,
+              setStagedGif: vi.fn(),
+              closeGifPicker: vi.fn(),
+              gifPickerRef: { current: null },
+              lightboxUrl: null,
+              closeLightbox: vi.fn(),
+              isSelectModeActive: false,
+              isDeleteConfirmationVisible: false,
+              isUserListVisible: false,
+              deleteMenuRef: { current: null },
+              setActiveDeleteMenu: vi.fn(),
+              messagesRef,
+              setMessages: vi.fn(),
+              appendMessageToWindow: vi.fn(),
+              hasMoreNewerMessagesRef: { current: false },
+              jumpToLatestMessages: vi.fn(),
+              activeSearchQuery: '',
+              chatSearchQuery: '',
+              isSearchActive: false,
+              resetSearch: vi.fn(),
+              forceScrollToBottomAsync: vi.fn(),
+              scrollToBottom: vi.fn(),
+              syncBottomStateFromScroller: vi.fn(),
+              quoteJumpReturnStackRef: { current: [] },
+              scrollToLoadedMessage: scrollToLoadedMessageMock,
+              setNewMessagesWhileScrolledUp: vi.fn(),
+              clearQuoteJumpSuppression: vi.fn(),
+              setHasMoreOlderMessages: vi.fn(),
+              setOldestLoadedAt: vi.fn(),
+              setFirstItemIndex: vi.fn(),
+            } as any),
+          { initialProps: opts }
+        );
+
+      // 1. Pressing ArrowUp while composer already has text should NOT overwrite draft
+      const { result: draftHook, unmount: unmountDraft } = renderComposer({
+        input: 'Unsent draft message',
+        editingMessageId: null,
+      });
+      const draftArrowUp = {
+        key: 'ArrowUp',
+        shiftKey: false,
+        ctrlKey: false,
+        metaKey: false,
+        altKey: false,
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+        nativeEvent: {},
+      } as unknown as React.KeyboardEvent<HTMLTextAreaElement>;
+      act(() => {
+        draftHook.current.handleInputKeyDown(draftArrowUp);
+      });
+      expect(startEditMock).not.toHaveBeenCalled();
+      expect(draftArrowUp.preventDefault).not.toHaveBeenCalled();
+      unmountDraft();
+
+      // 2. Pressing ArrowUp when composer is empty triggers editing the last sent message
+      const { result, rerender, unmount } = renderComposer({
+        input: '',
+        editingMessageId: null,
+      });
+
+      const emptyArrowUp = {
+        key: 'ArrowUp',
+        shiftKey: false,
+        ctrlKey: false,
+        metaKey: false,
+        altKey: false,
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+        nativeEvent: {},
+      } as unknown as React.KeyboardEvent<HTMLTextAreaElement>;
+
+      act(() => {
+        result.current.handleInputKeyDown(emptyArrowUp);
+      });
+      expect(emptyArrowUp.preventDefault).toHaveBeenCalledTimes(1);
+      expect(emptyArrowUp.stopPropagation).toHaveBeenCalledTimes(1);
+      expect(startEditMock).toHaveBeenCalledTimes(1);
+      expect(startEditMock).toHaveBeenCalledWith(targetMsg);
+      expect(scrollToLoadedMessageMock).toHaveBeenCalledWith('my-last-msg', 'auto', false);
+
+      // 3. While already editing, ArrowUp navigates lines naturally instead of restarting edit
+      rerender({ input: targetMsg.text || '', editingMessageId: targetMsg.id });
+      const arrowUpWhileEditing = {
+        key: 'ArrowUp',
+        shiftKey: false,
+        ctrlKey: false,
+        metaKey: false,
+        altKey: false,
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+        nativeEvent: {},
+      } as unknown as React.KeyboardEvent<HTMLTextAreaElement>;
+      act(() => {
+        result.current.handleInputKeyDown(arrowUpWhileEditing);
+      });
+      expect(startEditMock).toHaveBeenCalledTimes(1);
+      expect(arrowUpWhileEditing.preventDefault).not.toHaveBeenCalled();
+
+      // 4. Pressing Escape cancels editing and clears typing status
+      const escapeInTextarea = {
+        key: 'Escape',
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+        nativeEvent: {},
+      } as unknown as React.KeyboardEvent<HTMLTextAreaElement>;
+      act(() => {
+        result.current.handleInputKeyDown(escapeInTextarea);
+      });
+      expect(escapeInTextarea.preventDefault).toHaveBeenCalledTimes(1);
+      expect(escapeInTextarea.stopPropagation).toHaveBeenCalledTimes(1);
+      expect(cancelEditMock).toHaveBeenCalledTimes(1);
+
+      // 5. Pressing Escape globally (outside textarea) also cancels editing
+      act(() => {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      });
+      expect(cancelEditMock).toHaveBeenCalledTimes(2);
+      unmount();
+    });
+
+    it('opens the Editing message window on ArrowUp and closes it cleanly on Escape in ChatFooter', () => {
+      const nowIso = new Date().toISOString();
+      const targetMsg: Message = {
+        id: 'msg-last',
+        userId: 'user-1',
+        username: 'Alice',
+        type: 'text',
+        text: 'Last sent hello',
+        timestamp: nowIso,
+      };
+      const noop = () => {};
+
+      const InteractiveFooterHarness = () => {
+        const [inputMessage, setInputMessage] = React.useState('');
+        const [editingMessageId, setEditingMessageId] = React.useState<string | null>(null);
+        const [editingOriginalText, setEditingOriginalText] = React.useState('');
+        const inputRef = React.useRef<HTMLTextAreaElement>(null!);
+
+        const handleCancelEdit = React.useCallback(() => {
+          setEditingMessageId(null);
+          setEditingOriginalText('');
+          setInputMessage('');
+        }, []);
+
+        const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+          if (e.key === 'Escape' && editingMessageId) {
+            e.preventDefault();
+            handleCancelEdit();
+            return;
+          }
+          if (e.key === 'ArrowUp' && !inputMessage) {
+            const found = findLastEditableSentMessage([targetMsg], 'user-1');
+            if (found) {
+              e.preventDefault();
+              setEditingMessageId(found.id);
+              setEditingOriginalText(found.text || '');
+              setInputMessage(found.text || '');
+            }
+          }
+        };
+
+        return (
+          <ChatFooter
+            isSelectModeActive={false}
+            selectedMessages={[]}
+            canEditSelectedMessage={false}
+            isMobileView={false}
+            currentUserId="user-1"
+            onCancelSelectMode={noop}
+            onStartEdit={noop}
+            onCopyMessage={noop}
+            onOpenReport={noop}
+            onInitiateDelete={noop}
+            editingMessageId={editingMessageId}
+            editingMessageOriginalText={editingOriginalText}
+            onCancelEdit={handleCancelEdit}
+            replyingTo={null}
+            onCancelReply={noop}
+            onScrollToMessage={noop}
+            stagedFile={null}
+            onCancelStagedFile={noop}
+            stagedFiles={[]}
+            onCancelStagedFiles={noop}
+            showFilePreview={false}
+            stagedGif={null}
+            onCancelStagedGif={noop}
+            isPlusMenuOpen={false}
+            onTogglePlusMenu={noop}
+            isConnected={true}
+            onFileChange={noop}
+            onAddFilesChange={noop}
+            onNotifyNativeFilePickerOpen={noop}
+            normalizedOverlayMessage=""
+            messageInputRef={inputRef}
+            inputMessage={inputMessage}
+            onInputChange={(e) => setInputMessage(e.target.value)}
+            onInputKeyDown={handleKeyDown}
+            onPaste={noop}
+            onSyncInputOverlayScroll={noop}
+            onSendMessage={noop}
+            isEmojiPickerOpen={false}
+            onEmojiClick={noop}
+            isDark={false}
+          />
+        );
+      };
+
+      render(<InteractiveFooterHarness />);
+
+      const textarea = screen.getByPlaceholderText('Type your message...') as HTMLTextAreaElement;
+      expect(screen.queryByText('Editing message')).toBeNull();
+
+      // Press ArrowUp to open Edit window with last sent message
+      fireEvent.keyDown(textarea, { key: 'ArrowUp' });
+      expect(screen.getByText('Editing message')).toBeDefined();
+      expect((screen.getByPlaceholderText('Edit message...') as HTMLTextAreaElement).value).toBe('Last sent hello');
+
+      // Press Escape to cancel edit and close Editing message window
+      fireEvent.keyDown(textarea, { key: 'Escape' });
+      expect(screen.queryByText('Editing message')).toBeNull();
+      expect((screen.getByPlaceholderText('Type your message...') as HTMLTextAreaElement).value).toBe('');
     });
   });
 });

@@ -19,13 +19,6 @@ export const recordChatScroll = (): void => {
 };
 
 /**
- * Get the timestamp (ms) of the most recent chat scroll event.
- */
-export const getLastChatScrollTime = (): number => {
-  return lastChatScrollTime;
-};
-
-/**
  * Check if the chat is actively scrolling or was scrolling within the given threshold (default 250ms).
  */
 export const isChatActivelyScrolling = (thresholdMs: number = 250): boolean => {

@@ -13,7 +13,6 @@ const logger = require('../logger');
 const Message = require('../models/message');
 const MessageEvent = require('../models/messageEvent');
 const User = require('../models/user');
-const Room = require('../models/room');
 const ChatState = require('../models/chatState');
 const { getRoomState, getCachedRoom } = require('../state');
 const { unpinIfPinned, clearAllPins } = require('../websocket/pinnedManager');
@@ -26,7 +25,12 @@ const {
   adminSecretAuth,
   extractIp,
 } = require('../middleware');
-const { sanitizeDownloadFilename, parseCloudinaryAssetFromUrl, batchDeleteCloudinaryAssets } = require('../security');
+const {
+  sanitizeDownloadFilename,
+  generateSafePublicId,
+  parseCloudinaryAssetFromUrl,
+  batchDeleteCloudinaryAssets,
+} = require('../security');
 const { isRoomAccessAllowed } = require('./messages');
 const { WebSocket } = require('ws');
 
@@ -101,11 +105,25 @@ try {
 // A single authenticated session (roomId:userId scope) may have at most 3 active
 // incomplete chunk uploads at once. Requests beyond this cap return 429.
 const activeChunkUploads = new Map(); // scopeHash -> Map<uploadId, number>
+const activeIpUploads = new Map(); // clientIp -> Map<uploadId, number>
 const MAX_CONCURRENT_CHUNK_UPLOADS = 3;
+const MAX_CONCURRENT_IP_UPLOADS = 6;
 const CHUNK_UPLOAD_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
 
-const trackUploadStart = (scopeHash, uploadId) => {
+const trackUploadStart = (scopeHash, uploadId, clientIp = 'unknown') => {
   const now = Date.now();
+  let ipExisting = activeIpUploads.get(clientIp);
+  if (!ipExisting) {
+    ipExisting = new Map();
+    activeIpUploads.set(clientIp, ipExisting);
+  }
+  for (const [id, ts] of ipExisting.entries()) {
+    if (now - ts > CHUNK_UPLOAD_TIMEOUT_MS) ipExisting.delete(id);
+  }
+  if (!ipExisting.has(uploadId) && ipExisting.size >= MAX_CONCURRENT_IP_UPLOADS) {
+    return false;
+  }
+
   let existing = activeChunkUploads.get(scopeHash);
   if (!existing) {
     existing = new Map();
@@ -118,15 +136,21 @@ const trackUploadStart = (scopeHash, uploadId) => {
   if (!existing.has(uploadId) && existing.size >= MAX_CONCURRENT_CHUNK_UPLOADS) {
     return false; // cap exceeded
   }
+  ipExisting.set(uploadId, now);
   existing.set(uploadId, now);
   return true;
 };
 
-const trackUploadEnd = (scopeHash, uploadId) => {
+const trackUploadEnd = (scopeHash, uploadId, clientIp = 'unknown') => {
   const existing = activeChunkUploads.get(scopeHash);
   if (existing) {
     existing.delete(uploadId);
     if (existing.size === 0) activeChunkUploads.delete(scopeHash);
+  }
+  const ipExisting = activeIpUploads.get(clientIp);
+  if (ipExisting) {
+    ipExisting.delete(uploadId);
+    if (ipExisting.size === 0) activeIpUploads.delete(clientIp);
   }
 };
 
@@ -176,26 +200,21 @@ const getMessageFileType = (mimetype = '', filename = '') => {
 };
 
 const uploadBufferToCloudinary = (file, originalName) => new Promise((resolve, reject) => {
-  const parsedName = path.parse(originalName || 'file');
-  const safeBase = sanitizeDownloadFilename(parsedName.name || 'file', 'file')
-    .replace(/\.[^.]+$/, '')
-    .replace(/\s+/g, '_')
-    .slice(0, 80);
-  const ext = parsedName.ext ? parsedName.ext.replace(/^\./, '') : '';
   const resourceType = getUploadResourceType(file.mimetype || '', originalName);
-  const publicId = `pulse-chat/${safeBase}-${Date.now()}-${crypto.randomBytes(16).toString('hex')}`;
+  const { publicId, fullPublicId, ext } = generateSafePublicId(originalName, resourceType);
 
   const isAudio = isAudioMimeOrExt(file.mimetype || '', originalName);
   const isVideo = resourceType === 'video';
   const isActualVideo = isVideo && !isAudio;
   const uploadOptions = {
     resource_type: resourceType,
-    public_id: resourceType === 'raw' && ext ? `${publicId}.${ext}` : publicId,
+    public_id: fullPublicId,
     chunk_size: 6 * 1024 * 1024,
     use_filename: false,
     unique_filename: false,
     overwrite: false,
     filename_override: originalName,
+    disable_promises: true,
     // For actual videos (not audio), use async processing so Cloudinary returns the URL immediately
     // without waiting for transcoding to complete. This prevents the HTTP connection
     // from being held open for 1-3+ minutes, which causes Azure/proxy 230s timeouts
@@ -206,12 +225,24 @@ const uploadBufferToCloudinary = (file, originalName) => new Promise((resolve, r
     timeout: 8 * 60 * 1000,
   };
 
+  let settled = false;
+  const safeReject = (err) => {
+    if (settled) return;
+    settled = true;
+    reject(err);
+  };
+  const safeResolve = (res) => {
+    if (settled) return;
+    settled = true;
+    resolve(res);
+  };
+
   const uploadStream = cloudinary.uploader.upload_chunked_stream(uploadOptions, (error, result) => {
-    if (error) return reject(error);
+    if (error) return safeReject(error);
     // For non-async uploads (audio, photos, documents), Cloudinary MUST return a confirmed secure_url
     if (!result?.secure_url && result?.public_id) {
       if (!isActualVideo) {
-        return reject(new Error('Cloudinary upload failed: no secure URL was returned.'));
+        return safeReject(new Error('Cloudinary upload failed: no secure URL was returned.'));
       }
       result.secure_url = cloudinary.url(result.public_id, { 
         resource_type: result.resource_type || (isAudio ? 'video' : isVideo ? 'video' : 'image'), 
@@ -222,54 +253,61 @@ const uploadBufferToCloudinary = (file, originalName) => new Promise((resolve, r
     }
     
     if (!result?.secure_url) {
-      return reject(new Error('Cloudinary upload did not return or generate a secure URL.'));
+      return safeReject(new Error('Cloudinary upload did not return or generate a secure URL.'));
     }
-    return resolve(result);
+    return safeResolve(result);
   });
 
   const readStream = Readable.from(file.buffer);
   readStream.on('error', (err) => {
     try { uploadStream.destroy(); } catch (_) {}
-    reject(err);
+    safeReject(err);
   });
   uploadStream.on('error', (err) => {
     try { readStream.destroy(); } catch (_) {}
-    reject(err);
+    safeReject(err);
   });
   readStream.pipe(uploadStream);
 });
 
 const uploadFileStreamToCloudinary = (filePath, mimetype, originalName) => new Promise((resolve, reject) => {
-  const parsedName = path.parse(originalName || 'file');
-  const safeBase = sanitizeDownloadFilename(parsedName.name || 'file', 'file')
-    .replace(/\.[^.]+$/, '')
-    .replace(/\s+/g, '_')
-    .slice(0, 80);
-  const ext = parsedName.ext ? parsedName.ext.replace(/^\./, '') : '';
   const resourceType = getUploadResourceType(mimetype || '', originalName);
-  const publicId = `pulse-chat/${safeBase}-${Date.now()}-${crypto.randomBytes(16).toString('hex')}`;
+  const { publicId, fullPublicId, ext } = generateSafePublicId(originalName, resourceType);
 
   const isAudio = isAudioMimeOrExt(mimetype || '', originalName);
   const isVideo = resourceType === 'video';
   const isActualVideo = isVideo && !isAudio;
   const uploadOptions = {
     resource_type: resourceType,
-    public_id: resourceType === 'raw' && ext ? `${publicId}.${ext}` : publicId,
+    public_id: fullPublicId,
     chunk_size: 6 * 1024 * 1024,
     use_filename: false,
     unique_filename: false,
     overwrite: false,
     filename_override: originalName,
+    disable_promises: true,
     ...(isActualVideo ? { async: true } : {}),
     timeout: 8 * 60 * 1000,
   };
 
+  let settled = false;
+  const safeReject = (err) => {
+    if (settled) return;
+    settled = true;
+    reject(err);
+  };
+  const safeResolve = (res) => {
+    if (settled) return;
+    settled = true;
+    resolve(res);
+  };
+
   const uploadStream = cloudinary.uploader.upload_chunked_stream(uploadOptions, (error, result) => {
-    if (error) return reject(error);
+    if (error) return safeReject(error);
     // For non-async uploads (audio, photos, documents), Cloudinary MUST return a confirmed secure_url
     if (!result?.secure_url && result?.public_id) {
       if (!isActualVideo) {
-        return reject(new Error('Cloudinary upload failed: no secure URL was returned.'));
+        return safeReject(new Error('Cloudinary upload failed: no secure URL was returned.'));
       }
       result.secure_url = cloudinary.url(result.public_id, { 
         resource_type: result.resource_type || (isAudio ? 'video' : isVideo ? 'video' : 'image'), 
@@ -279,19 +317,19 @@ const uploadFileStreamToCloudinary = (filePath, mimetype, originalName) => new P
       });
     }
     if (!result?.secure_url) {
-      return reject(new Error('Cloudinary upload did not return or generate a secure URL.'));
+      return safeReject(new Error('Cloudinary upload did not return or generate a secure URL.'));
     }
-    return resolve(result);
+    return safeResolve(result);
   });
 
   const fileStream = fs.createReadStream(filePath);
   fileStream.on('error', (err) => {
     try { uploadStream.destroy(); } catch (_) {}
-    reject(err);
+    safeReject(err);
   });
   uploadStream.on('error', (err) => {
     try { fileStream.destroy(); } catch (_) {}
-    reject(err);
+    safeReject(err);
   });
   fileStream.pipe(uploadStream);
 });
@@ -319,8 +357,22 @@ module.exports = (wss, broadcasts) => {
   const { broadcastToAdmins, broadcast } = broadcasts;
   const router = express.Router();
 
+  const requireRoomAccessBeforeUpload = async (req, res, next) => {
+    try {
+      const rawRoomId = req.headers['x-room-id'] || req.query?.roomId;
+      const roomId = typeof rawRoomId === 'string' && rawRoomId.trim() ? rawRoomId.trim() : 'me';
+      const allowed = await isRoomAccessAllowed(roomId, req);
+      if (!allowed) {
+        return res.status(401).json({ error: 'Upload denied: room authentication required.' });
+      }
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
+
   // --- File Upload ---
-  router.post('/api/upload', uploadLimiter, (req, res) => {
+  router.post('/api/upload', uploadLimiter, requireRoomAccessBeforeUpload, (req, res) => {
     upload.single('file')(req, res, async (err) => {
       if (err) {
         logger.error(`Upload middleware error: ${err.message}`);
@@ -331,16 +383,30 @@ module.exports = (wss, broadcasts) => {
       }
       if (!req.file) return res.status(400).json({ error: 'No file uploaded.' });
 
-      const rawRoomId = req.body?.roomId || req.headers['x-room-id'];
-      const roomId = typeof rawRoomId === 'string' && rawRoomId.trim() ? rawRoomId.trim() : 'me';
-      const userId = req.body?.userId || req.headers['x-user-id'];
+      const headerRoomId = typeof req.headers['x-room-id'] === 'string' ? req.headers['x-room-id'].trim() : '';
+      const bodyRoomId = typeof req.body?.roomId === 'string' ? req.body.roomId.trim() : '';
+      if (headerRoomId && bodyRoomId && headerRoomId.toLowerCase() !== bodyRoomId.toLowerCase()) {
+        return res.status(400).json({ error: 'Mismatched roomId in request.' });
+      }
+      const roomId = headerRoomId || bodyRoomId || 'me';
+
+      const headerUserId = typeof req.headers['x-user-id'] === 'string' ? req.headers['x-user-id'].trim() : '';
+      const bodyUserId = typeof req.body?.userId === 'string' ? req.body.userId.trim() : '';
+      if (headerUserId && bodyUserId && headerUserId !== bodyUserId) {
+        return res.status(400).json({ error: 'Mismatched userId in request.' });
+      }
+      const userId = headerUserId || bodyUserId;
+
       const allowed = await isRoomAccessAllowed(roomId, req);
       if (!allowed) {
         return res.status(401).json({ error: 'Upload denied: room authentication required.' });
       }
 
       let canonicalRoomId = roomId;
-      if (roomId !== 'me' && roomId !== 'global') {
+      const lowerRoomId = roomId.toLowerCase();
+      if (lowerRoomId === 'me' || lowerRoomId === 'global') {
+        canonicalRoomId = lowerRoomId;
+      } else {
         try {
           const room = await getCachedRoom(roomId);
           if (room) canonicalRoomId = room.id;
@@ -425,7 +491,7 @@ module.exports = (wss, broadcasts) => {
     const cleanUser = typeof callerId === 'string' && callerId.trim() ? callerId.trim() : 'anon';
     // Bind scope to room, user, and verified client IP to eliminate cross-session collisions and spoofing
     const scopeHash = crypto.createHash('sha256').update(`${cleanRoom}:${cleanUser}:${clientIp}`).digest('hex').slice(0, 16);
-    return { tmpPath: path.join(UPLOAD_TEMP_DIR, `pulse_upload_${scopeHash}_${safeUploadId}`), scopeHash };
+    return { tmpPath: path.join(UPLOAD_TEMP_DIR, `pulse_upload_${scopeHash}_${safeUploadId}`), scopeHash, clientIp };
   };
 
   // --- Resumable File Upload (Chunked) ---
@@ -436,7 +502,10 @@ module.exports = (wss, broadcasts) => {
     if (!allowed) {
       return res.status(401).json({ error: 'Access denied: room authentication required.' });
     }
-    if (roomId !== 'me' && roomId !== 'global') {
+    const lowerRoomId = roomId.toLowerCase();
+    if (lowerRoomId === 'me' || lowerRoomId === 'global') {
+      roomId = lowerRoomId;
+    } else {
       try {
         const roomDoc = await getCachedRoom(roomId);
         if (roomDoc) roomId = roomDoc.id;
@@ -460,7 +529,7 @@ module.exports = (wss, broadcasts) => {
     }
   });
 
-  router.post('/api/upload/chunk', chunkUploadLimiter, (req, res) => {
+  router.post('/api/upload/chunk', chunkUploadLimiter, requireRoomAccessBeforeUpload, (req, res) => {
     upload.single('chunk')(req, res, async (err) => {
       if (err) {
         logger.error(`Upload chunk middleware error: ${err.message}`);
@@ -468,10 +537,23 @@ module.exports = (wss, broadcasts) => {
       }
       let safeUploadId;
       let scopeHash;
+      let chunkClientIp = 'unknown';
       try {
-        const { uploadId, chunkIndex, totalChunks, originalname, mimetype, userId, text } = req.body;
-        const rawRoomId = req.body?.roomId || req.headers['x-room-id'];
-        let roomId = typeof rawRoomId === 'string' && rawRoomId.trim() ? rawRoomId.trim() : 'me';
+        const { uploadId, chunkIndex, totalChunks, originalname, mimetype, text } = req.body;
+        const headerRoomId = typeof req.headers['x-room-id'] === 'string' ? req.headers['x-room-id'].trim() : '';
+        const bodyRoomId = typeof req.body?.roomId === 'string' ? req.body.roomId.trim() : '';
+        if (headerRoomId && bodyRoomId && headerRoomId.toLowerCase() !== bodyRoomId.toLowerCase()) {
+          return res.status(400).json({ error: 'Mismatched roomId in request.' });
+        }
+        let roomId = headerRoomId || bodyRoomId || 'me';
+
+        const headerUserId = typeof req.headers['x-user-id'] === 'string' ? req.headers['x-user-id'].trim() : '';
+        const bodyUserId = typeof req.body?.userId === 'string' ? req.body.userId.trim() : '';
+        if (headerUserId && bodyUserId && headerUserId !== bodyUserId) {
+          return res.status(400).json({ error: 'Mismatched userId in request.' });
+        }
+        const userId = headerUserId || bodyUserId;
+
         if (!uploadId || typeof uploadId !== 'string' || !req.file) {
           return res.status(400).json({ error: 'Missing or invalid chunk data' });
         }
@@ -484,7 +566,10 @@ module.exports = (wss, broadcasts) => {
         if (!allowed) {
           return res.status(401).json({ error: 'Upload denied: room authentication required.' });
         }
-        if (roomId !== 'me' && roomId !== 'global') {
+        const lowerRoomId = roomId.toLowerCase();
+        if (lowerRoomId === 'me' || lowerRoomId === 'global') {
+          roomId = lowerRoomId;
+        } else {
           try {
             const roomDoc = await getCachedRoom(roomId);
             if (roomDoc) roomId = roomDoc.id;
@@ -496,16 +581,12 @@ module.exports = (wss, broadcasts) => {
           return res.status(400).json({ error: 'Invalid uploadId format' });
         }
 
-        const chunkPathInfo = getChunkUploadTempPath(safeUploadId, roomId, req);
-        const tmpPath = chunkPathInfo.tmpPath;
-        scopeHash = chunkPathInfo.scopeHash;
-
-        // Issue 5: Enforce concurrent upload cap — reject if session already has MAX active uploads
-        if (!trackUploadStart(scopeHash, safeUploadId)) {
-          return res.status(429).json({ error: 'Too many concurrent uploads from this session. Please wait for a current upload to complete.' });
+        const currentChunk = parseInt(chunkIndex, 10);
+        const total = parseInt(totalChunks, 10);
+        if (!Number.isInteger(total) || total < 1 || total > 1000 || !Number.isInteger(currentChunk) || currentChunk < 0 || currentChunk >= total) {
+          return res.status(400).json({ error: 'Invalid chunkIndex or totalChunks' });
         }
-        
-        // Write chunk at exact offset to prevent corruption
+
         const chunkStart = parseInt(req.body.chunkStart, 10);
         if (!Number.isFinite(chunkStart) || chunkStart < 0) {
           return res.status(400).json({ error: 'Invalid chunkStart offset' });
@@ -516,7 +597,12 @@ module.exports = (wss, broadcasts) => {
           });
         }
 
-        // Verify sequential chunk order to prevent sparse file creation attacks
+        const chunkPathInfo = getChunkUploadTempPath(safeUploadId, roomId, req);
+        const tmpPath = chunkPathInfo.tmpPath;
+        scopeHash = chunkPathInfo.scopeHash;
+        chunkClientIp = chunkPathInfo.clientIp;
+
+        // Verify sequential chunk order before reserving an upload tracking slot
         let currentFileSize = 0;
         try {
           const stats = await fs.promises.stat(tmpPath);
@@ -525,6 +611,11 @@ module.exports = (wss, broadcasts) => {
 
         if (chunkStart > currentFileSize) {
           return res.status(400).json({ error: `Non-sequential chunk rejected. Expected offset <= ${currentFileSize}, got ${chunkStart}.` });
+        }
+
+        // Issue 5: Enforce concurrent upload cap — reject if session or IP already has MAX active uploads
+        if (!trackUploadStart(scopeHash, safeUploadId, chunkClientIp)) {
+          return res.status(429).json({ error: 'Too many concurrent uploads from this session. Please wait for a current upload to complete.' });
         }
 
         const fileHandle = await fs.promises.open(
@@ -538,9 +629,6 @@ module.exports = (wss, broadcasts) => {
           await fileHandle.close();
         }
 
-        const currentChunk = parseInt(chunkIndex, 10);
-        const total = parseInt(totalChunks, 10);
-
         if (currentChunk === total - 1) {
           // Upload complete, stream directly from disk to Cloudinary
           const stats = await fs.promises.stat(tmpPath);
@@ -550,7 +638,7 @@ module.exports = (wss, broadcasts) => {
 
           if (!isSafeUploadFile(fileMime, safeName)) {
             try { await fs.promises.unlink(tmpPath); } catch (_) {}
-            trackUploadEnd(scopeHash, safeUploadId);
+            trackUploadEnd(scopeHash, safeUploadId, chunkClientIp);
             return res.status(400).json({ error: 'File type not allowed for upload.' });
           }
 
@@ -580,7 +668,7 @@ module.exports = (wss, broadcasts) => {
             }
           } catch (uploadError) {
             logger.error('Failed to stream full file to Cloudinary:', uploadError);
-            trackUploadEnd(scopeHash, safeUploadId);
+            trackUploadEnd(scopeHash, safeUploadId, chunkClientIp);
             return res.status(502).json({ error: `Upload to storage failed: ${uploadError.message}` });
           }
 
@@ -615,7 +703,7 @@ module.exports = (wss, broadcasts) => {
             } catch {}
           }
 
-          trackUploadEnd(scopeHash, safeUploadId);
+          trackUploadEnd(scopeHash, safeUploadId, chunkClientIp);
           return res.status(200).json({
             id: uploaded.public_id,
             type: getMessageFileType(fileMime, safeName),
@@ -634,7 +722,7 @@ module.exports = (wss, broadcasts) => {
         logger.error('Chunk upload error:', { message: err.message, stack: err.stack });
         // Clean up tracking on error
         if (scopeHash && safeUploadId) {
-          trackUploadEnd(scopeHash, safeUploadId);
+          trackUploadEnd(scopeHash, safeUploadId, chunkClientIp);
         }
         
         const providerLimit = /maximum is\s+10485760/i.test(err.message || '');
@@ -854,7 +942,10 @@ module.exports = (wss, broadcasts) => {
         return res.status(401).json({ error: 'Access denied: authentication or room password required' });
       }
 
-      if (roomId !== 'me' && roomId !== 'global') {
+      const lowerGalleryRoom = roomId.toLowerCase();
+      if (lowerGalleryRoom === 'me' || lowerGalleryRoom === 'global') {
+        roomId = lowerGalleryRoom;
+      } else {
         try {
           const roomDoc = await getCachedRoom(roomId);
           if (roomDoc) roomId = roomDoc.id;

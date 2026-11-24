@@ -7,7 +7,7 @@ const User = require('../models/user');
 const Message = require('../models/message');
 const Room = require('../models/room');
 const AuditLog = require('../models/auditLog');
-const { timingSafeEqualStr, verifyPassword, generateSessionToken, verifySignedSessionToken, hashSessionToken } = require('../security');
+const { timingSafeEqualStr, generateSessionToken, verifySignedSessionToken, hashSessionToken } = require('../security');
 const { extractIp, generateDeviceHash, toClientMessage, isUserBlocked, isLoginLocked, toSafeLoggedInUserList } = require('../middleware');
 const {
   getRoomState,
@@ -174,7 +174,7 @@ const handleUserJoin = async ({
     }
   } else {
     // Public room or /me without password
-    // Prevent an attacker from hijacking an active user's session without their sessionToken
+    // Prevent an attacker from hijacking an active or persisted user's session without their sessionToken
     if (existingSession && existingSession.sessionToken && !activeSessionToken) {
       logger.warn(`Rejected session hijack attempt in room '${roomId}' for userId '${userId}' from IP ${wsIp}`);
       ws.send(JSON.stringify({
@@ -186,6 +186,28 @@ const handleUserJoin = async ({
     }
 
     if (!activeSessionToken) {
+      try {
+        const existingDbUser = await User.findOne({ roomId: String(roomId), userId: String(userId) })
+          .select('sessionToken sessionTokenHash')
+          .lean();
+        if (existingDbUser && (existingDbUser.sessionTokenHash || existingDbUser.sessionToken)) {
+          logger.warn(`Rejected unauthenticated session takeover in room '${roomId}' for userId '${userId}' from IP ${wsIp}`);
+          ws.send(JSON.stringify({
+            type: 'force_logout',
+            message: 'Invalid session token for this user. Please log in again.'
+          }));
+          setTimeout(() => ws.terminate(), 300);
+          return;
+        }
+      } catch (dbErr) {
+        logger.error('Failed to verify persisted user session during user_join:', dbErr);
+        ws.send(JSON.stringify({
+          type: 'force_logout',
+          message: 'Internal server error.'
+        }));
+        setTimeout(() => ws.terminate(), 300);
+        return;
+      }
       activeSessionToken = generateSessionToken(userId, roomId);
     }
   }
@@ -258,6 +280,11 @@ const handleUserJoin = async ({
       client.username.trim().toLowerCase() === trimmedLower
   );
 
+  const safeTabId = typeof parsedMessage.tabId === 'string' && parsedMessage.tabId.trim()
+    ? parsedMessage.tabId.trim().slice(0, 64)
+    : null;
+  const forceTakeover = Boolean(parsedMessage.forceTakeover);
+
   let usernameTaken = false;
   if (conflictingClients.length > 0) {
     for (const client of conflictingClients) {
@@ -271,8 +298,43 @@ const handleUserJoin = async ({
           }
         }
         if (client.clientIp === wsIp || client.isAlive === false || isTokenVerified) {
-          logger.info(`Terminating older hanging socket for reconnecting user '${username}' (${userId}).`);
-          client.terminate();
+          const isDifferentTab = Boolean(safeTabId && client.tabId && safeTabId !== client.tabId);
+          const isClientHealthy = Boolean(
+            client.isAlive !== false &&
+            !client.terminatedByHeartbeat &&
+            (!client.lastAppMessageAt || (Date.now() - client.lastAppMessageAt) < 20000)
+          );
+          if (isDifferentTab && isClientHealthy && !forceTakeover) {
+            logger.info(`Displacing duplicate tab join for '${username}' (${userId}) to prevent reconnect loop.`);
+            try {
+              ws.send(JSON.stringify({
+                type: 'session_displaced',
+                reason: 'another_tab',
+                message: 'This chat room is already open in another tab.',
+              }));
+            } catch (_) {}
+            setTimeout(() => {
+              try { ws.close(1000, 'another_tab'); } catch (_) {}
+            }, 150);
+            return;
+          }
+          if (isDifferentTab) {
+            logger.info(`Transferring active session for '${username}' (${userId}) to new tab.`);
+            client.wasDisplaced = true;
+            try {
+              client.send(JSON.stringify({
+                type: 'session_displaced',
+                reason: 'another_tab',
+                message: 'This chat session was opened in another tab.',
+              }));
+            } catch (_) {}
+            setTimeout(() => {
+              try { client.terminate(); } catch (_) {}
+            }, 150);
+          } else {
+            logger.info(`Terminating older hanging socket for reconnecting user '${username}' (${userId}).`);
+            client.terminate();
+          }
         } else {
           usernameTaken = true;
         }
@@ -397,6 +459,18 @@ const handleUserJoin = async ({
     });
   }
 
+  // Ensure no orphaned offline entries remain in onlineUsers before broadcasting room snapshot
+  for (const [uid] of Array.from(onlineUsers.entries())) {
+    if (uid === userId || pendingDisconnects.has(uid)) continue;
+    const hasLiveSocket = Array.from(wss.clients).some(
+      (c) => c.readyState <= 1 && c.roomId === roomId && c.userId === uid && !c.terminatedByHeartbeat
+    );
+    if (!hasLiveSocket) {
+      onlineUsers.delete(uid);
+      typingUsers.delete(uid);
+    }
+  }
+
   onlineUsers.set(userId, { userId, username });
   
   if (typingUsers.has(userId)) {
@@ -435,6 +509,7 @@ const handleUserJoin = async ({
   ws.userId = userId;
   ws.username = username;
   ws.roomId = roomId;
+  ws.tabId = safeTabId;
 
   // Send auth_success with sessionToken to client
   ws.send(JSON.stringify({
@@ -653,7 +728,13 @@ const handleSocketClose = ({ ws, wss, broadcastToAdmins, _broadcast, _broadcastO
   const { onlineUsers, typingUsers, filePickerPresenceGrace, pendingDisconnects } = getRoomState(roomId);
   if (ws.userId && onlineUsers.has(ws.userId)) {
     const hasOtherActiveSocket = Array.from(wss.clients).some(
-      client => client !== ws && client.readyState === 1 && client.roomId === roomId && client.userId === ws.userId
+      client =>
+        client !== ws &&
+        client.readyState === 1 &&
+        client.roomId === roomId &&
+        client.userId === ws.userId &&
+        client.isAlive !== false &&
+        !client.terminatedByHeartbeat
     );
     if (hasOtherActiveSocket) {
       return;
@@ -671,8 +752,12 @@ const handleSocketClose = ({ ws, wss, broadcastToAdmins, _broadcast, _broadcastO
 
     const user = onlineUsers.get(ws.userId);
     const filePickerGraceUntil = filePickerPresenceGrace.get(ws.userId) || 0;
-    const disconnectDelayMs = filePickerGraceUntil > Date.now() ? 120000 : 10000;
-    logger.info(`User '${user.username}' disconnected. Starting ${Math.round(disconnectDelayMs / 1000)}s timer.`);
+    const hasPickerGrace = filePickerGraceUntil > Date.now();
+    // If terminated by heartbeat after 35s+ of JS silence, expire presence rapidly instead of holding for another 10s
+    const disconnectDelayMs = hasPickerGrace
+      ? 120000
+      : (ws.terminatedByHeartbeat ? 1500 : 10000);
+    logger.info(`User '${user.username}' disconnected. Starting ${Math.round(disconnectDelayMs / 1000 * 10) / 10}s timer.`);
 
     const timerId = setTimeout(() => {
       logger.info(`User '${user.username}' truly left.`);
