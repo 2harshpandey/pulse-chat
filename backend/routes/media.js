@@ -361,7 +361,7 @@ module.exports = (wss, broadcasts) => {
     try {
       const rawRoomId = req.headers['x-room-id'] || req.query?.roomId;
       const roomId = typeof rawRoomId === 'string' && rawRoomId.trim() ? rawRoomId.trim() : 'me';
-      const allowed = await isRoomAccessAllowed(roomId, req);
+      const allowed = await isRoomAccessAllowed(roomId, req, { requireSession: true });
       if (!allowed) {
         return res.status(401).json({ error: 'Upload denied: room authentication required.' });
       }
@@ -397,7 +397,7 @@ module.exports = (wss, broadcasts) => {
       }
       const userId = headerUserId || bodyUserId;
 
-      const allowed = await isRoomAccessAllowed(roomId, req);
+      const allowed = await isRoomAccessAllowed(roomId, req, { requireSession: true });
       if (!allowed) {
         return res.status(401).json({ error: 'Upload denied: room authentication required.' });
       }
@@ -414,11 +414,13 @@ module.exports = (wss, broadcasts) => {
       }
 
       const { onlineUsers } = getRoomState(canonicalRoomId);
-      let username = onlineUsers.get(userId)?.username;
+      const isAdminHeaderUpload = Boolean(typeof req.headers['x-admin-password'] === 'string' && req.headers['x-admin-password']);
+      const verifiedUserId = isAdminHeaderUpload ? 'admin' : userId;
+      let username = isAdminHeaderUpload ? 'Admin' : onlineUsers.get(verifiedUserId)?.username;
       
       if (!username) {
         // Cast to string to prevent NoSQL injection from object payloads (CodeQL Alert)
-        const user = await User.findOne({ userId: String(userId), roomId: canonicalRoomId });
+        const user = await User.findOne({ userId: String(verifiedUserId), roomId: canonicalRoomId });
         username = user?.username || 'Unknown';
       }
 
@@ -439,7 +441,7 @@ module.exports = (wss, broadcasts) => {
             url: uploaded.secure_url,
             publicId: uploaded.public_id,
           },
-          userId,
+          userId: verifiedUserId,
           username,
           timestamp: new Date().toISOString(),
         });
@@ -498,7 +500,7 @@ module.exports = (wss, broadcasts) => {
   router.get('/api/upload/status', apiLimiter, async (req, res) => {
     const rawRoomId = req.headers['x-room-id'] || req.query.roomId;
     let roomId = typeof rawRoomId === 'string' && rawRoomId.trim() ? rawRoomId.trim() : 'me';
-    const allowed = await isRoomAccessAllowed(roomId, req);
+    const allowed = await isRoomAccessAllowed(roomId, req, { requireSession: true });
     if (!allowed) {
       return res.status(401).json({ error: 'Access denied: room authentication required.' });
     }
@@ -562,7 +564,7 @@ module.exports = (wss, broadcasts) => {
           return res.status(400).json({ error: 'File type not allowed for upload.' });
         }
 
-        const allowed = await isRoomAccessAllowed(roomId, req);
+        const allowed = await isRoomAccessAllowed(roomId, req, { requireSession: true });
         if (!allowed) {
           return res.status(401).json({ error: 'Upload denied: room authentication required.' });
         }
@@ -651,9 +653,11 @@ module.exports = (wss, broadcasts) => {
           }
 
           const { onlineUsers } = getRoomState(canonicalRoomId);
-          let username = onlineUsers.get(userId)?.username;
+          const isAdminHeaderUpload = Boolean(typeof req.headers['x-admin-password'] === 'string' && req.headers['x-admin-password']);
+          const verifiedUserId = isAdminHeaderUpload ? 'admin' : userId;
+          let username = isAdminHeaderUpload ? 'Admin' : onlineUsers.get(verifiedUserId)?.username;
           if (!username) {
-            const user = await User.findOne({ userId: String(userId), roomId: canonicalRoomId });
+            const user = await User.findOne({ userId: String(verifiedUserId), roomId: canonicalRoomId });
             username = user?.username || 'Unknown';
           }
 
@@ -684,7 +688,7 @@ module.exports = (wss, broadcasts) => {
               url: uploaded.secure_url,
               publicId: uploaded.public_id,
             },
-            userId,
+            userId: verifiedUserId,
             username,
             timestamp: new Date().toISOString(),
           });

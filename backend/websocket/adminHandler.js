@@ -6,8 +6,13 @@ const Room = require('../models/room');
 const AuditLog = require('../models/auditLog');
 const logger = require('../logger');
 const { getRoomState } = require('../state');
-const { timingSafeEqualStr, verifyPassword } = require('../security');
-const { isPasswordLocked, recordFailedAdminAttempt, resetPasswordAttempts, toSafeLoggedInUserList } = require('../middleware');
+const { timingSafeEqualStr, verifyPasswordAsync } = require('../security');
+const {
+  getAdminLockRemainingSeconds,
+  recordFailedAdminAttemptAcrossScope,
+  resetAdminAttemptsAcrossScope,
+  toSafeLoggedInUserList,
+} = require('../middleware');
 
 /**
  * Configure and register an authenticated admin client.
@@ -107,8 +112,8 @@ const handleAdminAuth = async (ws, rawData, broadcastToAdmins, loadPinnedMessage
       const canonicalRoomId = targetRoom ? targetRoom.id : roomId;
       const rateLimitKey = `${clientIp}_${canonicalRoomId}`;
 
-      // Enforce lockout check against canonical room key
-      const remainingSec = isPasswordLocked(rateLimitKey);
+      // Enforce lockout check against both canonical room key and global admin IP bucket
+      const remainingSec = getAdminLockRemainingSeconds(rateLimitKey, clientIp);
       if (remainingSec > 0) {
         logger.warn(`Admin auth blocked by lockout for IP ${clientIp} on room ${canonicalRoomId}`);
         try {
@@ -121,7 +126,7 @@ const handleAdminAuth = async (ws, rawData, broadcastToAdmins, loadPinnedMessage
       const { adminClients, loggedInUsers, onlineUsers } = getRoomState(canonicalRoomId);
 
       const onAuthFailure = () => {
-        recordFailedAdminAttempt(rateLimitKey, { ip: clientIp, headers: { 'user-agent': ws.clientUa } });
+        recordFailedAdminAttemptAcrossScope(rateLimitKey, clientIp, { ip: clientIp, headers: { 'user-agent': ws.clientUa } });
         AuditLog.create({
           roomId: canonicalRoomId,
           type: 'admin_auth_failed',
@@ -141,12 +146,12 @@ const handleAdminAuth = async (ws, rawData, broadcastToAdmins, loadPinnedMessage
       let isValid = false;
       if (process.env.ADMIN_PASSWORD && timingSafeEqualStr(password, process.env.ADMIN_PASSWORD)) {
         isValid = true;
-      } else if (targetRoom && verifyPassword(password, targetRoom.adminPassword)) {
+      } else if (targetRoom && await verifyPasswordAsync(password, targetRoom.adminPassword)) {
         isValid = true;
       }
 
       if (isValid) {
-        resetPasswordAttempts(rateLimitKey);
+        resetAdminAttemptsAcrossScope(rateLimitKey, clientIp);
         setupAdmin(ws, canonicalRoomId, adminClients, loggedInUsers, onlineUsers, broadcastToAdmins, loadPinnedMessages);
         ws.on('message', (msg) => {
           handleClientMessage(msg).catch((err) => logger.error('Admin message error:', err));

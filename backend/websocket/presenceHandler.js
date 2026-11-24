@@ -340,9 +340,6 @@ const handleUserJoin = async ({
         }
       } else if (isWithinPickerGrace) {
         const prevLogged = loggedInUsers.get(client.userId);
-        const prevFp = userFingerprints.get(client.userId);
-        const devHash = fpData ? generateDeviceHash({ ...fpData, userAgent: wsUa }) : null;
-        const isDeviceMatch = Boolean(devHash && prevFp?.deviceHashes?.has(devHash));
         const incomingHash = sessionTokenProvided ? hashSessionToken(sessionTokenProvided) : null;
         let isTokenMatch = Boolean(
           sessionTokenProvided &&
@@ -357,7 +354,7 @@ const handleUserJoin = async ({
             isTokenMatch = true;
           }
         }
-        if (isTokenMatch || isDeviceMatch) {
+        if (isTokenMatch) {
           logger.info(`Recovering file picker session for '${username}' (old userId: ${client.userId}, new userId: ${userId}).`);
           client.terminate();
         } else {
@@ -389,9 +386,6 @@ const handleUserJoin = async ({
       const pUser = onlineUsers.get(pUserId);
       if (pUser && pUser.username && pUser.username.trim().toLowerCase() === trimmedLower) {
         const prevLogged = loggedInUsers.get(pUserId);
-        const prevFp = userFingerprints.get(pUserId);
-        const devHash = fpData ? generateDeviceHash({ ...fpData, userAgent: wsUa }) : null;
-        const isDeviceMatch = Boolean(devHash && prevFp?.deviceHashes?.has(devHash));
         const incomingHash = sessionTokenProvided ? hashSessionToken(sessionTokenProvided) : null;
         let isTokenMatch = Boolean(
           sessionTokenProvided &&
@@ -406,7 +400,7 @@ const handleUserJoin = async ({
             isTokenMatch = true;
           }
         }
-        if (isTokenMatch || isDeviceMatch) {
+        if (isTokenMatch) {
           clearTimeout(timerId);
           pendingDisconnects.delete(pUserId);
           onlineUsers.delete(pUserId);

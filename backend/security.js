@@ -351,6 +351,59 @@ const verifyPassword = (providedPassword, storedHashOrPlain) => {
   return timingSafeEqualStr(providedPassword, storedHashOrPlain);
 };
 
+/**
+ * Asynchronously hashes a password using scrypt with a unique random 16-byte salt,
+ * avoiding event-loop blocking during scrypt key derivation.
+ * Formatted as: scrypt$<saltHex>$<derivedKeyHex>
+ *
+ * @param {string} password
+ * @returns {Promise<string|null>}
+ */
+const hashPasswordAsync = async (password) => {
+  if (!password || typeof password !== 'string') return null;
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derivedKey = await new Promise((resolve, reject) => {
+    crypto.scrypt(password, salt, 64, (err, key) => {
+      if (err) return reject(err);
+      resolve(key);
+    });
+  });
+  return `scrypt$${salt}$${derivedKey.toString('hex')}`;
+};
+
+/**
+ * Asynchronously verifies a password against a stored scrypt hash or legacy plaintext password,
+ * avoiding event-loop blocking during scrypt key derivation.
+ *
+ * @param {string} providedPassword
+ * @param {string} storedHashOrPlain
+ * @returns {Promise<boolean>}
+ */
+const verifyPasswordAsync = async (providedPassword, storedHashOrPlain) => {
+  if (!providedPassword || typeof providedPassword !== 'string') return false;
+  if (!storedHashOrPlain || typeof storedHashOrPlain !== 'string') return false;
+
+  if (storedHashOrPlain.startsWith('scrypt$')) {
+    const parts = storedHashOrPlain.split('$');
+    if (parts.length !== 3) return false;
+    const salt = parts[1];
+    const originalHashHex = parts[2];
+    try {
+      const derivedKey = await new Promise((resolve, reject) => {
+        crypto.scrypt(providedPassword, salt, 64, (err, key) => {
+          if (err) return reject(err);
+          resolve(key);
+        });
+      });
+      return timingSafeEqualStr(derivedKey.toString('hex'), originalHashHex);
+    } catch {
+      return false;
+    }
+  }
+
+  return timingSafeEqualStr(providedPassword, storedHashOrPlain);
+};
+
 // SESSION_SECRET: Used to HMAC sign session tokens.
 // Uses process.env.SESSION_SECRET if configured, with a deterministic fallback derived from
 // process.env.ADMIN_SECRET to prevent server boot failures when deployed to cloud hosts.
@@ -461,7 +514,9 @@ module.exports = {
   getSignedCloudinaryDownloadUrl,
   timingSafeEqualStr,
   hashPassword,
+  hashPasswordAsync,
   verifyPassword,
+  verifyPasswordAsync,
   generateSessionToken,
   verifySignedSessionToken,
   hashSessionToken,

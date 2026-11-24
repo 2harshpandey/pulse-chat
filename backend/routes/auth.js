@@ -4,13 +4,14 @@
 // GET  /api/users/check-username — username availability
 
 const express = require('express');
+const crypto = require('crypto');
 const router = express.Router();
 const logger = require('../logger');
 const AuditLog = require('../models/auditLog');
 const TempLink = require('../models/tempLink');
 const Room = require('../models/room');
 const User = require('../models/user');
-const { timingSafeEqualStr, verifyPassword, hashPassword, generateSessionToken, verifySignedSessionToken, hashSessionToken } = require('../security');
+const { timingSafeEqualStr, verifyPasswordAsync, hashPasswordAsync, generateSessionToken, verifySignedSessionToken, hashSessionToken } = require('../security');
 const {
   getRoomState,
   userFingerprints,
@@ -75,7 +76,6 @@ async function resolveUsernameCollision({ roomId, username, userId, ip, userAgen
     pickerGrace && pickerGrace.expiresAt > Date.now();
 
   const prevLogged = roomState.loggedInUsers?.get(takenUser.userId);
-  const prevFp = userFingerprints.get(takenUser.userId);
   const incomingToken = typeof incomingSessionToken === 'string' && incomingSessionToken.trim() ? incomingSessionToken.trim() : null;
   const incomingHash = incomingToken ? hashSessionToken(incomingToken) : null;
   let isTokenMatch = Boolean(
@@ -90,12 +90,10 @@ async function resolveUsernameCollision({ roomId, username, userId, ip, userAgen
       isTokenMatch = true;
     }
   }
-  const devHash = fingerprint ? generateDeviceHash({ ...fingerprint, userAgent }) : null;
-  const isDeviceMatch = Boolean(devHash && prevFp?.deviceHashes?.has(devHash));
 
-  // Require cryptographic session token match OR device fingerprint verification.
-  // IP alone is NOT sufficient to prevent arbitrary clients sharing the same NAT/public IP from hijacking disconnected sessions.
-  const canReclaim = (isPending || hasPickerGrace) && (isTokenMatch || isDeviceMatch);
+  // Require cryptographic session token match; never fall back to low-entropy device fingerprints
+  // or IP alone, which can be collided or spoofed to reclaim active usernames.
+  const canReclaim = (isPending || hasPickerGrace) && isTokenMatch;
 
   if (canReclaim) {
     const authType = viaTempLink ? 'temp-link re-auth' : 're-auth';
@@ -122,22 +120,74 @@ async function resolveUsernameCollision({ roomId, username, userId, ip, userAgen
   return false;
 }
 
-const isActiveSessionConflict = ({ userId, roomId, roomState, incomingToken }) => {
-  const { onlineUsers, loggedInUsers, pendingDisconnects, filePickerPresenceGrace } = roomState;
-  const isUserActiveOnline = onlineUsers.has(userId) && !pendingDisconnects?.has(userId);
-  if (!isUserActiveOnline) return false;
+const isTokenMatchingSession = ({ cleanIncoming, incomingTokenHash, session, roomId, userId }) => {
+  if (!cleanIncoming) return false;
+  if (session) {
+    if (session.sessionToken && timingSafeEqualStr(cleanIncoming, session.sessionToken)) {
+      return true;
+    }
+    if (session.sessionTokenHash && incomingTokenHash && timingSafeEqualStr(incomingTokenHash, session.sessionTokenHash)) {
+      return true;
+    }
+  }
+  const verified = verifySignedSessionToken(cleanIncoming);
+  return Boolean(
+    verified &&
+    verified.userId === userId &&
+    (verified.roomId === roomId || (roomId === 'me' && verified.roomId === ''))
+  );
+};
 
-  const activeSess = loggedInUsers.get(userId);
-  const hasPickerGraceForId = (filePickerPresenceGrace?.get(userId) || 0) > Date.now();
+const resolveAuthenticatedUserId = async ({ userId, roomId, roomState, incomingToken, fingerprint = null, userAgent = '' }) => {
+  const { onlineUsers, loggedInUsers, pendingDisconnects, filePickerPresenceGrace } = roomState;
   const cleanIncoming = typeof incomingToken === 'string' && incomingToken.trim() ? incomingToken.trim() : null;
   const incomingTokenHash = cleanIncoming ? hashSessionToken(cleanIncoming) : null;
-  const tokenMatches = Boolean(
-    cleanIncoming &&
-    activeSess &&
-    ((activeSess.sessionToken && timingSafeEqualStr(cleanIncoming, activeSess.sessionToken)) ||
-     (activeSess.sessionTokenHash && incomingTokenHash && timingSafeEqualStr(incomingTokenHash, activeSess.sessionTokenHash)))
-  );
-  return !tokenMatches && !hasPickerGraceForId;
+  const activeSess = loggedInUsers.get(userId);
+
+  let tokenMatches = isTokenMatchingSession({
+    cleanIncoming,
+    incomingTokenHash,
+    session: activeSess,
+    roomId,
+    userId,
+  });
+
+  // Active online session conflict (including pendingDisconnects and file-picker grace):
+  // block unless caller proves ownership via cryptographic sessionToken.
+  if (onlineUsers.has(userId)) {
+    if (!tokenMatches) {
+      return { conflict: true, userId };
+    }
+    return { conflict: false, userId };
+  }
+
+  // Offline userId takeover guard: if userId has an existing session in memory or MongoDB,
+  // verify ownership before reusing it. If caller lacks the matching token (e.g. attacker
+  // attempting offline takeover, or a legitimate user whose local token was cleared/expired),
+  // rotate to a fresh server-generated userId so the existing user's session and messages remain protected.
+  let hasProtectedSession = Boolean(activeSess && (activeSess.sessionToken || activeSess.sessionTokenHash));
+  if (!tokenMatches) {
+    const dbUser = await User.findOne({ roomId: String(roomId), userId: String(userId) })
+      .select('sessionToken sessionTokenHash')
+      .lean();
+    if (dbUser && (dbUser.sessionTokenHash || dbUser.sessionToken)) {
+      hasProtectedSession = true;
+      tokenMatches = Boolean(
+        cleanIncoming && (
+          (dbUser.sessionTokenHash && incomingTokenHash && timingSafeEqualStr(incomingTokenHash, dbUser.sessionTokenHash)) ||
+          (dbUser.sessionToken && timingSafeEqualStr(cleanIncoming, dbUser.sessionToken))
+        )
+      );
+    }
+  }
+
+  if (hasProtectedSession && !tokenMatches) {
+    const freshUserId = `u_${Date.now().toString(36)}_${crypto.randomBytes(8).toString('hex')}`;
+    logger.warn(`Prevented unauthenticated userId reuse in room '${roomId}' for '${userId}'; assigned fresh userId '${freshUserId}'.`);
+    return { conflict: false, userId: freshUserId };
+  }
+
+  return { conflict: false, userId };
 };
 
 // --- Client Auth Verification ---
@@ -240,10 +290,10 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
     } else if (roomId === 'global') {
       isPasswordValid = true;
     } else {
-      if (roomDoc && (!roomDoc.isPrivate || !roomDoc.joinPassword || verifyPassword(password || '', roomDoc.joinPassword))) {
+      if (roomDoc && (!roomDoc.isPrivate || !roomDoc.joinPassword || await verifyPasswordAsync(password || '', roomDoc.joinPassword))) {
         isPasswordValid = true;
         if (roomDoc.isPrivate && roomDoc.joinPassword && !roomDoc.joinPassword.startsWith('scrypt$') && password) {
-          roomDoc.joinPassword = hashPassword(password);
+          roomDoc.joinPassword = await hashPasswordAsync(password);
           roomDoc.save().catch((err) => logger.error('Failed to upgrade legacy room password:', err));
           invalidateCachedRoom(roomDoc.id);
         }
@@ -254,23 +304,32 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
       const fullRoomState = getRoomState(roomId);
       const incomingSessionToken = req.headers['x-session-token'] || body?.sessionToken;
 
-      // Prevent hijacking an actively connected user's userId via /api/auth/verify
-      if (isActiveSessionConflict({ userId, roomId, roomState: fullRoomState, incomingToken: incomingSessionToken })) {
+      // Prevent hijacking an active or persisted user's userId via /api/auth/verify
+      const identityCheck = await resolveAuthenticatedUserId({
+        userId,
+        roomId,
+        roomState: fullRoomState,
+        incomingToken: incomingSessionToken,
+        fingerprint,
+        userAgent,
+      });
+      if (identityCheck.conflict) {
         return res.status(409).json({ success: false, error: 'That user session is already active. Please try again.' });
       }
+      const effectiveUserId = identityCheck.userId;
 
       // If the client sends a username, verify it is not already in use.
       if (username) {
         const roomState = { onlineUsers, loggedInUsers, pendingDisconnects, filePickerPresenceByUsername };
         const allowed = await resolveUsernameCollision({
-          roomId, username, userId, ip, userAgent, roomState, viaTempLink: false, fingerprint, incomingSessionToken
+          roomId, username, userId: effectiveUserId, ip, userAgent, roomState, viaTempLink: false, fingerprint, incomingSessionToken
         }, res);
         if (!allowed) return;
       }
 
       // Store fingerprint data
       if (fingerprint) {
-        const existing = userFingerprints.get(userId) || { ips: new Set(), userAgents: new Set(), deviceHashes: new Set() };
+        const existing = userFingerprints.get(effectiveUserId) || { ips: new Set(), userAgents: new Set(), deviceHashes: new Set() };
         existing.ips.add(ip);
         existing.userAgents.add(userAgent);
         existing.screenResolution = fingerprint.screenResolution;
@@ -280,16 +339,16 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
         const hash = generateDeviceHash({ ...fingerprint, userAgent });
         existing.deviceHashes.add(hash);
         existing.lastSeen = Date.now();
-        userFingerprints.set(userId, existing);
+        userFingerprints.set(effectiveUserId, existing);
       }
 
       // Generate cryptographically secure session token
-      const sessionToken = generateSessionToken(userId, roomId);
+      const sessionToken = generateSessionToken(effectiveUserId, roomId);
 
       // Track as logged in
       const sessionTokenHash = hashSessionToken(sessionToken);
-      loggedInUsers.set(userId, {
-        userId,
+      loggedInUsers.set(effectiveUserId, {
+        userId: effectiveUserId,
         username: username?.trim(),
         sessionToken,
         sessionTokenHash,
@@ -300,11 +359,11 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
 
       // Persist hashed session token to MongoDB User document (never store plaintext tokens)
       User.findOneAndUpdate(
-        { roomId: String(roomId), userId: String(userId) },
+        { roomId: String(roomId), userId: String(effectiveUserId) },
         {
           $set: {
             roomId: String(roomId),
-            userId: String(userId),
+            userId: String(effectiveUserId),
             username: username ? String(username).trim() : 'Anonymous',
             sessionTokenHash,
             lastSeen: new Date(),
@@ -317,7 +376,7 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
       ).catch((err) => logger.error('Failed to persist User session in auth verify:', err));
 
       resetPasswordAttempts(req.passwordRateLimitKey);
-      res.status(200).json({ success: true, roomId, sessionToken, userId, username: username?.trim() });
+      res.status(200).json({ success: true, roomId, sessionToken, userId: effectiveUserId, username: username?.trim() });
     } else {
       recordFailedPasswordAttempt(req.passwordRateLimitKey, req);
       await AuditLog.create({ roomId, type: 'join_failed_password', details: { userId, username }, ip, userAgent });
@@ -450,23 +509,32 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
       return res.status(410).json({ success: false, error: 'This access link has reached its maximum usage limit.' });
     }
 
-    // Prevent hijacking an actively connected user's userId
+    // Prevent hijacking an active or persisted user's userId
     const fullRoomState = getRoomState(roomId);
     const incomingSessionToken = req.headers['x-session-token'] || body?.sessionToken;
-    if (isActiveSessionConflict({ userId, roomId, roomState: fullRoomState, incomingToken: incomingSessionToken })) {
+    const identityCheck = await resolveAuthenticatedUserId({
+      userId,
+      roomId,
+      roomState: fullRoomState,
+      incomingToken: incomingSessionToken,
+      fingerprint,
+      userAgent,
+    });
+    if (identityCheck.conflict) {
       return res.status(409).json({ success: false, error: 'That user session is already active. Please try again.' });
     }
+    const effectiveUserId = identityCheck.userId;
 
     // Check username availability
     const roomState = { onlineUsers, loggedInUsers, pendingDisconnects, filePickerPresenceByUsername };
     const allowed = await resolveUsernameCollision({
-      roomId, username: username.trim(), userId, ip, userAgent, roomState, viaTempLink: true, fingerprint, incomingSessionToken
+      roomId, username: username.trim(), userId: effectiveUserId, ip, userAgent, roomState, viaTempLink: true, fingerprint, incomingSessionToken
     }, res);
     if (!allowed) return;
 
     // Store fingerprint data
     if (fingerprint) {
-      const existing = userFingerprints.get(userId) || { ips: new Set(), userAgents: new Set(), deviceHashes: new Set() };
+      const existing = userFingerprints.get(effectiveUserId) || { ips: new Set(), userAgents: new Set(), deviceHashes: new Set() };
       existing.ips.add(ip);
       existing.userAgents.add(userAgent);
       existing.screenResolution = fingerprint.screenResolution;
@@ -476,7 +544,7 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
       const hash = generateDeviceHash({ ...fingerprint, userAgent });
       existing.deviceHashes.add(hash);
       existing.lastSeen = Date.now();
-      userFingerprints.set(userId, existing);
+      userFingerprints.set(effectiveUserId, existing);
     }
 
     // Record usage atomically and verify link was not revoked, expired in flight, or usage limit exceeded (capped to 50 most recent entries)
@@ -507,7 +575,7 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
       await AuditLog.create({
         roomId,
         type: 'temp_link_expired_attempt',
-        details: { token: token.substring(0, 8) + '...', userId, username: username.trim(), reason: 'revoked_or_expired_in_flight' },
+        details: { token: token.substring(0, 8) + '...', userId: effectiveUserId, username: username.trim(), reason: 'revoked_or_expired_in_flight' },
         ip,
         userAgent,
       });
@@ -515,17 +583,17 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
       return res.status(410).json({ success: false, error: 'This link has expired or has reached its usage limit.' });
     }
 
-    await AuditLog.create({ roomId, type: 'temp_link_used', details: { token: token.substring(0, 8) + '...', userId, username: username.trim() }, ip, userAgent });
-    _broadcastToAdmins(roomId, 'audit_log', { type: 'temp_link_used', details: { userId, username: username.trim() }, timestamp: new Date() });
+    await AuditLog.create({ roomId, type: 'temp_link_used', details: { token: token.substring(0, 8) + '...', userId: effectiveUserId, username: username.trim() }, ip, userAgent });
+    _broadcastToAdmins(roomId, 'audit_log', { type: 'temp_link_used', details: { userId: effectiveUserId, username: username.trim() }, timestamp: new Date() });
     _broadcastToAdmins(roomId, 'activity', `User '${username.trim()}' joined via temporary access link.`);
 
     // Generate cryptographically secure session token
-    const sessionToken = generateSessionToken(userId, roomId);
+    const sessionToken = generateSessionToken(effectiveUserId, roomId);
     const sessionTokenHash = hashSessionToken(sessionToken);
 
     // Track as logged in
-    loggedInUsers.set(userId, {
-      userId,
+    loggedInUsers.set(effectiveUserId, {
+      userId: effectiveUserId,
       username: username.trim(),
       sessionToken,
       sessionTokenHash,
@@ -537,11 +605,11 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
 
     // Persist hashed session token to MongoDB User document (never store plaintext tokens)
     User.findOneAndUpdate(
-      { roomId: String(roomId), userId: String(userId) },
+      { roomId: String(roomId), userId: String(effectiveUserId) },
       {
         $set: {
           roomId: String(roomId),
-          userId: String(userId),
+          userId: String(effectiveUserId),
           username: username.trim(),
           sessionTokenHash,
           lastSeen: new Date(),
@@ -553,7 +621,7 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
       { upsert: true, new: true }
     ).catch((err) => logger.error('Failed to persist User session in auth verify-temp:', err));
 
-    res.status(200).json({ success: true, roomId, sessionToken, userId, username: username.trim() });
+    res.status(200).json({ success: true, roomId, sessionToken, userId: effectiveUserId, username: username.trim() });
   } catch (err) {
     logger.error('Error in /api/auth/verify-temp:', err);
     res.status(500).json({ success: false, error: 'Internal authentication error.' });
@@ -603,3 +671,4 @@ router.get('/api/users/check-username', authLimiter, async (req, res) => {
 
 module.exports = router;
 module.exports.setBroadcast = setBroadcast;
+module.exports.resolveAuthenticatedUserId = resolveAuthenticatedUserId;

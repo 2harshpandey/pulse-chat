@@ -9,7 +9,7 @@ const LoginLockdown = require('./models/loginLockdown');
 const Room = require('./models/room');
 const AuditLog = require('./models/auditLog');
 const { getCachedRoom } = require('./state');
-const { timingSafeEqualStr, verifyPassword } = require('./security');
+const { timingSafeEqualStr, verifyPasswordAsync } = require('./security');
 
 let _broadcastToAdmins = () => {};
 const setBroadcast = (fn) => { if (typeof fn === 'function') _broadcastToAdmins = fn; };
@@ -306,6 +306,43 @@ const resetPasswordAttempts = (key) => {
   passwordAttemptLocks.delete(key);
 };
 
+const getGlobalAdminLockKey = (ip) => `${ip || '127.0.0.1'}_global_admin`;
+
+const getAdminLockRemainingSeconds = (roomKey, ip) => {
+  const now = Date.now();
+  const roomRec = passwordAttemptLocks.get(roomKey);
+  const globalRec = passwordAttemptLocks.get(getGlobalAdminLockKey(ip));
+  const roomRem = roomRec && roomRec.lockUntil > now ? Math.ceil((roomRec.lockUntil - now) / 1000) : 0;
+  const globalRem = globalRec && globalRec.lockUntil > now ? Math.ceil((globalRec.lockUntil - now) / 1000) : 0;
+  return Math.max(roomRem, globalRem);
+};
+
+const checkAdminPasswordRateLimit = (req, res, next) => {
+  return checkPasswordRateLimit(req, res, (err) => {
+    if (err) return next(err);
+    const ip = extractIp(req);
+    const remaining = isPasswordLocked(getGlobalAdminLockKey(ip));
+    if (remaining > 0) {
+      return res.status(429).json({ error: `Too many failed admin attempts. Locked out for ${remaining} seconds.` });
+    }
+    next();
+  });
+};
+
+const recordFailedAdminAttemptAcrossScope = (roomKey, ip, req) => {
+  recordFailedAdminAttempt(roomKey, req);
+  const globalKey = getGlobalAdminLockKey(ip);
+  if (globalKey !== roomKey) {
+    // Pass null req to avoid duplicate AuditLog entries for the same failed request
+    recordFailedAdminAttempt(globalKey, null);
+  }
+};
+
+const resetAdminAttemptsAcrossScope = (roomKey, ip) => {
+  resetPasswordAttempts(roomKey);
+  resetPasswordAttempts(getGlobalAdminLockKey(ip));
+};
+
 // --- Admin Auth Middleware ---
 
 // Middleware for admin authentication
@@ -323,15 +360,14 @@ const adminAuth = async (req, res, next) => {
   req.passwordRateLimitKey = key;
 
 
-  // Check lockout
-  const record = passwordAttemptLocks.get(key);
-  if (record && record.lockUntil > Date.now()) {
-    const remaining = Math.ceil((record.lockUntil - Date.now()) / 1000);
+  // Check lockout (both room-specific and cross-room global admin bucket)
+  const remaining = getAdminLockRemainingSeconds(key, ip);
+  if (remaining > 0) {
     return res.status(429).json({ error: `Too many failed admin attempts. Locked out for ${remaining} seconds.` });
   }
 
   const handleFailure = () => {
-    recordFailedAdminAttempt(key, req);
+    recordFailedAdminAttemptAcrossScope(key, ip, req);
     res.status(401).json({ error: 'Unauthorized' });
   };
 
@@ -341,7 +377,7 @@ const adminAuth = async (req, res, next) => {
 
   // Super Admin Impersonation: Global password unlocks any room
   if (process.env.ADMIN_PASSWORD && timingSafeEqualStr(password, process.env.ADMIN_PASSWORD)) {
-    resetPasswordAttempts(key);
+    resetAdminAttemptsAcrossScope(key, ip);
     if (roomId === 'me' || roomId === 'global') {
       req.roomId = roomId;
       req.isSuperAdmin = true;
@@ -365,8 +401,8 @@ const adminAuth = async (req, res, next) => {
 
   try {
     const room = await Room.findByIdOrAlias(roomId);
-    if (room && verifyPassword(password, room.adminPassword)) {
-      resetPasswordAttempts(key);
+    if (room && await verifyPasswordAsync(password, room.adminPassword)) {
+      resetAdminAttemptsAcrossScope(key, ip);
       req.roomId = room.id;
       return next();
     }
@@ -531,9 +567,14 @@ module.exports = {
   adminLimiter,
   diagnosticLimiter,
   checkPasswordRateLimit,
+  checkAdminPasswordRateLimit,
   recordFailedPasswordAttempt,
   recordFailedAdminAttempt,
+  recordFailedAdminAttemptAcrossScope,
   resetPasswordAttempts,
+  resetAdminAttemptsAcrossScope,
+  getGlobalAdminLockKey,
+  getAdminLockRemainingSeconds,
   isPasswordLocked,
   toSafeLoggedInUserList,
   adminAuth,

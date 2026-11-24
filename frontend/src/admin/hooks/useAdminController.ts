@@ -210,9 +210,9 @@ export function useAdminController() {
       usersHook.setUsers(usersData);
       setIsAuthenticated(true);
 
-      // Update URL if the user changed the room ID manually
+      // Update URL if the user changed the room ID manually (without retaining plaintext password in history.state)
       if (urlRoomId !== roomId && !(urlRoomId === undefined && roomId === 'me')) {
-        navigate(`/admin/${roomId}`, { replace: true, state: { autoLoginPassword: authenticatedPassword } });
+        navigate(`/admin/${roomId}`, { replace: true, state: {} });
       }
 
       const headers = { 'x-admin-password': authenticatedPassword, 'x-room-id': roomId };
@@ -312,10 +312,12 @@ export function useAdminController() {
   };
 
   useEffect(() => {
-    if (location.state?.autoLoginPassword && !isAuthenticated && !isLoading) {
-      handleLogin(location.state.autoLoginPassword).then(() => {
-        navigate(location.pathname, { replace: true, state: {} });
-      });
+    const pendingAutoPassword = location.state?.autoLoginPassword;
+    if (!pendingAutoPassword) return;
+    // Immediately scrub plaintext credential from browser history state before/regardless of login outcome
+    navigate(location.pathname, { replace: true, state: {} });
+    if (!isAuthenticated && !isLoading) {
+      handleLogin(pendingAutoPassword);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state?.autoLoginPassword, isAuthenticated, location.pathname, navigate]);

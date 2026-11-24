@@ -5,14 +5,22 @@ const mongoose = require('mongoose');
 const logger = require('../logger');
 const Message = require('../models/message');
 const User = require('../models/user');
-const { verifyPassword, timingSafeEqualStr, verifySignedSessionToken, hashSessionToken } = require('../security');
+const { verifyPasswordAsync, timingSafeEqualStr, verifySignedSessionToken, hashSessionToken } = require('../security');
 const {
   getRoomState,
   getCachedRoom,
   DEFAULT_HISTORY_PAGE_SIZE,
   MAX_HISTORY_PAGE_SIZE,
 } = require('../state');
-const { apiLimiter, toClientMessage, extractIp, isUserBlocked } = require('../middleware');
+const {
+  apiLimiter,
+  toClientMessage,
+  extractIp,
+  isUserBlocked,
+  getAdminLockRemainingSeconds,
+  recordFailedAdminAttemptAcrossScope,
+  resetAdminAttemptsAcrossScope,
+} = require('../middleware');
 
 const getVisibleMessagesQuery = (beforeTimestamp, frontendHiddenBefore) => {
   const createdAt = {};
@@ -32,9 +40,10 @@ const getVisibleMessagesQuery = (beforeTimestamp, frontendHiddenBefore) => {
   return query;
 };
 
-const isRoomAccessAllowed = async (rawRoomId, req) => {
+const isRoomAccessAllowed = async (rawRoomId, req, options = {}) => {
+  const { requireSession = false } = options;
   const roomId = typeof rawRoomId === 'string' && rawRoomId.trim() ? rawRoomId.trim() : 'me';
-  const userId = req.headers['x-user-id'] || req.query.userId || req.body?.userId;
+  const userId = req.headers['x-user-id'] || req.query?.userId || req.body?.userId;
   const clientIp = extractIp(req);
   const userAgent = req.headers['user-agent'] || '';
 
@@ -68,26 +77,41 @@ const isRoomAccessAllowed = async (rawRoomId, req) => {
     return false;
   }
 
-  if (canonicalRoomId === 'global') return true;
-
-  // Check admin authorization header
+  // Check admin authorization header with the same strict lockout enforcement as adminAuth
   const adminPassword = req.headers['x-admin-password'];
   if (adminPassword && typeof adminPassword === 'string') {
+    const adminLockKey = `${clientIp}_${canonicalRoomId.toLowerCase()}`;
+    if (getAdminLockRemainingSeconds(adminLockKey, clientIp) > 0) {
+      return false;
+    }
+
+    let isAdminValid = false;
     if (process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)) {
+      isAdminValid = true;
+    } else if (room && await verifyPasswordAsync(adminPassword, room.adminPassword)) {
+      isAdminValid = true;
+    }
+
+    if (isAdminValid) {
+      resetAdminAttemptsAcrossScope(adminLockKey, clientIp);
       return true;
     }
-    if (room && verifyPassword(adminPassword, room.adminPassword)) {
-      return true;
-    }
+
+    recordFailedAdminAttemptAcrossScope(adminLockKey, clientIp, req);
+    return false;
   }
 
-  // Check room password requirements
-  const requiresPassword = canonicalRoomId === 'me'
-    ? Boolean(process.env.CLIENT_PASSWORD)
-    : Boolean(room && room.isPrivate);
+  if (!requireSession) {
+    if (canonicalRoomId === 'global') return true;
 
-  if (!requiresPassword) {
-    return true;
+    // Check room password requirements
+    const requiresPassword = canonicalRoomId === 'me'
+      ? Boolean(process.env.CLIENT_PASSWORD)
+      : Boolean(room && room.isPrivate);
+
+    if (!requiresPassword) {
+      return true;
+    }
   }
 
   // Check if requesting user has an active authenticated session using canonical room state

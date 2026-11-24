@@ -7,8 +7,8 @@ const Message = require('../models/message');
 const MessageEvent = require('../models/messageEvent');
 const AuditLog = require('../models/auditLog');
 const { getRoomState, invalidateCachedRoom } = require('../state');
-const { authLimiter, apiLimiter, adminLimiter, extractIp, generateDeviceHash, checkPasswordRateLimit, recordFailedPasswordAttempt, resetPasswordAttempts } = require('../middleware');
-const { timingSafeEqualStr, hashPassword, verifyPassword } = require('../security');
+const { authLimiter, apiLimiter, adminLimiter, extractIp, generateDeviceHash, checkPasswordRateLimit, checkAdminPasswordRateLimit, recordFailedPasswordAttempt, recordFailedAdminAttemptAcrossScope, resetPasswordAttempts, resetAdminAttemptsAcrossScope } = require('../middleware');
+const { timingSafeEqualStr, hashPasswordAsync, verifyPasswordAsync } = require('../security');
 
 const router = express.Router();
 
@@ -133,8 +133,8 @@ router.post('/', apiLimiter, async (req, res) => {
       name,
       description,
       isPrivate,
-      joinPassword: (isPrivate && typeof joinPassword === 'string' && joinPassword.trim().length >= 6) ? hashPassword(joinPassword.trim()) : undefined,
-      adminPassword: hashPassword(adminPassword),
+      joinPassword: (isPrivate && typeof joinPassword === 'string' && joinPassword.trim().length >= 6) ? await hashPasswordAsync(joinPassword.trim()) : undefined,
+      adminPassword: await hashPasswordAsync(adminPassword),
       creatorIp: clientIp,
       creatorFingerprint: fingerprint
     });
@@ -244,7 +244,7 @@ router.post('/verify-join', authLimiter, checkPasswordRateLimit, async (req, res
     }
 
     if (room.isPrivate && room.joinPassword) {
-      if (!verifyPassword(password || '', room.joinPassword)) {
+      if (!await verifyPasswordAsync(password || '', room.joinPassword)) {
         recordFailedPasswordAttempt(req.passwordRateLimitKey, req);
         const ip = extractIp(req);
         const userAgent = req.headers['user-agent'] || '';
@@ -388,10 +388,10 @@ router.post('/join', authLimiter, checkPasswordRateLimit, async (req, res) => {
     if (!room.isPrivate) return res.json({ success: true, roomId: room.id });
     if (!room.joinPassword) return res.json({ success: true, roomId: room.id });
 
-    if (joinPassword && verifyPassword(joinPassword, room.joinPassword)) {
+    if (joinPassword && await verifyPasswordAsync(joinPassword, room.joinPassword)) {
       resetPasswordAttempts(req.passwordRateLimitKey);
       if (room.joinPassword && !room.joinPassword.startsWith('scrypt$')) {
-        room.joinPassword = hashPassword(joinPassword);
+        room.joinPassword = await hashPasswordAsync(joinPassword);
         room.save().catch((err) => logger.error('Failed to upgrade legacy room password:', err));
         invalidateCachedRoom(room.id);
       }
@@ -420,7 +420,7 @@ router.post('/join', authLimiter, checkPasswordRateLimit, async (req, res) => {
 });
 
 // Verify admin access
-router.post('/admin-auth', authLimiter, checkPasswordRateLimit, async (req, res) => {
+router.post('/admin-auth', authLimiter, checkAdminPasswordRateLimit, async (req, res) => {
   const { roomId, adminPassword } = req.body;
   
   if (!roomId || typeof roomId !== 'string' || !roomId.trim() || !adminPassword || typeof adminPassword !== 'string') {
@@ -428,24 +428,24 @@ router.post('/admin-auth', authLimiter, checkPasswordRateLimit, async (req, res)
   }
   const cleanRoomId = roomId.trim();
   const lowerRoomId = cleanRoomId.toLowerCase();
+  const clientIp = extractIp(req);
 
   try {
     if ((lowerRoomId === 'me' || lowerRoomId === 'global') && process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)) {
-       resetPasswordAttempts(req.passwordRateLimitKey);
+       resetAdminAttemptsAcrossScope(req.passwordRateLimitKey, clientIp);
        return res.json({ success: true, roomId: lowerRoomId });
     }
 
     const room = await Room.findByIdOrAlias(cleanRoomId);
     if (!room) {
       if (lowerRoomId === 'me' || lowerRoomId === 'global') {
-        recordFailedPasswordAttempt(req.passwordRateLimitKey, req);
-        const ip = extractIp(req);
+        recordFailedAdminAttemptAcrossScope(req.passwordRateLimitKey, clientIp, req);
         const userAgent = req.headers['user-agent'] || '';
         AuditLog.create({
           roomId: lowerRoomId,
           type: 'admin_auth_failed',
           details: { reason: 'Incorrect admin password' },
-          ip,
+          ip: clientIp,
           userAgent,
         }).then((entry) => {
           _broadcastToAdmins(lowerRoomId, 'audit_log', entry);
@@ -456,24 +456,25 @@ router.post('/admin-auth', authLimiter, checkPasswordRateLimit, async (req, res)
       return res.status(404).json({ error: 'Room not found.' });
     }
 
-    if (verifyPassword(adminPassword, room.adminPassword) || (process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD))) {
-      resetPasswordAttempts(req.passwordRateLimitKey);
-      if (room.adminPassword && !room.adminPassword.startsWith('scrypt$') && verifyPassword(adminPassword, room.adminPassword)) {
-        room.adminPassword = hashPassword(adminPassword);
+    const matchesRoomPassword = await verifyPasswordAsync(adminPassword, room.adminPassword);
+    const matchesSuperPassword = Boolean(process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD));
+    if (matchesRoomPassword || matchesSuperPassword) {
+      resetAdminAttemptsAcrossScope(req.passwordRateLimitKey, clientIp);
+      if (room.adminPassword && !room.adminPassword.startsWith('scrypt$') && matchesRoomPassword) {
+        room.adminPassword = await hashPasswordAsync(adminPassword);
         room.save().catch((err) => logger.error('Failed to upgrade legacy admin password:', err));
         invalidateCachedRoom(room.id);
       }
       return res.json({ success: true, roomId: room.id });
     }
 
-    recordFailedPasswordAttempt(req.passwordRateLimitKey, req);
-    const ip = extractIp(req);
+    recordFailedAdminAttemptAcrossScope(req.passwordRateLimitKey, clientIp, req);
     const userAgent = req.headers['user-agent'] || '';
     AuditLog.create({
       roomId: room.id,
       type: 'admin_auth_failed',
       details: { reason: 'Incorrect admin password' },
-      ip,
+      ip: clientIp,
       userAgent,
     }).then((entry) => {
       _broadcastToAdmins(room.id, 'audit_log', entry);
@@ -487,8 +488,8 @@ router.post('/admin-auth', authLimiter, checkPasswordRateLimit, async (req, res)
 });
 
 const recordAdminAuthFailure = (req, roomId) => {
-  recordFailedPasswordAttempt(req.passwordRateLimitKey, req);
   const ip = extractIp(req);
+  recordFailedAdminAttemptAcrossScope(req.passwordRateLimitKey, ip, req);
   const userAgent = req.headers['user-agent'] || '';
   AuditLog.create({
     roomId: roomId || 'unknown',
@@ -503,7 +504,7 @@ const recordAdminAuthFailure = (req, roomId) => {
 };
 
 // Admin room details
-router.get('/admin/details', adminLimiter, checkPasswordRateLimit, async (req, res) => {
+router.get('/admin/details', adminLimiter, checkAdminPasswordRateLimit, async (req, res) => {
   const rawRoomId = req.headers['x-room-id'];
   const adminPassword = req.headers['x-admin-password'];
 
@@ -522,7 +523,7 @@ router.get('/admin/details', adminLimiter, checkPasswordRateLimit, async (req, r
         isValid = true;
      } else {
         room = await Room.findByIdOrAlias(roomId);
-        if (room && (verifyPassword(adminPassword, room.adminPassword) || (process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)))) {
+        if (room && (await verifyPasswordAsync(adminPassword, room.adminPassword) || (process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)))) {
            isValid = true;
         }
      }
@@ -532,7 +533,7 @@ router.get('/admin/details', adminLimiter, checkPasswordRateLimit, async (req, r
        return res.status(401).json({ error: 'Unauthorized' });
      }
      
-     resetPasswordAttempts(req.passwordRateLimitKey);
+     resetAdminAttemptsAcrossScope(req.passwordRateLimitKey, extractIp(req));
      const canonicalId = room ? room.id : (lowerRoomId === 'me' || lowerRoomId === 'global' ? lowerRoomId : roomId);
      res.json({ id: canonicalId, name: room ? room.name : (canonicalId === 'global' ? 'Global Chat' : 'Main Room'), description: room?.description, alias: room?.alias, lastIdChangeAt: room?.lastIdChangeAt, isPrivate: room?.isPrivate, hasJoinPassword: !!room?.joinPassword });
   } catch (error) {
@@ -540,7 +541,7 @@ router.get('/admin/details', adminLimiter, checkPasswordRateLimit, async (req, r
   }
 });
 
-router.put('/admin/details', adminLimiter, checkPasswordRateLimit, async (req, res) => {
+router.put('/admin/details', adminLimiter, checkAdminPasswordRateLimit, async (req, res) => {
   const roomId = req.headers['x-room-id'];
   const adminPassword = req.headers['x-admin-password'];
   const { name, description } = req.body;
@@ -564,13 +565,13 @@ router.put('/admin/details', adminLimiter, checkPasswordRateLimit, async (req, r
 
   try {
     const room = await Room.findByIdOrAlias(cleanRoomId);
-    const isAuthorized = room && (verifyPassword(adminPassword, room.adminPassword) || (process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)));
+    const isAuthorized = room && (await verifyPasswordAsync(adminPassword, room.adminPassword) || (process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)));
     if (!room || !isAuthorized) {
       recordAdminAuthFailure(req, cleanRoomId);
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    resetPasswordAttempts(req.passwordRateLimitKey);
+    resetAdminAttemptsAcrossScope(req.passwordRateLimitKey, extractIp(req));
     if (name) room.name = name;
     if (description !== undefined) room.description = description;
     
@@ -584,7 +585,7 @@ router.put('/admin/details', adminLimiter, checkPasswordRateLimit, async (req, r
   }
 });
 
-router.put('/admin/roomId', adminLimiter, checkPasswordRateLimit, async (req, res) => {
+router.put('/admin/roomId', adminLimiter, checkAdminPasswordRateLimit, async (req, res) => {
   const roomId = req.headers['x-room-id'];
   const adminPassword = req.headers['x-admin-password'];
   const { newRoomId } = req.body;
@@ -598,13 +599,13 @@ router.put('/admin/roomId', adminLimiter, checkPasswordRateLimit, async (req, re
 
   try {
     const room = await Room.findByIdOrAlias(cleanRoomId);
-    const isAuthorized = room && (verifyPassword(adminPassword, room.adminPassword) || (process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)));
+    const isAuthorized = room && (await verifyPasswordAsync(adminPassword, room.adminPassword) || (process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)));
     if (!room || !isAuthorized) {
       recordAdminAuthFailure(req, cleanRoomId);
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    resetPasswordAttempts(req.passwordRateLimitKey);
+    resetAdminAttemptsAcrossScope(req.passwordRateLimitKey, extractIp(req));
 
     // Validate newRoomId
     const alias = newRoomId.trim();
@@ -652,7 +653,7 @@ router.put('/admin/roomId', adminLimiter, checkPasswordRateLimit, async (req, re
   }
 });
 
-router.put('/admin/joinPassword', adminLimiter, checkPasswordRateLimit, async (req, res) => {
+router.put('/admin/joinPassword', adminLimiter, checkAdminPasswordRateLimit, async (req, res) => {
   const roomId = req.headers['x-room-id'];
   const adminPassword = req.headers['x-admin-password'];
   const { currentPassword, newPassword } = req.body;
@@ -665,14 +666,16 @@ router.put('/admin/joinPassword', adminLimiter, checkPasswordRateLimit, async (r
 
   try {
     const room = await Room.findByIdOrAlias(cleanRoomId);
-    const isAuthorized = room && (verifyPassword(adminPassword, room.adminPassword) || (process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)));
+    const isAuthorized = room && (await verifyPasswordAsync(adminPassword, room.adminPassword) || (process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)));
     if (!room || !isAuthorized) {
       recordAdminAuthFailure(req, cleanRoomId);
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    if (room.joinPassword && !verifyPassword(currentPassword, room.joinPassword)) {
-      recordAdminAuthFailure(req, cleanRoomId);
+    resetAdminAttemptsAcrossScope(req.passwordRateLimitKey, extractIp(req));
+
+    if (room.joinPassword && !await verifyPasswordAsync(currentPassword, room.joinPassword)) {
+      recordFailedPasswordAttempt(req.passwordRateLimitKey, req);
       return res.status(400).json({ error: 'Current password is not correct.' });
     }
 
@@ -683,11 +686,11 @@ router.put('/admin/joinPassword', adminLimiter, checkPasswordRateLimit, async (r
     }
     const cleanNewPassword = newPassword.trim();
 
-    if (room.joinPassword && verifyPassword(cleanNewPassword, room.joinPassword)) {
+    if (room.joinPassword && await verifyPasswordAsync(cleanNewPassword, room.joinPassword)) {
       return res.status(400).json({ error: 'New password cannot be the same as the current password.' });
     }
 
-    room.joinPassword = hashPassword(cleanNewPassword);
+    room.joinPassword = await hashPasswordAsync(cleanNewPassword);
     room.isPrivate = true; // Implicitly private if it has a join password
     
     await room.save();
@@ -701,7 +704,7 @@ router.put('/admin/joinPassword', adminLimiter, checkPasswordRateLimit, async (r
   }
 });
 
-router.delete('/admin/joinPassword', adminLimiter, checkPasswordRateLimit, async (req, res) => {
+router.delete('/admin/joinPassword', adminLimiter, checkAdminPasswordRateLimit, async (req, res) => {
   const roomId = req.headers['x-room-id'];
   const adminPassword = req.headers['x-admin-password'];
 
@@ -713,13 +716,13 @@ router.delete('/admin/joinPassword', adminLimiter, checkPasswordRateLimit, async
 
   try {
     const room = await Room.findByIdOrAlias(cleanRoomId);
-    const isAuthorized = room && (verifyPassword(adminPassword, room.adminPassword) || (process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)));
+    const isAuthorized = room && (await verifyPasswordAsync(adminPassword, room.adminPassword) || (process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)));
     if (!room || !isAuthorized) {
       recordAdminAuthFailure(req, cleanRoomId);
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    resetPasswordAttempts(req.passwordRateLimitKey);
+    resetAdminAttemptsAcrossScope(req.passwordRateLimitKey, extractIp(req));
 
     room.joinPassword = undefined;
     room.isPrivate = false; // Make the room public again

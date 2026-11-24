@@ -38,23 +38,42 @@ cloudinary.config({
 // Global configuration & Allowed Origins
 // ---------------------------------------------------------------------------
 const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim())
+  ? process.env.ALLOWED_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
   : null;
 
-const isOriginAllowed = (origin) => {
-  // Allow requests without an origin header (same-origin, curl, server-to-server, mobile native)
+const isOriginAllowed = (origin, req) => {
+  // Allow requests without an origin header (same-origin GETs, curl, server-to-server, mobile native)
   if (!origin) return true;
 
-  // Wildcard permits all origins
-  if (!allowedOrigins || allowedOrigins.includes('*')) return true;
-
-  // Direct match against explicitly configured ALLOWED_ORIGINS
-  if (allowedOrigins.includes(origin)) return true;
-
-  // Allow local development and LAN testing origins (localhost, 127.0.0.1, IPv6, 192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+  let parsedOrigin;
   try {
-    const url = new URL(origin);
-    const hostname = url.hostname;
+    parsedOrigin = new URL(origin);
+  } catch {
+    return false;
+  }
+
+  // Always allow genuine same-origin browser requests (POST/WS send Origin matching Host)
+  const rawHost = req?.headers?.host;
+  if (rawHost && typeof rawHost === 'string') {
+    const reqHost = rawHost.split(',')[0].trim().toLowerCase();
+    if (reqHost && parsedOrigin.host.toLowerCase() === reqHost) {
+      return true;
+    }
+  }
+
+  // Explicit opt-in via ALLOWED_ORIGINS
+  if (allowedOrigins && allowedOrigins.length > 0) {
+    if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+      return true;
+    }
+  }
+
+  // In non-production environments, permit local/LAN dev servers and unset ALLOWED_ORIGINS
+  if (process.env.NODE_ENV !== 'production') {
+    if (!allowedOrigins || allowedOrigins.length === 0) {
+      return true;
+    }
+    const hostname = parsedOrigin.hostname;
     if (
       hostname === 'localhost' ||
       hostname === '127.0.0.1' ||
@@ -65,8 +84,6 @@ const isOriginAllowed = (origin) => {
     ) {
       return true;
     }
-  } catch {
-    // Malformed origin URL
   }
 
   return false;
@@ -82,7 +99,7 @@ const wss = new WebSocketServer({
   maxPayload: 1024 * 1024, // 1MB maximum frame size to prevent OOM denial-of-service
   verifyClient: (info, callback) => {
     const origin = info.origin || info.req.headers.origin;
-    if (isOriginAllowed(origin)) {
+    if (isOriginAllowed(origin, info.req)) {
       return callback(true);
     }
     logger.warn(`Blocked cross-origin WebSocket connection from disallowed origin: ${origin}`);
@@ -166,17 +183,19 @@ app.use(helmet({
   },
   crossOriginEmbedderPolicy: false,
 }));
-app.use(cors({
-  origin: (origin, callback) => {
-    if (isOriginAllowed(origin)) {
-      return callback(null, true);
-    }
+app.use(cors((req, callback) => {
+  const origin = req.headers.origin;
+  if (!isOriginAllowed(origin, req)) {
     logger.warn(`Blocked cross-origin HTTP request from disallowed origin: ${origin}`);
     return callback(new Error(`Blocked by CORS policy: origin '${origin}' is not allowed`));
-  },
-  credentials: true,
-  methods: ['GET', 'HEAD', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-password', 'x-admin-secret', 'x-room-id', 'x-user-id', 'x-session-token', 'x-room-password', 'Range'],
+  }
+  const hasExplicitOrigins = Boolean(allowedOrigins && allowedOrigins.length > 0 && !allowedOrigins.includes('*'));
+  return callback(null, {
+    origin: true,
+    credentials: hasExplicitOrigins,
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-password', 'x-admin-secret', 'x-room-id', 'x-user-id', 'x-session-token', 'x-room-password', 'Range'],
+  });
 }));
 app.use(express.json({ limit: '1mb' }));
 app.use(apiLimiter);

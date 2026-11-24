@@ -9,6 +9,7 @@ const axios = require('axios');
 const logger = require('../logger');
 const { isPrivateOrInternalIp } = require('../security');
 const { getClientIp } = require('../middleware');
+const { getCachedRoom } = require('../state');
 // Issue 6: Tighter, dedicated rate limiter for link-preview — this endpoint fetches
 // external URLs on behalf of the user and can amplify DoS/enumeration if abused.
 const rateLimit = require('express-rate-limit');
@@ -50,16 +51,16 @@ const setToPreviewCache = (key, data) => {
   linkPreviewCache.set(key, { timestamp: Date.now(), data });
 };
 
-// Issue 10: Normalize URL before using as a cache key to prevent:
-//   (a) cache-busting via arbitrary query params (utm_source, tracking tokens, etc.)
-//   (b) cache poisoning via protocol variant races (http vs https same domain)
-// We keep origin + pathname only; preview content almost never differs by query param.
-const getPreviewCacheKey = (rawUrl) => {
+// Namespace preview cache entries by canonical roomId and preserve query parameters
+// (dropping only URL fragment) so parameterized URLs (e.g. ?v=..., ?k=...) never
+// poison previews or leak across rooms.
+const getPreviewCacheKey = (rawUrl, canonicalRoomId = 'me') => {
+  const roomScope = typeof canonicalRoomId === 'string' && canonicalRoomId.trim() ? canonicalRoomId.trim() : 'me';
   try {
     const u = new URL(rawUrl);
-    return `https://${u.host}${u.pathname}`;
+    return `${roomScope}:https://${u.host}${u.pathname}${u.search}`;
   } catch {
-    return rawUrl;
+    return `${roomScope}:${rawUrl}`;
   }
 };
 
@@ -76,12 +77,20 @@ router.get('/api/link-preview', previewLimiter, async (req, res) => {
       return res.status(401).json({ error: 'Access denied: room authentication required.' });
     }
 
+    const lowerRoomId = roomId.toLowerCase();
+    let canonicalRoomId = (lowerRoomId === 'me' || lowerRoomId === 'global') ? lowerRoomId : roomId;
+    if (canonicalRoomId !== 'me' && canonicalRoomId !== 'global') {
+      try {
+        const roomDoc = await getCachedRoom(roomId);
+        if (roomDoc && roomDoc.id) canonicalRoomId = roomDoc.id;
+      } catch (_) {}
+    }
+
     const { url } = req.query;
     if (!url || typeof url !== 'string') return res.status(400).json({ error: 'URL parameter required' });
     if (!/^https?:\/\//i.test(url)) return res.status(400).json({ error: 'Invalid URL' });
 
-    // Use normalized key for cache lookup to prevent cache poisoning (Issue 10)
-    const cacheKey = getPreviewCacheKey(url);
+    const cacheKey = getPreviewCacheKey(url, canonicalRoomId);
     const cached = getFromPreviewCache(cacheKey);
     if (cached) {
       return res.json(cached);
@@ -548,4 +557,5 @@ router.get('/api/link-preview', previewLimiter, async (req, res) => {
   }
 });
 
+router.getPreviewCacheKey = getPreviewCacheKey;
 module.exports = router;
