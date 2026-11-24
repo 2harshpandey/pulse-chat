@@ -11,11 +11,20 @@ interface TabLockPayload {
   claimedAt?: number;
 }
 
+let fallbackTabSeq = 0;
+
 const createTabId = (): string => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return `tab_${crypto.randomUUID()}`;
   }
-  return `tab_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    return `tab_${hex}`;
+  }
+  fallbackTabSeq += 1;
+  return `tab_${Date.now()}_${fallbackTabSeq}`;
 };
 
 const readTabLock = (lockKey: string): TabLockPayload | null => {
