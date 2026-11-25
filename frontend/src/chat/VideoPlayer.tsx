@@ -1132,21 +1132,23 @@ export const VideoPlayer = ({
               }
             </CVPIconBtn>
 
-            {/* Skip back 10s - pure path-based icon, no <text> to avoid SVG clipping */}
+            {/* Skip back 10s - counter-clockwise arrow + crisp vector 10 */}
             <CVPIconBtn onClick={() => skip(-10)} title="Back 10s" aria-label="Back 10 seconds">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12.5 5A8.5 8.5 0 1 0 20 11.5" />
-                <polyline points="12 3 9.5 5.5 12 8" />
-                <text x="8.2" y="15" fontSize="4.8" fill="currentColor" stroke="none" fontWeight="800" fontFamily="system-ui,sans-serif">10</text>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+                <polyline points="3 3.5 3 8 7.5 8" />
+                <path d="M9.1 10.8L10.3 9.8V15" strokeWidth="1.6" />
+                <rect x="12.1" y="9.8" width="3.2" height="5.2" rx="1.6" strokeWidth="1.6" />
               </svg>
             </CVPIconBtn>
 
-            {/* Skip forward 10s - pure path-based icon */}
+            {/* Skip forward 10s - clockwise arrow + crisp vector 10 */}
             <CVPIconBtn onClick={() => skip(10)} title="Forward 10s" aria-label="Forward 10 seconds">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M11.5 5A8.5 8.5 0 1 1 4 11.5" />
-                <polyline points="12 3 14.5 5.5 12 8" />
-                <text x="8.2" y="15" fontSize="4.8" fill="currentColor" stroke="none" fontWeight="800" fontFamily="system-ui,sans-serif">10</text>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
+                <polyline points="21 3.5 21 8 16.5 8" />
+                <path d="M9.1 10.8L10.3 9.8V15" strokeWidth="1.6" />
+                <rect x="12.1" y="9.8" width="3.2" height="5.2" rx="1.6" strokeWidth="1.6" />
               </svg>
             </CVPIconBtn>
 
