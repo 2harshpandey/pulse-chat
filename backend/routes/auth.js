@@ -190,6 +190,155 @@ const resolveAuthenticatedUserId = async ({ userId, roomId, roomState, incomingT
   return { conflict: false, userId };
 };
 
+const enforceRoomEntryAccess = async ({
+  res,
+  roomId,
+  userId,
+  username,
+  ip,
+  userAgent,
+  fingerprint,
+  incomingToken,
+  roomState,
+  viaTempLink = false,
+}) => {
+  const { loggedInUsers } = roomState;
+  const displayUsername = typeof username === 'string' ? username.trim() : '';
+
+  const blockCheck = await isUserBlocked(roomId, userId, ip, userAgent, fingerprint);
+  if (blockCheck.blocked) {
+    const details = viaTempLink
+      ? { userId, username: displayUsername, reason: blockCheck.reason, viaTempLink: true }
+      : { userId, username: displayUsername || username, reason: blockCheck.reason, blockedUsername: blockCheck.blockedUser?.username };
+    await AuditLog.create({
+      roomId,
+      type: 'join_failed_blocked',
+      details,
+      ip,
+      userAgent,
+    });
+    _broadcastToAdmins(roomId, 'audit_log', {
+      type: 'join_failed_blocked',
+      details: { userId, username: displayUsername || username, reason: blockCheck.reason },
+      ip,
+      timestamp: new Date(),
+    });
+    if (!viaTempLink) {
+      _broadcastToAdmins(roomId, 'activity', `Join attempt blocked: Blocked user '${username || 'Unknown'}' attempted to enter.`);
+    }
+    res.status(403).json({ success: false, error: 'You have been blocked from this chat room.' });
+    return false;
+  }
+
+  // Allow already logged-in users to resume even under lockdown if they present a valid session token
+  const existingSession = loggedInUsers.get(userId);
+  const cleanIncoming = typeof incomingToken === 'string' && incomingToken.trim() ? incomingToken.trim() : null;
+  const incomingTokenHash = cleanIncoming ? hashSessionToken(cleanIncoming) : null;
+  const isResumingSession = Boolean(
+    existingSession &&
+    isTokenMatchingSession({
+      cleanIncoming,
+      incomingTokenHash,
+      session: existingSession,
+      roomId,
+      userId,
+    })
+  );
+
+  if (!isResumingSession) {
+    const lockCheck = await isLoginLocked(roomId);
+    if (lockCheck.locked) {
+      const details = viaTempLink
+        ? { userId, username: displayUsername, viaTempLink: true }
+        : { userId, username };
+      await AuditLog.create({
+        roomId,
+        type: 'join_failed_lockdown',
+        details,
+        ip,
+        userAgent,
+      });
+      _broadcastToAdmins(roomId, 'audit_log', {
+        type: 'join_failed_lockdown',
+        details,
+        ip,
+        timestamp: new Date(),
+      });
+      _broadcastToAdmins(
+        roomId,
+        'activity',
+        viaTempLink
+          ? `Temp link join attempt rejected: User '${displayUsername}' attempted to join while lockdown is active.`
+          : `Join attempt rejected: User '${username || 'Unknown'}' attempted to join while lockdown is active.`
+      );
+      res.status(403).json({ success: false, error: 'New logins are temporarily disabled. Please try again later.' });
+      return false;
+    }
+  }
+
+  return true;
+};
+
+const recordUserFingerprint = ({ effectiveUserId, fingerprint, ip, userAgent }) => {
+  if (!fingerprint) return;
+  const existing = userFingerprints.get(effectiveUserId) || { ips: new Set(), userAgents: new Set(), deviceHashes: new Set() };
+  existing.ips.add(ip);
+  existing.userAgents.add(userAgent);
+  existing.screenResolution = fingerprint.screenResolution;
+  existing.platform = fingerprint.platform;
+  existing.language = fingerprint.language;
+  existing.timezone = fingerprint.timezone;
+  const hash = generateDeviceHash({ ...fingerprint, userAgent });
+  existing.deviceHashes.add(hash);
+  existing.lastSeen = Date.now();
+  userFingerprints.set(effectiveUserId, existing);
+};
+
+const issueAuthenticatedSession = ({
+  roomId,
+  effectiveUserId,
+  username,
+  ip,
+  userAgent,
+  loggedInUsers,
+  viaTempLink = false,
+}) => {
+  const cleanUsername = typeof username === 'string' ? username.trim() : undefined;
+  const sessionToken = generateSessionToken(effectiveUserId, roomId);
+  const sessionTokenHash = hashSessionToken(sessionToken);
+
+  loggedInUsers.set(effectiveUserId, {
+    userId: effectiveUserId,
+    username: cleanUsername,
+    sessionToken,
+    sessionTokenHash,
+    loginTime: new Date(),
+    ip,
+    userAgent,
+    ...(viaTempLink ? { viaTempLink: true } : {}),
+  });
+
+  // Persist hashed session token to MongoDB User document (never store plaintext tokens)
+  User.findOneAndUpdate(
+    { roomId: String(roomId), userId: String(effectiveUserId) },
+    {
+      $set: {
+        roomId: String(roomId),
+        userId: String(effectiveUserId),
+        username: cleanUsername || 'Anonymous',
+        sessionTokenHash,
+        lastSeen: new Date(),
+      },
+      $unset: {
+        sessionToken: 1,
+      },
+    },
+    { upsert: true, new: true }
+  ).catch((err) => logger.error(`Failed to persist User session in auth ${viaTempLink ? 'verify-temp' : 'verify'}:`, err));
+
+  return sessionToken;
+};
+
 // --- Client Auth Verification ---
 router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req, res) => {
   try {
@@ -233,54 +382,23 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
 
     const ip = extractIp(req);
     const userAgent = req.headers['user-agent'] || '';
+    const fullRoomState = getRoomState(roomId);
+    const { onlineUsers, loggedInUsers, pendingDisconnects, filePickerPresenceByUsername } = fullRoomState;
+    const incomingSessionToken = req.headers['x-session-token'] || body?.sessionToken;
 
-    const { onlineUsers, loggedInUsers, pendingDisconnects, filePickerPresenceByUsername } = getRoomState(roomId);
-
-    // Check if user is blocked
-    const blockCheck = await isUserBlocked(roomId, userId, ip, userAgent, fingerprint);
-    if (blockCheck.blocked) {
-      await AuditLog.create({
-        roomId,
-        type: 'join_failed_blocked',
-        details: { userId, username, reason: blockCheck.reason, blockedUsername: blockCheck.blockedUser?.username },
-        ip, userAgent,
-      });
-      _broadcastToAdmins(roomId, 'audit_log', { type: 'join_failed_blocked', details: { userId, username, reason: blockCheck.reason }, ip, timestamp: new Date() });
-      _broadcastToAdmins(roomId, 'activity', `Join attempt blocked: Blocked user '${username || 'Unknown'}' attempted to enter.`);
-      return res.status(403).json({ success: false, error: 'You have been blocked from this chat room.' });
-    }
-
-    // Check login lockdown (allow already logged-in users to resume only if valid session token is provided)
-    let isResumingSession = false;
-    const existingSession = loggedInUsers.get(userId);
-    if (existingSession && existingSession.sessionToken) {
-      const incomingToken = req.headers['x-session-token'] || body?.sessionToken;
-      if (typeof incomingToken === 'string') {
-        if (timingSafeEqualStr(incomingToken, existingSession.sessionToken)) {
-          isResumingSession = true;
-        } else {
-          const verified = verifySignedSessionToken(incomingToken);
-          if (verified && verified.userId === userId && verified.roomId === roomId) {
-            isResumingSession = true;
-          }
-        }
-      }
-    }
-
-    if (!isResumingSession) {
-      const lockCheck = await isLoginLocked(roomId);
-      if (lockCheck.locked) {
-        await AuditLog.create({
-          roomId,
-          type: 'join_failed_lockdown',
-          details: { userId, username },
-          ip, userAgent,
-        });
-        _broadcastToAdmins(roomId, 'audit_log', { type: 'join_failed_lockdown', details: { userId, username }, ip, timestamp: new Date() });
-        _broadcastToAdmins(roomId, 'activity', `Join attempt rejected: User '${username || 'Unknown'}' attempted to join while lockdown is active.`);
-        return res.status(403).json({ success: false, error: 'New logins are temporarily disabled. Please try again later.' });
-      }
-    }
+    const entryAllowed = await enforceRoomEntryAccess({
+      res,
+      roomId,
+      userId,
+      username,
+      ip,
+      userAgent,
+      fingerprint,
+      incomingToken: incomingSessionToken,
+      roomState: fullRoomState,
+      viaTempLink: false,
+    });
+    if (!entryAllowed) return;
 
     let isPasswordValid = false;
     if (roomId === 'me') {
@@ -301,10 +419,6 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
     }
 
     if (isPasswordValid) {
-      const fullRoomState = getRoomState(roomId);
-      const incomingSessionToken = req.headers['x-session-token'] || body?.sessionToken;
-
-      // Prevent hijacking an active or persisted user's userId via /api/auth/verify
       const identityCheck = await resolveAuthenticatedUserId({
         userId,
         roomId,
@@ -318,7 +432,6 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
       }
       const effectiveUserId = identityCheck.userId;
 
-      // If the client sends a username, verify it is not already in use.
       if (username) {
         const roomState = { onlineUsers, loggedInUsers, pendingDisconnects, filePickerPresenceByUsername };
         const allowed = await resolveUsernameCollision({
@@ -327,53 +440,16 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
         if (!allowed) return;
       }
 
-      // Store fingerprint data
-      if (fingerprint) {
-        const existing = userFingerprints.get(effectiveUserId) || { ips: new Set(), userAgents: new Set(), deviceHashes: new Set() };
-        existing.ips.add(ip);
-        existing.userAgents.add(userAgent);
-        existing.screenResolution = fingerprint.screenResolution;
-        existing.platform = fingerprint.platform;
-        existing.language = fingerprint.language;
-        existing.timezone = fingerprint.timezone;
-        const hash = generateDeviceHash({ ...fingerprint, userAgent });
-        existing.deviceHashes.add(hash);
-        existing.lastSeen = Date.now();
-        userFingerprints.set(effectiveUserId, existing);
-      }
-
-      // Generate cryptographically secure session token
-      const sessionToken = generateSessionToken(effectiveUserId, roomId);
-
-      // Track as logged in
-      const sessionTokenHash = hashSessionToken(sessionToken);
-      loggedInUsers.set(effectiveUserId, {
-        userId: effectiveUserId,
-        username: username?.trim(),
-        sessionToken,
-        sessionTokenHash,
-        loginTime: new Date(),
+      recordUserFingerprint({ effectiveUserId, fingerprint, ip, userAgent });
+      const sessionToken = issueAuthenticatedSession({
+        roomId,
+        effectiveUserId,
+        username,
         ip,
         userAgent,
+        loggedInUsers,
+        viaTempLink: false,
       });
-
-      // Persist hashed session token to MongoDB User document (never store plaintext tokens)
-      User.findOneAndUpdate(
-        { roomId: String(roomId), userId: String(effectiveUserId) },
-        {
-          $set: {
-            roomId: String(roomId),
-            userId: String(effectiveUserId),
-            username: username ? String(username).trim() : 'Anonymous',
-            sessionTokenHash,
-            lastSeen: new Date(),
-          },
-          $unset: {
-            sessionToken: 1,
-          },
-        },
-        { upsert: true, new: true }
-      ).catch((err) => logger.error('Failed to persist User session in auth verify:', err));
 
       resetPasswordAttempts(req.passwordRateLimitKey);
       res.status(200).json({ success: true, roomId, sessionToken, userId: effectiveUserId, username: username?.trim() });
@@ -435,61 +511,23 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
       }
     }
 
-    const { onlineUsers, loggedInUsers, pendingDisconnects, filePickerPresenceByUsername } = getRoomState(roomId);
+    const fullRoomState = getRoomState(roomId);
+    const { onlineUsers, loggedInUsers, pendingDisconnects, filePickerPresenceByUsername } = fullRoomState;
+    const incomingSessionToken = req.headers['x-session-token'] || body?.sessionToken;
 
-    // Check if user is blocked
-    const blockCheck = await isUserBlocked(roomId, userId, ip, userAgent, fingerprint);
-    if (blockCheck.blocked) {
-      await AuditLog.create({
-        roomId,
-        type: 'join_failed_blocked',
-        details: { userId, username: username.trim(), reason: blockCheck.reason, viaTempLink: true },
-        ip, userAgent,
-      });
-      _broadcastToAdmins(roomId, 'audit_log', { type: 'join_failed_blocked', details: { userId, username: username.trim(), reason: blockCheck.reason }, ip, timestamp: new Date() });
-      return res.status(403).json({ success: false, error: 'You have been blocked from this chat room.' });
-    }
-    // Check login lockdown (allow already logged-in users to resume only if valid session token is provided)
-    let isResumingSession = false;
-    const existingSession = loggedInUsers.get(userId);
-    if (existingSession && existingSession.sessionToken) {
-      const incomingToken = req.headers['x-session-token'] || body?.sessionToken;
-      if (typeof incomingToken === 'string') {
-        if (timingSafeEqualStr(incomingToken, existingSession.sessionToken)) {
-          isResumingSession = true;
-        } else {
-          const verified = verifySignedSessionToken(incomingToken);
-          if (verified && verified.userId === userId && verified.roomId === roomId) {
-            isResumingSession = true;
-          }
-        }
-      }
-    }
-
-    if (!isResumingSession) {
-      const lockCheck = await isLoginLocked(roomId);
-      if (lockCheck.locked) {
-        await AuditLog.create({
-          roomId,
-          type: 'join_failed_lockdown',
-          details: { userId, username: username.trim(), viaTempLink: true },
-          ip,
-          userAgent,
-        });
-        _broadcastToAdmins(roomId, 'audit_log', {
-          type: 'join_failed_lockdown',
-          details: { userId, username: username.trim(), viaTempLink: true },
-          ip,
-          timestamp: new Date(),
-        });
-        _broadcastToAdmins(
-          roomId,
-          'activity',
-          `Temp link join attempt rejected: User '${username.trim()}' attempted to join while lockdown is active.`
-        );
-        return res.status(403).json({ success: false, error: 'New logins are temporarily disabled. Please try again later.' });
-      }
-    }
+    const entryAllowed = await enforceRoomEntryAccess({
+      res,
+      roomId,
+      userId,
+      username,
+      ip,
+      userAgent,
+      fingerprint,
+      incomingToken: incomingSessionToken,
+      roomState: fullRoomState,
+      viaTempLink: true,
+    });
+    if (!entryAllowed) return;
 
     if (tempLink.isRevoked) {
       await AuditLog.create({ roomId, type: 'temp_link_expired_attempt', details: { token: token.substring(0, 8) + '...', userId, username: username.trim(), reason: 'revoked' }, ip, userAgent });
@@ -509,9 +547,6 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
       return res.status(410).json({ success: false, error: 'This access link has reached its maximum usage limit.' });
     }
 
-    // Prevent hijacking an active or persisted user's userId
-    const fullRoomState = getRoomState(roomId);
-    const incomingSessionToken = req.headers['x-session-token'] || body?.sessionToken;
     const identityCheck = await resolveAuthenticatedUserId({
       userId,
       roomId,
@@ -525,27 +560,13 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
     }
     const effectiveUserId = identityCheck.userId;
 
-    // Check username availability
     const roomState = { onlineUsers, loggedInUsers, pendingDisconnects, filePickerPresenceByUsername };
     const allowed = await resolveUsernameCollision({
       roomId, username: username.trim(), userId: effectiveUserId, ip, userAgent, roomState, viaTempLink: true, fingerprint, incomingSessionToken
     }, res);
     if (!allowed) return;
 
-    // Store fingerprint data
-    if (fingerprint) {
-      const existing = userFingerprints.get(effectiveUserId) || { ips: new Set(), userAgents: new Set(), deviceHashes: new Set() };
-      existing.ips.add(ip);
-      existing.userAgents.add(userAgent);
-      existing.screenResolution = fingerprint.screenResolution;
-      existing.platform = fingerprint.platform;
-      existing.language = fingerprint.language;
-      existing.timezone = fingerprint.timezone;
-      const hash = generateDeviceHash({ ...fingerprint, userAgent });
-      existing.deviceHashes.add(hash);
-      existing.lastSeen = Date.now();
-      userFingerprints.set(effectiveUserId, existing);
-    }
+    recordUserFingerprint({ effectiveUserId, fingerprint, ip, userAgent });
 
     // Record usage atomically and verify link was not revoked, expired in flight, or usage limit exceeded (capped to 50 most recent entries)
     const updatedTempLink = await TempLink.findOneAndUpdate(
@@ -587,39 +608,15 @@ router.post('/api/auth/verify-temp', authLimiter, async (req, res) => {
     _broadcastToAdmins(roomId, 'audit_log', { type: 'temp_link_used', details: { userId: effectiveUserId, username: username.trim() }, timestamp: new Date() });
     _broadcastToAdmins(roomId, 'activity', `User '${username.trim()}' joined via temporary access link.`);
 
-    // Generate cryptographically secure session token
-    const sessionToken = generateSessionToken(effectiveUserId, roomId);
-    const sessionTokenHash = hashSessionToken(sessionToken);
-
-    // Track as logged in
-    loggedInUsers.set(effectiveUserId, {
-      userId: effectiveUserId,
-      username: username.trim(),
-      sessionToken,
-      sessionTokenHash,
-      loginTime: new Date(),
+    const sessionToken = issueAuthenticatedSession({
+      roomId,
+      effectiveUserId,
+      username,
       ip,
       userAgent,
+      loggedInUsers,
       viaTempLink: true,
     });
-
-    // Persist hashed session token to MongoDB User document (never store plaintext tokens)
-    User.findOneAndUpdate(
-      { roomId: String(roomId), userId: String(effectiveUserId) },
-      {
-        $set: {
-          roomId: String(roomId),
-          userId: String(effectiveUserId),
-          username: username.trim(),
-          sessionTokenHash,
-          lastSeen: new Date(),
-        },
-        $unset: {
-          sessionToken: 1,
-        },
-      },
-      { upsert: true, new: true }
-    ).catch((err) => logger.error('Failed to persist User session in auth verify-temp:', err));
 
     res.status(200).json({ success: true, roomId, sessionToken, userId: effectiveUserId, username: username.trim() });
   } catch (err) {

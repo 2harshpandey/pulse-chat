@@ -3,6 +3,7 @@ import {
   subtleSlideUp,
   mediaLoadPulse,
   filePreviewEnter,
+  fadeIn,
   fadeInScale,
   reactionPillPop,
   lightboxControlReveal,
@@ -593,7 +594,7 @@ export const FilePreviewNoPreview = styled.div`
   padding: 40px;
   background: rgba(0,0,0,0.2);
   border-radius: 16px;
-  svg { width: 72px; height: 72px; stroke: rgba(255,255,255,0.35); strokeWidth: 1.2; }
+  svg { width: 72px; height: 72px; stroke: rgba(255,255,255,0.35); stroke-width: 1.2; }
   p { font-size: 1rem; opacity: 0.6; }
   span { font-size: 0.82rem; opacity: 0.4; text-transform: uppercase; }
 `;
@@ -709,9 +710,9 @@ export const LightboxCloseButton = styled.button`
     height: 20px;
     fill: none;
     stroke: currentColor;
-    strokeWidth: 2.4;
-    strokeLinecap: round;
-    strokeLinejoin: round;
+    stroke-width: 2.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
 
   @media (max-width: 768px) {
@@ -809,9 +810,9 @@ export const LightboxZoomButton = styled.button`
     height: 19px;
     fill: none;
     stroke: currentColor;
-    strokeWidth: 2.2;
-    strokeLinecap: round;
-    strokeLinejoin: round;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
 `;
 
@@ -1285,7 +1286,7 @@ export const MediaAlbumDownloadBadge = styled.div<{ $visible?: boolean }>`
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   pointer-events: none;
   white-space: nowrap;
-  animation: fadeIn 0.2s ease-out;
+  animation: ${fadeIn} 0.2s ease-out;
 
   svg {
     width: 13px;

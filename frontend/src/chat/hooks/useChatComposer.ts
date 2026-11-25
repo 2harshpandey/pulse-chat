@@ -15,7 +15,9 @@ import {
   getPresenceActivityForFile,
   getPresenceActivityForFiles,
   findLastEditableSentMessage,
+  reconcileUploadedMessageInList,
 } from '../utils';
+import { classifyUploadFile } from '../../shared/mediaTypes';
 import { transferManager } from '../TransferManager';
 import { useChatDrafts } from './useChatDrafts';
 import { useChatEmojiPicker } from './useChatEmojiPicker';
@@ -452,6 +454,128 @@ export function useChatComposer({
     return false;
   }, [safeSendProp, ws]);
 
+  const buildReplyContext = useCallback((): ReplyContext | undefined => {
+    if (!replyingTo) return undefined;
+    const { type } = replyingTo;
+    if (type === 'system_notification') {
+      setReplyingTo(null);
+      return undefined;
+    }
+    const isGroupReply = Boolean(
+      replyingTo.isGroup ||
+      replyingTo.type === 'group' ||
+      (typeof replyingTo.mediaCount === 'number' && replyingTo.mediaCount > 1)
+    );
+    const groupCount = replyingTo.mediaCount || 2;
+    let replyText = replyingTo.text || '';
+    if (isGroupReply) {
+      if (!replyText || replyText.trim().length === 0) {
+        replyText = `${groupCount} media`;
+      }
+    } else if (!replyText) {
+      if (isGiphyUrl(replyingTo.url)) replyText = 'GIF';
+      else if (replyingTo.type === 'image') replyText = 'Image';
+      else if (replyingTo.type === 'video') replyText = 'Video';
+      else if (replyingTo.type === 'audio') replyText = 'Voice Message';
+      else if (replyingTo.type === 'file') replyText = replyingTo.originalName || 'File';
+      else replyText = 'Message';
+    }
+    const resolvedReplyDuration =
+      replyingTo.duration ||
+      (replyingTo.id ? audioDurationCache.get(replyingTo.id) : undefined) ||
+      (replyingTo.url ? audioDurationCache.get(replyingTo.url) : undefined);
+    return {
+      id: replyingTo.id,
+      username: replyingTo.username,
+      text: replyText,
+      type: isGroupReply ? 'group' : type,
+      url: isGroupReply ? undefined : replyingTo.url,
+      duration: resolvedReplyDuration,
+      isDeleted: replyingTo.isDeleted,
+      deletedBy: replyingTo.deletedBy,
+      isGroup: isGroupReply ? true : undefined,
+      mediaCount: isGroupReply ? groupCount : undefined,
+    };
+  }, [replyingTo, setReplyingTo]);
+
+  const dispatchOptimisticMediaUpload = ({
+    tempId,
+    file,
+    message,
+    activity,
+    preserveDuration,
+    preserveText,
+    fixedType,
+    revokeLocalBlobDelayMs,
+    logLabel,
+  }: {
+    tempId: string;
+    file: File;
+    message: Message;
+    activity: PresenceActivity;
+    preserveDuration?: number;
+    preserveText?: { text: string | undefined };
+    fixedType?: Message['type'];
+    revokeLocalBlobDelayMs?: number;
+    logLabel: string;
+  }) => {
+    appendMessageToWindow(message);
+    forceScrollToBottomAsync(true);
+    startSendingActivity(activity);
+
+    transferManager.startUpload(tempId, file, roomId, resolveApiBaseUrl(), userId, message)
+      .then(uploadedFileData => {
+        if (uploadedFileData.id && preserveDuration) {
+          setAudioDurationCache(uploadedFileData.id, preserveDuration);
+          if (uploadedFileData.url) setAudioDurationCache(uploadedFileData.url, preserveDuration);
+        }
+        const finalMessage: Message = {
+          ...message,
+          ...uploadedFileData,
+          originalName: chooseReadableFilename(uploadedFileData.originalName, message.originalName),
+          isUploading: false,
+          id: uploadedFileData.id,
+          clientTempId: tempId,
+          localBlobUrl: message.localBlobUrl,
+          ...(preserveDuration !== undefined ? { duration: preserveDuration } : {}),
+          ...(preserveText !== undefined ? { text: preserveText.text } : {}),
+          ...(fixedType ? { type: fixedType } : {}),
+          ...(message.waveform || uploadedFileData.waveform
+            ? { waveform: message.waveform || uploadedFileData.waveform }
+            : {}),
+        };
+        setMessages(prev => reconcileUploadedMessageInList(prev, tempId, finalMessage));
+        if (replyingTo?.id === tempId) setReplyingTo(finalMessage);
+        const { localBlobUrl: _omittedBlob, ...broadcastPayload } = finalMessage;
+        safeSend({ ...broadcastPayload, clientTempId: tempId, roomId });
+        if (revokeLocalBlobDelayMs && message.localBlobUrl) {
+          const blobToRevoke = message.localBlobUrl;
+          setTimeout(() => {
+            try {
+              URL.revokeObjectURL(blobToRevoke);
+              createdBlobUrlsRef.current.delete(blobToRevoke);
+            } catch (_) {}
+          }, revokeLocalBlobDelayMs);
+        }
+      })
+      .catch(error => {
+        if (error.message === 'Aborted') return;
+        console.error(logLabel, error);
+        const errorText = error instanceof Error && error.message ? error.message : (typeof error === 'string' ? error : 'Upload failed');
+        setMessages(prev => prev.map(m => m.id === tempId ? {
+          ...message,
+          url: '',
+          isUploading: false,
+          uploadError: true,
+          originalName: sanitizeFilename(message.originalName || file.name, 'file'),
+          text: errorText,
+        } : m));
+      })
+      .finally(() => {
+        stopSendingActivity();
+      });
+  };
+
   // Send from preview modal
   const handleSendFromPreview = async () => {
     if (stagedFiles.length === 0) {
@@ -474,65 +598,15 @@ export function useChatComposer({
       await jumpToLatestMessages();
     }
 
-    let replyContext: ReplyContext | undefined = undefined;
-    if (replyingTo) {
-      const { type } = replyingTo;
-      if (type === 'system_notification') {
-        setReplyingTo(null);
-      } else {
-        const isGroupReply = Boolean(
-          replyingTo.isGroup ||
-          replyingTo.type === 'group' ||
-          (typeof replyingTo.mediaCount === 'number' && replyingTo.mediaCount > 1)
-        );
-        const groupCount = replyingTo.mediaCount || 2;
-        let replyText = replyingTo.text || '';
-        if (isGroupReply) {
-          if (!replyText || replyText.trim().length === 0) {
-            replyText = `${groupCount} media`;
-          }
-        } else if (!replyText) {
-          if (isGiphyUrl(replyingTo.url)) replyText = 'GIF';
-          else if (replyingTo.type === 'image') replyText = 'Image';
-          else if (replyingTo.type === 'video') replyText = 'Video';
-          else if (replyingTo.type === 'audio') replyText = 'Voice Message';
-          else if (replyingTo.type === 'file') replyText = replyingTo.originalName || 'File';
-          else replyText = 'Message';
-        }
-        const resolvedReplyDuration = replyingTo.duration ||
-          (replyingTo.id ? audioDurationCache.get(replyingTo.id) : undefined) ||
-          (replyingTo.url ? audioDurationCache.get(replyingTo.url) : undefined);
-        replyContext = {
-          id: replyingTo.id,
-          username: replyingTo.username,
-          text: replyText,
-          type: isGroupReply ? 'group' : type,
-          url: isGroupReply ? undefined : replyingTo.url,
-          duration: resolvedReplyDuration,
-          isDeleted: replyingTo.isDeleted,
-          deletedBy: replyingTo.deletedBy,
-          isGroup: isGroupReply ? true : undefined,
-          mediaCount: isGroupReply ? groupCount : undefined,
-        };
-      }
-    }
-
+    const replyContext = buildReplyContext();
     const caption = previewCaption.trim();
     const batchActivity = getPresenceActivityForFiles(stagedFiles);
 
     for (let i = 0; i < stagedFiles.length; i++) {
       const file = stagedFiles[i];
       const tempId = Date.now().toString() + '_' + i;
-      const isAudio = file.type.startsWith('audio/') || /\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i.test(file.name);
-      const isImage = file.type.startsWith('image/') || /\.(jpeg|jpg|png|gif|svg|webp)$/i.test(file.name);
-      const isVideo = !isAudio && (file.type.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(file.name));
-      const fileType: 'image' | 'video' | 'file' | 'audio' = isImage
-        ? 'image'
-        : isVideo
-        ? 'video'
-        : isAudio
-        ? 'audio'
-        : 'file';
+      const fileType = classifyUploadFile(file);
+      const isAudio = fileType === 'audio';
 
       const fileUrl = registerBlobUrl(URL.createObjectURL(file));
       let audioDuration: number | undefined = undefined;
@@ -541,6 +615,7 @@ export function useChatComposer({
         if (audioDuration) setAudioDurationCache(tempId, audioDuration);
       }
 
+      const itemText = i === 0 ? caption : undefined;
       const message: Message = {
         id: tempId,
         clientTempId: tempId,
@@ -552,69 +627,20 @@ export function useChatComposer({
         originalName: file.name,
         size: file.size,
         duration: audioDuration,
-        text: i === 0 ? caption : undefined,
+        text: itemText,
         timestamp: new Date().toISOString(),
         replyingTo: i === 0 ? replyContext : undefined,
         isUploading: true,
       };
-      appendMessageToWindow(message);
-      forceScrollToBottomAsync(true);
-
-      startSendingActivity(batchActivity);
-
-      transferManager.startUpload(tempId, file, roomId, resolveApiBaseUrl(), userId, message)
-        .then(uploadedFileData => {
-          if (uploadedFileData.id && audioDuration) {
-            setAudioDurationCache(uploadedFileData.id, audioDuration);
-            if (uploadedFileData.url) setAudioDurationCache(uploadedFileData.url, audioDuration);
-          }
-          const finalMessage: Message = {
-            ...message,
-            ...uploadedFileData,
-            duration: audioDuration,
-            originalName: chooseReadableFilename(uploadedFileData.originalName, message.originalName),
-            isUploading: false,
-            id: uploadedFileData.id,
-            clientTempId: tempId,
-            localBlobUrl: fileUrl,
-            text: i === 0 ? caption : undefined,
-          };
-          setMessages(prev => prev.map(m => {
-            if (m.id === tempId) return finalMessage;
-            if (m.replyingTo && m.replyingTo.id === tempId) {
-              const isGroup = Boolean(m.replyingTo.isGroup || m.replyingTo.type === 'group');
-              return {
-                ...m,
-                replyingTo: {
-                  ...m.replyingTo,
-                  id: finalMessage.id,
-                  url: isGroup ? undefined : (finalMessage.url || m.replyingTo.url),
-                  type: isGroup ? 'group' : (finalMessage.type !== 'system_notification' ? finalMessage.type : m.replyingTo.type),
-                }
-              };
-            }
-            return m;
-          }));
-          if (replyingTo?.id === tempId) setReplyingTo(finalMessage);
-          const { localBlobUrl: _omittedBlob, ...broadcastPayload } = finalMessage;
-          safeSend({ ...broadcastPayload, clientTempId: tempId, roomId });
-        })
-        .catch(error => {
-          if (error.message === 'Aborted') return;
-          console.error('File upload failed!', error);
-          const errorText = error instanceof Error && error.message ? error.message : (typeof error === 'string' ? error : 'Upload failed');
-          setMessages(prev => prev.map(m => m.id === tempId ? {
-            ...message,
-            url: '',
-            isUploading: false,
-            uploadError: true,
-            originalName: sanitizeFilename(message.originalName || file.name, 'file'),
-            text: errorText,
-          } : m));
-        })
-        .finally(() => {
-          stopSendingActivity();
-        });
+      dispatchOptimisticMediaUpload({
+        tempId,
+        file,
+        message,
+        activity: batchActivity,
+        preserveDuration: audioDuration,
+        preserveText: { text: itemText },
+        logLabel: 'File upload failed!',
+      });
     }
 
     resetInput();
@@ -664,67 +690,11 @@ export function useChatComposer({
     }
 
     const tempId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    let replyContext: ReplyContext | undefined = undefined;
-    if (replyingTo) {
-      const { type } = replyingTo;
-      if (type === 'system_notification') {
-        setReplyingTo(null);
-      } else {
-        const isGroupReply = Boolean(
-          replyingTo.isGroup ||
-          replyingTo.type === 'group' ||
-          (typeof replyingTo.mediaCount === 'number' && replyingTo.mediaCount > 1)
-        );
-        const groupCount = replyingTo.mediaCount || 2;
-        let replyText = replyingTo.text || '';
-        if (isGroupReply) {
-          if (!replyText || replyText.trim().length === 0) {
-            replyText = `${groupCount} media`;
-          }
-        } else if (!replyText) {
-          if (isGiphyUrl(replyingTo.url)) {
-            replyText = 'GIF';
-          } else if (replyingTo.type === 'image') {
-            replyText = 'Image';
-          } else if (replyingTo.type === 'video') {
-            replyText = 'Video';
-          } else if (replyingTo.type === 'audio') {
-            replyText = 'Voice Message';
-          } else if (replyingTo.type === 'file') {
-            replyText = replyingTo.originalName || 'File';
-          } else {
-            replyText = 'Message';
-          }
-        }
-        const resolvedReplyDuration = replyingTo.duration ||
-          (replyingTo.id ? audioDurationCache.get(replyingTo.id) : undefined) ||
-          (replyingTo.url ? audioDurationCache.get(replyingTo.url) : undefined);
-        replyContext = {
-          id: replyingTo.id,
-          username: replyingTo.username,
-          text: replyText,
-          type: isGroupReply ? 'group' : type,
-          url: isGroupReply ? undefined : replyingTo.url,
-          duration: resolvedReplyDuration,
-          isDeleted: replyingTo.isDeleted,
-          deletedBy: replyingTo.deletedBy,
-          isGroup: isGroupReply ? true : undefined,
-          mediaCount: isGroupReply ? groupCount : undefined,
-        };
-      }
-    }
+    const replyContext = buildReplyContext();
 
     if (stagedFile) {
-      const isAudio = stagedFile.type.startsWith('audio/') || /\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i.test(stagedFile.name);
-      const isImage = stagedFile.type.startsWith('image/') || /\.(jpeg|jpg|png|gif|svg|webp)$/i.test(stagedFile.name);
-      const isVideo = !isAudio && (stagedFile.type.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(stagedFile.name));
-      const fileType: 'image' | 'video' | 'file' | 'audio' = isImage
-        ? 'image'
-        : isVideo
-        ? 'video'
-        : isAudio
-        ? 'audio'
-        : 'file';
+      const fileType = classifyUploadFile(stagedFile);
+      const isAudio = fileType === 'audio';
 
       const fileUrl = registerBlobUrl(URL.createObjectURL(stagedFile));
       let audioDuration: number | undefined = undefined;
@@ -749,71 +719,20 @@ export function useChatComposer({
         replyingTo: replyContext,
         isUploading: true,
       };
-      appendMessageToWindow(message);
-      forceScrollToBottomAsync(true);
-
-      const fileActivity = getPresenceActivityForFile(stagedFile);
-      startSendingActivity(fileActivity);
-
-      transferManager.startUpload(tempId, stagedFile, roomId, resolveApiBaseUrl(), userId, message)
-        .then(uploadedFileData => {
-          if (uploadedFileData.id && audioDuration) {
-            setAudioDurationCache(uploadedFileData.id, audioDuration);
-            if (uploadedFileData.url) setAudioDurationCache(uploadedFileData.url, audioDuration);
-          }
-          const finalMessage: Message = {
-            ...message,
-            ...uploadedFileData,
-            duration: audioDuration,
-            originalName: chooseReadableFilename(uploadedFileData.originalName, message.originalName),
-            isUploading: false,
-            id: uploadedFileData.id,
-            clientTempId: tempId,
-            localBlobUrl: fileUrl,
-          };
-          setMessages(prev => prev.map(m => {
-            if (m.id === tempId) return finalMessage;
-            if (m.replyingTo && m.replyingTo.id === tempId) {
-              const isGroup = Boolean(m.replyingTo.isGroup || m.replyingTo.type === 'group');
-              return {
-                ...m,
-                replyingTo: {
-                  ...m.replyingTo,
-                  id: finalMessage.id,
-                  url: isGroup ? undefined : (finalMessage.url || m.replyingTo.url),
-                  type: isGroup ? 'group' : (finalMessage.type !== 'system_notification' ? finalMessage.type : m.replyingTo.type),
-                }
-              };
-            }
-            return m;
-          }));
-          if (replyingTo?.id === tempId) setReplyingTo(finalMessage);
-          const { localBlobUrl: _omittedBlob, ...broadcastPayload } = finalMessage;
-          safeSend({ ...broadcastPayload, clientTempId: tempId, roomId });
-        })
-        .catch(error => {
-          if (error.message === 'Aborted') return;
-          console.error('File upload failed!', error);
-          const errorText = error instanceof Error && error.message ? error.message : 'Upload failed';
-          setMessages(prev => prev.map(m => m.id === tempId ? {
-            ...message,
-            url: '',
-            isUploading: false,
-            uploadError: true,
-            originalName: sanitizeFilename(message.originalName || stagedFile.name, 'file'),
-            text: errorText,
-          } : m));
-        })
-        .finally(() => {
-          stopSendingActivity();
-        });
+      dispatchOptimisticMediaUpload({
+        tempId,
+        file: stagedFile,
+        message,
+        activity: getPresenceActivityForFile(stagedFile),
+        preserveDuration: audioDuration,
+        logLabel: 'File upload failed!',
+      });
 
       const hadReply = !!replyingTo;
       resetInput();
       if (hadReply) forceScrollToBottomAsync();
     } else if (stagedGif) {
       startSendingActivity('sending_gif');
-      const tempId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const gifMessage: Message = {
         id: tempId,
         clientTempId: tempId,
@@ -833,7 +752,6 @@ export function useChatComposer({
       resetInput();
       if (hadReply) forceScrollToBottomAsync();
     } else {
-      const tempId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const textMessage: Message = {
         id: tempId,
         clientTempId: tempId,
@@ -866,55 +784,7 @@ export function useChatComposer({
     }
 
     const tempId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    let replyContext: ReplyContext | undefined = undefined;
-    if (replyingTo) {
-      const { type } = replyingTo;
-      if (type === 'system_notification') {
-        setReplyingTo(null);
-      } else {
-        const isGroupReply = Boolean(
-          replyingTo.isGroup ||
-          replyingTo.type === 'group' ||
-          (typeof replyingTo.mediaCount === 'number' && replyingTo.mediaCount > 1)
-        );
-        const groupCount = replyingTo.mediaCount || 2;
-        let replyText = replyingTo.text || '';
-        if (isGroupReply) {
-          if (!replyText || replyText.trim().length === 0) {
-            replyText = `${groupCount} media`;
-          }
-        } else if (!replyText) {
-          if (isGiphyUrl(replyingTo.url)) {
-            replyText = 'GIF';
-          } else if (replyingTo.type === 'image') {
-            replyText = 'Image';
-          } else if (replyingTo.type === 'video') {
-            replyText = 'Video';
-          } else if (replyingTo.type === 'audio') {
-            replyText = 'Voice Message';
-          } else if (replyingTo.type === 'file') {
-            replyText = replyingTo.originalName || 'File';
-          } else {
-            replyText = 'Message';
-          }
-        }
-        const resolvedReplyDuration = replyingTo.duration ||
-          (replyingTo.id ? audioDurationCache.get(replyingTo.id) : undefined) ||
-          (replyingTo.url ? audioDurationCache.get(replyingTo.url) : undefined);
-        replyContext = {
-          id: replyingTo.id,
-          username: replyingTo.username,
-          text: replyText,
-          type: isGroupReply ? 'group' : type,
-          url: isGroupReply ? undefined : replyingTo.url,
-          duration: resolvedReplyDuration,
-          isDeleted: replyingTo.isDeleted,
-          deletedBy: replyingTo.deletedBy,
-          isGroup: isGroupReply ? true : undefined,
-          mediaCount: isGroupReply ? groupCount : undefined,
-        };
-      }
-    }
+    const replyContext = buildReplyContext();
 
     if (durationSeconds) {
       setAudioDurationCache(tempId, durationSeconds);
@@ -939,79 +809,22 @@ export function useChatComposer({
       isUploading: true,
     };
 
-    appendMessageToWindow(message);
-    forceScrollToBottomAsync(true);
-
-    startSendingActivity('sending_audio');
-
-    transferManager.startUpload(tempId, audioFile, roomId, resolveApiBaseUrl(), userId, message)
-      .then(uploadedFileData => {
-        if (uploadedFileData.id && durationSeconds) {
-          setAudioDurationCache(uploadedFileData.id, durationSeconds);
-          if (uploadedFileData.url) setAudioDurationCache(uploadedFileData.url, durationSeconds);
-        }
-        const finalMessage: Message = {
-          ...message,
-          ...uploadedFileData,
-          originalName: chooseReadableFilename(uploadedFileData.originalName, message.originalName),
-          isUploading: false,
-          id: uploadedFileData.id,
-          clientTempId: tempId,
-          localBlobUrl,
-          type: 'audio',
-          duration: durationSeconds,
-          waveform: waveform || uploadedFileData.waveform,
-        };
-        setMessages(prev => prev.map(m => {
-          if (m.id === tempId) return finalMessage;
-          if (m.replyingTo && m.replyingTo.id === tempId) {
-            return {
-              ...m,
-              replyingTo: {
-                ...m.replyingTo,
-                id: finalMessage.id,
-                url: finalMessage.url || m.replyingTo.url,
-                type: 'audio',
-              }
-            };
-          }
-          return m;
-        }));
-        if (replyingTo?.id === tempId) setReplyingTo(finalMessage);
-        const { localBlobUrl: _omittedBlob, ...broadcastPayload } = finalMessage;
-        safeSend({ ...broadcastPayload, clientTempId: tempId, roomId });
-        if (localBlobUrl) {
-          setTimeout(() => {
-            try {
-              URL.revokeObjectURL(localBlobUrl);
-              createdBlobUrlsRef.current.delete(localBlobUrl);
-            } catch (_) {}
-          }, 60000);
-        }
-      })
-      .catch(error => {
-        if (error.message === 'Aborted') return;
-        console.error('Voice note upload failed!', error);
-        const errorText = error instanceof Error && error.message ? error.message : 'Upload failed';
-        setMessages(prev => prev.map(m => m.id === tempId ? {
-          ...message,
-          url: '',
-          isUploading: false,
-          uploadError: true,
-          originalName: sanitizeFilename(message.originalName || audioFile.name, 'file'),
-          text: errorText,
-        } : m));
-      })
-      .finally(() => {
-        stopSendingActivity();
-      });
+    dispatchOptimisticMediaUpload({
+      tempId,
+      file: audioFile,
+      message,
+      activity: 'sending_audio',
+      preserveDuration: durationSeconds || undefined,
+      fixedType: 'audio',
+      revokeLocalBlobDelayMs: 60000,
+      logLabel: 'Voice note upload failed!',
+    });
 
     const hadReply = !!replyingTo;
     setReplyingTo(null);
     setPresenceActivity(null);
     if (hadReply) forceScrollToBottomAsync();
   };
-
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const nextValue = e.target.value;
     skipNextInputLayoutSyncRef.current = true;

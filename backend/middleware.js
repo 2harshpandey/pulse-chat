@@ -8,8 +8,8 @@ const BlockedUser = require('./models/blockedUser');
 const LoginLockdown = require('./models/loginLockdown');
 const Room = require('./models/room');
 const AuditLog = require('./models/auditLog');
-const { getCachedRoom } = require('./state');
-const { timingSafeEqualStr, verifyPasswordAsync } = require('./security');
+const { getCachedRoom, invalidateCachedRoom } = require('./state');
+const { timingSafeEqualStr, hashPasswordAsync, verifyPasswordAsync } = require('./security');
 
 let _broadcastToAdmins = () => {};
 const setBroadcast = (fn) => { if (typeof fn === 'function') _broadcastToAdmins = fn; };
@@ -170,15 +170,28 @@ if (typeof setInterval !== 'undefined') {
   }, 10 * 60 * 1000).unref();
 }
 
-const resolveCanonicalLockRoomKey = async (rawRoomId) => {
+const resolveCanonicalRoomTarget = async (rawRoomId) => {
   const clean = typeof rawRoomId === 'string' && rawRoomId.trim() ? rawRoomId.trim() : 'me';
   const lower = clean.toLowerCase();
-  if (lower === 'me' || lower === 'global') return lower;
+  if (lower === 'me' || lower === 'global') {
+    return { clean, canonicalId: lower, canonicalLockKey: lower, room: null };
+  }
+  let room = null;
   try {
-    const room = await getCachedRoom(clean);
-    if (room && room.id) return String(room.id).trim().toLowerCase();
+    room = await getCachedRoom(clean);
   } catch (_) {}
-  return lower;
+  const canonicalId = room?.id ? String(room.id).trim() : clean;
+  return {
+    clean,
+    canonicalId,
+    canonicalLockKey: canonicalId.toLowerCase(),
+    room,
+  };
+};
+
+const resolveCanonicalLockRoomKey = async (rawRoomId) => {
+  const { canonicalLockKey } = await resolveCanonicalRoomTarget(rawRoomId);
+  return canonicalLockKey;
 };
 
 const checkPasswordRateLimit = async (req, res, next) => {
@@ -229,22 +242,33 @@ const checkPasswordRateLimit = async (req, res, next) => {
   }
 };
 
-const recordFailedPasswordAttempt = (key, req) => {
+const incrementLockoutCounter = (key, { maxAttempts, lockDurationMs, onLockout }) => {
   const now = Date.now();
-  let record = passwordAttemptLocks.get(key) || { count: 0, lockUntil: 0, lastAttempt: 0 };
+  const record = passwordAttemptLocks.get(key) || { count: 0, lockUntil: 0, lastAttempt: 0 };
   if (record.lastAttempt && (now - record.lastAttempt > 10 * 60 * 1000)) {
     record.count = 0;
   }
   record.count += 1;
   record.lastAttempt = now;
-  if (record.count >= 5) {
-    record.lockUntil = now + 60 * 1000; // 1 minute lockdown after 5 consecutive failures
-    record.count = 0; // Reset count after lockdown starts so they get fresh tries later
+  if (record.count >= maxAttempts) {
+    record.lockUntil = now + lockDurationMs;
+    record.count = 0; // Reset count after lockdown starts so callers get fresh tries after expiry
+    if (typeof onLockout === 'function') {
+      onLockout();
+    }
+  }
+  passwordAttemptLocks.set(key, record);
+};
 
-    if (req) {
+const recordFailedPasswordAttempt = (key, req) => {
+  incrementLockoutCounter(key, {
+    maxAttempts: 5,
+    lockDurationMs: 60 * 1000,
+    onLockout: () => {
+      if (!req) return;
       const ip = extractIp(req);
-      const roomId = req.body?.roomId || req.body?.id || req.headers['x-room-id'] || 'me';
-      const userAgent = req.headers['user-agent'] || '';
+      const roomId = req.body?.roomId || req.body?.id || req.headers?.['x-room-id'] || 'me';
+      const userAgent = req.headers?.['user-agent'] || '';
       const username = typeof req.body?.username === 'string' ? req.body.username.trim().slice(0, 100) : undefined;
       AuditLog.create({
         roomId,
@@ -261,25 +285,16 @@ const recordFailedPasswordAttempt = (key, req) => {
         _broadcastToAdmins(roomId, 'audit_log', entry);
         _broadcastToAdmins(roomId, 'activity', `Potential brute-force detected: IP ${ip} failed 5 consecutive password attempts on room '${roomId}'. Locked out for 60s.`);
       }).catch(() => {});
-    }
-  }
-  passwordAttemptLocks.set(key, record);
+    },
+  });
 };
 
 const recordFailedAdminAttempt = (key, req) => {
-  const now = Date.now();
-  let record = passwordAttemptLocks.get(key) || { count: 0, lockUntil: 0, lastAttempt: 0 };
-  if (record.lastAttempt && (now - record.lastAttempt > 10 * 60 * 1000)) {
-    record.count = 0;
-  }
-  record.count += 1;
-  record.lastAttempt = now;
-  // Strict admin threshold: lock out for 3 minutes after 3 consecutive failures
-  if (record.count >= 3) {
-    record.lockUntil = now + 180 * 1000;
-    record.count = 0;
-
-    if (req) {
+  incrementLockoutCounter(key, {
+    maxAttempts: 3,
+    lockDurationMs: 180 * 1000,
+    onLockout: () => {
+      if (!req) return;
       const ip = extractIp(req);
       const roomId = req.body?.roomId || req.body?.id || req.headers?.['x-room-id'] || 'me';
       const userAgent = req.headers?.['user-agent'] || '';
@@ -297,9 +312,8 @@ const recordFailedAdminAttempt = (key, req) => {
         _broadcastToAdmins(roomId, 'audit_log', entry);
         _broadcastToAdmins(roomId, 'activity', `Admin security alert: IP ${ip} failed 3 consecutive admin attempts on room '${roomId}'. Locked out for 180s.`);
       }).catch(() => {});
-    }
-  }
-  passwordAttemptLocks.set(key, record);
+    },
+  });
 };
 
 const resetPasswordAttempts = (key) => {
@@ -345,20 +359,13 @@ const resetAdminAttemptsAcrossScope = (roomKey, ip) => {
 
 // --- Admin Auth Middleware ---
 
-// Middleware for admin authentication
-const adminAuth = async (req, res, next) => {
+const createAdminAuth = ({ auditOnFailure = false } = {}) => async (req, res, next) => {
   const password = typeof req.headers['x-admin-password'] === 'string' ? req.headers['x-admin-password'] : '';
   const rawRoomId = req.headers['x-room-id'];
-  let roomId = typeof rawRoomId === 'string' && rawRoomId.trim() ? rawRoomId.trim() : 'me';
-  const lowerRoomId = roomId.toLowerCase();
-  if (lowerRoomId === 'me' || lowerRoomId === 'global') {
-    roomId = lowerRoomId;
-  }
+  const { canonicalId, canonicalLockKey, room } = await resolveCanonicalRoomTarget(rawRoomId);
   const ip = extractIp(req);
-  const canonicalLockKey = await resolveCanonicalLockRoomKey(roomId);
   const key = `${ip}_${canonicalLockKey}`;
   req.passwordRateLimitKey = key;
-
 
   // Check lockout (both room-specific and cross-room global admin bucket)
   const remaining = getAdminLockRemainingSeconds(key, ip);
@@ -368,6 +375,20 @@ const adminAuth = async (req, res, next) => {
 
   const handleFailure = () => {
     recordFailedAdminAttemptAcrossScope(key, ip, req);
+    if (auditOnFailure) {
+      const userAgent = req.headers?.['user-agent'] || '';
+      const logRoomId = canonicalId || 'unknown';
+      AuditLog.create({
+        roomId: logRoomId,
+        type: 'admin_auth_failed',
+        details: { reason: 'Incorrect admin password' },
+        ip,
+        userAgent,
+      }).then((entry) => {
+        _broadcastToAdmins(logRoomId, 'audit_log', entry);
+        _broadcastToAdmins(logRoomId, 'activity', `Security warning: Failed admin operation attempt for room '${logRoomId}'.`);
+      }).catch(() => {});
+    }
     res.status(401).json({ error: 'Unauthorized' });
   };
 
@@ -375,34 +396,37 @@ const adminAuth = async (req, res, next) => {
     return handleFailure();
   }
 
-  // Super Admin Impersonation: Global password unlocks any room
+  const isDefaultRoom = canonicalId === 'me' || canonicalId === 'global';
+
+  // Super Admin Impersonation: Global password unlocks any existing room
   if (process.env.ADMIN_PASSWORD && timingSafeEqualStr(password, process.env.ADMIN_PASSWORD)) {
     resetAdminAttemptsAcrossScope(key, ip);
-    if (roomId === 'me' || roomId === 'global') {
-      req.roomId = roomId;
+    if (isDefaultRoom) {
+      req.roomId = canonicalId;
       req.isSuperAdmin = true;
       return next();
-    } else {
-      try {
-        const room = await Room.findByIdOrAlias(roomId);
-        if (room) {
-          req.roomId = room.id;
-          req.isSuperAdmin = true;
-          return next();
-        } else {
-          return res.status(404).json({ error: 'Room not found' });
-        }
-      } catch (error) {
-        logger.error('Error in adminAuth super admin check:', error);
-        return res.status(500).json({ error: 'Internal server error' });
-      }
     }
+    if (room) {
+      req.roomId = room.id;
+      req.isSuperAdmin = true;
+      return next();
+    }
+    return res.status(404).json({ error: 'Room not found' });
   }
 
   try {
-    const room = await Room.findByIdOrAlias(roomId);
     if (room && await verifyPasswordAsync(password, room.adminPassword)) {
       resetAdminAttemptsAcrossScope(key, ip);
+      if (room.adminPassword && !String(room.adminPassword).startsWith('scrypt$')) {
+        try {
+          const upgradedHash = await hashPasswordAsync(password);
+          await Room.updateOne({ id: room.id }, { $set: { adminPassword: upgradedHash } });
+          invalidateCachedRoom(room.id);
+          if (room.alias) invalidateCachedRoom(room.alias);
+        } catch (upgradeErr) {
+          logger.error('Failed to upgrade legacy admin password:', upgradeErr);
+        }
+      }
       req.roomId = room.id;
       return next();
     }
@@ -412,6 +436,10 @@ const adminAuth = async (req, res, next) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+// Middleware for admin authentication
+const adminAuth = createAdminAuth({ auditOnFailure: false });
+const adminAuthWithAudit = createAdminAuth({ auditOnFailure: true });
 
 // Middleware for super-admin actions requiring a secret key
 const adminSecretAuth = (req, res, next) => {
@@ -444,21 +472,8 @@ const generateDeviceHash = (components) => {
 
 // Check if a user is blocked by any fingerprint match (single indexed query)
 const isUserBlocked = async (roomId, userId, ip, userAgent, deviceFingerprint) => {
-  if (!roomId) roomId = 'me';
-  roomId = String(roomId).trim();
-  const lowerRoomId = roomId.toLowerCase();
-  if (lowerRoomId === 'me' || lowerRoomId === 'global') {
-    roomId = lowerRoomId;
-  }
-
-  let canonicalRoomId = roomId;
-  if (roomId !== 'me' && roomId !== 'global') {
-    try {
-      const room = await Room.findByIdOrAlias(roomId, { lean: true });
-      if (room) canonicalRoomId = room.id;
-    } catch (_) {}
-  }
-  const roomIds = (canonicalRoomId !== roomId) ? [canonicalRoomId, roomId] : [canonicalRoomId];
+  const { clean, canonicalId } = await resolveCanonicalRoomTarget(roomId);
+  const roomIds = (canonicalId !== clean) ? [canonicalId, clean] : [canonicalId];
 
   const conditions = [];
 
@@ -504,21 +519,8 @@ const isUserBlocked = async (roomId, userId, ip, userAgent, deviceFingerprint) =
 
 // Check if login lockdown is active
 const isLoginLocked = async (roomId) => {
-  if (!roomId) roomId = 'me';
-  roomId = String(roomId).trim();
-  const lowerRoomId = roomId.toLowerCase();
-  if (lowerRoomId === 'me' || lowerRoomId === 'global') {
-    roomId = lowerRoomId;
-  }
-
-  let canonicalRoomId = roomId;
-  if (roomId !== 'me' && roomId !== 'global') {
-    try {
-      const room = await Room.findByIdOrAlias(roomId, { lean: true });
-      if (room) canonicalRoomId = room.id;
-    } catch (_) {}
-  }
-  const roomIds = (canonicalRoomId !== roomId) ? [canonicalRoomId, roomId] : [canonicalRoomId];
+  const { clean, canonicalId } = await resolveCanonicalRoomTarget(roomId);
+  const roomIds = (canonicalId !== clean) ? [canonicalId, clean] : [canonicalId];
 
   const lockdown = await LoginLockdown.findOne({ roomId: { $in: roomIds }, isActive: true }).sort({ createdAt: -1 });
   if (!lockdown) return { locked: false };
@@ -578,6 +580,7 @@ module.exports = {
   isPasswordLocked,
   toSafeLoggedInUserList,
   adminAuth,
+  adminAuthWithAudit,
   adminSecretAuth,
   generateDeviceHash,
   isUserBlocked,

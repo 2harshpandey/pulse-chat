@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useCallback, useMemo } from 'react';
 import type { Message } from '../types';
 import { useChatMediaGallery, type GalleryFilter, type GalleryItem } from '../hooks/useChatMediaGallery';
 import { sanitizeMediaUrl, withCloudinaryTransform, downloadFile } from '../utils';
+import { IMAGE_URL_RE, VIDEO_URL_RE } from '../../shared/mediaTypes';
 import {
   MediaGalleryPanelRoot,
   MediaGalleryFilterBar,
@@ -103,7 +104,7 @@ const isPlayableType = (type?: string, url?: string): boolean => {
   if (!type && !url) return false;
   const t = (type || '').toLowerCase();
   if (t === 'image' || t === 'video' || t === 'gif' || t === 'photo') return true;
-  if (url && /\.(jpe?g|png|gif|webp|svg|mp4|webm|mov|m4v)$/i.test(url)) return true;
+  if (url && (IMAGE_URL_RE.test(url) || VIDEO_URL_RE.test(url))) return true;
   return false;
 };
 

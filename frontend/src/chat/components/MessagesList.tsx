@@ -5,21 +5,17 @@ import { MessageItem } from '../MessageItem';
 import { MediaGroupItem } from './message';
 
 import { isGiphyUrl, setAudioDurationCache, getQuotedPreviewThumbUrl, normalizeMessageId } from '../utils';
+import { isAudioMedia, PHOTO_ONLY_URL_RE, VIDEO_URL_RE } from '../../shared/mediaTypes';
 
 export const isMediaMessage = (m: Message): boolean => {
   if (m.isDeleted) return false;
   if (m.isUploading || m.uploadError) return false;
   if (m.url && isGiphyUrl(m.url)) return false;
-  if (
-    m.type === 'audio' ||
-    m.url?.match(/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)($|\?)/i) ||
-    m.originalName?.match(/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i) ||
-    (m.originalName?.toLowerCase().includes('voice') && m.url?.match(/\.(webm|ogg|mp4|m4a)($|\?)/i))
-  ) {
+  if (isAudioMedia(m)) {
     return false;
   }
   if (m.type === 'image' || m.type === 'video') return true;
-  if (m.url && m.url.match(/\.(jpeg|jpg|png|svg|webp|mp4|webm|mov)$/i)) return true;
+  if (m.url && (PHOTO_ONLY_URL_RE.test(m.url) || /\.svg($|\?)/i.test(m.url) || VIDEO_URL_RE.test(m.url))) return true;
   return false;
 };
 

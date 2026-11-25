@@ -220,9 +220,9 @@ export const ClearChatButton = styled.button`
     width: 20px;
     height: 20px;
     stroke: currentColor;
-    strokeWidth: 2;
-    strokeLinecap: round;
-    strokeLinejoin: round;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
     transition: transform 0.3s ease;
   }
   &:hover svg { transform: rotate(10deg) scale(1.1); }
@@ -259,9 +259,9 @@ export const LogoutButton = styled.button`
     width: 20px;
     height: 20px;
     stroke: white;
-    strokeWidth: 2;
-    strokeLinecap: round;
-    strokeLinejoin: round;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
     transition: transform 0.3s ease;
   }
   &:hover svg { transform: translateX(3px); }

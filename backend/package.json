@@ -26,7 +26,6 @@
     "helmet": "^8.2.0",
     "mongoose": "^8.24.9",
     "multer": "^2.4.0",
-    "multer-storage-cloudinary": "^4.0.0",
     "winston": "^3.17.0",
     "ws": "^8.21.0"
   },

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { Message, MessageItemProps } from './types';
 import { filterValidReactions } from './constants';
+import { isAudioMedia, isVideoMedia, isImageMedia } from '../shared/mediaTypes';
 import {
   getMessageElementId, getQuotedPreviewThumbUrl,
   sanitizeMediaUrl,
@@ -224,17 +225,9 @@ export const MessageItem = React.memo(({
   const now = Date.now();
   const canEdit = canEditMessage(msg, currentUserId, now);
   const isDeleted = msg.isDeleted;
-  const isAudioMessage = msg.type === 'audio' || Boolean(
-    (!msg.type || msg.type === 'file') && (
-      msg.url?.match(/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)($|\?)/i) ||
-      msg.originalName?.match(/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i) ||
-      (msg.originalName?.toLowerCase().includes('voice') && msg.url?.match(/\.(webm|ogg|mp4|m4a)($|\?)/i))
-    )
-  );
+  const isAudioMessage = isAudioMedia(msg);
   const hasConstrainedMediaFrame = !isDeleted && !isAudioMessage && Boolean(msg.url) && (
-    msg.type === 'video' ||
-    msg.type === 'image' ||
-    Boolean(msg.url?.match(/\.(mp4|webm|mov|jpeg|jpg|gif|png|svg)$/i))
+    isVideoMedia(msg) || isImageMedia(msg)
   );
   const handleVideoFullscreenEnterForMessage = useCallback(() => {
     onVideoFullscreenEnter?.(msg.id);
@@ -242,14 +235,8 @@ export const MessageItem = React.memo(({
 
   const handleDownloadMessage = useCallback((targetMsg: Message) => {
     if (!targetMsg.url) return;
-    const isAudio = targetMsg.type === 'audio' || Boolean(
-      (!targetMsg.type || targetMsg.type === 'file') && (
-        targetMsg.url.match(/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)($|\?)/i) ||
-        targetMsg.originalName?.match(/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i) ||
-        (targetMsg.originalName?.toLowerCase().includes('voice') && targetMsg.url.match(/\.(webm|ogg|mp4|m4a)($|\?)/i))
-      )
-    );
-    const isVideo = !isAudio && (targetMsg.type === 'video' || Boolean(targetMsg.url.match(/\.(mp4|webm|mov)$/i)));
+    const isAudio = isAudioMedia(targetMsg);
+    const isVideo = isVideoMedia(targetMsg);
     const fallbackName = targetMsg.originalName || (isAudio ? 'voice-message.mp3' : isVideo ? 'video.mp4' : 'media.jpg');
     void downloadFile(targetMsg.url, fallbackName, undefined, undefined, !isVideo && !isAudio);
   }, []);

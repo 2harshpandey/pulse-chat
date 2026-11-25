@@ -1,4 +1,14 @@
 import type { TempLinkData } from './types';
+import {
+  AUDIO_EXT_RE,
+  PHOTO_ONLY_EXT_RE,
+  PHOTO_ONLY_URL_RE,
+  PHOTO_ONLY_TAG_RE,
+  VIDEO_EXT_RE,
+  VIDEO_URL_RE,
+  VIDEO_TAG_RE,
+  DOC_ADMIN_TAG_RE,
+} from '../shared/mediaTypes';
 
 /**
  * Sanitizes a URL before using it as an href/src attribute.
@@ -47,9 +57,9 @@ export const isPhotoLog = (log: any): boolean => {
   return (
     msgType === 'image' ||
     mime.startsWith('image/') ||
-    /\.(jpg|jpeg|png|webp|avif|heic|bmp)($|\?)/i.test(url) ||
-    /\.(jpg|jpeg|png|webp|avif|heic|bmp)$/i.test(originalName) ||
-    /\[.*?\.(jpg|jpeg|png|webp|avif|heic|bmp)\]/i.test(text)
+    PHOTO_ONLY_URL_RE.test(url) ||
+    PHOTO_ONLY_EXT_RE.test(originalName) ||
+    PHOTO_ONLY_TAG_RE.test(text)
   );
 };
 
@@ -57,7 +67,7 @@ export const isVideoLog = (log: any): boolean => {
   if (!log || log.type !== 'create') return false;
   if (log.message?.type === 'audio') return false;
   const originalName = log.message?.originalName || '';
-  if (/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i.test(originalName)) return false;
+  if (AUDIO_EXT_RE.test(originalName)) return false;
   if (originalName.toLowerCase().includes('voice')) return false;
   const msgType = log.message?.type;
   const url = log.message?.url || '';
@@ -66,9 +76,9 @@ export const isVideoLog = (log: any): boolean => {
   return (
     msgType === 'video' ||
     mime.startsWith('video/') ||
-    /\.(mp4|webm|mov|mkv|avi)($|\?)/i.test(url) ||
-    /\.(mp4|webm|mov|mkv|avi)$/i.test(originalName) ||
-    /\[.*?\.(mp4|webm|mov|mkv|avi)\]/i.test(text)
+    VIDEO_URL_RE.test(url) ||
+    VIDEO_EXT_RE.test(originalName) ||
+    VIDEO_TAG_RE.test(text)
   );
 };
 
@@ -76,7 +86,7 @@ export const isAudioLog = (log: any): boolean => {
   if (!log || log.type !== 'create') return false;
   if (log.message?.type === 'audio') return true;
   const originalName = log.message?.originalName || '';
-  if (/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i.test(originalName)) return true;
+  if (AUDIO_EXT_RE.test(originalName)) return true;
   if (originalName.toLowerCase().includes('voice')) return true;
   const mime = log.message?.mimeType || '';
   if (mime.startsWith('audio/')) return true;
@@ -95,7 +105,7 @@ export const isDocumentLog = (log: any): boolean => {
     msgType === 'document' ||
     Boolean(url && msgType !== 'text') ||
     Boolean(originalName && !mime.startsWith('image/') && !mime.startsWith('video/')) ||
-    /\[.*?\.(pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|txt|html|csv)\]/i.test(text)
+    DOC_ADMIN_TAG_RE.test(text)
   );
 };
 

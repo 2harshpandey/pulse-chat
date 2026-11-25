@@ -654,89 +654,28 @@ export function useChatWebSocket({
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('pulse:message_deleted', { detail: { ids: [targetId] } }));
           }
-        } else if (messageData.type === 'update') {
-          const normalizedUpdate = normalizeMessage(messageData.data);
-          const targetMatches = (replyingTo: any, update: Message): boolean => {
-            if (!replyingTo || !update) return false;
-            const replyIds = [
-              normalizeMessageId(replyingTo.id),
-              normalizeMessageId(replyingTo._id),
-              normalizeMessageId(replyingTo.messageId),
-              normalizeMessageId(replyingTo.clientTempId),
-            ].filter(Boolean);
-            const updateIds = [
-              normalizeMessageId(update.id),
-              normalizeMessageId(update._id),
-              normalizeMessageId((update as any).clientTempId),
-            ].filter(Boolean);
-            return replyIds.some(rid => updateIds.includes(rid));
-          };
+        } else if (messageData.type === 'update' || messageData.type === 'bulk_update') {
+          const updatedMessages: Message[] =
+            messageData.type === 'update'
+              ? [normalizeMessage(messageData.data)]
+              : messageData.messages.map(normalizeMessage);
 
-          const updateMsgInList = (list: Message[]) =>
-            list.map(m => {
-              if (m.id === normalizedUpdate.id || (normalizedUpdate._id && m._id === normalizedUpdate._id)) {
-                return { ...m, ...normalizedUpdate };
-              }
-              if (m.replyingTo && targetMatches(m.replyingTo, normalizedUpdate)) {
-                if (
-                  normalizedUpdate.isDeleted ||
-                  normalizedUpdate.vanished ||
-                  normalizedUpdate.text === 'This message has been deleted.' ||
-                  normalizedUpdate.text === 'This message has been deleted by an admin.'
-                ) {
-                  return {
-                    ...m,
-                    replyingTo: {
-                      ...m.replyingTo,
-                      isDeleted: true,
-                      deletedBy: normalizedUpdate.deletedBy || m.replyingTo.deletedBy,
-                      text: undefined,
-                      url: undefined,
-                    },
-                  };
-                }
-                if (normalizedUpdate.edited && normalizedUpdate.text && !m.replyingTo.isGroup && m.replyingTo.type !== 'group') {
-                  return {
-                    ...m,
-                    replyingTo: {
-                      ...m.replyingTo,
-                      text: normalizedUpdate.text,
-                      edited: true,
-                    },
-                  };
-                }
-              }
-              return m;
-            });
-          setMessages(prev => updateMsgInList(prev));
-          setSearchResults(prev => (prev ? updateMsgInList(prev) : null));
-          setReplyingTo(prev => {
-            if (prev && (prev.id === normalizedUpdate.id || (normalizedUpdate._id && prev._id === normalizedUpdate._id))) {
-              if (
-                normalizedUpdate.isDeleted ||
-                normalizedUpdate.vanished ||
-                normalizedUpdate.text === 'This message has been deleted by an admin.'
-              ) {
-                return null;
-              }
-              return { ...prev, ...normalizedUpdate };
-            }
-            return prev;
-          });
-          if (
-            normalizedUpdate.isDeleted ||
-            normalizedUpdate.vanished ||
-            normalizedUpdate.text === 'This message has been deleted by an admin.'
-          ) {
-            setPinnedMessages(prev => prev.filter(p => p.id !== normalizedUpdate.id && (!normalizedUpdate._id || p._id !== normalizedUpdate._id)));
-          } else {
-            setPinnedMessages(prev =>
-              prev.map(p => (p.id === normalizedUpdate.id || (normalizedUpdate._id && p._id === normalizedUpdate._id) ? { ...p, ...normalizedUpdate } : p))
+          const isDeletedOrVanished = (msg: any): boolean =>
+            Boolean(
+              msg?.isDeleted ||
+              msg?.vanished ||
+              msg?.text === 'This message has been deleted.' ||
+              msg?.text === 'This message has been deleted by an admin.'
             );
-          }
-        } else if (messageData.type === 'bulk_update') {
-          const updatedMessages = messageData.messages.map(normalizeMessage);
-          const targetMatches = (replyingTo: any, update: Message): boolean => {
+
+          const isHardRemovedForPinOrReply = (msg: any): boolean =>
+            Boolean(
+              msg?.isDeleted ||
+              msg?.vanished ||
+              msg?.text === 'This message has been deleted by an admin.'
+            );
+
+          const targetMatchesReply = (replyingTo: any, update: Message): boolean => {
             if (!replyingTo || !update) return false;
             const replyIds = [
               normalizeMessageId(replyingTo.id),
@@ -758,19 +697,16 @@ export function useChatWebSocket({
             if (m._id) updatedMap.set(normalizeMessageId(m._id), m);
           });
 
-          const applyBulkUpdate = (list: Message[]) =>
+          const applyUpdatesToList = (list: Message[]) =>
             list.map(m => {
-              const directMatch = updatedMap.get(normalizeMessageId(m.id)) || (m._id ? updatedMap.get(normalizeMessageId(m._id)) : undefined);
+              const directMatch =
+                updatedMap.get(normalizeMessageId(m.id)) ||
+                (m._id ? updatedMap.get(normalizeMessageId(m._id)) : undefined);
               if (directMatch) return { ...m, ...directMatch };
               if (m.replyingTo) {
-                const matchingUpdated = updatedMessages.find((u: any) => targetMatches(m.replyingTo, u));
+                const matchingUpdated = updatedMessages.find(u => targetMatchesReply(m.replyingTo, u));
                 if (matchingUpdated) {
-                  if (
-                    matchingUpdated.isDeleted ||
-                    matchingUpdated.vanished ||
-                    matchingUpdated.text === 'This message has been deleted.' ||
-                    matchingUpdated.text === 'This message has been deleted by an admin.'
-                  ) {
+                  if (isDeletedOrVanished(matchingUpdated)) {
                     return {
                       ...m,
                       replyingTo: {
@@ -796,42 +732,39 @@ export function useChatWebSocket({
               }
               return m;
             });
-          setMessages(prev => applyBulkUpdate(prev));
-          setSearchResults(prev => (prev ? applyBulkUpdate(prev) : null));
+
+          setMessages(prev => applyUpdatesToList(prev));
+          setSearchResults(prev => (prev ? applyUpdatesToList(prev) : null));
           setReplyingTo(prev => {
-            if (prev) {
-              const prevNormId = normalizeMessageId(prev.id);
-              const prevNormMongoId = prev._id ? normalizeMessageId(prev._id) : undefined;
-              const updatedTarget =
-                (prevNormId ? updatedMap.get(prevNormId) : undefined) ||
-                (prevNormMongoId ? updatedMap.get(prevNormMongoId) : undefined);
-              if (updatedTarget) {
-                if (
-                  updatedTarget.isDeleted ||
-                  updatedTarget.vanished ||
-                  updatedTarget.text === 'This message has been deleted by an admin.'
-                ) {
-                  return null;
-                }
-                return { ...prev, ...updatedTarget };
-              }
-            }
-            return prev;
+            if (!prev) return prev;
+            const prevNormId = normalizeMessageId(prev.id);
+            const prevNormMongoId = prev._id ? normalizeMessageId(prev._id) : undefined;
+            const updatedTarget =
+              (prevNormId ? updatedMap.get(prevNormId) : undefined) ||
+              (prevNormMongoId ? updatedMap.get(prevNormMongoId) : undefined);
+            if (!updatedTarget) return prev;
+            if (isHardRemovedForPinOrReply(updatedTarget)) return null;
+            return { ...prev, ...updatedTarget };
           });
+
           const deletedOrVanishedIds = new Set(
             updatedMessages
-              .filter(
-                (m: any) =>
-                  m.isDeleted ||
-                  m.vanished ||
-                  m.text === 'This message has been deleted by an admin.'
-              )
-              .map((m: any) => m.id)
+              .filter(isHardRemovedForPinOrReply)
+              .flatMap((m: any) => [normalizeMessageId(m.id), m._id ? normalizeMessageId(m._id) : ''].filter(Boolean))
           );
           setPinnedMessages(prev =>
             prev
-              .filter(p => !deletedOrVanishedIds.has(p.id))
-              .map(p => (updatedMap.has(p.id) ? { ...p, ...(updatedMap.get(p.id) as Message) } : p))
+              .filter(p => {
+                const pId = normalizeMessageId(p.id);
+                const pMongoId = p._id ? normalizeMessageId(p._id) : '';
+                return !deletedOrVanishedIds.has(pId) && (!pMongoId || !deletedOrVanishedIds.has(pMongoId));
+              })
+              .map(p => {
+                const match =
+                  updatedMap.get(normalizeMessageId(p.id)) ||
+                  (p._id ? updatedMap.get(normalizeMessageId(p._id)) : undefined);
+                return match ? { ...p, ...match } : p;
+              })
           );
         } else if (messageData.type === 'bulk_delete') {
           const deletedIds = new Set(messageData.messageIds);

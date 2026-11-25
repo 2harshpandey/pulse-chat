@@ -32,6 +32,11 @@ const {
   batchDeleteCloudinaryAssets,
 } = require('../security');
 const { isRoomAccessAllowed } = require('./messages');
+const {
+  isAudioMimeOrExt,
+  getUploadResourceType,
+  getMessageFileType,
+} = require('../mediaTypes');
 const { WebSocket } = require('ws');
 
 const repairMojibakeText = (value) => String(value || '')
@@ -179,31 +184,12 @@ const pruneStaleUploadTempFiles = async () => {
 setInterval(pruneStaleUploadTempFiles, 30 * 60 * 1000).unref();
 pruneStaleUploadTempFiles();
 
-const isAudioMimeOrExt = (mimetype = '', filename = '') => {
-  if (mimetype.startsWith('audio/')) return true;
-  if (/^voice[-_]message/i.test(filename || '')) return true;
-  return /\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|webm|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i.test(filename || '');
-};
+const uploadStreamToCloudinary = (createReadStream, mimetype, originalName) => new Promise((resolve, reject) => {
+  const safeMime = mimetype || '';
+  const resourceType = getUploadResourceType(safeMime, originalName);
+  const { fullPublicId, ext } = generateSafePublicId(originalName, resourceType);
 
-const getUploadResourceType = (mimetype = '', filename = '') => {
-  if (mimetype.startsWith('image/')) return 'image';
-  if (isAudioMimeOrExt(mimetype, filename)) return 'video';
-  if (mimetype.startsWith('video/')) return 'video';
-  return 'raw';
-};
-
-const getMessageFileType = (mimetype = '', filename = '') => {
-  if (mimetype.startsWith('image/')) return 'image';
-  if (isAudioMimeOrExt(mimetype, filename)) return 'audio';
-  if (mimetype.startsWith('video/')) return 'video';
-  return 'file';
-};
-
-const uploadBufferToCloudinary = (file, originalName) => new Promise((resolve, reject) => {
-  const resourceType = getUploadResourceType(file.mimetype || '', originalName);
-  const { publicId, fullPublicId, ext } = generateSafePublicId(originalName, resourceType);
-
-  const isAudio = isAudioMimeOrExt(file.mimetype || '', originalName);
+  const isAudio = isAudioMimeOrExt(safeMime, originalName);
   const isVideo = resourceType === 'video';
   const isActualVideo = isVideo && !isAudio;
   const uploadOptions = {
@@ -244,21 +230,21 @@ const uploadBufferToCloudinary = (file, originalName) => new Promise((resolve, r
       if (!isActualVideo) {
         return safeReject(new Error('Cloudinary upload failed: no secure URL was returned.'));
       }
-      result.secure_url = cloudinary.url(result.public_id, { 
-        resource_type: result.resource_type || (isAudio ? 'video' : isVideo ? 'video' : 'image'), 
+      result.secure_url = cloudinary.url(result.public_id, {
+        resource_type: result.resource_type || 'video',
         format: result.format || ext || (isAudio ? (ext || 'mp3') : isVideo ? 'mp4' : undefined),
         secure: true,
         version: result.version,
       });
     }
-    
+
     if (!result?.secure_url) {
       return safeReject(new Error('Cloudinary upload did not return or generate a secure URL.'));
     }
     return safeResolve(result);
   });
 
-  const readStream = Readable.from(file.buffer);
+  const readStream = createReadStream();
   readStream.on('error', (err) => {
     try { uploadStream.destroy(); } catch (_) {}
     safeReject(err);
@@ -270,87 +256,21 @@ const uploadBufferToCloudinary = (file, originalName) => new Promise((resolve, r
   readStream.pipe(uploadStream);
 });
 
-const uploadFileStreamToCloudinary = (filePath, mimetype, originalName) => new Promise((resolve, reject) => {
-  const resourceType = getUploadResourceType(mimetype || '', originalName);
-  const { publicId, fullPublicId, ext } = generateSafePublicId(originalName, resourceType);
+const uploadBufferToCloudinary = (file, originalName) =>
+  uploadStreamToCloudinary(() => Readable.from(file.buffer), file.mimetype, originalName);
 
-  const isAudio = isAudioMimeOrExt(mimetype || '', originalName);
-  const isVideo = resourceType === 'video';
-  const isActualVideo = isVideo && !isAudio;
-  const uploadOptions = {
-    resource_type: resourceType,
-    public_id: fullPublicId,
-    chunk_size: 6 * 1024 * 1024,
-    use_filename: false,
-    unique_filename: false,
-    overwrite: false,
-    filename_override: originalName,
-    disable_promises: true,
-    ...(isActualVideo ? { async: true } : {}),
-    timeout: 8 * 60 * 1000,
-  };
+const uploadFileStreamToCloudinary = (filePath, mimetype, originalName) =>
+  uploadStreamToCloudinary(() => fs.createReadStream(filePath), mimetype, originalName);
 
-  let settled = false;
-  const safeReject = (err) => {
-    if (settled) return;
-    settled = true;
-    reject(err);
-  };
-  const safeResolve = (res) => {
-    if (settled) return;
-    settled = true;
-    resolve(res);
-  };
-
-  const uploadStream = cloudinary.uploader.upload_chunked_stream(uploadOptions, (error, result) => {
-    if (error) return safeReject(error);
-    // For non-async uploads (audio, photos, documents), Cloudinary MUST return a confirmed secure_url
-    if (!result?.secure_url && result?.public_id) {
-      if (!isActualVideo) {
-        return safeReject(new Error('Cloudinary upload failed: no secure URL was returned.'));
-      }
-      result.secure_url = cloudinary.url(result.public_id, { 
-        resource_type: result.resource_type || (isAudio ? 'video' : isVideo ? 'video' : 'image'), 
-        format: result.format || ext || (isAudio ? (ext || 'mp3') : isVideo ? 'mp4' : undefined),
-        secure: true,
-        version: result.version,
-      });
-    }
-    if (!result?.secure_url) {
-      return safeReject(new Error('Cloudinary upload did not return or generate a secure URL.'));
-    }
-    return safeResolve(result);
-  });
-
-  const fileStream = fs.createReadStream(filePath);
-  fileStream.on('error', (err) => {
-    try { uploadStream.destroy(); } catch (_) {}
-    safeReject(err);
-  });
-  uploadStream.on('error', (err) => {
-    try { fileStream.destroy(); } catch (_) {}
-    safeReject(err);
-  });
-  fileStream.pipe(uploadStream);
-});
-
-// --- Helper: build query that respects frontendHiddenBefore ---
-const getVisibleMessagesQuery = (beforeTimestamp, frontendHiddenBefore) => {
-  const createdAt = {};
-
-  if (frontendHiddenBefore instanceof Date && !Number.isNaN(frontendHiddenBefore.getTime())) {
-    createdAt.$gt = frontendHiddenBefore;
-  }
-
-  if (beforeTimestamp instanceof Date && !Number.isNaN(beforeTimestamp.getTime())) {
-    createdAt.$lt = beforeTimestamp;
-  }
-
-  const query = { vanished: { $ne: true } };
-  if (Object.keys(createdAt).length > 0) {
-    query.createdAt = createdAt;
-  }
-  return query;
+const resolveCanonicalRoomId = async (rawRoomId) => {
+  const clean = typeof rawRoomId === 'string' && rawRoomId.trim() ? rawRoomId.trim() : 'me';
+  const lower = clean.toLowerCase();
+  if (lower === 'me' || lower === 'global') return lower;
+  try {
+    const room = await getCachedRoom(clean);
+    if (room?.id) return room.id;
+  } catch (_) {}
+  return clean;
 };
 
 module.exports = (wss, broadcasts) => {
@@ -360,11 +280,12 @@ module.exports = (wss, broadcasts) => {
   const requireRoomAccessBeforeUpload = async (req, res, next) => {
     try {
       const rawRoomId = req.headers['x-room-id'] || req.query?.roomId;
-      const roomId = typeof rawRoomId === 'string' && rawRoomId.trim() ? rawRoomId.trim() : 'me';
+      const roomId = await resolveCanonicalRoomId(rawRoomId);
       const allowed = await isRoomAccessAllowed(roomId, req, { requireSession: true });
       if (!allowed) {
         return res.status(401).json({ error: 'Upload denied: room authentication required.' });
       }
+      req.verifiedUploadRoomId = roomId;
       next();
     } catch (err) {
       next(err);
@@ -397,20 +318,12 @@ module.exports = (wss, broadcasts) => {
       }
       const userId = headerUserId || bodyUserId;
 
-      const allowed = await isRoomAccessAllowed(roomId, req, { requireSession: true });
-      if (!allowed) {
-        return res.status(401).json({ error: 'Upload denied: room authentication required.' });
-      }
-
-      let canonicalRoomId = roomId;
-      const lowerRoomId = roomId.toLowerCase();
-      if (lowerRoomId === 'me' || lowerRoomId === 'global') {
-        canonicalRoomId = lowerRoomId;
-      } else {
-        try {
-          const room = await getCachedRoom(roomId);
-          if (room) canonicalRoomId = room.id;
-        } catch (_) {}
+      const canonicalRoomId = await resolveCanonicalRoomId(roomId);
+      if (req.verifiedUploadRoomId !== canonicalRoomId) {
+        const allowed = await isRoomAccessAllowed(canonicalRoomId, req, { requireSession: true });
+        if (!allowed) {
+          return res.status(401).json({ error: 'Upload denied: room authentication required.' });
+        }
       }
 
       const { onlineUsers } = getRoomState(canonicalRoomId);
@@ -564,18 +477,12 @@ module.exports = (wss, broadcasts) => {
           return res.status(400).json({ error: 'File type not allowed for upload.' });
         }
 
-        const allowed = await isRoomAccessAllowed(roomId, req, { requireSession: true });
-        if (!allowed) {
-          return res.status(401).json({ error: 'Upload denied: room authentication required.' });
-        }
-        const lowerRoomId = roomId.toLowerCase();
-        if (lowerRoomId === 'me' || lowerRoomId === 'global') {
-          roomId = lowerRoomId;
-        } else {
-          try {
-            const roomDoc = await getCachedRoom(roomId);
-            if (roomDoc) roomId = roomDoc.id;
-          } catch (_) {}
+        roomId = await resolveCanonicalRoomId(roomId);
+        if (req.verifiedUploadRoomId !== roomId) {
+          const allowed = await isRoomAccessAllowed(roomId, req, { requireSession: true });
+          if (!allowed) {
+            return res.status(401).json({ error: 'Upload denied: room authentication required.' });
+          }
         }
         
         safeUploadId = path.basename(uploadId).replace(/[^a-zA-Z0-9_-]/g, '');

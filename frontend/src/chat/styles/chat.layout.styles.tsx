@@ -741,7 +741,7 @@ export const PlusMenuButton = styled.button<{ $isOpen?: boolean }>`
     width: 22px;
     height: 22px;
     stroke: currentColor;
-    strokeWidth: 2;
+    stroke-width: 2;
     transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
     transform: ${props => props.$isOpen ? 'rotate(45deg)' : 'rotate(0deg)'};
   }

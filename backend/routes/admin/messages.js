@@ -8,6 +8,20 @@ const { getRoomState } = require('../../state');
 const { adminLimiter, adminAuth, extractIp, toClientMessage } = require('../../middleware');
 const { unpinIfPinned } = require('../../websocket/pinnedManager');
 const { batchDeleteCloudinaryAssets } = require('../../security');
+const {
+  AUDIO_EXT_RE,
+  AUDIO_URL_OR_EXT_RE,
+  AUDIO_NON_VIDEO_EXT_RE,
+  PHOTO_URL_RE,
+  PHOTO_EXT_RE,
+  PHOTO_TAG_RE,
+  VIDEO_URL_RE,
+  VIDEO_EXT_RE,
+  VIDEO_TAG_RE,
+  DOC_URL_RE,
+  DOC_EXT_RE,
+  DOC_TAG_RE,
+} = require('../../mediaTypes');
 
 module.exports = (wss, broadcasts) => {
   const { broadcastToAdmins, broadcast } = broadcasts;
@@ -287,28 +301,28 @@ module.exports = (wss, broadcasts) => {
         query.$or = [
           { 'message.type': 'image' },
           { 'message.mimeType': /^image\//i },
-          { 'message.url': /\.(jpg|jpeg|png|webp|avif|heic|bmp)($|\?)/i },
-          { 'message.originalName': /\.(jpg|jpeg|png|webp|avif|heic|bmp)$/i },
-          { 'message.text': /\[.*?\.(jpg|jpeg|png|webp|avif|heic|bmp)\]/i },
+          { 'message.url': PHOTO_URL_RE },
+          { 'message.originalName': PHOTO_EXT_RE },
+          { 'message.text': PHOTO_TAG_RE },
         ];
       } else if (typeLower === 'video') {
         query.type = 'create';
         query['message.type'] = { $ne: 'audio' };
-        query['message.originalName'] = { $not: /(voice-message|\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$)/i };
+        query['message.originalName'] = { $not: AUDIO_NON_VIDEO_EXT_RE };
         query.$or = [
           { 'message.type': 'video' },
           { 'message.mimeType': /^video\//i },
-          { 'message.url': /\.(mp4|webm|mov|mkv|avi)($|\?)/i },
-          { 'message.originalName': /\.(mp4|webm|mov|mkv|avi)$/i },
-          { 'message.text': /\[.*?\.(mp4|webm|mov|mkv|avi)\]/i },
+          { 'message.url': VIDEO_URL_RE },
+          { 'message.originalName': VIDEO_EXT_RE },
+          { 'message.text': VIDEO_TAG_RE },
         ];
       } else if (typeLower === 'audio' || typeLower === 'voice') {
         query.type = 'create';
         query.$or = [
           { 'message.type': 'audio' },
           { 'message.mimeType': /^audio\//i },
-          { 'message.url': /\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)($|\?)/i },
-          { 'message.originalName': /\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i },
+          { 'message.url': AUDIO_URL_OR_EXT_RE },
+          { 'message.originalName': AUDIO_EXT_RE },
           { 'message.originalName': /voice-message/i },
         ];
       } else if (typeLower === 'gif') {
@@ -323,9 +337,9 @@ module.exports = (wss, broadcasts) => {
         query.type = 'create';
         query.$or = [
           { 'message.type': { $in: ['file', 'document'] } },
-          { 'message.url': /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|txt|html|csv)($|\?)/i },
-          { 'message.originalName': /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|txt|html|csv)$/i },
-          { 'message.text': /\[.*?\.(pdf|doc|docx|xls|xlsx|ppt|pptx|zip|rar|txt|html|csv)\]/i },
+          { 'message.url': DOC_URL_RE },
+          { 'message.originalName': DOC_EXT_RE },
+          { 'message.text': DOC_TAG_RE },
         ];
       } else if (typeLower === 'pinned') {
         const roomState = getRoomState(roomId);

@@ -9,6 +9,7 @@ import {
   fetchBlobWithProgress,
   chooseReadableFilename,
   getMediaCacheLookupKey,
+  reconcileUploadedMessageInList,
   revokeBlobUrl,
   inferMimeTypeFromUrl,
 } from '../utils';
@@ -561,39 +562,22 @@ export function useChatMedia({
         })
         .then((uploadedFileData) => {
           if (!uploadedFileData) return;
-          setMessages((prev) =>
-            prev.map((m) => {
-              if (m.id === messageId) {
-                const finalMessage = {
-                  ...m,
-                  ...uploadedFileData,
-                  originalName: chooseReadableFilename(uploadedFileData.originalName, m.originalName),
-                  isUploading: false,
-                  id: uploadedFileData.id,
-                };
-                const { localBlobUrl: _omittedBlob, ...broadcastPayload } = finalMessage as any;
-                const wsPayload = { ...broadcastPayload, clientTempId: messageId, roomId };
-                if (safeSend) {
-                  safeSend(wsPayload);
-                } else if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-                  ws.current.send(JSON.stringify(wsPayload));
-                }
-                return finalMessage;
-              }
-              if (m.replyingTo && m.replyingTo.id === messageId) {
-                return {
-                  ...m,
-                  replyingTo: {
-                    ...m.replyingTo,
-                    id: uploadedFileData.id,
-                    url: uploadedFileData.url || m.replyingTo.url,
-                    type: uploadedFileData.type && uploadedFileData.type !== 'system_notification' ? uploadedFileData.type : m.replyingTo.type,
-                  }
-                };
-              }
-              return m;
-            })
-          );
+          const baseMessage = targetMessage || ({ id: messageId, userId, username: '', text: '', type: 'file', timestamp: new Date().toISOString() } as Message);
+          const finalMessage: Message = {
+            ...baseMessage,
+            ...uploadedFileData,
+            originalName: chooseReadableFilename(uploadedFileData.originalName, baseMessage.originalName),
+            isUploading: false,
+            id: uploadedFileData.id,
+          };
+          setMessages((prev) => reconcileUploadedMessageInList(prev, messageId, finalMessage));
+          const { localBlobUrl: _omittedBlob, ...broadcastPayload } = finalMessage as any;
+          const wsPayload = { ...broadcastPayload, clientTempId: messageId, roomId };
+          if (safeSend) {
+            safeSend(wsPayload);
+          } else if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+            ws.current.send(JSON.stringify(wsPayload));
+          }
         })
         .finally(() => {
           stopSendingActivity?.();

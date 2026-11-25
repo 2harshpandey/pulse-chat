@@ -5,6 +5,7 @@ import { sanitizeMediaUrl, withCloudinaryTransform, getMediaGatePreviewUrl, isNo
 import { VideoPlayer } from '../../VideoPlayer';
 import { MediaDownloadButton } from '../message';
 import { usePhotoZoom } from '../../hooks/usePhotoZoom';
+import { isVideoMedia } from '../../../shared/mediaTypes';
 import { LightboxToolbar, LightboxZoomButton } from '../../styles/chat.media.styles';
 import {
   MediaGalleryOverlay,
@@ -183,9 +184,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     );
   }, [rawItem, allMessages]);
 
-  const isVideo =
-    Boolean(currentItem) &&
-    (currentItem.type === 'video' || Boolean(currentItem.url?.match(/\.(mp4|webm|mov)$/i)));
+  const isVideo = Boolean(currentItem) && isVideoMedia(currentItem);
 
   // If opening or navigating to an item that is not yet loaded, auto-load it in fullscreen (exactly once)
   useEffect(() => {
@@ -752,9 +751,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
           {activeItems.length > 1 && (
             <MediaGalleryThumbsRow ref={thumbsRowRef}>
               {activeItems.map((item, idx) => {
-                const itemIsVideo =
-                  item.type === 'video' ||
-                  Boolean(item.url?.match(/\.(mp4|webm|mov)$/i));
+                const itemIsVideo = isVideoMedia(item);
                 const isLoaded = Boolean(
                   (currentUserId && item.userId === currentUserId) ||
                   (loadedMediaMessageSet && loadedMediaMessageSet.has(item.id)) ||

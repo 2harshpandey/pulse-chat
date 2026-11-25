@@ -81,7 +81,7 @@ export const ScrollToBottomButton = styled.button<{ $isVisible: boolean }>`
     width: 24px;
     height: 24px;
     stroke: var(--text-secondary);
-    strokeWidth: 2.5;
+    stroke-width: 2.5;
     animation: ${props => props.$isVisible ? scrollBtnBounce : 'none'} 2s ease-in-out infinite;
   }
 

@@ -3,6 +3,19 @@ import React from 'react';
 import type { DownloadProgressCallback, RouterHistoryState, Message, PresenceActivity } from './types';
 import { sendClientDiagnostic } from './telemetry';
 import {
+  AUDIO_EXT_RE,
+  AUDIO_URL_RE,
+  IMAGE_EXT_RE,
+  IMAGE_URL_RE,
+  DOC_EXT_RE,
+  DOC_URL_RE,
+  VIDEO_EXT_RE,
+  VIDEO_URL_RE,
+  classifyUploadFile,
+  isAudioMedia,
+  isVideoMedia,
+} from '../shared/mediaTypes';
+import {
   getCookie,
   setCookie,
   deleteCookie,
@@ -417,20 +430,21 @@ export const repairMojibakeText = (value?: string | null): string => {
   const raw = String(value || '');
   if (!raw) return '';
 
+  // Repair single- and double-encoded UTF-8-as-Latin1/Win1252 sequences without touching ASCII hyphens
   const repaired = raw
-    .replace(/'|'|'|â/g, "'")
-    .replace(/'|'|â/g, "'")
-    .replace(/"|"|â/g, '"')
-    .replace(/-|"|â€|â/g, '"')
-    .replace(/-"|â€“|â/g, '-')
-    .replace(/-|â€”|â/g, '-')
-    .replace(/-|â€¦|â¦/g, '...')
-    .replace(/-|Â·/g, '·')
-    .replace(/—|–/g, '-')
-    .replace(/…/g, '...')
-    .replace(/-/g, 'EUR')
-    .replace(/-/g, '')
-    .replace(/Â(?=\s|$|[\w().,;:'"-])/g, '');
+    .replace(/\u00c3\u00a2\u00e2\u201a\u00ac\u00e2\u201e\u00a2|\u00e2\u20ac\u2122|\u00e2\u0080\u0099/g, "'")
+    .replace(/\u00c3\u00a2\u00e2\u201a\u00ac\u00cb\u0153|\u00e2\u20ac\u02dc|\u00e2\u0080\u0098/g, "'")
+    .replace(/\u00c3\u00a2\u00e2\u201a\u00ac\u00c5\u201c|\u00e2\u20ac\u0153|\u00e2\u0080\u009c/g, '"')
+    .replace(/\u00c3\u00a2\u00e2\u201a\u00ac\u00c2\u009d|\u00e2\u20ac\u009d|\u00e2\u0080\u009d/g, '"')
+    .replace(/\u00c3\u00a2\u00e2\u201a\u00ac\u00e2\u20ac\u0153|\u00e2\u20ac\u201c|\u00e2\u0080\u0093/g, '-')
+    .replace(/\u00c3\u00a2\u00e2\u201a\u00ac\u00e2\u20ac\u009d|\u00e2\u20ac\u201d|\u00e2\u0080\u0094/g, '-')
+    .replace(/\u00c3\u00a2\u00e2\u201a\u00ac\u00c2\u00a6|\u00e2\u20ac\u00a6|\u00e2\u0080\u00a6/g, '...')
+    .replace(/\u00c3\u0082\u00c2\u00b7|\u00c2\u00b7/g, '\u00b7')
+    .replace(/[\u2013\u2014]/g, '-')
+    .replace(/\u2026/g, '...')
+    .replace(/\u00c3\u0192\u00c2\u00a2\u00c3\u00a2\u00e2\u201a\u00ac\u00c5\u00a1\u00c3\u0082\u00c2\u00ac|\u00e2\u201a\u00ac/g, 'EUR')
+    .replace(/\u00c3\u0082/g, '')
+    .replace(/\u00c2(?=\s|$|[\w().,;:'"-])/g, '');
 
   return repaired.normalize('NFC');
 };
@@ -621,14 +635,8 @@ export const downloadAlbumAsZip = async (
         const msg = mediaItems[index];
         if (!msg.url || options?.signal?.aborted) continue;
         const fileUrl = msg.url;
-        const isAudio = msg.type === 'audio' || Boolean(
-          (!msg.type || msg.type === 'file') && (
-            fileUrl.match(/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)($|\?)/i) ||
-            msg.originalName?.match(/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i) ||
-            (msg.originalName?.toLowerCase().includes('voice') && fileUrl.match(/\.(webm|ogg|mp4|m4a)($|\?)/i))
-          )
-        );
-        const isVideo = !isAudio && (msg.type === 'video' || Boolean(fileUrl.match(/\.(mp4|webm|mov)$/i)));
+        const isAudio = isAudioMedia(msg);
+        const isVideo = isVideoMedia(msg);
         const isGif = Boolean(fileUrl.match(/\.gif$/i)) || isGiphyUrl(fileUrl);
         const defaultExt = isAudio ? '.mp3' : isVideo ? '.mp4' : isGif ? '.gif' : '.jpg';
 
@@ -1052,24 +1060,11 @@ export const getHostnameFromUrl = (urlStr: string): string => {
 export const getPresenceActivityForFile = (file: { name?: string; type?: string }): PresenceActivity => {
   const name = file.name || '';
   const type = file.type || '';
-  const isAudio =
-    type.startsWith('audio/') ||
-    /\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i.test(name);
-  if (isAudio) return 'sending_audio';
-
-  const isGif = type === 'image/gif' || /\.gif$/i.test(name);
-  if (isGif) return 'sending_gif';
-
-  const isImage =
-    type.startsWith('image/') ||
-    /\.(jpeg|jpg|png|svg|webp|avif|bmp|ico)$/i.test(name);
-  if (isImage) return 'sending_photo';
-
-  const isVideo =
-    type.startsWith('video/') ||
-    /\.(mp4|webm|mov|mkv|avi|wmv|m4v)$/i.test(name);
-  if (isVideo) return 'sending_video';
-
+  const fileKind = classifyUploadFile(file);
+  if (fileKind === 'audio') return 'sending_audio';
+  if (type === 'image/gif' || /\.gif$/i.test(name)) return 'sending_gif';
+  if (fileKind === 'image') return 'sending_photo';
+  if (fileKind === 'video') return 'sending_video';
   return 'sending_file';
 };
 
@@ -1133,8 +1128,10 @@ export const isPhotoOrGif = (msg?: { type?: string; url?: string; originalName?:
   if (type === 'video' || type === 'audio' || type === 'file' || type === 'doc') {
     return false;
   }
-  if (/\.(mp4|webm|mov|m4v|mp3|wav|ogg|m4a|pdf|docx?|xlsx?|zip|rar|tar|gz)($|\?)/i.test(url) ||
-      /\.(mp4|webm|mov|m4v|mp3|wav|ogg|m4a|pdf|docx?|xlsx?|zip|rar|tar|gz)$/i.test(name)) {
+  if (
+    VIDEO_URL_RE.test(url) || AUDIO_URL_RE.test(url) || DOC_URL_RE.test(url) ||
+    VIDEO_EXT_RE.test(name) || AUDIO_EXT_RE.test(name) || DOC_EXT_RE.test(name)
+  ) {
     return false;
   }
 
@@ -1142,8 +1139,7 @@ export const isPhotoOrGif = (msg?: { type?: string; url?: string; originalName?:
   if (type === 'image' || type === 'photo' || type === 'gif') {
     return true;
   }
-  if (/\.(jpe?g|png|gif|webp|svg|bmp|avif)($|\?)/i.test(url) ||
-      /\.(jpe?g|png|gif|webp|svg|bmp|avif)$/i.test(name)) {
+  if (IMAGE_URL_RE.test(url) || IMAGE_EXT_RE.test(name)) {
     return true;
   }
 
@@ -1172,14 +1168,41 @@ export const hasMediaAttachment = (msg?: { type?: string; url?: string; original
   }
 
   if (
-    /\.(jpe?g|png|gif|webp|svg|bmp|avif|mp4|webm|mov|m4v|mp3|wav|ogg|m4a|pdf|docx?|xlsx?|zip|rar|tar|gz)($|\?)/i.test(url) ||
-    /\.(jpe?g|png|gif|webp|svg|bmp|avif|mp4|webm|mov|m4v|mp3|wav|ogg|m4a|pdf|docx?|xlsx?|zip|rar|tar|gz)$/i.test(name)
+    IMAGE_URL_RE.test(url) || VIDEO_URL_RE.test(url) || AUDIO_URL_RE.test(url) || DOC_URL_RE.test(url) ||
+    IMAGE_EXT_RE.test(name) || VIDEO_EXT_RE.test(name) || AUDIO_EXT_RE.test(name) || DOC_EXT_RE.test(name)
   ) {
     return true;
   }
 
   return Boolean(msg.url);
 };
+
+/**
+ * Reconciles an optimistic uploading message and any pending replies referencing its tempId.
+ */
+export const reconcileUploadedMessageInList = (
+  prev: Message[],
+  matchId: string,
+  finalMessage: Message
+): Message[] =>
+  prev.map((m) => {
+    if (m.id === matchId) return finalMessage;
+    if (m.replyingTo && m.replyingTo.id === matchId) {
+      const isGroup = Boolean(m.replyingTo.isGroup || m.replyingTo.type === 'group');
+      return {
+        ...m,
+        replyingTo: {
+          ...m.replyingTo,
+          id: finalMessage.id,
+          url: isGroup ? undefined : (finalMessage.url || m.replyingTo.url),
+          type: isGroup
+            ? 'group'
+            : (finalMessage.type !== 'system_notification' ? finalMessage.type : m.replyingTo.type),
+        },
+      };
+    }
+    return m;
+  });
 
 /**
  * Copies an image or GIF to the OS clipboard directly as a binary image (PNG).

@@ -6,8 +6,8 @@ const Room = require('../models/room');
 const Message = require('../models/message');
 const MessageEvent = require('../models/messageEvent');
 const AuditLog = require('../models/auditLog');
-const { getRoomState, invalidateCachedRoom } = require('../state');
-const { authLimiter, apiLimiter, adminLimiter, extractIp, generateDeviceHash, checkPasswordRateLimit, checkAdminPasswordRateLimit, recordFailedPasswordAttempt, recordFailedAdminAttemptAcrossScope, resetPasswordAttempts, resetAdminAttemptsAcrossScope } = require('../middleware');
+const { getRoomState, getCachedRoom, invalidateCachedRoom } = require('../state');
+const { authLimiter, apiLimiter, adminLimiter, adminAuthWithAudit, extractIp, generateDeviceHash, checkPasswordRateLimit, checkAdminPasswordRateLimit, recordFailedPasswordAttempt, recordFailedAdminAttemptAcrossScope, resetPasswordAttempts, resetAdminAttemptsAcrossScope, isPasswordLocked } = require('../middleware');
 const { timingSafeEqualStr, hashPasswordAsync, verifyPasswordAsync } = require('../security');
 
 const router = express.Router();
@@ -203,68 +203,75 @@ router.get('/:id/meta', apiLimiter, async (req, res) => {
   }
 });
 
+const verifyRoomJoinCredentials = async ({ req, cleanRoomId, password }) => {
+  const lowerRoomId = cleanRoomId.toLowerCase();
+
+  const logFailedJoinAttempt = (targetRoomId) => {
+    recordFailedPasswordAttempt(req.passwordRateLimitKey, req);
+    const ip = extractIp(req);
+    const userAgent = req.headers['user-agent'] || '';
+    const username = req.body?.username;
+    AuditLog.create({
+      roomId: targetRoomId,
+      type: 'join_failed_password',
+      details: { username, reason: 'Incorrect room password' },
+      ip,
+      userAgent,
+    }).then((entry) => {
+      _broadcastToAdmins(targetRoomId, 'audit_log', entry);
+      _broadcastToAdmins(targetRoomId, 'activity', `Join attempt failed: Incorrect password on room '${targetRoomId}'.`);
+    }).catch(() => {});
+  };
+
+  if (lowerRoomId === 'global') {
+    return { status: 200, roomId: 'global' };
+  }
+
+  if (lowerRoomId === 'me') {
+    const clientPw = process.env.CLIENT_PASSWORD;
+    if (clientPw && (typeof password !== 'string' || !timingSafeEqualStr(password, clientPw))) {
+      logFailedJoinAttempt('me');
+      return { status: 401, error: 'Incorrect password.' };
+    }
+    resetPasswordAttempts(req.passwordRateLimitKey);
+    return { status: 200, roomId: 'me' };
+  }
+
+  const room = await Room.findByIdOrAlias(cleanRoomId);
+  if (!room) {
+    return { status: 404, error: 'Chat room does not exist.' };
+  }
+
+  if (room.isPrivate && room.joinPassword) {
+    const valid = Boolean(typeof password === 'string' && password && await verifyPasswordAsync(password, room.joinPassword));
+    if (!valid) {
+      logFailedJoinAttempt(room.id);
+      return { status: 401, error: 'Incorrect password.' };
+    }
+    if (!room.joinPassword.startsWith('scrypt$')) {
+      room.joinPassword = await hashPasswordAsync(password);
+      room.save().catch((err) => logger.error('Failed to upgrade legacy room password:', err));
+      invalidateCachedRoom(room.id);
+      if (room.alias) invalidateCachedRoom(room.alias);
+    }
+  }
+
+  resetPasswordAttempts(req.passwordRateLimitKey);
+  return { status: 200, roomId: room.id };
+};
+
 // Verify room join credentials before connecting
 router.post('/verify-join', authLimiter, checkPasswordRateLimit, async (req, res) => {
   const { roomId, password } = req.body;
   if (!roomId || typeof roomId !== 'string' || !roomId.trim()) {
     return res.status(400).json({ error: 'Room ID must be a non-empty string.' });
   }
-  const cleanRoomId = roomId.trim();
-  
-  if (cleanRoomId.toLowerCase() === 'global') {
-    return res.json({ valid: true, roomId: 'global' });
-  }
-
-  if (cleanRoomId.toLowerCase() === 'me') {
-    if (process.env.CLIENT_PASSWORD && !timingSafeEqualStr(password || '', process.env.CLIENT_PASSWORD)) {
-      recordFailedPasswordAttempt(req.passwordRateLimitKey, req);
-      const ip = extractIp(req);
-      const userAgent = req.headers['user-agent'] || '';
-      const username = req.body?.username;
-      AuditLog.create({
-        roomId: 'me',
-        type: 'join_failed_password',
-        details: { username, reason: 'Incorrect room password' },
-        ip,
-        userAgent,
-      }).then((entry) => {
-        _broadcastToAdmins('me', 'audit_log', entry);
-        _broadcastToAdmins('me', 'activity', `Join attempt failed: Incorrect password on room 'me'.`);
-      }).catch(() => {});
-      return res.status(401).json({ error: 'Incorrect password.' });
-    }
-    resetPasswordAttempts(req.passwordRateLimitKey);
-    return res.json({ valid: true, roomId: 'me' });
-  }
-
   try {
-    const room = await Room.findByIdOrAlias(cleanRoomId);
-    if (!room) {
-      return res.status(404).json({ error: 'Chat room does not exist.' });
+    const result = await verifyRoomJoinCredentials({ req, cleanRoomId: roomId.trim(), password });
+    if (result.status !== 200) {
+      return res.status(result.status).json({ error: result.error });
     }
-
-    if (room.isPrivate && room.joinPassword) {
-      if (!await verifyPasswordAsync(password || '', room.joinPassword)) {
-        recordFailedPasswordAttempt(req.passwordRateLimitKey, req);
-        const ip = extractIp(req);
-        const userAgent = req.headers['user-agent'] || '';
-        const username = req.body?.username;
-        AuditLog.create({
-          roomId: room.id,
-          type: 'join_failed_password',
-          details: { username, reason: 'Incorrect room password' },
-          ip,
-          userAgent,
-        }).then((entry) => {
-          _broadcastToAdmins(room.id, 'audit_log', entry);
-          _broadcastToAdmins(room.id, 'activity', `Join attempt failed: Incorrect password on room '${room.id}'.`);
-        }).catch(() => {});
-        return res.status(401).json({ error: 'Incorrect password.' });
-      }
-    }
-
-    resetPasswordAttempts(req.passwordRateLimitKey);
-    return res.json({ valid: true, roomId: room.id });
+    return res.json({ valid: true, roomId: result.roomId });
   } catch (err) {
     logger.error('Error in verify-join:', err);
     return res.status(500).json({ error: 'Internal server error.' });
@@ -368,51 +375,15 @@ router.get('/search', apiLimiter, async (req, res) => {
 // Verify password
 router.post('/join', authLimiter, checkPasswordRateLimit, async (req, res) => {
   const { id, joinPassword } = req.body;
-  if (!id) return res.status(400).json({ error: 'Room ID is required.' });
-  const cleanId = String(id).trim();
-
-  if (cleanId.toLowerCase() === 'global') return res.json({ success: true, roomId: 'global' });
-  if (cleanId.toLowerCase() === 'me') {
-    if (!process.env.CLIENT_PASSWORD || timingSafeEqualStr(joinPassword || '', process.env.CLIENT_PASSWORD)) {
-      resetPasswordAttempts(req.passwordRateLimitKey);
-      return res.json({ success: true, roomId: 'me' });
-    }
-    recordFailedPasswordAttempt(req.passwordRateLimitKey, req);
-    return res.status(401).json({ error: 'Invalid password.' });
+  if (!id || typeof id !== 'string' || !id.trim()) {
+    return res.status(400).json({ error: 'Room ID is required.' });
   }
-
   try {
-    const room = await Room.findByIdOrAlias(cleanId);
-    if (!room) return res.status(404).json({ error: 'Room not found.' });
-    
-    if (!room.isPrivate) return res.json({ success: true, roomId: room.id });
-    if (!room.joinPassword) return res.json({ success: true, roomId: room.id });
-
-    if (joinPassword && await verifyPasswordAsync(joinPassword, room.joinPassword)) {
-      resetPasswordAttempts(req.passwordRateLimitKey);
-      if (room.joinPassword && !room.joinPassword.startsWith('scrypt$')) {
-        room.joinPassword = await hashPasswordAsync(joinPassword);
-        room.save().catch((err) => logger.error('Failed to upgrade legacy room password:', err));
-        invalidateCachedRoom(room.id);
-      }
-      return res.json({ success: true, roomId: room.id });
+    const result = await verifyRoomJoinCredentials({ req, cleanRoomId: String(id).trim(), password: joinPassword });
+    if (result.status !== 200) {
+      return res.status(result.status).json({ error: result.status === 404 ? 'Room not found.' : result.status === 401 ? 'Invalid password.' : result.error });
     }
-
-    recordFailedPasswordAttempt(req.passwordRateLimitKey, req);
-    const ip = extractIp(req);
-    const userAgent = req.headers['user-agent'] || '';
-    const username = req.body?.username;
-    AuditLog.create({
-      roomId: room.id,
-      type: 'join_failed_password',
-      details: { username, reason: 'Incorrect room password' },
-      ip,
-      userAgent,
-    }).then((entry) => {
-      _broadcastToAdmins(room.id, 'audit_log', entry);
-      _broadcastToAdmins(room.id, 'activity', `Join attempt failed: Incorrect password on room '${room.id}'.`);
-    }).catch(() => {});
-    return res.status(401).json({ error: 'Invalid password.' });
+    return res.json({ success: true, roomId: result.roomId });
   } catch (error) {
     logger.error('Failed to verify join:', error);
     res.status(500).json({ error: 'Failed to join room.' });
@@ -487,70 +458,41 @@ router.post('/admin-auth', authLimiter, checkAdminPasswordRateLimit, async (req,
   }
 });
 
-const recordAdminAuthFailure = (req, roomId) => {
-  const ip = extractIp(req);
-  recordFailedAdminAttemptAcrossScope(req.passwordRateLimitKey, ip, req);
-  const userAgent = req.headers['user-agent'] || '';
-  AuditLog.create({
-    roomId: roomId || 'unknown',
-    type: 'admin_auth_failed',
-    details: { reason: 'Incorrect admin password' },
-    ip,
-    userAgent,
-  }).then((entry) => {
-    _broadcastToAdmins(roomId || 'unknown', 'audit_log', entry);
-    _broadcastToAdmins(roomId || 'unknown', 'activity', `Security warning: Failed admin operation attempt for room '${roomId || 'unknown'}'.`);
-  }).catch(() => {});
+const loadCustomRoomForMutation = async (req, res) => {
+  if (req.roomId === 'me' || req.roomId === 'global') {
+    res.status(403).json({ error: 'Cannot modify default system room settings.' });
+    return null;
+  }
+  const room = await Room.findByIdOrAlias(req.roomId);
+  if (!room) {
+    res.status(404).json({ error: 'Room not found.' });
+    return null;
+  }
+  return room;
 };
 
 // Admin room details
-router.get('/admin/details', adminLimiter, checkAdminPasswordRateLimit, async (req, res) => {
-  const rawRoomId = req.headers['x-room-id'];
-  const adminPassword = req.headers['x-admin-password'];
-
-  if (!rawRoomId || typeof rawRoomId !== 'string' || !rawRoomId.trim() || !adminPassword || typeof adminPassword !== 'string') {
-    recordAdminAuthFailure(req, typeof rawRoomId === 'string' ? rawRoomId : 'me');
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  const roomId = rawRoomId.trim();
-  const lowerRoomId = roomId.toLowerCase();
-
+router.get('/admin/details', adminLimiter, adminAuthWithAudit, async (req, res) => {
   try {
-     let isValid = false;
-     let room = null;
-     if ((lowerRoomId === 'me' || lowerRoomId === 'global') && process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)) {
-        isValid = true;
-     } else {
-        room = await Room.findByIdOrAlias(roomId);
-        if (room && (await verifyPasswordAsync(adminPassword, room.adminPassword) || (process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)))) {
-           isValid = true;
-        }
-     }
-     
-     if (!isValid) {
-       recordAdminAuthFailure(req, roomId);
-       return res.status(401).json({ error: 'Unauthorized' });
-     }
-     
-     resetAdminAttemptsAcrossScope(req.passwordRateLimitKey, extractIp(req));
-     const canonicalId = room ? room.id : (lowerRoomId === 'me' || lowerRoomId === 'global' ? lowerRoomId : roomId);
-     res.json({ id: canonicalId, name: room ? room.name : (canonicalId === 'global' ? 'Global Chat' : 'Main Room'), description: room?.description, alias: room?.alias, lastIdChangeAt: room?.lastIdChangeAt, isPrivate: room?.isPrivate, hasJoinPassword: !!room?.joinPassword });
+    const canonicalId = req.roomId;
+    const isDefaultRoom = canonicalId === 'me' || canonicalId === 'global';
+    const room = isDefaultRoom ? null : await getCachedRoom(canonicalId);
+    res.json({
+      id: canonicalId,
+      name: room ? room.name : (canonicalId === 'global' ? 'Global Chat' : 'Main Room'),
+      description: room?.description,
+      alias: room?.alias,
+      lastIdChangeAt: room?.lastIdChangeAt,
+      isPrivate: room?.isPrivate,
+      hasJoinPassword: !!room?.joinPassword,
+    });
   } catch (error) {
     res.status(500).json({ error: 'Failed to get room details' });
   }
 });
 
-router.put('/admin/details', adminLimiter, checkAdminPasswordRateLimit, async (req, res) => {
-  const roomId = req.headers['x-room-id'];
-  const adminPassword = req.headers['x-admin-password'];
+router.put('/admin/details', adminLimiter, adminAuthWithAudit, async (req, res) => {
   const { name, description } = req.body;
-
-  if (!roomId || typeof roomId !== 'string' || !roomId.trim() || !adminPassword || typeof adminPassword !== 'string') {
-    recordAdminAuthFailure(req, typeof roomId === 'string' ? roomId : 'me');
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  const cleanRoomId = roomId.trim();
 
   if (name !== undefined) {
     if (typeof name !== 'string' || !name.trim() || name.length > 50) {
@@ -564,17 +506,12 @@ router.put('/admin/details', adminLimiter, checkAdminPasswordRateLimit, async (r
   }
 
   try {
-    const room = await Room.findByIdOrAlias(cleanRoomId);
-    const isAuthorized = room && (await verifyPasswordAsync(adminPassword, room.adminPassword) || (process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)));
-    if (!room || !isAuthorized) {
-      recordAdminAuthFailure(req, cleanRoomId);
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
+    const room = await loadCustomRoomForMutation(req, res);
+    if (!room) return;
 
-    resetAdminAttemptsAcrossScope(req.passwordRateLimitKey, extractIp(req));
     if (name) room.name = name;
     if (description !== undefined) room.description = description;
-    
+
     await room.save();
     invalidateCachedRoom(room.id);
     if (room.alias) invalidateCachedRoom(room.alias);
@@ -585,27 +522,15 @@ router.put('/admin/details', adminLimiter, checkAdminPasswordRateLimit, async (r
   }
 });
 
-router.put('/admin/roomId', adminLimiter, checkAdminPasswordRateLimit, async (req, res) => {
-  const roomId = req.headers['x-room-id'];
-  const adminPassword = req.headers['x-admin-password'];
+router.put('/admin/roomId', adminLimiter, adminAuthWithAudit, async (req, res) => {
   const { newRoomId } = req.body;
-
-  if (!roomId || typeof roomId !== 'string' || !roomId.trim() || !adminPassword || typeof adminPassword !== 'string') {
-    recordAdminAuthFailure(req, typeof roomId === 'string' ? roomId : 'me');
-    return res.status(401).json({ error: 'Unauthorized' });
+  if (typeof newRoomId !== 'string' || !newRoomId.trim()) {
+    return res.status(400).json({ error: 'New Room ID is required.' });
   }
-  const cleanRoomId = roomId.trim();
-  if (typeof newRoomId !== 'string' || !newRoomId.trim()) return res.status(400).json({ error: 'New Room ID is required.' });
 
   try {
-    const room = await Room.findByIdOrAlias(cleanRoomId);
-    const isAuthorized = room && (await verifyPasswordAsync(adminPassword, room.adminPassword) || (process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)));
-    if (!room || !isAuthorized) {
-      recordAdminAuthFailure(req, cleanRoomId);
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    resetAdminAttemptsAcrossScope(req.passwordRateLimitKey, extractIp(req));
+    const room = await loadCustomRoomForMutation(req, res);
+    if (!room) return;
 
     // Validate newRoomId
     const alias = newRoomId.trim();
@@ -645,7 +570,7 @@ router.put('/admin/roomId', adminLimiter, checkAdminPasswordRateLimit, async (re
         MessageEvent.updateMany({ roomId: previousAlias }, { $set: { roomId: room.id } }),
       ]).catch((err) => logger.error('Failed to migrate records to canonical roomId on alias change:', err));
     }
-    
+
     res.json({ success: true, newAlias: alias, lastIdChangeAt: room.lastIdChangeAt });
   } catch (error) {
     logger.error('Failed to update room ID:', error);
@@ -653,33 +578,24 @@ router.put('/admin/roomId', adminLimiter, checkAdminPasswordRateLimit, async (re
   }
 });
 
-router.put('/admin/joinPassword', adminLimiter, checkAdminPasswordRateLimit, async (req, res) => {
-  const roomId = req.headers['x-room-id'];
-  const adminPassword = req.headers['x-admin-password'];
+router.put('/admin/joinPassword', adminLimiter, adminAuthWithAudit, async (req, res) => {
   const { currentPassword, newPassword } = req.body;
-
-  if (!roomId || typeof roomId !== 'string' || !roomId.trim() || !adminPassword || typeof adminPassword !== 'string') {
-    recordAdminAuthFailure(req, typeof roomId === 'string' ? roomId : 'me');
-    return res.status(401).json({ error: 'Unauthorized' });
+  const joinPwLockKey = `${req.passwordRateLimitKey}_joinpw`;
+  const remaining = isPasswordLocked(joinPwLockKey);
+  if (remaining > 0) {
+    return res.status(429).json({ error: `Too many failed attempts. Locked out for ${remaining} seconds.` });
   }
-  const cleanRoomId = roomId.trim();
 
   try {
-    const room = await Room.findByIdOrAlias(cleanRoomId);
-    const isAuthorized = room && (await verifyPasswordAsync(adminPassword, room.adminPassword) || (process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)));
-    if (!room || !isAuthorized) {
-      recordAdminAuthFailure(req, cleanRoomId);
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    resetAdminAttemptsAcrossScope(req.passwordRateLimitKey, extractIp(req));
+    const room = await loadCustomRoomForMutation(req, res);
+    if (!room) return;
 
     if (room.joinPassword && !await verifyPasswordAsync(currentPassword, room.joinPassword)) {
-      recordFailedPasswordAttempt(req.passwordRateLimitKey, req);
+      recordFailedPasswordAttempt(joinPwLockKey, req);
       return res.status(400).json({ error: 'Current password is not correct.' });
     }
 
-    resetPasswordAttempts(req.passwordRateLimitKey);
+    resetPasswordAttempts(joinPwLockKey);
 
     if (!newPassword || typeof newPassword !== 'string' || newPassword.trim().length < 6) {
       return res.status(400).json({ error: 'New password must be a string of at least 6 characters.' });
@@ -692,11 +608,11 @@ router.put('/admin/joinPassword', adminLimiter, checkAdminPasswordRateLimit, asy
 
     room.joinPassword = await hashPasswordAsync(cleanNewPassword);
     room.isPrivate = true; // Implicitly private if it has a join password
-    
+
     await room.save();
     invalidateCachedRoom(room.id);
     if (room.alias) invalidateCachedRoom(room.alias);
-    
+
     res.json({ success: true });
   } catch (error) {
     logger.error('Failed to update join password:', error);
@@ -704,33 +620,18 @@ router.put('/admin/joinPassword', adminLimiter, checkAdminPasswordRateLimit, asy
   }
 });
 
-router.delete('/admin/joinPassword', adminLimiter, checkAdminPasswordRateLimit, async (req, res) => {
-  const roomId = req.headers['x-room-id'];
-  const adminPassword = req.headers['x-admin-password'];
-
-  if (!roomId || typeof roomId !== 'string' || !roomId.trim() || !adminPassword || typeof adminPassword !== 'string') {
-    recordAdminAuthFailure(req, typeof roomId === 'string' ? roomId : 'me');
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  const cleanRoomId = roomId.trim();
-
+router.delete('/admin/joinPassword', adminLimiter, adminAuthWithAudit, async (req, res) => {
   try {
-    const room = await Room.findByIdOrAlias(cleanRoomId);
-    const isAuthorized = room && (await verifyPasswordAsync(adminPassword, room.adminPassword) || (process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)));
-    if (!room || !isAuthorized) {
-      recordAdminAuthFailure(req, cleanRoomId);
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    resetAdminAttemptsAcrossScope(req.passwordRateLimitKey, extractIp(req));
+    const room = await loadCustomRoomForMutation(req, res);
+    if (!room) return;
 
     room.joinPassword = undefined;
     room.isPrivate = false; // Make the room public again
-    
+
     await room.save();
     invalidateCachedRoom(room.id);
     if (room.alias) invalidateCachedRoom(room.alias);
-    
+
     res.json({ success: true });
   } catch (error) {
     logger.error('Failed to remove join password:', error);

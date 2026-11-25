@@ -6,6 +6,11 @@ import {
   PHOTO_LIGHTBOX_WHEEL_SENSITIVITY,
 } from '../constants';
 
+export interface UsePhotoZoomOptions {
+  active?: boolean;
+  onZoomChange?: (scale: number, method: 'button_zoom_in' | 'button_zoom_out' | 'mouse_wheel') => void;
+}
+
 export interface UsePhotoZoomReturn {
   transform: { scale: number; x: number; y: number };
   setTransform: React.Dispatch<React.SetStateAction<{ scale: number; x: number; y: number }>>;
@@ -28,7 +33,11 @@ export interface UsePhotoZoomReturn {
   handleImageLoad: (e: React.SyntheticEvent<HTMLImageElement>) => void;
 }
 
-export function usePhotoZoom(): UsePhotoZoomReturn {
+export function usePhotoZoom(options?: UsePhotoZoomOptions): UsePhotoZoomReturn {
+  const active = options?.active ?? true;
+  const onZoomChangeRef = useRef(options?.onZoomChange);
+  onZoomChangeRef.current = options?.onZoomChange;
+
   const [transform, setTransform] = useState<{ scale: number; x: number; y: number }>({
     scale: PHOTO_LIGHTBOX_MIN_SCALE,
     x: 0,
@@ -166,6 +175,7 @@ export function usePhotoZoom(): UsePhotoZoomReturn {
       setTransform((prev) => {
         const nextScale = Math.min(PHOTO_LIGHTBOX_MAX_SCALE, prev.scale + PHOTO_LIGHTBOX_STEP);
         const nextOffset = clampOffset(nextScale, prev.x, prev.y);
+        onZoomChangeRef.current?.(nextScale, 'button_zoom_in');
         return { scale: nextScale, ...nextOffset };
       });
     },
@@ -178,6 +188,7 @@ export function usePhotoZoom(): UsePhotoZoomReturn {
       setTransform((prev) => {
         const nextScale = Math.max(PHOTO_LIGHTBOX_MIN_SCALE, prev.scale - PHOTO_LIGHTBOX_STEP);
         const nextOffset = clampOffset(nextScale, prev.x, prev.y);
+        onZoomChangeRef.current?.(nextScale, 'button_zoom_out');
         return { scale: nextScale, ...nextOffset };
       });
     },
@@ -186,7 +197,7 @@ export function usePhotoZoom(): UsePhotoZoomReturn {
 
   useEffect(() => {
     const frame = frameRef.current;
-    if (!frame) return;
+    if (!frame || !active) return;
 
     const onWheel = (e: WheelEvent) => {
       if (e.cancelable) {
@@ -200,6 +211,7 @@ export function usePhotoZoom(): UsePhotoZoomReturn {
           Math.max(PHOTO_LIGHTBOX_MIN_SCALE, prev.scale + delta)
         );
         const nextOffset = clampOffset(nextScale, prev.x, prev.y);
+        onZoomChangeRef.current?.(nextScale, 'mouse_wheel');
         return { scale: nextScale, ...nextOffset };
       });
     };
@@ -208,7 +220,7 @@ export function usePhotoZoom(): UsePhotoZoomReturn {
     return () => {
       frame.removeEventListener('wheel', onWheel);
     };
-  }, [clampOffset]);
+  }, [active, clampOffset]);
 
   const handleWheel = useCallback(
     (e: React.WheelEvent<HTMLDivElement>) => {

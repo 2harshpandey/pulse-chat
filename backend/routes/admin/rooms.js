@@ -59,6 +59,39 @@ module.exports = (wss, broadcasts) => {
     }
   });
 
+  const purgeRoomAndNotifyClients = async (roomIdentifiers, deleteRoomQuery) => {
+    // Clean up Cloudinary assets before purging messages from DB
+    await cleanupRoomMediaAssets(roomIdentifiers);
+
+    await Promise.all([
+      Room.deleteOne(deleteRoomQuery),
+      Message.deleteMany({ roomId: { $in: roomIdentifiers } }),
+      MessageEvent.deleteMany({ roomId: { $in: roomIdentifiers } }),
+      AuditLog.deleteMany({ roomId: { $in: roomIdentifiers } }),
+      LoginLockdown.deleteMany({ roomId: { $in: roomIdentifiers } }),
+      BlockedUser.deleteMany({ roomId: { $in: roomIdentifiers } }),
+      UserReport.deleteMany({ roomId: { $in: roomIdentifiers } }),
+      ChatState.deleteMany({ roomId: { $in: roomIdentifiers } }),
+      User.deleteMany({ roomId: { $in: roomIdentifiers } }),
+      TempLink.deleteMany({ roomId: { $in: roomIdentifiers } }),
+    ]);
+
+    wss.clients.forEach((client) => {
+      if (roomIdentifiers.includes(client.roomId) && client.readyState === 1) {
+        if (client.isAdmin) {
+          try {
+            client.close(1008, 'Room deleted by administrator');
+          } catch (e) {}
+        } else {
+          client.send(JSON.stringify({ type: 'force_logout', message: 'Room has been deleted by an administrator.' }));
+          setTimeout(() => client.terminate(), 500);
+        }
+      }
+    });
+
+    roomIdentifiers.forEach(id => deleteRoomState(id));
+  };
+
   router.delete('/api/admin/rooms/:id', adminLimiter, adminAuth, async (req, res) => {
     try {
       if (!req.isSuperAdmin || (req.roomId !== 'me' && req.roomId !== 'global')) {
@@ -81,39 +114,7 @@ module.exports = (wss, broadcasts) => {
       }
 
       const roomIdentifiers = Array.from(new Set([room.id, room.alias, targetRoomParam].filter(Boolean)));
-
-      // Clean up Cloudinary assets before purging messages from DB
-      await cleanupRoomMediaAssets(roomIdentifiers);
-
-      // Clean up related data in parallel across all collections
-      await Promise.all([
-        Room.deleteOne({ id: room.id }),
-        Message.deleteMany({ roomId: { $in: roomIdentifiers } }),
-        MessageEvent.deleteMany({ roomId: { $in: roomIdentifiers } }),
-        AuditLog.deleteMany({ roomId: { $in: roomIdentifiers } }),
-        LoginLockdown.deleteMany({ roomId: { $in: roomIdentifiers } }),
-        BlockedUser.deleteMany({ roomId: { $in: roomIdentifiers } }),
-        UserReport.deleteMany({ roomId: { $in: roomIdentifiers } }),
-        ChatState.deleteMany({ roomId: { $in: roomIdentifiers } }),
-        User.deleteMany({ roomId: { $in: roomIdentifiers } }),
-        TempLink.deleteMany({ roomId: { $in: roomIdentifiers } }),
-      ]);
-
-      // Force logout all clients and admins in that room
-      wss.clients.forEach((client) => {
-        if (roomIdentifiers.includes(client.roomId) && client.readyState === 1) {
-          if (client.isAdmin) {
-            try {
-              client.close(1008, 'Room deleted by Super Admin');
-            } catch (e) {}
-          } else {
-            client.send(JSON.stringify({ type: 'force_logout', message: 'Room has been deleted by an administrator.' }));
-            setTimeout(() => client.terminate(), 500);
-          }
-        }
-      });
-
-      roomIdentifiers.forEach(id => deleteRoomState(id));
+      await purgeRoomAndNotifyClients(roomIdentifiers, { id: room.id });
 
       const auditEntry = await AuditLog.create({
         roomId: 'me',
@@ -143,37 +144,7 @@ module.exports = (wss, broadcasts) => {
     try {
       const room = await Room.findByIdOrAlias(roomId);
       const roomIdentifiers = Array.from(new Set([roomId, room?.id, room?.alias].filter(Boolean)));
-
-      // Clean up Cloudinary assets before purging messages from DB
-      await cleanupRoomMediaAssets(roomIdentifiers);
-
-      await Promise.all([
-        Room.deleteOne({ id: room ? room.id : roomId }),
-        Message.deleteMany({ roomId: { $in: roomIdentifiers } }),
-        MessageEvent.deleteMany({ roomId: { $in: roomIdentifiers } }),
-        AuditLog.deleteMany({ roomId: { $in: roomIdentifiers } }),
-        LoginLockdown.deleteMany({ roomId: { $in: roomIdentifiers } }),
-        BlockedUser.deleteMany({ roomId: { $in: roomIdentifiers } }),
-        UserReport.deleteMany({ roomId: { $in: roomIdentifiers } }),
-        ChatState.deleteMany({ roomId: { $in: roomIdentifiers } }),
-        User.deleteMany({ roomId: { $in: roomIdentifiers } }),
-        TempLink.deleteMany({ roomId: { $in: roomIdentifiers } }),
-      ]);
-
-      // Force logout all online users and close admin sockets in the room
-      wss.clients.forEach((client) => {
-        if (roomIdentifiers.includes(client.roomId) && client.readyState === 1) {
-          if (client.isAdmin) {
-            try {
-              client.close(1008, 'Room deleted by administrator');
-            } catch (e) {}
-          } else {
-            client.send(JSON.stringify({ type: 'force_logout', message: 'Room has been deleted by an administrator.' }));
-            setTimeout(() => client.terminate(), 500);
-          }
-        }
-      });
-      roomIdentifiers.forEach(id => deleteRoomState(id));
+      await purgeRoomAndNotifyClients(roomIdentifiers, { id: room ? room.id : roomId });
 
       res.json({ success: true });
     } catch (error) {

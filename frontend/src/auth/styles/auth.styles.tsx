@@ -287,9 +287,9 @@ export const HeartbeatSvg = styled.svg`
   path {
     fill: none;
     stroke: var(--accent-indigo);
-    strokeWidth: 2.5;
-    strokeLinecap: round;
-    strokeLinejoin: round;
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
     stroke-dasharray: 180;
     animation: ${drawLine} 1.5s ease-out forwards;
     filter: drop-shadow(0 0 6px rgba(99, 102, 241, 0.25));

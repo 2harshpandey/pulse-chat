@@ -79,14 +79,14 @@ export function RoomSettingsTab({ admin }: RoomSettingsTabProps) {
               }}
             >
               <label style={{ fontWeight: 600 }}>Room Description</label>
-              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{roomSettingsDesc.length}/200</span>
+              <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{roomSettingsDesc.length}/150</span>
             </div>
             <TextArea
               rows={3}
               value={roomSettingsDesc}
               onChange={(e) => setRoomSettingsDesc(e.target.value)}
               placeholder="What is this room about?"
-              maxLength={200}
+              maxLength={150}
             />
           </div>
           <Button style={{ maxWidth: '300px' }} onClick={handleSaveRoomDetails} disabled={roomSettingsLoading}>

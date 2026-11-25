@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Message } from './types';
+import { isAudioMedia, isVideoMedia, isImageMedia } from '../shared/mediaTypes';
 import {
   sanitizeMediaUrl, getMediaGatePreviewUrl,
   formatMediaSize, getFileContainerLabel,
@@ -180,15 +181,9 @@ export const renderMessageContent = (
   isSelectModeActive: boolean = false,
   onMediaError?: (messageId: string, url?: string) => void,
 ) => {
-  const isAudio = msg.type === 'audio' || Boolean(
-    (!msg.type || msg.type === 'file') && (
-      msg.url?.match(/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)($|\?)/i) ||
-      msg.originalName?.match(/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i) ||
-      (msg.originalName?.toLowerCase().includes('voice') && msg.url?.match(/\.(webm|ogg|mp4|m4a)($|\?)/i))
-    )
-  );
-  const isVideo = !isAudio && (msg.type === 'video' || Boolean(msg.url?.match(/\.(mp4|webm|mov)$/i)));
-  const isImage = msg.type === 'image' || Boolean(msg.url?.match(/\.(jpeg|jpg|gif|png|svg)$/i));
+  const isAudio = isAudioMedia(msg);
+  const isVideo = isVideoMedia(msg);
+  const isImage = !isAudio && !isVideo && isImageMedia(msg);
   const isOwnMessage = sender === 'me';
   const shouldGateMedia = Boolean(msg.url) && !msg.isUploading && !isMediaLoaded && !isOwnMessage;
   const resolvedMediaUrl = loadedMediaSrc || msg.url || '';

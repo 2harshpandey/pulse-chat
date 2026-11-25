@@ -7,6 +7,7 @@ import { recordChatScroll } from '../chatScrollState';
 import { formatPageTitle, getRoomDisplayLabel, useDocumentTitle } from '../../pageTitle';
 import type { Message } from '../types';
 import { getUserId, resolveApiBaseUrl, downloadFile, findMessageElement, canEditMessage } from '../utils';
+import { isAudioMedia, isVideoMedia } from '../../shared/mediaTypes';
 import { albumDownloadManager } from '../albumDownloadManager';
 import {
   useChatAudio,
@@ -645,14 +646,8 @@ export function useChatController({ isMe, isTempLink }: UseChatControllerProps =
     if (selectedMediaMessages.length === 1) {
       const m = selectedMediaMessages[0];
       if (!m.url) return;
-      const isAudio = m.type === 'audio' || Boolean(
-        (!m.type || m.type === 'file') && (
-          m.url.match(/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)($|\?)/i) ||
-          m.originalName?.match(/\.(mp3|wav|ogg|m4a|aac|opus|flac|weba|wma|aiff|aif|alac|amr|caf|oga|m4b|mid|midi)$/i) ||
-          (m.originalName?.toLowerCase().includes('voice') && m.url.match(/\.(webm|ogg|mp4|m4a)($|\?)/i))
-        )
-      );
-      const isVideo = !isAudio && (m.type === 'video' || Boolean(m.url.match(/\.(mp4|webm|mov)$/i)));
+      const isAudio = isAudioMedia(m);
+      const isVideo = isVideoMedia(m);
       const fallbackName = m.originalName || (isAudio ? 'voice-message.mp3' : isVideo ? 'video.mp4' : 'media.jpg');
       void downloadFile(m.url, fallbackName, undefined, undefined, !isVideo && !isAudio);
     } else {

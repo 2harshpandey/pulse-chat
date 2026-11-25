@@ -459,14 +459,14 @@ export const DownloadProgressRing = styled.div<{ $progress: number; $visible: bo
     fill: none;
     stroke: currentColor;
     opacity: 0.25;
-    strokeWidth: 3;
+    stroke-width: 3;
   }
 
   circle.progress {
     fill: none;
     stroke: currentColor;
-    strokeWidth: 3;
-    strokeLinecap: round;
+    stroke-width: 3;
+    stroke-linecap: round;
     stroke-dasharray: 100;
     stroke-dashoffset: ${p => 100 - (p.$progress * 100)};
     transition: stroke-dashoffset 0.15s linear;
