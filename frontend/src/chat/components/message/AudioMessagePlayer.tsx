@@ -279,6 +279,7 @@ const UnavailableBadge = styled.div<{ $sender: 'me' | 'other' }>`
 const WaveformBarsContainer = styled.div`
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 2.5px;
   height: 30px;
   width: 100%;
@@ -491,14 +492,14 @@ const SpeedButton = styled.button<{ $sender: 'me' | 'other'; $isBouncing?: boole
       &:hover {
         background: ${p => p.$isBoosted ? '#2563EB' : 'rgba(59, 130, 246, 0.22)'};
         border-color: #2563eb;
-        color: ${p => p.$isBoosted ? '#ffffff' : '#1d4ed8'};
+        color: ${p => p.$isBoosted ? '#ffffff' : '#000000'} !important;
         svg {
-          color: ${p => p.$isBoosted ? '#ffffff' : '#1d4ed8'};
-          stroke: ${p => p.$isBoosted ? '#ffffff' : '#1d4ed8'};
+          color: ${p => p.$isBoosted ? '#ffffff' : '#000000'} !important;
+          stroke: ${p => p.$isBoosted ? '#ffffff' : '#000000'} !important;
           transform: rotate(20deg);
         }
         span {
-          color: ${p => p.$isBoosted ? '#ffffff' : '#1d4ed8'};
+          color: ${p => p.$isBoosted ? '#ffffff' : '#000000'} !important;
         }
       }
     }

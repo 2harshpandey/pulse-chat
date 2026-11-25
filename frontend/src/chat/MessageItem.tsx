@@ -226,8 +226,8 @@ export const MessageItem = React.memo(({
   const canEdit = canEditMessage(msg, currentUserId, now);
   const isDeleted = msg.isDeleted;
   const isAudioMessage = isAudioMedia(msg);
-  const hasConstrainedMediaFrame = !isDeleted && !isAudioMessage && Boolean(msg.url) && (
-    isVideoMedia(msg) || isImageMedia(msg)
+  const hasConstrainedMediaFrame = !isDeleted && Boolean(msg.url) && (
+    isVideoMedia(msg) || isImageMedia(msg) || isAudioMessage
   );
   const handleVideoFullscreenEnterForMessage = useCallback(() => {
     onVideoFullscreenEnter?.(msg.id);

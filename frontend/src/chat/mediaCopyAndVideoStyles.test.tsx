@@ -1057,7 +1057,7 @@ describe('Quoted media bubble width constraint', () => {
     handleCancelEdit: vi.fn(),
   });
 
-  it('constrains quoted preview width on video and image messages so long quoted text cannot stretch the bubble', () => {
+  it('constrains quoted preview width on video, image, and audio messages so long quoted text cannot stretch the bubble', () => {
     const longQuote = {
       id: 'quoted-text-1',
       username: 'Harsh',
@@ -1090,6 +1090,19 @@ describe('Quoted media bubble width constraint', () => {
     };
     const { container: imageContainer } = render(<MessageItem {...makeBaseItemProps(imageMsg)} />);
     expect(imageContainer.querySelector('[data-quoted-width-constrain="true"]')).toBeTruthy();
+
+    const audioMsg: Message = {
+      ...videoMsg,
+      id: 'audio-msg-1',
+      type: 'audio',
+      url: 'https://res.cloudinary.com/demo/video/upload/v1/pulse-chat/voice-note.webm',
+      text: '',
+    };
+    const { container: audioContainer } = render(<MessageItem {...makeBaseItemProps(audioMsg)} />);
+    const audioConstrainedEl = audioContainer.querySelector('[data-quoted-width-constrain="true"]') as HTMLElement | null;
+    expect(audioConstrainedEl).toBeTruthy();
+    expect(audioConstrainedEl?.style.width).toBe('0px');
+    expect(audioConstrainedEl?.style.minWidth).toBe('100%');
   });
 
   it('does not constrain quoted preview width on pure text messages', () => {

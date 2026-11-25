@@ -203,6 +203,24 @@ describe('Voice Messaging System', () => {
       expect(window.getComputedStyle(lastBar).backgroundColor).toBe('rgba(255, 255, 255, 0.42)');
     });
 
+    it('renders black SVG and text CSS rules on hover in light mode for other user speed button (1x)', () => {
+      document.documentElement.setAttribute('data-theme', 'light');
+      render(
+        <AudioMessagePlayer msg={mockMessage} sender="other" isSelectModeActive={false} />
+      );
+
+      const speedBtn = screen.getByLabelText(/Playback speed: 1x/);
+      expect(speedBtn).toBeDefined();
+
+      const allCssText = Array.from(document.querySelectorAll('style'))
+        .map((s) => s.textContent || '')
+        .join('\n');
+
+      expect(allCssText).toMatch(/\[data-theme='light'\]\s+[^}]*\[data-sender='other'\]:hover[^}]*color:\s*#000000\s*!important/);
+      expect(allCssText).toMatch(/\[data-theme='light'\]\s+[^}]*\[data-sender='other'\]:hover\s+svg[^}]*stroke:\s*#000000\s*!important/);
+      expect(allCssText).toMatch(/\[data-theme='light'\]\s+[^}]*\[data-sender='other'\]:hover\s+span[^}]*color:\s*#000000\s*!important/);
+    });
+
     it('renders crisp blue played bars and slate unplayed bars for other users in light mode', async () => {
       document.documentElement.setAttribute('data-theme', 'light');
       const { container } = render(

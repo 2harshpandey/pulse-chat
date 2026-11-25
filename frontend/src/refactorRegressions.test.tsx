@@ -5,6 +5,7 @@ import { repairMojibakeText, sanitizeFilename, reconcileUploadedMessageInList } 
 import { classifyUploadFile, isAudioMedia, isVideoMedia, isImageMedia } from './shared/mediaTypes';
 import { useChatLightbox } from './chat/hooks/useChatLightbox';
 import { DownloadProgressRing } from './chat/styles/chat.video.styles';
+import { QuotedMessageContainer } from './chat/styles/chat.message.styles';
 
 describe('Audit Fixes & Consolidations Regression Suite', () => {
   it('preserves ASCII hyphens in repairMojibakeText and sanitizeFilename while repairing mojibake', () => {
@@ -106,5 +107,13 @@ describe('Audit Fixes & Consolidations Regression Suite', () => {
     expect(styleText).toContain('stroke-width:3');
     expect(styleText).toContain('stroke-linecap:round');
     expect(styleText).not.toContain('strokeWidth');
+  });
+
+  it('does not shrink QuotedMessageContainer on hover (prevents boundary hover flicker loop)', () => {
+    render(<QuotedMessageContainer $sender="other">Quoted preview</QuotedMessageContainer>);
+    const styleText = Array.from(document.querySelectorAll('style'))
+      .map((s) => s.textContent || '')
+      .join('\n');
+    expect(styleText).not.toMatch(/:hover\s*\{[^}]*scale\(0\.9/);
   });
 });

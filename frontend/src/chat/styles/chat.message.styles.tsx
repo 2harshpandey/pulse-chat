@@ -498,9 +498,9 @@ export const QuotedMessageContainer = styled.div<{ $sender: 'me' | 'other' }>`
   touch-action: manipulation;
   user-select: none;
   -webkit-user-select: none;
-  transition: all 0.2s ease;
-  &:hover { opacity: 0.85; transform: scale(0.99); }
-  &:active { transform: scale(0.97); }
+  transition: opacity 0.2s ease, transform 0.15s ease, background-color 0.2s ease;
+  &:hover { opacity: 0.85; }
+  &:active { transform: scale(0.98); }
   p { font-weight: bold; font-size: 0.8rem; color: ${props => props.$sender === 'me' ? 'rgba(255,255,255,0.95)' : 'var(--text-primary)'}; margin: 0; }
   span {
     font-size: 0.9rem;
