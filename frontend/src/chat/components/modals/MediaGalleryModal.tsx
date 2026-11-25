@@ -260,10 +260,12 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, goToPrev, goToNext, onClose]);
 
-  // Touch gesture handling for smooth swiping
+  // Touch gesture handling for smooth swiping between multi-item gallery slides
   const handleTouchStart = (e: React.TouchEvent) => {
-    if (zoom.isZoomed) return;
+    if (zoom.isZoomed || activeItems.length <= 1) return;
     if (e.touches.length !== 1) return;
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('[data-cvp-controls], [data-cvp-timeline]')) return;
     touchStartXRef.current = e.touches[0].clientX;
     touchStartYRef.current = e.touches[0].clientY;
     isHorizontalSwipeRef.current = null;

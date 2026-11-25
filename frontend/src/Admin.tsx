@@ -88,7 +88,15 @@ const Admin = () => {
     <AdminContainer>
       <HeaderRow>
         <Title>
-          <a href="/admin">
+          <a
+            href="/"
+            onClick={(e) => {
+              e.preventDefault();
+              admin.navigate('/');
+            }}
+            title="Go to Home"
+            aria-label="Go to Pulse Home"
+          >
             <img src="/pulse_logo.webp" alt="Pulse Admin Panel" />
             <span>Pulse</span> Chat
           </a>

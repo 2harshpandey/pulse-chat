@@ -31,6 +31,7 @@ export interface ChatHeaderProps {
   isUserListVisible: boolean;
   onToggleUserList: () => void;
   onHeaderButtonPointerDown?: (e: React.PointerEvent<HTMLButtonElement>) => void;
+  onNavigateHome?: () => void;
 }
 
 export const ChatHeader: React.FC<ChatHeaderProps> = ({
@@ -51,11 +52,22 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   isUserListVisible,
   onToggleUserList,
   onHeaderButtonPointerDown,
+  onNavigateHome,
 }) => {
   return (
     <Header>
       <HeaderTitle style={{ flexGrow: 1, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-        <a href="/">
+        <a
+          href="/"
+          onClick={(e) => {
+            if (onNavigateHome) {
+              e.preventDefault();
+              onNavigateHome();
+            }
+          }}
+          title="Go to Home"
+          aria-label="Go to Pulse Home"
+        >
           <img src="/pulse_logo.webp" alt="Pulse Chat" style={{ flexShrink: 0 }} />
           <span style={{ flexShrink: 0 }}>Pulse</span> <span className="hide-on-narrow">Chat</span>
         </a>

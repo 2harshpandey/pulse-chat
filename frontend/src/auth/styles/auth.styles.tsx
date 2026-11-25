@@ -223,6 +223,21 @@ export const BrandSection = styled.div`
   margin-bottom: 2rem;
 `;
 
+export const BrandHomeLink = styled.a`
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 6px;
+    border-radius: 12px;
+  }
+`;
+
 export const BrandLogo = styled.img`
   width: 90px;
   height: 90px;

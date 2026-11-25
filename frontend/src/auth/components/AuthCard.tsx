@@ -8,6 +8,7 @@ import {
   InfoButton,
   Tooltip,
   BrandSection,
+  BrandHomeLink,
   BrandLogo,
   BrandWordmark,
   BrandTagline,
@@ -94,8 +95,18 @@ export const AuthCard: React.FC<AuthCardProps> = ({ controller, roomId = 'me' })
       </TopBar>
 
       <BrandSection>
-        <BrandLogo src="/pulse_logo.webp" alt="Pulse" />
-        <BrandWordmark><span>Pulse</span> Chat</BrandWordmark>
+        <BrandHomeLink
+          href="/"
+          onClick={(e) => {
+            e.preventDefault();
+            navigate('/');
+          }}
+          title="Go to Home"
+          aria-label="Go to Pulse Home"
+        >
+          <BrandLogo src="/pulse_logo.webp" alt="Pulse" />
+          <BrandWordmark><span>Pulse</span> Chat</BrandWordmark>
+        </BrandHomeLink>
         {isTempLink && <BrandTagline>You're Invited!</BrandTagline>}
         <HeartbeatSvg viewBox="0 0 120 30" width="120" height="30">
           <path d="M0 15 L30 15 L38 5 L46 25 L54 8 L60 15 L90 15 L98 5 L106 25 L114 8 L120 15" />

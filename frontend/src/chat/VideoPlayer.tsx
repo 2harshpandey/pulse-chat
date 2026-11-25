@@ -66,18 +66,37 @@ export const VideoPlayer = ({
 }: VideoPlayerProps) => {
   const containerRef = useRef<HTMLDivElement>(null!);
   const videoRef = useRef<HTMLVideoElement>(null!);
+  const timelineWrapperRef = useRef<HTMLDivElement>(null!);
+  const timelineFillRef = useRef<HTMLDivElement>(null);
+  const timelineThumbRef = useRef<HTMLDivElement>(null);
+  const timeDisplayRef = useRef<HTMLSpanElement>(null);
   const [effectiveSrc, setEffectiveSrc] = useState(src);
   const [hasTriedFallback, setHasTriedFallback] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const durationRef = useRef(0);
+  durationRef.current = duration;
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [speedIdx, setSpeedIdx] = useState(2); // 1x default
   const [doubleTapSide, setDoubleTapSide] = useState<'left' | 'right' | null>(null);
   const [showCenterPlay, setShowCenterPlay] = useState(false);
+  const [isScrubbing, setIsScrubbing] = useState(false);
   const isScrubbingRef = useRef(false);
+  const scrubSourceRef = useRef<'pointer' | 'mouse' | 'touch' | null>(null);
+  const activeScrubPointerIdRef = useRef<number | null>(null);
+  const scrubRectRef = useRef<DOMRect | null>(null);
+  const scrubRafIdRef = useRef<number | null>(null);
+  const isScrubRafPendingRef = useRef(false);
+  const pendingScrubTimeRef = useRef(0);
+  const scrubWindowCleanupRef = useRef<(() => void) | null>(null);
+  const wasPlayingBeforeScrubRef = useRef(false);
+  const seekThrottleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSeekSentAtRef = useRef(-1000);
+  const queuedSeekTimeRef = useRef<number | null>(null);
+  const lastCommittedSecondRef = useRef(-1);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
   const [hasError, setHasError] = useState(false);
@@ -86,8 +105,10 @@ export const VideoPlayer = ({
   const retryCountRef = useRef(0);
   const hideControlsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const doubleTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bufferingDelayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTapTimeRef = useRef(0);
   const lastTapXRef = useRef(0);
+  const lastPointerTypeRef = useRef<string>('mouse');
   const centerPlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const volumeCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -110,7 +131,68 @@ export const VideoPlayer = ({
   const isRecentUploadRef = useRef(isRecentUpload);
   isRecentUploadRef.current = isRecentUpload;
 
-  const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const applyVisualProgress = useCallback((timeSec: number, durSec: number) => {
+    const safeDur = Number.isFinite(durSec) && durSec > 0 ? durSec : 0;
+    const clamped = safeDur > 0 ? Math.max(0, Math.min(safeDur, timeSec)) : 0;
+    const ratio = safeDur > 0 ? clamped / safeDur : 0;
+    if (timelineFillRef.current) {
+      timelineFillRef.current.style.transform = `scaleX(${ratio})`;
+    }
+    if (timelineThumbRef.current) {
+      timelineThumbRef.current.style.left = `${ratio * 100}%`;
+    }
+    if (timeDisplayRef.current) {
+      timeDisplayRef.current.textContent = `${formatTime(clamped)} / ${formatTime(safeDur)}`;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isScrubbingRef.current) {
+      applyVisualProgress(currentTime, duration);
+    }
+  }, [currentTime, duration, applyVisualProgress]);
+
+  const flushVideoSeek = useCallback((targetTime: number, immediate: boolean) => {
+    const v = videoRef.current;
+    const dur = durationRef.current || v?.duration || 0;
+    if (!v || dur <= 0) return;
+    const clamped = Math.max(0, Math.min(dur, targetTime));
+
+    if (immediate) {
+      queuedSeekTimeRef.current = null;
+      if (seekThrottleTimerRef.current) {
+        clearTimeout(seekThrottleTimerRef.current);
+        seekThrottleTimerRef.current = null;
+      }
+      v.currentTime = clamped;
+      lastSeekSentAtRef.current = performance.now();
+      return;
+    }
+
+    queuedSeekTimeRef.current = clamped;
+    const elapsed = performance.now() - lastSeekSentAtRef.current;
+    if (!v.seeking && elapsed >= 80) {
+      queuedSeekTimeRef.current = null;
+      v.currentTime = clamped;
+      lastSeekSentAtRef.current = performance.now();
+      return;
+    }
+
+    if (!seekThrottleTimerRef.current) {
+      const waitMs = Math.max(16, 85 - elapsed);
+      seekThrottleTimerRef.current = setTimeout(() => {
+        seekThrottleTimerRef.current = null;
+        if (!isScrubbingRef.current) return;
+        const nextTime = queuedSeekTimeRef.current;
+        const vid = videoRef.current;
+        if (nextTime !== null && vid && !vid.seeking) {
+          queuedSeekTimeRef.current = null;
+          vid.currentTime = nextTime;
+          lastSeekSentAtRef.current = performance.now();
+        }
+      }, waitMs);
+    }
+  }, []);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -125,6 +207,13 @@ export const VideoPlayer = ({
     setHasError(false);
     setIsRetrying(false);
     setIsBuffering(false);
+    isScrubbingRef.current = false;
+    setIsScrubbing(false);
+    isScrubRafPendingRef.current = false;
+    scrubSourceRef.current = null;
+    wasPlayingBeforeScrubRef.current = false;
+    queuedSeekTimeRef.current = null;
+    lastCommittedSecondRef.current = -1;
     pendingPlayRef.current = false;
     retryCountRef.current = 0;
     if (retryTimerRef.current) {
@@ -138,7 +227,7 @@ export const VideoPlayer = ({
     setShowControls(true);
     if (isPlaying) {
       hideControlsTimerRef.current = setTimeout(() => {
-        if (isVolumeOpenRef.current || isVolumeDraggingRef.current) {
+        if (isVolumeOpenRef.current || isVolumeDraggingRef.current || isScrubbingRef.current) {
           resetControlsTimer();
           return;
         }
@@ -165,15 +254,37 @@ export const VideoPlayer = ({
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
+    const clearBufferingDelay = () => {
+      if (bufferingDelayTimerRef.current) {
+        clearTimeout(bufferingDelayTimerRef.current);
+        bufferingDelayTimerRef.current = null;
+      }
+    };
     const onTimeUpdate = () => {
-      if (!isScrubbingRef.current) {
-        setCurrentTime(video.currentTime);
+      if (isScrubbingRef.current) return;
+      const t = video.currentTime;
+      const d = video.duration || durationRef.current || 0;
+      applyVisualProgress(t, d);
+      const floored = Math.floor(t);
+      if (floored !== lastCommittedSecondRef.current || video.paused) {
+        lastCommittedSecondRef.current = floored;
+        setCurrentTime(t);
+      }
+    };
+    const onSeeked = () => {
+      if (isScrubbingRef.current && queuedSeekTimeRef.current !== null && !video.seeking) {
+        const nextTime = queuedSeekTimeRef.current;
+        queuedSeekTimeRef.current = null;
+        video.currentTime = nextTime;
+        lastSeekSentAtRef.current = performance.now();
       }
     };
     const onLoadedMetadata = () => {
+      durationRef.current = video.duration;
       setDuration(video.duration);
       setHasError(false);
       setIsRetrying(false);
+      clearBufferingDelay();
       setIsBuffering(false);
       retryCountRef.current = 0;
       if (retryTimerRef.current) {
@@ -184,7 +295,10 @@ export const VideoPlayer = ({
         try {
           video.currentTime = pendingResumeTimeRef.current;
         } catch (_) {}
+        applyVisualProgress(pendingResumeTimeRef.current, video.duration);
         pendingResumeTimeRef.current = 0;
+      } else {
+        applyVisualProgress(0, video.duration);
       }
       if (autoPlay || pendingPlayRef.current) {
         pendingPlayRef.current = false;
@@ -195,6 +309,7 @@ export const VideoPlayer = ({
       }
     };
     const onCanPlay = () => {
+      clearBufferingDelay();
       setIsBuffering(false);
       setIsRetrying(false);
       setHasError(false);
@@ -205,17 +320,26 @@ export const VideoPlayer = ({
       }
     };
     const onPlaying = () => {
+      clearBufferingDelay();
       setIsBuffering(false);
       setIsRetrying(false);
       setHasError(false);
       pendingPlayRef.current = false;
     };
     const onWaiting = () => {
-      if (!video.paused) {
-        setIsBuffering(true);
+      if (!video.paused && !isScrubbingRef.current) {
+        clearBufferingDelay();
+        bufferingDelayTimerRef.current = setTimeout(() => {
+          bufferingDelayTimerRef.current = null;
+          if (!video.paused && !isScrubbingRef.current) {
+            setIsBuffering(true);
+          }
+        }, 160);
       }
     };
     const onPlay = () => {
+      if (isScrubbingRef.current) return;
+      clearBufferingDelay();
       setIsPlaying(true);
       setIsBuffering(false);
       setIsRetrying(false);
@@ -227,6 +351,8 @@ export const VideoPlayer = ({
       });
     };
     const onPause = () => {
+      if (isScrubbingRef.current) return;
+      clearBufferingDelay();
       setIsPlaying(false);
       setIsBuffering(false);
       setShowControls(true);
@@ -238,6 +364,7 @@ export const VideoPlayer = ({
       });
     };
     const onEnded = () => {
+      clearBufferingDelay();
       if (video.loop) {
         setIsPlaying(true);
         return;
@@ -314,6 +441,7 @@ export const VideoPlayer = ({
       scheduleRetry(effectiveSrcRef.current);
     };
     video.addEventListener('timeupdate', onTimeUpdate);
+    video.addEventListener('seeked', onSeeked);
     video.addEventListener('loadedmetadata', onLoadedMetadata);
     video.addEventListener('canplay', onCanPlay);
     video.addEventListener('playing', onPlaying);
@@ -324,7 +452,9 @@ export const VideoPlayer = ({
     video.addEventListener('volumechange', onVolumeChange);
     video.addEventListener('error', onError);
     return () => {
+      clearBufferingDelay();
       video.removeEventListener('timeupdate', onTimeUpdate);
+      video.removeEventListener('seeked', onSeeked);
       video.removeEventListener('loadedmetadata', onLoadedMetadata);
       video.removeEventListener('canplay', onCanPlay);
       video.removeEventListener('playing', onPlaying);
@@ -335,7 +465,7 @@ export const VideoPlayer = ({
       video.removeEventListener('volumechange', onVolumeChange);
       video.removeEventListener('error', onError);
     };
-  }, [resetControlsTimer, autoPlay, fallbackUrl, hasTriedFallback]);
+  }, [resetControlsTimer, autoPlay, fallbackUrl, hasTriedFallback, applyVisualProgress]);
 
   // Fullscreen change tracking
   useEffect(() => {
@@ -412,6 +542,10 @@ export const VideoPlayer = ({
       if (centerPlayTimerRef.current) clearTimeout(centerPlayTimerRef.current);
       if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
       if (volumeCloseTimerRef.current) clearTimeout(volumeCloseTimerRef.current);
+      if (bufferingDelayTimerRef.current) clearTimeout(bufferingDelayTimerRef.current);
+      if (seekThrottleTimerRef.current) clearTimeout(seekThrottleTimerRef.current);
+      if (scrubRafIdRef.current !== null) cancelAnimationFrame(scrubRafIdRef.current);
+      if (scrubWindowCleanupRef.current) scrubWindowCleanupRef.current();
       if (volumeDragCleanupRef.current) volumeDragCleanupRef.current();
     };
   }, []);
@@ -431,10 +565,20 @@ export const VideoPlayer = ({
       return;
     }
     if (v.paused) {
+      if (bufferingDelayTimerRef.current) clearTimeout(bufferingDelayTimerRef.current);
       if (v.readyState < 3) {
-        setIsBuffering(true);
+        bufferingDelayTimerRef.current = setTimeout(() => {
+          bufferingDelayTimerRef.current = null;
+          if (videoRef.current && !videoRef.current.paused && videoRef.current.readyState < 3) {
+            setIsBuffering(true);
+          }
+        }, 160);
       }
       v.play().catch(() => {
+        if (bufferingDelayTimerRef.current) {
+          clearTimeout(bufferingDelayTimerRef.current);
+          bufferingDelayTimerRef.current = null;
+        }
         // play() failed: reload and play once ready
         setIsBuffering(true);
         pendingPlayRef.current = true;
@@ -442,6 +586,10 @@ export const VideoPlayer = ({
         v.play().catch(() => { });
       });
     } else {
+      if (bufferingDelayTimerRef.current) {
+        clearTimeout(bufferingDelayTimerRef.current);
+        bufferingDelayTimerRef.current = null;
+      }
       pendingPlayRef.current = false;
       setIsBuffering(false);
       v.pause();
@@ -451,11 +599,16 @@ export const VideoPlayer = ({
   const skip = (sec: number) => {
     const v = videoRef.current;
     if (!v) return;
-    const newTime = Math.min(Math.max(v.currentTime + sec, 0), v.duration || 0);
+    const dur = v.duration || durationRef.current || 0;
+    const newTime = Math.min(Math.max(v.currentTime + sec, 0), dur);
     v.currentTime = newTime;
+    applyVisualProgress(newTime, dur);
+    lastCommittedSecondRef.current = Math.floor(newTime);
+    setCurrentTime(newTime);
+    resetControlsTimer();
     sendClientDiagnostic(
       'video_seek',
-      { toTime: Math.round(newTime), duration: Math.round(v.duration || 0) },
+      { toTime: Math.round(newTime), duration: Math.round(dur) },
       { debounceMs: 400, debounceKey: 'video_seek' }
     );
   };
@@ -514,29 +667,152 @@ export const VideoPlayer = ({
     }
   }, [isLooping]);
 
-  const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
-    const track = e.currentTarget;
-    const rect = track.getBoundingClientRect();
-    const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
+  const computeScrubTime = useCallback((clientX: number, fallbackEl?: HTMLElement | null): number => {
+    let rect = scrubRectRef.current;
+    if ((!rect || rect.width <= 0) && (fallbackEl || timelineWrapperRef.current)) {
+      rect = (fallbackEl || timelineWrapperRef.current).getBoundingClientRect();
+      if (rect.width > 0) scrubRectRef.current = rect;
+    }
+    const dur = durationRef.current || videoRef.current?.duration || 0;
+    if (!rect || rect.width <= 0 || dur <= 0) return 0;
     const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    const newTime = ratio * duration;
-    setCurrentTime(newTime);
-    const v = videoRef.current;
-    if (v && duration > 0) v.currentTime = newTime;
-  };
+    return ratio * dur;
+  }, []);
 
-  const handleScrubStart = (e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
-    isScrubbingRef.current = true;
-    handleTimelineClick(e);
-  };
+  const finishScrub = useCallback((source: 'pointer' | 'mouse' | 'touch') => {
+    if (!isScrubbingRef.current) return;
+    if (scrubSourceRef.current && scrubSourceRef.current !== source) return;
 
-  const handleScrubMove = (e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
-    if (isScrubbingRef.current) handleTimelineClick(e);
-  };
+    if (scrubWindowCleanupRef.current) {
+      scrubWindowCleanupRef.current();
+      scrubWindowCleanupRef.current = null;
+    }
 
-  const handleScrubEnd = () => {
+    isScrubRafPendingRef.current = false;
+    if (scrubRafIdRef.current !== null) {
+      cancelAnimationFrame(scrubRafIdRef.current);
+      scrubRafIdRef.current = null;
+    }
+
+    const pointerId = activeScrubPointerIdRef.current;
+    activeScrubPointerIdRef.current = null;
+    if (pointerId !== null && timelineWrapperRef.current) {
+      try {
+        if (timelineWrapperRef.current.hasPointerCapture?.(pointerId)) {
+          timelineWrapperRef.current.releasePointerCapture(pointerId);
+        }
+      } catch (_) {}
+    }
+
+    scrubSourceRef.current = null;
+    scrubRectRef.current = null;
+    const finalTime = pendingScrubTimeRef.current;
+    const dur = durationRef.current || videoRef.current?.duration || 0;
+
     isScrubbingRef.current = false;
-  };
+    setIsScrubbing(false);
+    applyVisualProgress(finalTime, dur);
+    lastCommittedSecondRef.current = Math.floor(finalTime);
+    setCurrentTime(finalTime);
+    flushVideoSeek(finalTime, true);
+
+    if (wasPlayingBeforeScrubRef.current) {
+      wasPlayingBeforeScrubRef.current = false;
+      const p = videoRef.current?.play();
+      if (p) p.catch(() => {});
+    }
+    resetControlsTimer();
+  }, [applyVisualProgress, flushVideoSeek, resetControlsTimer]);
+
+  const updateScrub = useCallback((source: 'pointer' | 'mouse' | 'touch', clientX: number, targetEl?: HTMLDivElement | null) => {
+    if (!isScrubbingRef.current) return;
+    if (scrubSourceRef.current && scrubSourceRef.current !== source) return;
+    const newTime = computeScrubTime(clientX, targetEl);
+    pendingScrubTimeRef.current = newTime;
+    if (!isScrubRafPendingRef.current) {
+      isScrubRafPendingRef.current = true;
+      scrubRafIdRef.current = requestAnimationFrame(() => {
+        isScrubRafPendingRef.current = false;
+        scrubRafIdRef.current = null;
+        applyVisualProgress(pendingScrubTimeRef.current, durationRef.current || videoRef.current?.duration || 0);
+      });
+    }
+    flushVideoSeek(newTime, false);
+  }, [applyVisualProgress, computeScrubTime, flushVideoSeek]);
+
+  const beginScrub = useCallback((
+    source: 'pointer' | 'mouse' | 'touch',
+    clientX: number,
+    targetEl: HTMLDivElement,
+    pointerId?: number
+  ) => {
+    if (scrubSourceRef.current && scrubSourceRef.current !== source) return;
+    const v = videoRef.current;
+    const dur = durationRef.current || v?.duration || 0;
+    if (isUploading || isRetrying || hasError || dur <= 0) return;
+
+    const alreadyScrubbing = isScrubbingRef.current;
+    scrubSourceRef.current = source;
+    isScrubbingRef.current = true;
+    setIsScrubbing(true);
+    scrubRectRef.current = targetEl.getBoundingClientRect();
+
+    if (hideControlsTimerRef.current) clearTimeout(hideControlsTimerRef.current);
+    setShowControls(true);
+
+    if (pointerId !== undefined) {
+      activeScrubPointerIdRef.current = pointerId;
+      try {
+        targetEl.setPointerCapture?.(pointerId);
+      } catch (_) {}
+    }
+
+    if (scrubWindowCleanupRef.current) {
+      scrubWindowCleanupRef.current();
+    }
+    const onWinPointerMove = (evt: PointerEvent) => {
+      if (activeScrubPointerIdRef.current !== null && evt.pointerId !== activeScrubPointerIdRef.current) return;
+      updateScrub('pointer', evt.clientX, targetEl);
+    };
+    const onWinPointerUp = (evt: PointerEvent) => {
+      if (activeScrubPointerIdRef.current !== null && evt.pointerId !== activeScrubPointerIdRef.current) return;
+      finishScrub('pointer');
+    };
+    const onWinMouseMove = (evt: MouseEvent) => updateScrub('mouse', evt.clientX, targetEl);
+    const onWinMouseUp = () => finishScrub('mouse');
+    const onWinTouchMove = (evt: TouchEvent) => {
+      if (evt.touches.length > 0) updateScrub('touch', evt.touches[0].clientX, targetEl);
+    };
+    const onWinTouchEnd = () => finishScrub('touch');
+    window.addEventListener('pointermove', onWinPointerMove);
+    window.addEventListener('pointerup', onWinPointerUp);
+    window.addEventListener('pointercancel', onWinPointerUp);
+    window.addEventListener('mousemove', onWinMouseMove);
+    window.addEventListener('mouseup', onWinMouseUp);
+    window.addEventListener('touchmove', onWinTouchMove, { passive: true });
+    window.addEventListener('touchend', onWinTouchEnd);
+    window.addEventListener('touchcancel', onWinTouchEnd);
+    scrubWindowCleanupRef.current = () => {
+      window.removeEventListener('pointermove', onWinPointerMove);
+      window.removeEventListener('pointerup', onWinPointerUp);
+      window.removeEventListener('pointercancel', onWinPointerUp);
+      window.removeEventListener('mousemove', onWinMouseMove);
+      window.removeEventListener('mouseup', onWinMouseUp);
+      window.removeEventListener('touchmove', onWinTouchMove);
+      window.removeEventListener('touchend', onWinTouchEnd);
+      window.removeEventListener('touchcancel', onWinTouchEnd);
+    };
+
+    if (!alreadyScrubbing && v && !v.paused && !v.ended) {
+      wasPlayingBeforeScrubRef.current = true;
+      v.pause();
+    }
+
+    const newTime = computeScrubTime(clientX, targetEl);
+    pendingScrubTimeRef.current = newTime;
+    applyVisualProgress(newTime, dur);
+    flushVideoSeek(newTime, false);
+  }, [applyVisualProgress, computeScrubTime, finishScrub, flushVideoSeek, hasError, isRetrying, isUploading, updateScrub]);
 
   // Handle mouse wheel on speaker icon for volume control (desktop)
   const handleVolumeWheel = (e: React.WheelEvent) => {
@@ -641,9 +917,12 @@ export const VideoPlayer = ({
       // Single tap
       lastTapTimeRef.current = now;
       lastTapXRef.current = tapX;
+      const tapDelay = lastPointerTypeRef.current === 'touch' ? 160 : 200;
       doubleTapTimerRef.current = setTimeout(() => {
-        const isTouch = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
-        if (isTouch) {
+        const isTouchTap =
+          lastPointerTypeRef.current === 'touch' ||
+          window.matchMedia('(pointer: coarse)').matches;
+        if (isTouchTap) {
           // On touch devices, single tap toggles controls visibility.
           if (showControls) {
             setShowControls(false);
@@ -660,7 +939,7 @@ export const VideoPlayer = ({
           setShowCenterPlay(true);
           centerPlayTimerRef.current = setTimeout(() => setShowCenterPlay(false), 600);
         }
-      }, 200);
+      }, tapDelay);
     }
   };
 
@@ -670,8 +949,15 @@ export const VideoPlayer = ({
     <VideoPlayerWrapper onContextMenu={(e) => e.preventDefault()} onPointerDown={() => onPointerDown?.()}>
       <CVPContainer
         ref={containerRef}
+        onPointerDown={(e) => {
+          lastPointerTypeRef.current = e.pointerType || 'mouse';
+        }}
         onClick={handleContainerTap}
-        onMouseMove={resetControlsTimer}
+        onMouseMove={() => {
+          if (lastPointerTypeRef.current !== 'touch') {
+            resetControlsTimer();
+          }
+        }}
         data-cvp
         $isGalleryMode={isGalleryMode}
       >
@@ -762,23 +1048,77 @@ export const VideoPlayer = ({
           data-cvp-controls
           data-quote-swipe-ignore
           onClick={(e) => e.stopPropagation()}
-          onTouchStart={resetControlsTimer}
+          onPointerDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => {
+            e.stopPropagation();
+            resetControlsTimer();
+          }}
         >
           {/* Timeline */}
           <CVPTimelineWrapper
+            ref={timelineWrapperRef}
+            data-cvp-timeline="true"
+            data-scrubbing={isScrubbing ? 'true' : undefined}
             data-quote-swipe-ignore
-            onMouseDown={(e) => handleScrubStart(e)}
-            onMouseMove={(e) => handleScrubMove(e)}
-            onMouseUp={handleScrubEnd}
-            onMouseLeave={handleScrubEnd}
-            onTouchStart={(e) => { handleScrubStart(e); e.stopPropagation(); }}
-            onTouchMove={(e) => { handleScrubMove(e); e.stopPropagation(); }}
-            onTouchEnd={handleScrubEnd}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              beginScrub('pointer', e.clientX, e.currentTarget, e.pointerId);
+            }}
+            onPointerMove={(e) => {
+              if (!isScrubbingRef.current) return;
+              if (activeScrubPointerIdRef.current !== null && e.pointerId !== activeScrubPointerIdRef.current) return;
+              e.stopPropagation();
+              updateScrub('pointer', e.clientX, e.currentTarget);
+            }}
+            onPointerUp={(e) => {
+              if (activeScrubPointerIdRef.current !== null && e.pointerId !== activeScrubPointerIdRef.current) return;
+              e.stopPropagation();
+              finishScrub('pointer');
+            }}
+            onPointerCancel={(e) => {
+              if (activeScrubPointerIdRef.current !== null && e.pointerId !== activeScrubPointerIdRef.current) return;
+              e.stopPropagation();
+              finishScrub('pointer');
+            }}
+            onLostPointerCapture={() => finishScrub('pointer')}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              beginScrub('mouse', e.clientX, e.currentTarget);
+            }}
+            onMouseMove={(e) => {
+              if (!isScrubbingRef.current) return;
+              e.stopPropagation();
+              updateScrub('mouse', e.clientX, e.currentTarget);
+            }}
+            onMouseUp={(e) => {
+              e.stopPropagation();
+              finishScrub('mouse');
+            }}
+            onTouchStart={(e) => {
+              e.stopPropagation();
+              if (e.touches.length > 0) {
+                beginScrub('touch', e.touches[0].clientX, e.currentTarget);
+              }
+            }}
+            onTouchMove={(e) => {
+              e.stopPropagation();
+              if (isScrubbingRef.current && e.touches.length > 0) {
+                updateScrub('touch', e.touches[0].clientX, e.currentTarget);
+              }
+            }}
+            onTouchEnd={(e) => {
+              e.stopPropagation();
+              finishScrub('touch');
+            }}
+            onTouchCancel={(e) => {
+              e.stopPropagation();
+              finishScrub('touch');
+            }}
             onClick={(e) => e.stopPropagation()}
           >
-            <CVPTimelineTrack>
-              <CVPTimelineFill $pct={pct} />
-              <CVPTimelineThumb $pct={pct} />
+            <CVPTimelineTrack $active={isScrubbing}>
+              <CVPTimelineFill ref={timelineFillRef} data-cvp-timeline-fill="true" />
+              <CVPTimelineThumb ref={timelineThumbRef} $active={isScrubbing} data-cvp-timeline-thumb="true" />
             </CVPTimelineTrack>
           </CVPTimelineWrapper>
 
@@ -842,7 +1182,7 @@ export const VideoPlayer = ({
             </CVPVolumeWrapper>
 
             {/* Time display */}
-            <CVPTime>{formatTime(currentTime)} / {formatTime(duration)}</CVPTime>
+            <CVPTime ref={timeDisplayRef}>{formatTime(currentTime)} / {formatTime(duration)}</CVPTime>
 
             {/* Spacer */}
             <div style={{ flex: 1 }} />

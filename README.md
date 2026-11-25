@@ -2,6 +2,12 @@
 
 > **A modern, production-grade real-time messaging application engineered for fast conversations, dynamic multi-room routing, rich media exchange, side panel media galleries, voice messaging, and responsive light/dark themes.**
 
+<p align="center">
+  <a href="https://pulsechat.tech">
+    <img src="frontend/public/og-image.png" alt="Pulse Chat - Connect without limits. Chat reimagined." width="100%" />
+  </a>
+</p>
+
 [![Live Site](https://img.shields.io/badge/Live-pulsechat.tech-2563eb?style=for-the-badge)](https://pulsechat.tech)
 [![Version](https://img.shields.io/badge/Version-v3.1.0-10b981?style=for-the-badge)](#overview)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)

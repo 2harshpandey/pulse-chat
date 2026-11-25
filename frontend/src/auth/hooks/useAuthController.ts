@@ -45,9 +45,12 @@ export const useAuthController = ({
   const passwordInputRef = useRef<HTMLInputElement>(null);
   const [showInfo, setShowInfo] = useState(false);
   const [roomDescription, setRoomDescription] = useState('');
+  const [roomName, setRoomName] = useState('');
   const [autoJoinAttempted, setAutoJoinAttempted] = useState(false);
 
   useEffect(() => {
+    setRoomName('');
+    setRoomDescription('');
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token') || tempToken;
     const lowerRoom = (roomId || '').toLowerCase();
@@ -68,6 +71,7 @@ export const useAuthController = ({
           if (data && typeof data.requiresPassword === 'boolean') {
             setRequiresPassword(data.requiresPassword);
           }
+          if (data && data.name) setRoomName(String(data.name));
           if (data && data.description) setRoomDescription(data.description);
         })
         .catch(console.error);
@@ -252,6 +256,7 @@ export const useAuthController = ({
     showInfo,
     setShowInfo,
     roomDescription,
+    roomName,
     autoJoinAttempted,
     handleLogin,
     handleKeyDown,

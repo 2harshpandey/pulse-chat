@@ -31,6 +31,13 @@ class AudioPlaybackCoordinator {
       this.pauseActive = null;
     }
   }
+
+  release(id: string) {
+    if (this.activeId === id) {
+      this.activeId = null;
+      this.pauseActive = null;
+    }
+  }
 }
 export const audioCoordinator = new AudioPlaybackCoordinator();
 

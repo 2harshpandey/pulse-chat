@@ -1,5 +1,6 @@
 import React from 'react';
 import { useHomeController } from './home/hooks';
+import { formatPageTitle, useDocumentTitle } from './pageTitle';
 import {
   GlobalHomeStyle,
   HeroContainer,
@@ -38,6 +39,8 @@ const Home: React.FC = () => {
     handleAdminSubmit
   } = useHomeController();
 
+  useDocumentTitle(formatPageTitle('Home'));
+
   return (
     <>
       <GlobalHomeStyle />
@@ -47,7 +50,17 @@ const Home: React.FC = () => {
         <Orb $color="var(--orb-accent)" $size="380px" $top="75%" $left="10%" />
 
         <TopNav>
-          <Logo href="/">Pulse Chat</Logo>
+          <Logo
+            href="/"
+            onClick={(e) => {
+              e.preventDefault();
+              navigate('/');
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            aria-label="Go to Pulse Home"
+          >
+            Pulse Chat
+          </Logo>
           <NavActions>
             <ThemeToggle onClick={toggleTheme} title={isDark ? 'Switch to light mode' : 'Switch to dark mode'} aria-label="Toggle theme">
               {isDark ? (

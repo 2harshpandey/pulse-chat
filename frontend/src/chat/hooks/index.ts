@@ -18,3 +18,4 @@ export * from './useChatController';
 export * from './usePhotoZoom';
 export * from './useChatMediaGallery';
 export * from './useTabSessionLock';
+export * from './useTabUnreadIndicator';

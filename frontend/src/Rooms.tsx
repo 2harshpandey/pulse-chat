@@ -1,5 +1,6 @@
 import React from 'react';
 import { useRoomsController } from './rooms/hooks';
+import { formatPageTitle, useDocumentTitle } from './pageTitle';
 import {
   GlobalRoomsStyle,
   TopControls,
@@ -73,6 +74,8 @@ const Rooms: React.FC = () => {
     isJoining,
     handleJoinSubmit
   } = useRoomsController();
+
+  useDocumentTitle(formatPageTitle('Explore Rooms'));
 
   return (
     <>

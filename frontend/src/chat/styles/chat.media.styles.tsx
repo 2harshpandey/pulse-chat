@@ -1010,8 +1010,7 @@ export const MediaGalleryOverlay = styled.div`
   position: fixed;
   inset: 0;
   z-index: 1000;
-  background: rgba(0, 0, 0, 0.95);
-  backdrop-filter: blur(16px);
+  background: rgba(2, 6, 23, 0.96);
   display: flex;
   flex-direction: column;
   overflow: hidden;

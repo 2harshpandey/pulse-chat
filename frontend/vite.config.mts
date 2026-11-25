@@ -49,6 +49,7 @@ export default defineConfig(({ mode }) => {
         },
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,json}'],
+          globIgnores: ['og-image.png'],
           cleanupOutdatedCaches: true,
           clientsClaim: true,
           skipWaiting: true,

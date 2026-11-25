@@ -1,5 +1,5 @@
 import styled from 'styled-components';
-import { videoFadeIn, controlsSlideUp } from './chat.animations';
+import { videoFadeIn } from './chat.animations';
 
 export const VideoPlayerWrapper = styled.div`
   position: absolute;
@@ -50,6 +50,14 @@ export const CVPContainer = styled.div<{ $isGalleryMode?: boolean }>`
   justify-content: center;
   user-select: none;
   -webkit-user-select: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+
+  @media (pointer: coarse) {
+    --cvp-timeline-height: 32px;
+    --cvp-timeline-padding: 11px 0;
+    --cvp-thumb-size: 13px;
+  }
 
   ${props => props.$isGalleryMode ? `
     --cvp-controls-padding: 9px 12px 11px;
@@ -124,10 +132,11 @@ export const CVPControls = styled.div<{ $visible: boolean }>`
   flex-direction: column;
   gap: 1px;
   opacity: ${p => p.$visible ? 1 : 0};
-  transition: opacity 0.25s ease;
+  transform: translateZ(0);
+  will-change: opacity;
+  transition: opacity 0.18s ease;
   pointer-events: ${p => p.$visible ? 'all' : 'none'};
   border-radius: 0 0 0.75rem 0.75rem;
-  animation: ${controlsSlideUp} 0.2s ease;
   overflow: visible;
 `;
 
@@ -139,41 +148,52 @@ export const CVPTimelineWrapper = styled.div`
   cursor: pointer;
   padding: var(--cvp-timeline-padding, 8px 0);
   position: relative;
-  /* Prevent the timeline drag from propagating to the message swipe gesture */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  /* Prevent the timeline drag from propagating to the message swipe gesture or browser pan */
   touch-action: none;
 `;
 
-export const CVPTimelineTrack = styled.div`
+export const CVPTimelineTrack = styled.div<{ $active?: boolean }>`
   width: 100%;
   height: var(--cvp-track-height, 3px);
   background: rgba(255,255,255,0.3);
   border-radius: 2px;
   position: relative;
   overflow: visible;
+  transform: ${p => p.$active ? 'scaleY(1.45) translateZ(0)' : 'scaleY(1) translateZ(0)'};
+  transition: transform 0.12s ease;
+  will-change: transform;
 `;
 
-export const CVPTimelineFill = styled.div<{ $pct: number }>`
+export const CVPTimelineFill = styled.div`
   position: absolute;
   left: 0;
   top: 0;
   height: 100%;
-  width: ${p => p.$pct}%;
+  width: 100%;
   background: #3b82f6;
   border-radius: 2px;
-  transition: width 0.1s linear;
+  transform-origin: left center;
+  transform: scaleX(0);
+  will-change: transform;
+  pointer-events: none;
 `;
 
-export const CVPTimelineThumb = styled.div<{ $pct: number }>`
+export const CVPTimelineThumb = styled.div<{ $active?: boolean }>`
   position: absolute;
   top: 50%;
-  left: ${p => p.$pct}%;
-  transform: translate(-50%, -50%);
+  left: 0%;
+  transform: ${p => p.$active ? 'translate3d(-50%, -50%, 0) scale(1.38)' : 'translate3d(-50%, -50%, 0)'};
   width: var(--cvp-thumb-size, 11px);
   height: var(--cvp-thumb-size, 11px);
   background: #fff;
   border-radius: 50%;
-  box-shadow: 0 0 4px rgba(0,0,0,0.5);
-  transition: left 0.1s linear;
+  box-shadow: ${p => p.$active ? '0 0 0 6px rgba(59, 130, 246, 0.35), 0 1px 6px rgba(0,0,0,0.6)' : '0 0 4px rgba(0,0,0,0.5)'};
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  will-change: left, transform;
+  pointer-events: none;
 `;
 
 export const CVPBottomRow = styled.div`
@@ -207,6 +227,8 @@ export const CVPIconBtn = styled.button<{ $active?: boolean }>`
   flex-shrink: 0;
   position: relative;
   z-index: 1;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
   svg { width: var(--cvp-icon-size, 16px); height: var(--cvp-icon-size, 16px); overflow: visible; }
   &:hover { background: rgba(255,255,255,0.15); transform: scale(1.12); z-index: 3; }
   &:active { transform: scale(0.9); }
@@ -238,6 +260,8 @@ export const CVPSpeedBtn = styled.button`
   text-align: center;
   font-variant-numeric: tabular-nums;
   transition: background 0.15s ease;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
   &:hover { background: rgba(255,255,255,0.25); }
 `;
 
@@ -399,6 +423,8 @@ export const CVPCenterPlayBtn = styled.button<{ $visible: boolean }>`
   pointer-events: ${p => p.$visible ? 'auto' : 'none'};
   cursor: pointer;
   z-index: 10;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 
   svg { width: 28px; height: 28px; color: #fff; }
 

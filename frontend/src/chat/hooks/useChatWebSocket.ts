@@ -305,6 +305,7 @@ export function useChatWebSocket({
     if (!userProfile) return;
 
     let shouldReconnect = true;
+    let hasLoadedInitialHistory = false;
 
     const connect = () => {
       if (isTabBlockedRef?.current || isCheckingTabLockRef?.current) {
@@ -585,6 +586,15 @@ export function useChatWebSocket({
 
           setHistoryLoaded(true);
           setHistorySessionId(prev => prev + 1);
+          const isInitialHistory = !hasLoadedInitialHistory;
+          hasLoadedInitialHistory = true;
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(
+              new CustomEvent('pulse:history_synced', {
+                detail: { messages: processed, roomId, isInitial: isInitialHistory },
+              })
+            );
+          }
           transferManager.restoreSessionDownloads().catch(console.error);
           transferManager.restoreSessionUploads().then((restoredUploads) => {
             if (restoredUploads.length > 0) {

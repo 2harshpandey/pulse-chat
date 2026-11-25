@@ -884,6 +884,124 @@ describe('VideoPlayer async processing & buffering states', () => {
     await vi.advanceTimersByTimeAsync(200);
     expect(volumeWrapper.getAttribute('data-volume-open')).toBeNull();
   });
+
+  it('scrubs smoothly with pointer capture and coalesces rapid video seeks without decoder stalls', async () => {
+    const rafMock = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb: FrameRequestCallback) => {
+      cb(0);
+      return 1;
+    });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+
+    const { container } = render(
+      <VideoPlayer
+        src="https://res.cloudinary.com/demo/video/upload/v1/pulse-chat/clip.mp4"
+        timestamp={new Date().toISOString()}
+      />
+    );
+
+    const videoEl = container.querySelector('video') as HTMLVideoElement;
+    const timelineEl = container.querySelector('[data-cvp-timeline="true"]') as HTMLDivElement;
+    expect(videoEl).toBeTruthy();
+    expect(timelineEl).toBeTruthy();
+
+    Object.defineProperty(videoEl, 'duration', { value: 100, configurable: true });
+    let seekingState = false;
+    let currentTimeValue = 0;
+    const currentTimeSetters: number[] = [];
+    Object.defineProperty(videoEl, 'seeking', { get: () => seekingState, configurable: true });
+    Object.defineProperty(videoEl, 'currentTime', {
+      get: () => currentTimeValue,
+      set: (val: number) => {
+        currentTimeValue = val;
+        currentTimeSetters.push(Math.round(val));
+      },
+      configurable: true,
+    });
+    const pauseSpy = vi.spyOn(videoEl, 'pause').mockImplementation(() => {});
+    const playSpy = vi.spyOn(videoEl, 'play').mockResolvedValue(undefined);
+    Object.defineProperty(videoEl, 'paused', { value: false, configurable: true });
+
+    const setPointerCaptureMock = vi.fn();
+    const releasePointerCaptureMock = vi.fn();
+    timelineEl.setPointerCapture = setPointerCaptureMock;
+    timelineEl.hasPointerCapture = vi.fn().mockReturnValue(true);
+    timelineEl.releasePointerCapture = releasePointerCaptureMock;
+    vi.spyOn(timelineEl, 'getBoundingClientRect').mockReturnValue({
+      left: 0,
+      right: 200,
+      width: 200,
+      top: 0,
+      bottom: 32,
+      height: 32,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    fireEvent.loadedMetadata(videoEl);
+    currentTimeSetters.length = 0;
+
+    // Begin scrubbing at 25% (50px / 200px) -> 25s
+    fireEvent.pointerDown(timelineEl, { clientX: 50, pointerId: 7 });
+    expect(setPointerCaptureMock).toHaveBeenCalledWith(7);
+    expect(pauseSpy).toHaveBeenCalled();
+    expect(timelineEl.getAttribute('data-scrubbing')).toBe('true');
+
+    // Simulate mobile decoder still busy while rapid pointer moves happen (50%, 65%, 80%)
+    seekingState = true;
+    fireEvent.pointerMove(timelineEl, { clientX: 100, pointerId: 7 });
+    fireEvent.pointerMove(timelineEl, { clientX: 130, pointerId: 7 });
+    fireEvent.pointerMove(timelineEl, { clientX: 160, pointerId: 7 });
+
+    // Visual fill & thumb move instantaneously via transform/left without waiting on decoder
+    const fillEl = timelineEl.querySelector('[data-cvp-timeline-fill="true"]') as HTMLElement;
+    const thumbEl = timelineEl.querySelector('[data-cvp-timeline-thumb="true"]') as HTMLElement;
+    expect(thumbEl.style.left).toBe('80%');
+    expect(fillEl.style.transform).toContain('scaleX(0.8)');
+
+    // Coalesced: decoder was NOT hammered 4 times while busy seeking
+    expect(currentTimeSetters).toEqual([25]);
+
+    // Decoder finishes seeking -> queued latest position (80s) flushes
+    seekingState = false;
+    fireEvent(videoEl, new Event('seeked'));
+    expect(currentTimeSetters).toEqual([25, 80]);
+
+    // Release at 90% (180px) commits final exact position and resumes playback
+    fireEvent.pointerMove(timelineEl, { clientX: 180, pointerId: 7 });
+    fireEvent.pointerUp(timelineEl, { clientX: 180, pointerId: 7 });
+    expect(releasePointerCaptureMock).toHaveBeenCalledWith(7);
+    expect(currentTimeValue).toBe(90);
+    expect(timelineEl.getAttribute('data-scrubbing')).toBeNull();
+    expect(playSpy).toHaveBeenCalled();
+    rafMock.mockRestore();
+  });
+
+  it('updates visual progress immediately on +/-10s skip without waiting for timeupdate', () => {
+    const { container } = render(
+      <VideoPlayer
+        src="https://res.cloudinary.com/demo/video/upload/v1/pulse-chat/clip.mp4"
+        timestamp={new Date().toISOString()}
+      />
+    );
+
+    const videoEl = container.querySelector('video') as HTMLVideoElement;
+    const timelineEl = container.querySelector('[data-cvp-timeline="true"]') as HTMLDivElement;
+    Object.defineProperty(videoEl, 'duration', { value: 50, configurable: true });
+    let ct = 10;
+    Object.defineProperty(videoEl, 'currentTime', {
+      get: () => ct,
+      set: (v: number) => { ct = v; },
+      configurable: true,
+    });
+    fireEvent.loadedMetadata(videoEl);
+    ct = 10;
+
+    fireEvent.click(screen.getByLabelText('Forward 10 seconds'));
+    const thumbEl = timelineEl.querySelector('[data-cvp-timeline-thumb="true"]') as HTMLElement;
+    expect(thumbEl.style.left).toBe('40%');
+    expect(screen.getByText('0:20 / 0:50')).toBeDefined();
+  });
 });
 
 describe('Quoted media bubble width constraint', () => {

@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useTheme } from '../../ThemeContext';
 import { resolveApiBaseUrl } from '../../chat/utils';
 import { extractRoomIdFromInput } from '../../rooms/utils';
+import { formatPageTitle, getRoomDisplayLabel, useDocumentTitle } from '../../pageTitle';
 import type { UserProfile, Tab } from '../types';
 import { useAdminTempLinks } from './useAdminTempLinks';
 import { useAdminSecurity } from './useAdminSecurity';
@@ -122,14 +123,14 @@ export function useAdminController() {
     if (activityLogRef.current) activityLogRef.current.scrollTop = 0;
   }, [activityLogs]);
 
-  // Window title
-  useEffect(() => {
-    const previousTitle = document.title;
-    document.title = 'Pulse - Admin Panel';
-    return () => {
-      document.title = previousTitle;
-    };
-  }, []);
+  // Window title differentiating super admin (/admin), room admin (/admin/:roomId), and login states
+  const adminTitleSection = !urlRoomId
+    ? (isAuthenticated ? 'Main Admin Panel' : 'Main Admin Login')
+    : (() => {
+        const roomLabel = getRoomDisplayLabel(roomId, roomSettingsHook.roomSettingsName);
+        return isAuthenticated ? `Admin Panel: ${roomLabel}` : `Admin Login: ${roomLabel}`;
+      })();
+  useDocumentTitle(formatPageTitle(adminTitleSection));
 
   // Hide global home button when authenticated
   useEffect(() => {

@@ -374,11 +374,15 @@ const AboutDeveloper: React.FC = () => {
     setMetaTag('meta[property="og:description"]', 'content', PAGE_DESCRIPTION);
     setMetaTag('meta[property="og:url"]', 'content', ABOUT_URL);
     setMetaTag('meta[property="og:site_name"]', 'content', 'Pulse Chat');
-    setMetaTag('meta[property="og:image"]', 'content', `${SITE_URL}/pulse_logo.webp`);
+    setMetaTag('meta[property="og:image"]', 'content', `${SITE_URL}/og-image.png`);
+    setMetaTag('meta[property="og:image:secure_url"]', 'content', `${SITE_URL}/og-image.png`);
+    setMetaTag('meta[property="og:image:type"]', 'content', 'image/png');
+    setMetaTag('meta[property="og:image:width"]', 'content', '1200');
+    setMetaTag('meta[property="og:image:height"]', 'content', '630');
     setMetaTag('meta[name="twitter:card"]', 'content', 'summary_large_image');
     setMetaTag('meta[name="twitter:title"]', 'content', PAGE_TITLE);
     setMetaTag('meta[name="twitter:description"]', 'content', PAGE_DESCRIPTION);
-    setMetaTag('meta[name="twitter:image"]', 'content', `${SITE_URL}/pulse_logo.webp`);
+    setMetaTag('meta[name="twitter:image"]', 'content', `${SITE_URL}/og-image.png`);
 
     const existing = document.getElementById(script.id);
     existing?.remove();

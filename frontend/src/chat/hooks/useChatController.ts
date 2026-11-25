@@ -4,6 +4,7 @@ import { useTheme } from '../../ThemeContext';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { NEWER_LOAD_TRIGGER_PX, MAX_MESSAGES_WINDOW } from '../constants';
 import { recordChatScroll } from '../chatScrollState';
+import { formatPageTitle, getRoomDisplayLabel, useDocumentTitle } from '../../pageTitle';
 import type { Message } from '../types';
 import { getUserId, resolveApiBaseUrl, downloadFile, findMessageElement, canEditMessage } from '../utils';
 import { albumDownloadManager } from '../albumDownloadManager';
@@ -21,6 +22,7 @@ import {
   useChatComposer,
   useChatMessageNavigation,
   useTabSessionLock,
+  useTabUnreadIndicator,
 } from './';
 
 export interface UseChatControllerProps {
@@ -28,7 +30,7 @@ export interface UseChatControllerProps {
   isTempLink?: boolean;
 }
 
-export function useChatController({ isMe }: UseChatControllerProps = {}) {
+export function useChatController({ isMe, isTempLink }: UseChatControllerProps = {}) {
   const userContext = useContext(UserContext);
   const { token: tempToken, roomId: urlRoomId } = useParams<{ token?: string; roomId?: string }>();
   const roomId = isMe ? 'me' : (urlRoomId || userContext?.profile?.roomId || 'me');
@@ -67,12 +69,14 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
   }, []);
 
   const [isUserListVisible, setIsUserListVisible] = useState(false);
+  const [roomName, setRoomName] = useState('');
   const ws = useRef<WebSocket | null>(null);
   const overlayGuardPushed = useRef(false);
   const apiBase = resolveApiBaseUrl();
 
-  // Redirect meta roomId if needed
+  // Redirect meta roomId if needed and capture canonical room name
   useEffect(() => {
+    setRoomName('');
     const lowerRoom = (roomId || '').toLowerCase();
     if (userContext?.profile && roomId && lowerRoom !== 'me') {
       fetch(`${apiBase}/api/rooms/${roomId}/meta`)
@@ -80,11 +84,18 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
         .then((data) => {
           if (data && data.id && data.id !== roomId) {
             navigate(data.id === 'me' ? '/me' : `/room/${data.id}`, { replace: true, state: location.state });
+            return;
+          }
+          if (data && data.name) {
+            setRoomName(String(data.name));
           }
         })
         .catch(console.error);
     }
   }, [userContext?.profile, roomId, navigate, location.state, apiBase]);
+
+  const chatPageTitle = formatPageTitle(getRoomDisplayLabel(roomId, roomName, isTempLink));
+  useDocumentTitle(chatPageTitle);
 
   // Viewport Hook
   const viewport = useChatViewport({
@@ -243,6 +254,14 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
         document.activeElement.blur();
       }
     },
+  });
+
+  // Desktop browser tab unread badge & title notification while tab/window is idle
+  useTabUnreadIndicator({
+    roomId,
+    userId: activeUserId,
+    enabled: Boolean(userContext?.profile) && !tabLock.isDisplacedByOtherTab,
+    baseTitle: chatPageTitle,
   });
 
   // WebSocket Hook
@@ -719,6 +738,7 @@ export function useChatController({ isMe }: UseChatControllerProps = {}) {
 
   return {
     userContext,
+    navigate,
     tempToken,
     roomId,
     isDark,

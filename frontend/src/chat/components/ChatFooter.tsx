@@ -39,6 +39,7 @@ import {
   SendButton,
   MicButton,
   RecordingBarWrapper,
+  RecordingActionGroup,
   RecordingCancelBtn,
   RecordingStatusIndicator,
   RecordingBlinkDot,
@@ -46,9 +47,12 @@ import {
   RecordingWaveformBarBox,
   RecordingWaveformBar,
   RecordingPauseResumeBtn,
+  RecordingPreviewBtn,
 } from '../Chat.styles';
-import { useVoiceRecorder } from '../hooks';
+import { useVoiceRecorder, type VoicePreviewSnapshot } from '../hooks';
+import { sanitizeMediaUrl } from '../utils';
 import { formatAudioDuration, audioCoordinator } from './message';
+import { VoiceNotePreviewBar } from './VoiceNotePreviewBar';
 
 export interface ChatFooterProps {
   isSelectModeActive: boolean;
@@ -186,6 +190,163 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
   isDark,
 }) => {
   const recorder = useVoiceRecorder();
+  const [previewSnapshot, setPreviewSnapshot] = React.useState<VoicePreviewSnapshot | null>(null);
+  const [previewInitiallyPlaying, setPreviewInitiallyPlaying] = React.useState(false);
+  const [isFinalizingRecording, setIsFinalizingRecording] = React.useState(false);
+  const isFinalizingRecordingRef = React.useRef(false);
+  const wasRecordingRef = React.useRef(false);
+  const recordingStopNotifiedRef = React.useRef(false);
+  const previewAudioRef = React.useRef<HTMLAudioElement | null>(null);
+  const isMountedRef = React.useRef(true);
+
+  // Preload cached blob URL as soon as pause preparation finishes so Play starts without re-loading
+  React.useEffect(() => {
+    const audio = previewAudioRef.current;
+    const safeUrl = recorder.cachedPreviewSnapshot?.previewUrl
+      ? sanitizeMediaUrl(recorder.cachedPreviewSnapshot.previewUrl)
+      : '';
+    if (!audio || !recorder.isRecording || !recorder.isPaused || !safeUrl) return;
+    if (audio.src !== safeUrl) {
+      audio.src = safeUrl;
+      try {
+        audio.load();
+      } catch {}
+    }
+  }, [recorder.cachedPreviewSnapshot, recorder.isRecording, recorder.isPaused]);
+
+  const resetPreviewAudioElement = React.useCallback(() => {
+    const audio = previewAudioRef.current;
+    if (audio) {
+      try {
+        audio.pause();
+        audio.removeAttribute('src');
+      } catch {}
+    }
+  }, []);
+
+  const notifyRecordingStopped = React.useCallback(() => {
+    if (recordingStopNotifiedRef.current) return;
+    recordingStopNotifiedRef.current = true;
+    onVoiceRecordingStop?.();
+  }, [onVoiceRecordingStop]);
+
+  React.useEffect(() => {
+    if (recorder.isRecording) {
+      recordingStopNotifiedRef.current = false;
+    } else if (wasRecordingRef.current) {
+      resetPreviewAudioElement();
+      setPreviewSnapshot(null);
+      setPreviewInitiallyPlaying(false);
+      notifyRecordingStopped();
+    }
+    wasRecordingRef.current = recorder.isRecording;
+  }, [recorder.isRecording, notifyRecordingStopped, resetPreviewAudioElement]);
+
+  React.useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      resetPreviewAudioElement();
+    };
+  }, [resetPreviewAudioElement]);
+
+  const handleDiscardVoice = React.useCallback(() => {
+    audioCoordinator.stop();
+    resetPreviewAudioElement();
+    setPreviewSnapshot(null);
+    setPreviewInitiallyPlaying(false);
+    recorder.cancelRecording();
+    notifyRecordingStopped();
+  }, [recorder, notifyRecordingStopped, resetPreviewAudioElement]);
+
+  const handleOpenVoicePreview = React.useCallback(async () => {
+    if (isFinalizingRecordingRef.current || !recorder.isRecording || !recorder.isPaused) return;
+
+    // Start playback synchronously inside the click gesture when pause has already cached the preview
+    const readySnapshot = recorder.cachedPreviewSnapshot;
+    const safeReadyUrl = readySnapshot ? sanitizeMediaUrl(readySnapshot.previewUrl) : '';
+    if (readySnapshot && safeReadyUrl) {
+      audioCoordinator.stop();
+      const audio = previewAudioRef.current;
+      if (audio) {
+        if (audio.src !== safeReadyUrl) {
+          audio.src = safeReadyUrl;
+          try {
+            audio.load();
+          } catch {}
+        }
+        const playPromise = audio.play();
+        if (playPromise && typeof playPromise.catch === 'function') {
+          playPromise.catch(() => {
+            audio.dispatchEvent(new Event('pulse_play_failed'));
+          });
+        }
+        setPreviewInitiallyPlaying(true);
+      } else {
+        setPreviewInitiallyPlaying(false);
+      }
+      setPreviewSnapshot(readySnapshot);
+      return;
+    }
+
+    isFinalizingRecordingRef.current = true;
+    setIsFinalizingRecording(true);
+    try {
+      audioCoordinator.stop();
+      const snapshot = await recorder.preparePreview();
+      if (!isMountedRef.current) return;
+      if (snapshot) {
+        setPreviewInitiallyPlaying(false);
+        setPreviewSnapshot(snapshot);
+      }
+    } finally {
+      isFinalizingRecordingRef.current = false;
+      if (isMountedRef.current) {
+        setIsFinalizingRecording(false);
+      }
+    }
+  }, [recorder]);
+
+  const handleResumeFromPreview = React.useCallback(async () => {
+    if (isFinalizingRecordingRef.current || !recorder.isRecording) return;
+    isFinalizingRecordingRef.current = true;
+    setIsFinalizingRecording(true);
+    try {
+      audioCoordinator.stop();
+      resetPreviewAudioElement();
+      setPreviewSnapshot(null);
+      setPreviewInitiallyPlaying(false);
+      await recorder.resumeRecording();
+    } finally {
+      isFinalizingRecordingRef.current = false;
+      if (isMountedRef.current) {
+        setIsFinalizingRecording(false);
+      }
+    }
+  }, [recorder, resetPreviewAudioElement]);
+
+  const handleSendVoice = React.useCallback(async () => {
+    if (isFinalizingRecordingRef.current || !isConnected) return;
+    isFinalizingRecordingRef.current = true;
+    setIsFinalizingRecording(true);
+    try {
+      audioCoordinator.stop();
+      resetPreviewAudioElement();
+      setPreviewSnapshot(null);
+      setPreviewInitiallyPlaying(false);
+      const result = await recorder.stopRecording();
+      if (!isMountedRef.current) return;
+      if (result && result.file && result.file.size > 0 && result.duration > 0) {
+        onSendVoiceNote?.(result.file, result.duration, result.waveform);
+      }
+      notifyRecordingStopped();
+    } finally {
+      isFinalizingRecordingRef.current = false;
+      if (isMountedRef.current) {
+        setIsFinalizingRecording(false);
+      }
+    }
+  }, [isConnected, onSendVoiceNote, recorder, notifyRecordingStopped, resetPreviewAudioElement]);
 
   const stagedFilePreviewUrl = React.useMemo(() => {
     if (!stagedFile) return '';
@@ -755,60 +916,114 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
           )}
 
           <InputContainer>
-            {recorder.isRecording ? (
+            {recorder.isRecording && (
+              <audio
+                ref={previewAudioRef}
+                preload="auto"
+                style={{ display: 'none' }}
+              />
+            )}
+            {recorder.isRecording && previewSnapshot ? (
+              <VoiceNotePreviewBar
+                previewUrl={previewSnapshot.previewUrl}
+                duration={previewSnapshot.duration}
+                waveform={previewSnapshot.waveform}
+                autoPlay={!previewInitiallyPlaying}
+                initiallyPlaying={previewInitiallyPlaying}
+                externalAudioRef={previewAudioRef}
+                onDiscard={handleDiscardVoice}
+                onResumeRecording={handleResumeFromPreview}
+                onError={onErrorToast}
+              />
+            ) : recorder.isRecording ? (
               <RecordingBarWrapper role="region" aria-label="Voice recording in progress">
-                <RecordingCancelBtn
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => {
-                    recorder.cancelRecording();
-                    onVoiceRecordingStop?.();
-                  }}
-                  title="Cancel recording"
-                  aria-label="Cancel recording"
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="3 6 5 6 21 6" />
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                    <line x1="10" y1="11" x2="10" y2="17" />
-                    <line x1="14" y1="11" x2="14" y2="17" />
-                  </svg>
-                </RecordingCancelBtn>
+                <RecordingActionGroup>
+                  <RecordingCancelBtn
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={handleDiscardVoice}
+                    title="Cancel recording"
+                    aria-label="Cancel recording"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                      <line x1="10" y1="11" x2="10" y2="17" />
+                      <line x1="14" y1="11" x2="14" y2="17" />
+                    </svg>
+                  </RecordingCancelBtn>
 
-                <RecordingStatusIndicator>
-                  <RecordingBlinkDot $isPaused={recorder.isPaused} />
-                  <RecordingTimerSpan>{formatAudioDuration(recorder.duration)}</RecordingTimerSpan>
-                </RecordingStatusIndicator>
-
-                <RecordingWaveformBarBox aria-hidden="true">
-                  {recorder.liveLevels.map((lvl, idx) => (
-                    <RecordingWaveformBar
-                      key={idx}
-                      $level={lvl}
-                      $isPaused={recorder.isPaused}
-                    />
-                  ))}
-                </RecordingWaveformBarBox>
-
-                <RecordingPauseResumeBtn
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  $isPaused={recorder.isPaused}
-                  onClick={recorder.isPaused ? recorder.resumeRecording : recorder.pauseRecording}
-                  title={recorder.isPaused ? 'Resume recording' : 'Pause recording'}
-                  aria-label={recorder.isPaused ? 'Resume recording' : 'Pause recording'}
-                >
                   {recorder.isPaused ? (
-                    <svg viewBox="0 0 24 24" fill="currentColor">
-                      <polygon points="5 3 19 12 5 21 5 3" />
-                    </svg>
+                    <>
+                      <RecordingPreviewBtn
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        disabled={isFinalizingRecording}
+                        onClick={handleOpenVoicePreview}
+                        title="Listen & peek before sending"
+                        aria-label="Preview recorded voice note"
+                      >
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                          <polygon points="5 3 19 12 5 21 5 3" />
+                        </svg>
+                      </RecordingPreviewBtn>
+
+                      <RecordingWaveformBarBox aria-hidden="true">
+                        {recorder.liveLevels.map((lvl, idx) => (
+                          <RecordingWaveformBar
+                            key={idx}
+                            $level={lvl}
+                            $isPaused={recorder.isPaused}
+                          />
+                        ))}
+                      </RecordingWaveformBarBox>
+
+                      <RecordingStatusIndicator>
+                        <RecordingBlinkDot $isPaused={recorder.isPaused} />
+                        <RecordingTimerSpan>{formatAudioDuration(recorder.duration)}</RecordingTimerSpan>
+                      </RecordingStatusIndicator>
+                    </>
                   ) : (
-                    <svg viewBox="0 0 24 24" fill="currentColor">
-                      <rect x="6" y="4" width="4" height="16" rx="1" />
-                      <rect x="14" y="4" width="4" height="16" rx="1" />
-                    </svg>
+                    <>
+                      <RecordingStatusIndicator>
+                        <RecordingBlinkDot $isPaused={recorder.isPaused} />
+                        <RecordingTimerSpan>{formatAudioDuration(recorder.duration)}</RecordingTimerSpan>
+                      </RecordingStatusIndicator>
+
+                      <RecordingWaveformBarBox aria-hidden="true">
+                        {recorder.liveLevels.map((lvl, idx) => (
+                          <RecordingWaveformBar
+                            key={idx}
+                            $level={lvl}
+                            $isPaused={recorder.isPaused}
+                          />
+                        ))}
+                      </RecordingWaveformBarBox>
+                    </>
                   )}
-                </RecordingPauseResumeBtn>
+
+                  <RecordingPauseResumeBtn
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    $isPaused={recorder.isPaused}
+                    disabled={isFinalizingRecording}
+                    onClick={recorder.isPaused ? recorder.resumeRecording : recorder.pauseRecording}
+                    title={recorder.isPaused ? 'Resume recording' : 'Pause recording'}
+                    aria-label={recorder.isPaused ? 'Resume recording' : 'Pause recording'}
+                  >
+                    {recorder.isPaused ? (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" fill="currentColor">
+                        <rect x="6" y="4" width="4" height="16" rx="1" />
+                        <rect x="14" y="4" width="4" height="16" rx="1" />
+                      </svg>
+                    )}
+                  </RecordingPauseResumeBtn>
+                </RecordingActionGroup>
               </RecordingBarWrapper>
             ) : (
               <>
@@ -915,14 +1130,8 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
                 key="voice-send-btn"
                 type="button"
                 onMouseDown={(e) => e.preventDefault()}
-                onClick={async () => {
-                  const result = await recorder.stopRecording();
-                  if (result && result.file && result.file.size > 0 && result.duration > 0) {
-                    onSendVoiceNote?.(result.file, result.duration, result.waveform);
-                  } else {
-                    onVoiceRecordingStop?.();
-                  }
-                }}
+                onClick={handleSendVoice}
+                disabled={isFinalizingRecording || !isConnected}
                 title="Send voice message"
                 aria-label="Send voice message"
                 style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
@@ -962,10 +1171,11 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
                 onClick={async () => {
                   if (!isConnected) return;
                   audioCoordinator.stop();
+                  recordingStopNotifiedRef.current = false;
                   onVoiceRecordingStart?.();
                   await recorder.startRecording((err) => {
                     lastReportedVoiceErrorRef.current = err;
-                    onVoiceRecordingStop?.();
+                    notifyRecordingStopped();
                     onErrorToast?.(err);
                   });
                 }}

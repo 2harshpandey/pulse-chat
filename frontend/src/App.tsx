@@ -10,6 +10,7 @@ const AboutDeveloper = React.lazy(() => import('./AboutDeveloper'));
 import { GlobalStyle } from './chat/ChatStyledComponents';
 import { NotFoundPage, ForbiddenPage, ServerErrorPage, TimeoutPage, RateLimitPage, MaintenancePage } from './ErrorPages';
 import { savePWALocation, getSavedPWALocation, isRunningAsPWA } from './pwaLocation';
+import { BASE_APP_TITLE, formatPageTitle } from './pageTitle';
 
 const GlobalHomeButton = styled.button`
   position: absolute;
@@ -151,7 +152,20 @@ class RouteErrorBoundary extends React.Component<
 
   componentDidCatch(error: Error, info: React.ErrorInfo): void {
     console.error('[RouteErrorBoundary]', error, info);
+    if (typeof document !== 'undefined') {
+      document.title = formatPageTitle('Something Went Wrong');
+    }
     this.setState({ info });
+  }
+
+  componentWillUnmount(): void {
+    if (
+      this.state.crashed &&
+      typeof document !== 'undefined' &&
+      document.title === formatPageTitle('Something Went Wrong')
+    ) {
+      document.title = BASE_APP_TITLE;
+    }
   }
 
   render() {

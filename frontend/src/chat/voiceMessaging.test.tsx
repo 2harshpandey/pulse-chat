@@ -803,4 +803,383 @@ describe('Voice Messaging System', () => {
       expect(isCloudinaryUrl(undefined)).toBe(false);
     });
   });
+
+  describe('Pre-Send Voice Note Preview & Waveform Peeking', () => {
+    const baseFooterProps = {
+      isSelectModeActive: false,
+      selectedMessages: [],
+      canEditSelectedMessage: false,
+      isMobileView: false,
+      currentUserId: 'me',
+      onCancelSelectMode: vi.fn(),
+      onStartEdit: vi.fn(),
+      onCopyMessage: vi.fn(),
+      onOpenReport: vi.fn(),
+      onInitiateDelete: vi.fn(),
+      editingMessageId: null,
+      editingMessageOriginalText: '',
+      onCancelEdit: vi.fn(),
+      replyingTo: null,
+      onCancelReply: vi.fn(),
+      onScrollToMessage: vi.fn(),
+      stagedFile: null,
+      onCancelStagedFile: vi.fn(),
+      stagedFiles: [],
+      onCancelStagedFiles: vi.fn(),
+      showFilePreview: false,
+      stagedGif: null,
+      onCancelStagedGif: vi.fn(),
+      isPlusMenuOpen: false,
+      onTogglePlusMenu: vi.fn(),
+      isConnected: true,
+      onFileChange: vi.fn(),
+      onAddFilesChange: vi.fn(),
+      onNotifyNativeFilePickerOpen: vi.fn(),
+      normalizedOverlayMessage: '',
+      inputMessage: '',
+      onInputChange: vi.fn(),
+      onInputKeyDown: vi.fn(),
+      onPaste: vi.fn(),
+      onSyncInputOverlayScroll: vi.fn(),
+      onSendMessage: vi.fn(),
+      onSendVoiceNote: vi.fn(),
+      onVoiceRecordingStart: vi.fn(),
+      onVoiceRecordingStop: vi.fn(),
+      isEmojiPickerOpen: false,
+      onEmojiClick: vi.fn(),
+      isDark: true,
+    };
+
+    const installMockRecorder = () => {
+      const stopListeners: Array<() => void> = [];
+      let recorderState: 'inactive' | 'recording' | 'paused' = 'inactive';
+
+      class MockMediaRecorder {
+        static isTypeSupported = vi.fn().mockReturnValue(true);
+        state = 'inactive';
+        ondataavailable: ((e: BlobEvent) => void) | null = null;
+        onstop: (() => void) | null = null;
+
+        constructor(_stream: MediaStream, _opts?: MediaRecorderOptions) {}
+
+        start() {
+          this.state = 'recording';
+          recorderState = 'recording';
+          setTimeout(() => {
+            if (this.ondataavailable) {
+              this.ondataavailable({
+                data: new Blob(['mock-audio-chunk'], { type: 'audio/webm' }),
+              } as BlobEvent);
+            }
+          }, 0);
+        }
+
+        pause() {
+          this.state = 'paused';
+          recorderState = 'paused';
+        }
+
+        resume() {
+          this.state = 'recording';
+          recorderState = 'recording';
+        }
+
+        stop() {
+          this.state = 'inactive';
+          recorderState = 'inactive';
+          if (this.ondataavailable) {
+            this.ondataavailable({
+              data: new Blob(['mock-audio-chunk-end'], { type: 'audio/webm' }),
+            } as BlobEvent);
+          }
+          if (this.onstop) {
+            this.onstop();
+          }
+          stopListeners.forEach((fn) => fn());
+        }
+      }
+
+      const mockStream = {
+        getTracks: () => [{ stop: vi.fn() }],
+      } as unknown as MediaStream;
+
+      Object.defineProperty(window, 'isSecureContext', {
+        value: true,
+        writable: true,
+        configurable: true,
+      });
+      Object.defineProperty(navigator, 'mediaDevices', {
+        value: { getUserMedia: vi.fn().mockResolvedValue(mockStream) },
+        writable: true,
+        configurable: true,
+      });
+      (globalThis as any).MediaRecorder = MockMediaRecorder;
+      if (!URL.createObjectURL) {
+        (URL as any).createObjectURL = vi.fn(() => 'blob:http://localhost/voice-preview-1');
+      } else {
+        vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:http://localhost/voice-preview-1');
+      }
+      if (!URL.revokeObjectURL) {
+        (URL as any).revokeObjectURL = vi.fn();
+      } else {
+        vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+      }
+
+      return { getState: () => recorderState };
+    };
+
+    it('shows preview button only when paused, supports peeking and repeated playback, and allows resuming before sending', async () => {
+      installMockRecorder();
+      const onSendVoiceNoteMock = vi.fn();
+      const onVoiceRecordingStopMock = vi.fn();
+
+      const { container } = render(
+        <ChatFooter
+          {...baseFooterProps}
+          onSendVoiceNote={onSendVoiceNoteMock}
+          onVoiceRecordingStop={onVoiceRecordingStopMock}
+        />
+      );
+
+      // Start recording
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText('Record voice message'));
+      });
+
+      // Preview Play button must NOT appear while actively recording
+      expect(screen.queryByLabelText('Preview recorded voice note')).toBeNull();
+
+      // Pause recording -> buttons sit together cleanly on the right in order [Cancel, Play, Resume]
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText('Pause recording'));
+      });
+
+      const previewBtn = screen.getByLabelText('Preview recorded voice note');
+      const cancelBtn = screen.getByLabelText('Cancel recording');
+      const resumeBtn = screen.getByLabelText('Resume recording');
+      const recordingRegion = screen.getByRole('region', { name: 'Voice recording in progress' });
+      const barButtons = Array.from(recordingRegion.querySelectorAll<HTMLElement>('button'));
+      expect(previewBtn).toBeDefined();
+      expect(barButtons).toEqual([cancelBtn, previewBtn, resumeBtn]);
+
+      // Click Preview button -> starts playing immediately and preserves button order [Discard, Pause, Resume]
+      await act(async () => {
+        fireEvent.click(previewBtn);
+      });
+
+      expect(onVoiceRecordingStopMock).not.toHaveBeenCalled();
+      const previewRegion = screen.getByRole('region', { name: 'Voice message preview' });
+      expect(previewRegion).toBeDefined();
+      const previewPauseBtn = screen.getByLabelText('Pause voice preview');
+      const previewDiscardBtn = screen.getByLabelText('Discard voice message');
+      const previewResumeBtn = screen.getByLabelText('Resume recording');
+      const previewButtons = Array.from(previewRegion.querySelectorAll<HTMLElement>('button'));
+      expect(previewButtons).toEqual([previewDiscardBtn, previewPauseBtn, previewResumeBtn]);
+      expect(window.HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1);
+
+      // Pause inside preview then click Play again -> Play continues to work normally
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText('Pause voice preview'));
+      });
+      expect(screen.getByLabelText('Play voice preview')).toBeDefined();
+
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText('Play voice preview'));
+      });
+      expect(screen.getByLabelText('Pause voice preview')).toBeDefined();
+      expect(window.HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(2);
+
+      // 32-bar interactive waveform renders and supports click/pointer peeking
+      const waveformSlider = container.querySelector('[aria-label="Seek voice message preview"]') as HTMLElement;
+      expect(waveformSlider).toBeDefined();
+      expect(waveformSlider.children.length).toBe(32);
+
+      waveformSlider.getBoundingClientRect = () => ({
+        left: 0,
+        top: 0,
+        right: 160,
+        bottom: 30,
+        width: 160,
+        height: 30,
+        x: 0,
+        y: 0,
+        toJSON: () => {},
+      });
+
+      await act(async () => {
+        fireEvent.pointerDown(waveformSlider, { clientX: 80, pointerId: 1 });
+        fireEvent.pointerUp(waveformSlider, { clientX: 80, pointerId: 1 });
+      });
+
+      const midBar = waveformSlider.children[15] as HTMLElement;
+      const tailBar = waveformSlider.children[31] as HTMLElement;
+      expect(midBar.getAttribute('data-played')).toBe('true');
+      expect(tailBar.getAttribute('data-played')).toBe('false');
+
+      // Resume recording after previewing -> returns to active recording bar and hides Preview Play button
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText('Resume recording'));
+      });
+
+      expect(screen.queryByRole('region', { name: 'Voice message preview' })).toBeNull();
+      expect(screen.getByRole('region', { name: 'Voice recording in progress' })).toBeDefined();
+      expect(screen.queryByLabelText('Preview recorded voice note')).toBeNull();
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:http://localhost/voice-preview-1');
+
+      // Pause again and re-open Preview Play -> works cleanly a second time before sending
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText('Pause recording'));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText('Preview recorded voice note'));
+      });
+      expect(screen.getByRole('region', { name: 'Voice message preview' })).toBeDefined();
+      expect(screen.getByLabelText('Pause voice preview')).toBeDefined();
+
+      // Send voice note -> invokes onSendVoiceNote, calls onVoiceRecordingStop, and revokes blob URL
+      expect(onSendVoiceNoteMock).not.toHaveBeenCalled();
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText('Send voice message'));
+      });
+
+      expect(onSendVoiceNoteMock).toHaveBeenCalledTimes(1);
+      expect(onVoiceRecordingStopMock).toHaveBeenCalledTimes(1);
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:http://localhost/voice-preview-1');
+      expect(screen.getByLabelText('Record voice message')).toBeDefined();
+    });
+
+    it('discards paused voice preview cleanly without sending and revokes blob URL', async () => {
+      installMockRecorder();
+      const onSendVoiceNoteMock = vi.fn();
+      const onVoiceRecordingStopMock = vi.fn();
+
+      render(
+        <ChatFooter
+          {...baseFooterProps}
+          onSendVoiceNote={onSendVoiceNoteMock}
+          onVoiceRecordingStop={onVoiceRecordingStopMock}
+        />
+      );
+
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText('Record voice message'));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText('Pause recording'));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText('Preview recorded voice note'));
+      });
+
+      expect(screen.getByRole('region', { name: 'Voice message preview' })).toBeDefined();
+
+      // Discard preview via trash button
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText('Discard voice message'));
+      });
+
+      expect(onSendVoiceNoteMock).not.toHaveBeenCalled();
+      expect(onVoiceRecordingStopMock).toHaveBeenCalledTimes(1);
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:http://localhost/voice-preview-1');
+      expect(screen.queryByRole('region', { name: 'Voice message preview' })).toBeNull();
+      expect(screen.getByLabelText('Record voice message')).toBeDefined();
+    });
+
+    it('keeps preview playback active on first click inside React StrictMode even when audio reports playing (paused=false)', async () => {
+      installMockRecorder();
+      const origPausedDesc = Object.getOwnPropertyDescriptor(window.HTMLMediaElement.prototype, 'paused');
+      const pauseSpy = window.HTMLMediaElement.prototype.pause as unknown as ReturnType<typeof vi.fn>;
+      let simulatedPaused = true;
+      Object.defineProperty(window.HTMLMediaElement.prototype, 'paused', {
+        configurable: true,
+        get: () => simulatedPaused,
+      });
+      const playSpy = window.HTMLMediaElement.prototype.play as unknown as ReturnType<typeof vi.fn>;
+      playSpy.mockImplementation(() => {
+        simulatedPaused = false;
+        return Promise.resolve();
+      });
+      pauseSpy.mockImplementation(() => {
+        simulatedPaused = true;
+      });
+
+      try {
+        render(
+          <React.StrictMode>
+            <ChatFooter
+              {...baseFooterProps}
+              onSendVoiceNote={vi.fn()}
+            />
+          </React.StrictMode>
+        );
+
+        await act(async () => {
+          fireEvent.click(screen.getByLabelText('Record voice message'));
+        });
+        await act(async () => {
+          fireEvent.click(screen.getByLabelText('Pause recording'));
+        });
+        pauseSpy.mockClear();
+
+        await act(async () => {
+          fireEvent.click(screen.getByLabelText('Preview recorded voice note'));
+        });
+
+        expect(screen.getByLabelText('Pause voice preview')).toBeDefined();
+        expect(playSpy).toHaveBeenCalled();
+        expect(pauseSpy).not.toHaveBeenCalled();
+        expect(simulatedPaused).toBe(false);
+      } finally {
+        if (origPausedDesc) {
+          Object.defineProperty(window.HTMLMediaElement.prototype, 'paused', origPausedDesc);
+        } else {
+          delete (window.HTMLMediaElement.prototype as any).paused;
+        }
+      }
+    });
+
+    it('shows "No microphone found on this device." toast cleanly if microphone disconnects while paused/previewing and user resumes', async () => {
+      installMockRecorder();
+      const onErrorToastMock = vi.fn();
+      const tracks = [{ readyState: 'live', stop: vi.fn() }];
+      const getUserMediaMock = vi.fn()
+        .mockResolvedValueOnce({
+          getTracks: () => tracks,
+          getAudioTracks: () => tracks,
+        } as unknown as MediaStream)
+        .mockRejectedValueOnce(Object.assign(new Error('Requested device not found'), { name: 'NotFoundError' }));
+
+      Object.defineProperty(navigator, 'mediaDevices', {
+        value: { getUserMedia: getUserMediaMock },
+        writable: true,
+        configurable: true,
+      });
+
+      render(
+        <ChatFooter
+          {...baseFooterProps}
+          onErrorToast={onErrorToastMock}
+        />
+      );
+
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText('Record voice message'));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText('Pause recording'));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText('Preview recorded voice note'));
+      });
+
+      // Simulate microphone unplugged while paused/previewing
+      tracks[0].readyState = 'ended';
+
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText('Resume recording'));
+      });
+
+      expect(onErrorToastMock).toHaveBeenCalledWith('No microphone found on this device.');
+    });
+  });
 });

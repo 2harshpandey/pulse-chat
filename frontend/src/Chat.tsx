@@ -135,6 +135,7 @@ function ChatAuthenticated({ isMe, isTempLink }: ChatProps) {
             c.setIsUserListVisible(!c.isUserListVisible);
           }}
           onHeaderButtonPointerDown={c.composer.handleHeaderButtonPointerDown}
+          onNavigateHome={() => c.navigate('/')}
         />
 
         <LayoutContainer>

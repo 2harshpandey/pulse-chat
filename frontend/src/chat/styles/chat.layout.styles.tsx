@@ -704,6 +704,17 @@ export const InputContainer = styled.div`
   gap: 0.5rem;
   padding: 0.75rem;
   transition: all 0.3s ease;
+  box-sizing: border-box;
+
+  @media (max-width: 420px) {
+    padding: 0.55rem 0.625rem;
+    gap: 0.375rem;
+  }
+
+  @media (max-width: 340px) {
+    padding: 0.5rem 0.45rem;
+    gap: 0.3rem;
+  }
 `;
 
 const plusMenuSlideInKf = css`
@@ -919,6 +930,13 @@ export const SendButton = styled.button`
     box-shadow: none;
     opacity: 0.6;
   }
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+
+  @media (max-width: 420px) {
+    width: 40px;
+    height: 40px;
+  }
 `;
 
 export const MicButton = styled.button`
@@ -960,24 +978,75 @@ export const MicButton = styled.button`
     width: 22px;
     height: 22px;
   }
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+
+  @media (max-width: 420px) {
+    width: 40px;
+    height: 40px;
+    svg {
+      width: 20px;
+      height: 20px;
+    }
+  }
 `;
 
 export const RecordingBarWrapper = styled.div`
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   flex: 1;
   min-width: 0;
   height: 44px;
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-secondary);
   border-radius: 24px;
-  padding: 0 12px;
+  padding: 0 10px 0 14px;
   gap: 10px;
+  overflow: hidden;
+  box-sizing: border-box;
   animation: ${recordingBarSlideIn} 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 
   [data-theme='light'] & {
     background-color: #f1f5f9;
     border-color: #cbd5e1;
+  }
+
+  @media (max-width: 520px) {
+    justify-content: space-between;
+  }
+
+  @media (max-width: 420px) {
+    height: 40px;
+    padding: 0 7px 0 10px;
+    gap: 6px;
+  }
+
+  @media (max-width: 340px) {
+    height: 38px;
+    padding: 0 5px 0 8px;
+    gap: 4px;
+  }
+`;
+
+export const RecordingActionGroup = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+
+  @media (max-width: 520px) {
+    flex: 1;
+    width: 100%;
+    min-width: 0;
+  }
+
+  @media (max-width: 420px) {
+    gap: 5px;
+  }
+
+  @media (max-width: 340px) {
+    gap: 3px;
   }
 `;
 
@@ -994,6 +1063,8 @@ export const RecordingCancelBtn = styled.button`
   cursor: pointer;
   flex-shrink: 0;
   transition: all 0.2s ease;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 
   &:hover {
     background: rgba(239, 68, 68, 0.25);
@@ -1009,6 +1080,24 @@ export const RecordingCancelBtn = styled.button`
     width: 17px;
     height: 17px;
   }
+
+  @media (max-width: 420px) {
+    width: 28px;
+    height: 28px;
+    svg {
+      width: 15px;
+      height: 15px;
+    }
+  }
+
+  @media (max-width: 330px) {
+    width: 26px;
+    height: 26px;
+    svg {
+      width: 14px;
+      height: 14px;
+    }
+  }
 `;
 
 export const RecordingStatusIndicator = styled.div`
@@ -1016,6 +1105,10 @@ export const RecordingStatusIndicator = styled.div`
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+
+  @media (max-width: 420px) {
+    gap: 4px;
+  }
 `;
 
 export const RecordingBlinkDot = styled.div<{ $isPaused?: boolean }>`
@@ -1025,6 +1118,12 @@ export const RecordingBlinkDot = styled.div<{ $isPaused?: boolean }>`
   background-color: ${p => p.$isPaused ? '#f59e0b' : '#ef4444'};
   box-shadow: 0 0 8px ${p => p.$isPaused ? 'rgba(245, 158, 11, 0.6)' : 'rgba(239, 68, 68, 0.6)'};
   animation: ${p => p.$isPaused ? 'none' : recordingBlink} 1.2s ease-in-out infinite;
+  flex-shrink: 0;
+
+  @media (max-width: 340px) {
+    width: 7px;
+    height: 7px;
+  }
 `;
 
 export const RecordingTimerSpan = styled.span`
@@ -1033,23 +1132,56 @@ export const RecordingTimerSpan = styled.span`
   font-variant-numeric: tabular-nums;
   color: var(--text-primary);
   min-width: 36px;
+
+  @media (max-width: 420px) {
+    font-size: 0.8rem;
+    min-width: 30px;
+  }
+
+  @media (max-width: 330px) {
+    font-size: 0.76rem;
+    min-width: 27px;
+  }
 `;
 
 export const RecordingWaveformBarBox = styled.div`
   display: flex;
   align-items: center;
-  flex: 1;
-  min-width: 0;
+  justify-content: space-between;
+  flex: 0 0 156px;
+  width: 156px;
+  min-width: 12px;
   height: 28px;
   gap: 2.5px;
   overflow: hidden;
-  padding: 0 4px;
+  padding: 0 2px;
+
+  @media (max-width: 520px) {
+    flex: 1;
+    width: auto;
+  }
+
+  @media (max-width: 420px) {
+    padding: 0 1px;
+    gap: 2px;
+    & > div:nth-child(n+17) {
+      display: none;
+    }
+  }
+
+  @media (max-width: 340px) {
+    padding: 0;
+    gap: 1.5px;
+    & > div:nth-child(n+12) {
+      display: none;
+    }
+  }
 `;
 
 export const RecordingWaveformBar = styled.div<{ $level: number; $isPaused?: boolean }>`
-  flex: 1;
+  flex: 0 1 4px;
   min-width: 2px;
-  max-width: 4px;
+  width: 4px;
   height: ${p => Math.max(10, Math.round(p.$level * 100))}%;
   border-radius: 9999px;
   background-color: ${p => p.$isPaused ? 'rgba(148, 163, 184, 0.5)' : '#3B82F6'};
@@ -1066,18 +1198,198 @@ export const RecordingPauseResumeBtn = styled.button<{ $isPaused?: boolean }>`
   border-radius: 50%;
   border: 1px solid var(--border-secondary);
   background: var(--bg-tertiary);
-  color: ${p => p.$isPaused ? '#3B82F6' : 'var(--text-secondary)'};
+  color: ${p => p.$isPaused ? '#f59e0b' : 'var(--text-secondary)'};
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
   transition: all 0.2s ease;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 
   &:hover {
     background: rgba(59, 130, 246, 0.15);
     color: #3b82f6;
+    transform: scale(1.08);
+  }
+
+  &:active {
+    transform: scale(0.92);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  @media (max-width: 420px) {
+    width: 28px;
+    height: 28px;
+    svg {
+      width: 13px;
+      height: 13px;
+    }
+  }
+
+  @media (max-width: 330px) {
+    width: 26px;
+    height: 26px;
+    svg {
+      width: 12px;
+      height: 12px;
+    }
+  }
+`;
+
+export const RecordingPreviewBtn = styled.button`
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(59, 130, 246, 0.45);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.22), rgba(99, 102, 241, 0.2));
+  color: #60a5fa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+
+  [data-theme='light'] & {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.14), rgba(99, 102, 241, 0.12));
+    border-color: rgba(59, 130, 246, 0.38);
+    color: #2563eb;
+  }
+
+  &:hover:not(:disabled) {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    border-color: transparent;
+    color: #ffffff;
     transform: scale(1.1);
+    box-shadow: 0 3px 12px rgba(59, 130, 246, 0.35);
+  }
+
+  &:active:not(:disabled) {
+    transform: scale(0.92);
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  svg {
+    width: 14px;
+    height: 14px;
+    margin-left: 1.5px;
+  }
+
+  @media (max-width: 420px) {
+    width: 28px;
+    height: 28px;
+    svg {
+      width: 12px;
+      height: 12px;
+    }
+  }
+
+  @media (max-width: 330px) {
+    width: 26px;
+    height: 26px;
+    svg {
+      width: 11px;
+      height: 11px;
+    }
+  }
+`;
+
+export const VoicePreviewBarWrapper = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.94));
+  border: 1px solid rgba(59, 130, 246, 0.36);
+  border-radius: 24px;
+  padding: 0 10px 0 14px;
+  gap: 10px;
+  overflow: hidden;
+  box-sizing: border-box;
+  box-shadow: 0 2px 12px rgba(59, 130, 246, 0.1);
+  animation: ${recordingBarSlideIn} 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+
+  [data-theme='light'] & {
+    background: linear-gradient(135deg, #eff6ff, #f1f5f9);
+    border-color: rgba(59, 130, 246, 0.32);
+    box-shadow: 0 2px 10px rgba(37, 99, 235, 0.08);
+  }
+
+  @media (max-width: 520px) {
+    justify-content: space-between;
+  }
+
+  @media (max-width: 420px) {
+    height: 40px;
+    padding: 0 7px 0 10px;
+    gap: 6px;
+  }
+
+  @media (max-width: 340px) {
+    height: 38px;
+    padding: 0 5px 0 8px;
+    gap: 4px;
+  }
+`;
+
+export const VoicePreviewStatusDot = styled.div<{ $isPlaying?: boolean }>`
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background-color: ${p => p.$isPlaying ? '#06b6d4' : '#f59e0b'};
+  box-shadow: 0 0 8px ${p => p.$isPlaying ? 'rgba(6, 182, 212, 0.65)' : 'rgba(245, 158, 11, 0.55)'};
+  animation: ${p => p.$isPlaying ? recordingBlink : 'none'} 1.4s ease-in-out infinite;
+  flex-shrink: 0;
+
+  @media (max-width: 340px) {
+    width: 7px;
+    height: 7px;
+  }
+`;
+
+export const VoicePreviewPlayBtn = styled.button<{ $isPlaying?: boolean }>`
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  box-shadow: ${p => p.$isPlaying
+    ? '0 0 0 4px rgba(59, 130, 246, 0.24), 0 3px 12px rgba(59, 130, 246, 0.42)'
+    : '0 2px 8px rgba(59, 130, 246, 0.3)'};
+
+  &:hover {
+    transform: scale(1.1);
+    box-shadow: 0 4px 14px rgba(59, 130, 246, 0.45);
   }
 
   &:active {
@@ -1085,8 +1397,116 @@ export const RecordingPauseResumeBtn = styled.button<{ $isPaused?: boolean }>`
   }
 
   svg {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
+    margin-left: ${p => p.$isPlaying ? '0' : '1.5px'};
+  }
+
+  @media (max-width: 420px) {
+    width: 28px;
+    height: 28px;
+    svg {
+      width: 12px;
+      height: 12px;
+    }
+  }
+
+  @media (max-width: 330px) {
+    width: 26px;
+    height: 26px;
+  }
+`;
+
+export const VoicePreviewWaveformBox = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 164px;
+  width: 164px;
+  min-width: 28px;
+  height: 30px;
+  gap: 2.5px;
+  cursor: pointer;
+  padding: 2px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+
+  &:focus-visible {
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.45);
+    border-radius: 6px;
+  }
+
+  @media (max-width: 520px) {
+    flex: 1;
+    width: auto;
+  }
+
+  @media (max-width: 480px) {
+    gap: 1.5px;
+    padding: 2px;
+  }
+
+  @media (max-width: 380px) {
+    gap: 1.5px;
+    padding: 2px 0;
+    & > div:nth-child(even) {
+      display: none;
+    }
+  }
+`;
+
+export const VoicePreviewWaveformBar = styled.div`
+  flex: 0 1 4px;
+  min-width: 1.5px;
+  width: 4px;
+  border-radius: 9999px;
+  background-color: rgba(148, 163, 184, 0.36);
+  transition: background-color 0.1s ease, transform 0.12s ease;
+  pointer-events: none;
+
+  &[data-played='true'] {
+    background-color: #3B82F6;
+  }
+
+  &[data-current='true'] {
+    transform: scaleY(1.18);
+    box-shadow: 0 0 6px rgba(59, 130, 246, 0.55);
+  }
+
+  [data-theme='light'] & {
+    background-color: rgba(100, 116, 139, 0.34);
+  }
+
+  [data-theme='light'] &[data-played='true'] {
+    background-color: #2563EB;
+  }
+
+  @media (max-width: 340px) {
+    min-width: 1px;
+  }
+`;
+
+export const VoicePreviewTimerSpan = styled.span`
+  font-size: 0.88rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 36px;
+  text-align: left;
+
+  @media (max-width: 420px) {
+    font-size: 0.8rem;
+    min-width: 30px;
+  }
+
+  @media (max-width: 330px) {
+    font-size: 0.76rem;
+    min-width: 27px;
   }
 `;
 

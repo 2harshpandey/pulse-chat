@@ -60,6 +60,21 @@ export const AdminLoginBrand = styled.div`
   width: 100%;
 `;
 
+export const AdminBrandHomeLink = styled.a`
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 6px;
+    border-radius: 12px;
+  }
+`;
+
 export const AdminBrandLogo = styled.img`
   width: 80px;
   height: 80px;

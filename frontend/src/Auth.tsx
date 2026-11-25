@@ -1,6 +1,7 @@
 import React from 'react';
 import { UserProfile } from './UserContext';
 import { useAuthController } from './auth/hooks';
+import { formatPageTitle, getRoomDisplayLabel, useDocumentTitle } from './pageTitle';
 import {
   AnimatedBg,
   Orb,
@@ -20,9 +21,18 @@ interface AuthProps {
 
 const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken, roomId = 'me' }) => {
   const controller = useAuthController({ onAuthSuccess, tempToken, roomId });
-  const { isDark, routerState, isLoading, autoJoinAttempted } = controller;
+  const { isDark, routerState, isLoading, autoJoinAttempted, isTempLink, roomName } = controller;
 
-  if (routerState?.autoJoin && (isLoading || !autoJoinAttempted)) {
+  const isAutoJoining = Boolean(routerState?.autoJoin && (isLoading || !autoJoinAttempted));
+  const roomLabel = getRoomDisplayLabel(roomId, roomName, isTempLink);
+  const authPageTitle = isAutoJoining
+    ? formatPageTitle(`Joining ${roomLabel}`)
+    : isTempLink
+      ? formatPageTitle('Invite Login')
+      : formatPageTitle(`Join ${roomLabel}`);
+  useDocumentTitle(authPageTitle);
+
+  if (isAutoJoining) {
     return (
       <>
         <AnimatedBg>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../ThemeContext';
+import { formatPageTitle, useDocumentTitle } from '../pageTitle';
 import {
   PageWrapper,
   PulseLogoMini,
@@ -106,6 +107,8 @@ export const ErrorPage: React.FC<ErrorPageProps> = ({
   const description = customDescription || config.description;
   const IconComponent = config.icon;
 
+  useDocumentTitle(formatPageTitle(`${code} ${title}`));
+
   // Auto-redirect countdown
   useEffect(() => {
     if (!autoRedirectSeconds || autoRedirectSeconds <= 0) return;
@@ -137,7 +140,16 @@ export const ErrorPage: React.FC<ErrorPageProps> = ({
     <PageWrapper>
       <BackgroundEffects variant={config.variant} />
 
-      <PulseLogoMini onClick={handleGoHome}>
+      <PulseLogoMini
+        as="a"
+        href="/"
+        onClick={(e: React.MouseEvent) => {
+          e.preventDefault();
+          handleGoHome();
+        }}
+        title="Go to Home"
+        aria-label="Go to Pulse Home"
+      >
         Pulse Chat
       </PulseLogoMini>
 
