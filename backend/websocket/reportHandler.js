@@ -1,6 +1,6 @@
 'use strict';
 
-const logger = require('./logger');
+const logger = require('../logger');
 const User = require('../models/user');
 const Message = require('../models/message');
 const UserReport = require('../models/userReport');
