@@ -1,25 +1,25 @@
 {
   "specVersion": "1.0",
   "host": {
-    "displayName": "Pulse Chat",
+    "displayName": "PulseChat",
     "url": "https://pulsechat.tech"
   },
   "entries": [
     {
       "identifier": "urn:air:pulsechat.tech:app",
-      "displayName": "Pulse Chat",
+      "displayName": "PulseChat",
       "type": "text/html",
-      "url": "https://pulsechat.tech",
-      "description": "A modern, high-performance real-time messaging platform with multi-room channels, instant media sharing, and secure communication.",
+      "url": "https://pulsechat.tech/",
+      "description": "Real-time multi-room web chat platform with voice notes, mosaic media albums, temporary invite links, and password-protected private rooms — no account signup required.",
       "capabilities": [
         "RealTimeChat",
         "MultiRoomChannels",
         "InstantMediaSharing"
       ],
       "representativeQueries": [
-        "real-time chat messaging",
-        "create a private or public chat room",
-        "instant media sharing and messaging"
+        "real-time chat rooms without signup",
+        "create a private password protected chat room",
+        "web chat with voice notes and media albums"
       ]
     }
   ]

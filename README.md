@@ -1,10 +1,10 @@
-# Pulse Chat
+# PulseChat
 
 > **A modern, production-grade real-time messaging application engineered for fast conversations, dynamic multi-room routing, rich media exchange, side panel media galleries, voice messaging, and responsive light/dark themes.**
 
 <p align="center">
   <a href="https://pulsechat.tech">
-    <img src="frontend/public/og-image.png" alt="Pulse Chat - Connect without limits. Chat reimagined." width="100%" />
+    <img src="frontend/public/og-image.png" alt="PulseChat - Connect without limits. Chat reimagined." width="100%" />
   </a>
 </p>
 
@@ -36,7 +36,7 @@
 
 ## Overview
 
-**Pulse Chat** is a scalable, real-time messaging platform built for high-performance communication. It combines persistent native WebSocket connections, Express 5 REST APIs, MongoDB persistence, Cloudinary media delivery, hardened link previews, and a domain-modular React 18 interface with full light and dark mode parity.
+**PulseChat** is a scalable, real-time messaging platform built for high-performance communication. It combines persistent native WebSocket connections, Express 5 REST APIs, MongoDB persistence, Cloudinary media delivery, hardened link previews, and a domain-modular React 18 interface with full light and dark mode parity.
 
 ### Engineering Priorities
 

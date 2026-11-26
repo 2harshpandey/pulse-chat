@@ -308,6 +308,7 @@ export const ButtonGroup = styled.div`
 export const PrimaryButton = styled.button`
   background: linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%);
   color: #ffffff;
+  text-decoration: none;
   border: 1px solid rgba(255, 255, 255, 0.2);
   padding: 0.85rem 1.85rem;
   font-size: 1rem;
@@ -351,6 +352,7 @@ export const PrimaryButton = styled.button`
 export const SecondaryButton = styled.button`
   background: var(--bg-secondary);
   color: var(--text-primary);
+  text-decoration: none;
   border: 1px solid var(--border-primary);
   padding: 0.85rem 1.85rem;
   font-size: 1rem;
@@ -621,4 +623,144 @@ export const ErrorMessage = styled.div`
   font-size: 0.875rem;
   margin-top: -0.25rem;
   margin-bottom: 1rem;
+`;
+
+export const InfoSection = styled.section`
+  width: 100%;
+  max-width: 1100px;
+  margin-top: 4rem;
+  position: relative;
+  z-index: 10;
+  text-align: left;
+
+  @media (max-width: 880px) {
+    max-width: 560px;
+    margin-top: 3rem;
+  }
+`;
+
+export const SectionHeader = styled.div`
+  text-align: center;
+  max-width: 680px;
+  margin: 0 auto 2rem;
+
+  h2 {
+    font-size: clamp(1.5rem, 3vw, 2rem);
+    font-weight: 800;
+    letter-spacing: -0.025em;
+    color: var(--text-heading);
+    margin: 0 0 0.6rem;
+  }
+
+  p {
+    margin: 0;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    font-size: 0.975rem;
+  }
+`;
+
+export const HighlightsGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.25rem;
+
+  @media (max-width: 880px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+export const HighlightCard = styled.article`
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 18px;
+  padding: 1.5rem;
+  box-shadow: var(--shadow-card);
+
+  h3 {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-heading);
+    margin: 0 0 0.5rem;
+  }
+
+  p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.6;
+  }
+`;
+
+export const FaqList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 820px;
+  margin: 0 auto;
+`;
+
+export const FaqItem = styled.details`
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 16px;
+  padding: 1rem 1.25rem;
+  box-shadow: var(--shadow-card);
+  transition: border-color 0.2s ease;
+
+  &[open] {
+    border-color: rgba(59, 130, 246, 0.45);
+  }
+
+  summary {
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 0.98rem;
+    color: var(--text-heading);
+    list-style-position: outside;
+    line-height: 1.45;
+  }
+
+  p {
+    margin: 0.75rem 0 0;
+    color: var(--text-secondary);
+    font-size: 0.925rem;
+    line-height: 1.65;
+  }
+`;
+
+export const HomeFooter = styled.footer`
+  width: 100%;
+  max-width: 1100px;
+  margin: 4rem auto 0;
+  padding: 1.75rem 1.5rem 2.5rem;
+  border-top: 1px solid var(--border-primary);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  position: relative;
+  z-index: 10;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  box-sizing: border-box;
+
+  nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem;
+    align-items: center;
+  }
+
+  a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-weight: 600;
+    transition: color 0.2s ease;
+
+    &:hover {
+      color: var(--accent-blue);
+    }
+  }
 `;

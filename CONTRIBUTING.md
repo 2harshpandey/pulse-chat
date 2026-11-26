@@ -1,6 +1,6 @@
-# Contributing to Pulse Chat
+# Contributing to PulseChat
 
-Thank you for your interest in contributing to **Pulse Chat**! We welcome community contributions, bug reports, feature suggestions, and improvements from developers of all skill levels.
+Thank you for your interest in contributing to **PulseChat**! We welcome community contributions, bug reports, feature suggestions, and improvements from developers of all skill levels.
 
 Before submitting code, please take a moment to review this guide.
 

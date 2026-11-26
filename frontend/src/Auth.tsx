@@ -2,6 +2,7 @@ import React from 'react';
 import { UserProfile } from './UserContext';
 import { useAuthController } from './auth/hooks';
 import { formatPageTitle, getRoomDisplayLabel, useDocumentTitle } from './pageTitle';
+import { useNoIndexRobots } from './seo';
 import {
   AnimatedBg,
   Orb,
@@ -31,6 +32,7 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess, tempToken, roomId = 'me' }) 
       ? formatPageTitle('Invite Login')
       : formatPageTitle(`Join ${roomLabel}`);
   useDocumentTitle(authPageTitle);
+  useNoIndexRobots();
 
   if (isAutoJoining) {
     return (

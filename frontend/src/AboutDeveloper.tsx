@@ -2,13 +2,8 @@ import React, { useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import styled, { keyframes } from 'styled-components';
 import { developerData } from './developerData';
-
-const SITE_URL = 'https://pulsechat.tech';
-const ABOUT_PATH = '/about-developer';
-const ABOUT_URL = `${SITE_URL}${ABOUT_PATH}`;
-const REPO_URL = 'https://github.com/2harshpandey/pulse-chat';
-const PAGE_TITLE = 'Harsh, Developer of Pulse Chat';
-const PAGE_DESCRIPTION = "I'm a student developer who built Pulse Chat, a real-time messaging app focused on speed, reliability, and privacy.";
+import { REPO_URL, getPublicSeoConfig, useRouteSeo } from './seo';
+import { useDocumentTitle } from './pageTitle';
 
 const floatIn = keyframes`
   from { opacity: 0; transform: translateY(28px); filter: blur(10px); }
@@ -296,106 +291,18 @@ const Footer = styled.footer`
   font-size: 0.9rem;
 `;
 
-const setMetaTag = (selector: string, attribute: 'content' | 'href', value: string) => {
-  let element = document.head.querySelector(selector) as HTMLMetaElement | HTMLLinkElement | null;
-  if (!element) {
-    if (selector.startsWith('link')) {
-      element = document.createElement('link');
-      const rel = selector.match(/rel="([^"]+)"/)?.[1];
-      if (rel) element.setAttribute('rel', rel);
-    } else {
-      element = document.createElement('meta');
-      const name = selector.match(/name="([^"]+)"/)?.[1];
-      const property = selector.match(/property="([^"]+)"/)?.[1];
-      if (name) element.setAttribute('name', name);
-      if (property) element.setAttribute('property', property);
-    }
-    document.head.appendChild(element);
-  }
-  element.setAttribute(attribute, value);
-};
-
 const AboutDeveloper: React.FC = () => {
-  const jsonLd = useMemo(() => ({
-    '@context': 'https://schema.org',
-    '@type': 'Person',
-    name: developerData.name,
-    alternateName: 'Harsh, creator of Pulse Chat',
-    url: ABOUT_URL,
-    sameAs: [REPO_URL, SITE_URL],
-    jobTitle: 'Developer of Pulse Chat',
-    description: developerData.bio,
-    alumniOf: {
-      '@type': 'CollegeOrUniversity',
-      name: 'University of Delhi'
-    },
-    knowsAbout: [
-      'Pulse Chat',
-      'real-time messaging architecture',
-      'WebSocket systems',
-      'backend engineering',
-      'privacy-aware software design',
-      'latency optimization',
-      ...developerData.technicalFocus,
-      ...developerData.analyticalMindset
-    ],
-    creator: {
-      '@type': 'SoftwareApplication',
-      name: 'Pulse Chat',
-      applicationCategory: 'CommunicationApplication',
-      operatingSystem: 'Web',
-      url: SITE_URL,
-      description: 'A real-time messaging web application focused on speed and reliability.',
-      creator: {
-        '@type': 'Person',
-        name: developerData.name,
-        jobTitle: 'Developer'
-      }
-    },
-    mainEntityOfPage: {
-      '@type': 'WebPage',
-      '@id': ABOUT_URL
-    }
-  }), []);
+  const aboutSeo = useMemo(() => getPublicSeoConfig('about'), []);
+  useDocumentTitle(aboutSeo.title);
+  useRouteSeo(aboutSeo);
 
   useEffect(() => {
-    const previousTitle = document.title;
-    const script = document.createElement('script');
-    script.type = 'application/ld+json';
-    script.id = 'pulse-developer-person-schema';
-    script.text = JSON.stringify(jsonLd);
-
-    document.title = PAGE_TITLE;
-    setMetaTag('meta[name="description"]', 'content', PAGE_DESCRIPTION);
-    setMetaTag('meta[name="robots"]', 'content', 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1');
-    setMetaTag('link[rel="canonical"]', 'href', ABOUT_URL);
-    setMetaTag('meta[property="og:type"]', 'content', 'profile');
-    setMetaTag('meta[property="og:title"]', 'content', PAGE_TITLE);
-    setMetaTag('meta[property="og:description"]', 'content', PAGE_DESCRIPTION);
-    setMetaTag('meta[property="og:url"]', 'content', ABOUT_URL);
-    setMetaTag('meta[property="og:site_name"]', 'content', 'Pulse Chat');
-    setMetaTag('meta[property="og:image"]', 'content', `${SITE_URL}/og-image.png`);
-    setMetaTag('meta[property="og:image:secure_url"]', 'content', `${SITE_URL}/og-image.png`);
-    setMetaTag('meta[property="og:image:type"]', 'content', 'image/png');
-    setMetaTag('meta[property="og:image:width"]', 'content', '1200');
-    setMetaTag('meta[property="og:image:height"]', 'content', '630');
-    setMetaTag('meta[name="twitter:card"]', 'content', 'summary_large_image');
-    setMetaTag('meta[name="twitter:title"]', 'content', PAGE_TITLE);
-    setMetaTag('meta[name="twitter:description"]', 'content', PAGE_DESCRIPTION);
-    setMetaTag('meta[name="twitter:image"]', 'content', `${SITE_URL}/og-image.png`);
-
-    const existing = document.getElementById(script.id);
-    existing?.remove();
-    document.head.appendChild(script);
-
     document.body.classList.add('hide-global-home-btn');
 
     return () => {
-      document.title = previousTitle;
-      script.remove();
       document.body.classList.remove('hide-global-home-btn');
     };
-  }, [jsonLd]);
+  }, []);
 
   return (
     <PageShell>
@@ -403,11 +310,11 @@ const AboutDeveloper: React.FC = () => {
       <AmbientOrb $top="34%" $left="78%" $size={360} $color="rgba(236, 72, 153, 0.16)" $delay="-3s" />
       <Content itemScope itemType="https://schema.org/Person">
         <Nav aria-label="About developer navigation">
-          <BrandLink to="/" aria-label="Return to Pulse Chat login">
-            <img src="/pulse_logo.webp" alt="Pulse Chat logo" />
-            Pulse Chat
+          <BrandLink to="/" aria-label="Return to PulseChat Home">
+            <img src="/pulse_logo.webp" alt="PulseChat logo" width={38} height={38} />
+            PulseChat
           </BrandLink>
-          <RepoLink href={REPO_URL} target="_blank" rel="noopener noreferrer" aria-label="Open Pulse Chat GitHub repository">
+          <RepoLink href={REPO_URL} target="_blank" rel="noopener noreferrer" aria-label="Open PulseChat GitHub repository">
             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a12 12 0 0 0-3.79 23.39c.6.11.82-.26.82-.58v-2.05c-3.34.73-4.04-1.42-4.04-1.42-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.21.08 1.85 1.24 1.85 1.24 1.07 1.84 2.81 1.31 3.5 1 .11-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.66.24 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.81 5.63-5.49 5.93.43.37.81 1.1.81 2.22v3.29c0 .32.22.69.83.57A12 12 0 0 0 12 .5Z" /></svg>
             GitHub Repo
           </RepoLink>
@@ -415,7 +322,7 @@ const AboutDeveloper: React.FC = () => {
 
         <Hero>
           <HeroCopy as="header">
-            <Eyebrow>Developer of Pulse Chat</Eyebrow>
+            <Eyebrow>Developer of PulseChat</Eyebrow>
             <Title itemProp="name"><span>{developerData.name}</span></Title>
             <Subtitle itemProp="description">{developerData.bio}</Subtitle>
           </HeroCopy>
@@ -424,7 +331,7 @@ const AboutDeveloper: React.FC = () => {
             {developerData.identity.map((identity, index) => (
               <IdentityCard key={identity}>
                 <strong>{identity}</strong>
-                <p>{index === 0 ? 'My coursework is in literature, not computer science, but I bring the same habits of close reading to a codebase.' : index === 1 ? "I'm building Pulse Chat one feature and one bug fix at a time. It's still a work in progress." : 'A few things outside computer science occasionally shape how I approach a problem.'}</p>
+                <p>{index === 0 ? 'My coursework is in literature, not computer science, but I bring the same habits of close reading to a codebase.' : index === 1 ? "I'm building PulseChat one feature and one bug fix at a time. It's still a work in progress." : 'A few things outside computer science occasionally shape how I approach a problem.'}</p>
               </IdentityCard>
             ))}
           </IdentityGrid>
@@ -466,7 +373,12 @@ const AboutDeveloper: React.FC = () => {
         </SectionGrid>
 
         <Footer>
-          <p>I built and maintain Pulse Chat.</p>
+          <p>I built and maintain PulseChat.</p>
+          <nav aria-label="Related pages" style={{ display: 'flex', justifyContent: 'center', gap: '1.25rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
+            <Link to="/" style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontWeight: 600 }}>PulseChat Home</Link>
+            <Link to="/room" style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontWeight: 600 }}>Explore Public Rooms</Link>
+            <Link to="/room/global" style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontWeight: 600 }}>Global Chat</Link>
+          </nav>
         </Footer>
       </Content>
     </PageShell>

@@ -92,7 +92,7 @@ export const NavCircleButton = styled.button`
 
 export const ThemeToggle = NavCircleButton;
 
-export const PageContainer = styled.div`
+export const PageContainer = styled.main`
   min-height: 100vh;
   min-height: 100dvh;
   padding: 5.5rem 2.5rem 5rem;
@@ -107,7 +107,7 @@ export const PageContainer = styled.div`
   }
 `;
 
-export const Header = styled.div`
+export const Header = styled.header`
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
@@ -180,6 +180,7 @@ export const Subtitle = styled.p`
 export const Button = styled.button<{ $primary?: boolean }>`
   background: ${p => p.$primary ? 'linear-gradient(180deg, #2563eb 0%, #1d4ed8 100%)' : 'var(--bg-secondary)'};
   color: ${p => p.$primary ? '#ffffff' : 'var(--text-primary)'};
+  text-decoration: none;
   border: ${p => p.$primary ? '1px solid rgba(255, 255, 255, 0.2)' : '1px solid var(--border-primary)'};
   padding: 0.75rem 1.35rem;
   font-size: 0.95rem;
@@ -548,4 +549,89 @@ export const Orb = styled.div<{ $color: string; $size: string; $top: string; $le
   filter: blur(80px);
   pointer-events: none;
   z-index: 1;
+`;
+
+export const RoomsGuideSection = styled.section`
+  margin-top: 3.5rem;
+  padding-top: 2.5rem;
+  border-top: 1px solid var(--border-primary);
+
+  h2 {
+    font-size: 1.4rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--text-heading);
+    margin: 0 0 0.5rem;
+  }
+
+  > p {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    line-height: 1.6;
+    margin: 0 0 1.5rem;
+    max-width: 720px;
+  }
+`;
+
+export const RoomsGuideGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.25rem;
+
+  @media (max-width: 820px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+export const RoomsGuideCard = styled.article`
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  border-radius: 16px;
+  padding: 1.35rem;
+  box-shadow: var(--shadow-card);
+
+  h3 {
+    margin: 0 0 0.45rem;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-heading);
+  }
+
+  p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.89rem;
+    line-height: 1.55;
+  }
+`;
+
+export const RoomsFooter = styled.footer`
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border-primary);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+
+  nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem;
+    align-items: center;
+  }
+
+  a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-weight: 600;
+    transition: color 0.2s ease;
+
+    &:hover {
+      color: var(--accent-blue);
+    }
+  }
 `;

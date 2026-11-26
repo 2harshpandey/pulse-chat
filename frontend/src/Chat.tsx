@@ -23,6 +23,7 @@ import {
   OtherTabOverlay,
 } from './chat/components';
 import { useChatController } from './chat/hooks';
+import { useNoIndexRobots } from './seo';
 
 interface ChatProps {
   isMe?: boolean;
@@ -190,6 +191,7 @@ function ChatAuthenticated({ isMe, isTempLink }: ChatProps) {
 }
 
 function Chat({ isMe, isTempLink }: ChatProps = {}) {
+  useNoIndexRobots();
   const userContext = useContext(UserContext);
   const { token: tempToken, roomId: urlRoomId } = useParams<{ token?: string; roomId?: string }>();
   const location = useLocation();

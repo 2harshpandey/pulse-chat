@@ -102,11 +102,11 @@ export function AdminLoginView({
               e.preventDefault();
               onNavigateHome();
             }}
-            title="Go to Home"
+            title="Go to PulseChat Home"
             aria-label="Go to Pulse Home"
           >
-            <AdminBrandLogo src="/pulse_logo.webp" alt="Pulse Admin" />
-            <AdminBrandWordmark><span>Pulse</span> Chat</AdminBrandWordmark>
+            <AdminBrandLogo src="/pulse_logo.webp" alt="PulseChat Admin logo" width={80} height={80} />
+            <AdminBrandWordmark><span>Pulse</span>Chat</AdminBrandWordmark>
           </AdminBrandHomeLink>
           <AdminHeartbeatSvg viewBox="0 0 120 30" width="120" height="30">
             <path d="M0 15 L30 15 L38 5 L46 25 L54 8 L60 15 L90 15 L98 5 L106 25 L114 8 L120 15" />

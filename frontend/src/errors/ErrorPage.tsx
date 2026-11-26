@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../ThemeContext';
 import { formatPageTitle, useDocumentTitle } from '../pageTitle';
+import { useNoIndexRobots } from '../seo';
 import {
   PageWrapper,
   PulseLogoMini,
@@ -73,7 +74,7 @@ export const ERROR_CONFIGS: Record<number, { title: string; description: string;
   },
   503: {
     title: "Service Unavailable",
-    description: "Pulse Chat is temporarily undergoing maintenance. We'll be back shortly — hang tight!",
+    description: "PulseChat is temporarily undergoing maintenance. We'll be back shortly — hang tight!",
     variant: 'amber',
     icon: Maintenance503,
   },
@@ -108,6 +109,7 @@ export const ErrorPage: React.FC<ErrorPageProps> = ({
   const IconComponent = config.icon;
 
   useDocumentTitle(formatPageTitle(`${code} ${title}`));
+  useNoIndexRobots();
 
   // Auto-redirect countdown
   useEffect(() => {
@@ -152,10 +154,10 @@ export const ErrorPage: React.FC<ErrorPageProps> = ({
           e.preventDefault();
           handleGoHome();
         }}
-        title="Go to Home"
+        title="Go to PulseChat Home"
         aria-label="Go to Pulse Home"
       >
-        Pulse Chat
+        PulseChat
       </PulseLogoMini>
 
       <ThemeToggle onClick={toggleTheme} title="Toggle theme" aria-label="Toggle theme">

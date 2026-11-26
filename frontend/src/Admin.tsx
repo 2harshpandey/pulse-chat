@@ -12,6 +12,7 @@ import {
   TabContent,
 } from './admin/AdminStyledComponents';
 import { useAdminController } from './admin/hooks';
+import { useNoIndexRobots } from './seo';
 import {
   AdminLoginView,
   AdminModals,
@@ -28,6 +29,7 @@ import {
 
 const Admin = () => {
   const admin = useAdminController();
+  useNoIndexRobots();
 
   if (!admin.isAuthenticated) {
     if (admin.location.state?.autoLoginPassword || admin.isLoading) {
@@ -94,11 +96,11 @@ const Admin = () => {
               e.preventDefault();
               admin.navigate('/');
             }}
-            title="Go to Home"
+            title="Go to PulseChat Home"
             aria-label="Go to Pulse Home"
           >
-            <img src="/pulse_logo.webp" alt="Pulse Admin Panel" />
-            <span>Pulse</span> Chat
+            <img src="/pulse_logo.webp" alt="PulseChat Admin Panel" width={57} height={44} />
+            <em style={{ fontStyle: 'normal' }}><span>Pulse</span>Chat</em>
           </a>
         </Title>
         <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>

@@ -1,3 +1,9 @@
 # https://www.robotstxt.org/robotstxt.html
 User-agent: *
-Disallow:
+Allow: /
+Disallow: /admin
+Disallow: /me
+Disallow: /join/
+Disallow: /error/
+
+Sitemap: https://pulsechat.tech/sitemap.xml

@@ -1,6 +1,6 @@
-# Pulse Chat: Frontend Client
+# PulseChat: Frontend Client
 
-The frontend client for **Pulse Chat**, engineered with React 18, TypeScript, Vite, Styled Components, and Progressive Web App (PWA) capabilities.
+The frontend client for **PulseChat**, engineered with React 18, TypeScript, Vite, Styled Components, and Progressive Web App (PWA) capabilities.
 
 ---
 

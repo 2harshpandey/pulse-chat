@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 
-export const BASE_APP_TITLE = 'Pulse';
+export const BASE_APP_TITLE = 'PulseChat';
+export const HOME_PAGE_TITLE = 'PulseChat — Real-Time Multi-Room Chat Without Signup';
 
 export function sanitizeTitleSegment(raw?: string | null, maxLength = 48): string {
   if (!raw || typeof raw !== 'string') return '';
@@ -16,7 +17,7 @@ export function sanitizeTitleSegment(raw?: string | null, maxLength = 48): strin
 export function formatPageTitle(section?: string | null): string {
   const cleanSection = sanitizeTitleSegment(section, 72);
   if (!cleanSection) return BASE_APP_TITLE;
-  return `${cleanSection} - ${BASE_APP_TITLE}`;
+  return `${cleanSection} | ${BASE_APP_TITLE}`;
 }
 
 export function getRoomDisplayLabel(

@@ -4,7 +4,8 @@ import path from 'node:path';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { formatPageTitle, getRoomDisplayLabel, sanitizeTitleSegment, useDocumentTitle } from './pageTitle';
+import { BASE_APP_TITLE, HOME_PAGE_TITLE, formatPageTitle, getRoomDisplayLabel, sanitizeTitleSegment, useDocumentTitle } from './pageTitle';
+import { INDEX_ROBOTS, NOINDEX_ROBOTS, getPublicSeoConfig, getSeoConfigForPathname } from './seo';
 import { ThemeProvider } from './ThemeContext';
 import { UserProvider } from './UserContext';
 import Home from './Home';
@@ -25,7 +26,7 @@ describe('Page Titles & Consistent Brand Logo Home Navigation', () => {
   const originalMatchMedia = window.matchMedia;
 
   beforeEach(() => {
-    document.title = 'Pulse';
+    document.title = BASE_APP_TITLE;
     localStorage.clear();
     sessionStorage.clear();
     window.matchMedia = vi.fn().mockImplementation((query: string) => ({
@@ -59,8 +60,9 @@ describe('Page Titles & Consistent Brand Logo Home Navigation', () => {
 
   it('sanitizes control characters and formats route/room titles safely without exposing invite tokens', () => {
     expect(sanitizeTitleSegment('  Hello\n\r\tWorld  ')).toBe('Hello World');
-    expect(formatPageTitle('Home')).toBe('Home - Pulse');
-    expect(formatPageTitle('')).toBe('Pulse');
+    expect(formatPageTitle('Home')).toBe('Home | PulseChat');
+    expect(formatPageTitle('')).toBe('PulseChat');
+    expect(HOME_PAGE_TITLE).toBe('PulseChat — Real-Time Multi-Room Chat Without Signup');
     expect(getRoomDisplayLabel('global')).toBe('Global Chat');
     expect(getRoomDisplayLabel('me')).toBe('Private Room');
     expect(getRoomDisplayLabel('abc', 'Study Group')).toBe('Study Group');
@@ -79,7 +81,7 @@ describe('Page Titles & Consistent Brand Logo Home Navigation', () => {
         </ThemeProvider>
       </MemoryRouter>
     );
-    expect(document.title).toBe('Home - Pulse');
+    expect(document.title).toBe(HOME_PAGE_TITLE);
     rHome.unmount();
 
     const rRooms = render(
@@ -91,7 +93,7 @@ describe('Page Titles & Consistent Brand Logo Home Navigation', () => {
         </ThemeProvider>
       </MemoryRouter>
     );
-    expect(document.title).toBe('Explore Rooms - Pulse');
+    expect(document.title).toBe('Explore Live Chat Rooms Without Signup | PulseChat');
     rRooms.unmount();
 
     const rAuth = render(
@@ -103,7 +105,7 @@ describe('Page Titles & Consistent Brand Logo Home Navigation', () => {
         </ThemeProvider>
       </MemoryRouter>
     );
-    expect(document.title).toBe('Join Global Chat - Pulse');
+    expect(document.title).toBe('Join Global Chat | PulseChat');
     rAuth.unmount();
 
     const rMainAdmin = render(
@@ -115,7 +117,7 @@ describe('Page Titles & Consistent Brand Logo Home Navigation', () => {
         </ThemeProvider>
       </MemoryRouter>
     );
-    expect(document.title).toBe('Main Admin Login - Pulse');
+    expect(document.title).toBe('Main Admin Login | PulseChat');
     rMainAdmin.unmount();
 
     const rRoomAdmin = render(
@@ -127,7 +129,7 @@ describe('Page Titles & Consistent Brand Logo Home Navigation', () => {
         </ThemeProvider>
       </MemoryRouter>
     );
-    expect(document.title).toBe('Admin Login: Room room123 - Pulse');
+    expect(document.title).toBe('Admin Login: Room room123 | PulseChat');
     rRoomAdmin.unmount();
 
     const r404 = render(
@@ -137,7 +139,7 @@ describe('Page Titles & Consistent Brand Logo Home Navigation', () => {
         </ThemeProvider>
       </MemoryRouter>
     );
-    expect(document.title).toBe('404 Page Not Found - Pulse');
+    expect(document.title).toBe('404 Page Not Found | PulseChat');
     r404.unmount();
 
     const r403 = render(
@@ -147,7 +149,7 @@ describe('Page Titles & Consistent Brand Logo Home Navigation', () => {
         </ThemeProvider>
       </MemoryRouter>
     );
-    expect(document.title).toBe('403 Access Denied - Pulse');
+    expect(document.title).toBe('403 Access Denied | PulseChat');
     r403.unmount();
 
     const r500 = render(
@@ -157,7 +159,7 @@ describe('Page Titles & Consistent Brand Logo Home Navigation', () => {
         </ThemeProvider>
       </MemoryRouter>
     );
-    expect(document.title).toBe('500 Internal Server Error - Pulse');
+    expect(document.title).toBe('500 Internal Server Error | PulseChat');
     r500.unmount();
   });
 
@@ -273,5 +275,43 @@ describe('Page Titles & Consistent Brand Logo Home Navigation', () => {
     expect(buf.toString('ascii', 12, 16)).toBe('IHDR');
     expect(buf.readUInt32BE(16)).toBe(1200);
     expect(buf.readUInt32BE(20)).toBe(630);
+  });
+
+  it('produces valid PulseChat @graph JSON-LD, canonicals, and noindex controls without fabricated ratings', () => {
+    const home = getPublicSeoConfig('home');
+    const rooms = getPublicSeoConfig('rooms');
+    const about = getPublicSeoConfig('about');
+
+    expect(home.canonicalUrl).toBe('https://pulsechat.tech/');
+    expect(rooms.canonicalUrl).toBe('https://pulsechat.tech/room');
+    expect(about.canonicalUrl).toBe('https://pulsechat.tech/about-developer');
+    expect(home.robots).toBe(INDEX_ROBOTS);
+    expect(rooms.robots).toBe(INDEX_ROBOTS);
+    expect(about.robots).toBe(INDEX_ROBOTS);
+
+    for (const cfg of [home, rooms, about]) {
+      const serialized = JSON.stringify(cfg.jsonLd);
+      const parsed = JSON.parse(serialized);
+      expect(parsed['@context']).toBe('https://schema.org');
+      expect(Array.isArray(parsed['@graph'])).toBe(true);
+      expect(serialized).not.toContain('aggregateRating');
+      expect(serialized).not.toMatch(/Pulse\s+Chat/);
+    }
+
+    for (const privatePath of ['/admin', '/admin/global', '/me', '/room/global', '/join/tok123', '/error/404']) {
+      const priv = getSeoConfigForPathname(privatePath);
+      expect(priv.robots).toBe(NOINDEX_ROBOTS);
+      expect(priv.canonicalUrl).toBeUndefined();
+    }
+
+    const sitemap = fs.readFileSync(path.resolve(process.cwd(), 'public', 'sitemap.xml'), 'utf8');
+    expect(sitemap).toContain('<loc>https://pulsechat.tech/</loc>');
+    expect(sitemap).toContain('<loc>https://pulsechat.tech/room</loc>');
+    expect(sitemap).toContain('<loc>https://pulsechat.tech/about-developer</loc>');
+
+    const robotsTxt = fs.readFileSync(path.resolve(process.cwd(), 'public', 'robots.txt'), 'utf8');
+    expect(robotsTxt).toContain('Sitemap: https://pulsechat.tech/sitemap.xml');
+    expect(robotsTxt).toContain('Disallow: /admin');
+    expect(robotsTxt).toContain('Disallow: /me');
   });
 });

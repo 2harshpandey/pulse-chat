@@ -101,11 +101,11 @@ export const AuthCard: React.FC<AuthCardProps> = ({ controller, roomId = 'me' })
             e.preventDefault();
             navigate('/');
           }}
-          title="Go to Home"
+          title="Go to PulseChat Home"
           aria-label="Go to Pulse Home"
         >
-          <BrandLogo src="/pulse_logo.webp" alt="Pulse" />
-          <BrandWordmark><span>Pulse</span> Chat</BrandWordmark>
+          <BrandLogo src="/pulse_logo.webp" alt="PulseChat logo" width={90} height={90} />
+          <BrandWordmark><span>Pulse</span>Chat</BrandWordmark>
         </BrandHomeLink>
         {isTempLink && <BrandTagline>You're Invited!</BrandTagline>}
         <HeartbeatSvg viewBox="0 0 120 30" width="120" height="30">

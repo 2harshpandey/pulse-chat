@@ -20,9 +20,9 @@ export default defineConfig(({ mode }) => {
         injectRegister: 'script-defer',
         includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'pulse_logo.webp'],
         manifest: {
-          name: 'Pulse Chat',
-          short_name: 'Pulse',
-          description: 'A premium, real-time chat application for seamless communication.',
+          name: 'PulseChat',
+          short_name: 'PulseChat',
+          description: 'Real-time multi-room web chat with voice notes, mosaic media albums, and password-protected private rooms.',
           theme_color: '#0f172a',
           background_color: '#0f172a',
           display: 'standalone',

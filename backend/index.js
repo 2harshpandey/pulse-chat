@@ -223,7 +223,7 @@ app.get('/health/ready', (_req, res) => {
   }
   return res.status(200).json({ status: 'ready', db: 'connected' });
 });
-app.get('/', (_req, res) => res.send('Pulse Chat Server is running!'));
+app.get('/', (_req, res) => res.send('PulseChat Server is running!'));
 
 const sanitizeDiagnosticDetails = (details) => {
   if (!details || typeof details !== 'object' || Array.isArray(details)) return undefined;

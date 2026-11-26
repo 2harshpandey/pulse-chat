@@ -1,6 +1,7 @@
 {
-  "short_name": "Pulse",
-  "name": "Pulse Chat",
+  "short_name": "PulseChat",
+  "name": "PulseChat",
+  "description": "Real-time multi-room web chat with voice notes, mosaic media albums, and password-protected private rooms.",
   "icons": [
     {
       "src": "favicon.ico",
@@ -18,8 +19,8 @@
       "sizes": "512x512"
     }
   ],
-  "start_url": ".",
+  "start_url": "/",
   "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff"
+  "theme_color": "#0f172a",
+  "background_color": "#0f172a"
 }

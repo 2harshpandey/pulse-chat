@@ -65,11 +65,13 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
               onNavigateHome();
             }
           }}
-          title="Go to Home"
+          title="Go to PulseChat Home"
           aria-label="Go to Pulse Home"
         >
-          <img src="/pulse_logo.webp" alt="Pulse Chat" style={{ flexShrink: 0 }} />
-          <span style={{ flexShrink: 0 }}>Pulse</span> <span className="hide-on-narrow">Chat</span>
+          <img src="/pulse_logo.webp" alt="PulseChat logo" width={57} height={44} style={{ flexShrink: 0 }} />
+          <em style={{ fontStyle: 'normal', display: 'inline-flex', alignItems: 'center' }}>
+            <span style={{ flexShrink: 0 }}>Pulse</span><span className="hide-on-narrow">Chat</span>
+          </em>
         </a>
         {(!isConnected || !isBrowserOnline) && (
           <div

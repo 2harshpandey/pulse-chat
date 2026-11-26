@@ -207,7 +207,7 @@ export const OtherTabOverlay: React.FC<OtherTabOverlayProps> = ({ isOpen, onUseH
           <ActiveDot />
         </IconContainer>
 
-        <Title id="other-tab-title">Pulse Chat is open in another tab</Title>
+        <Title id="other-tab-title">PulseChat is open in another tab</Title>
         <Description>
           This chat session can only stay active in one tab or window at a time to keep your messages and live connection in sync.
         </Description>

@@ -16,7 +16,7 @@ export const developerData: DeveloperProfile = {
     "Self-Taught Developer",
     "Curious About Other Things"
   ],
-  bio: "I'm a student at the University of Delhi, studying English literature. Outside of coursework, I taught myself software development and built Pulse Chat, a real-time messaging app, mostly through trial and error and a lot of debugging.",
+  bio: "I'm a student at the University of Delhi, studying English literature. Outside of coursework, I taught myself software development and built PulseChat, a real-time messaging app, mostly through trial and error and a lot of debugging.",
   analyticalMindset: [
     "I like breaking a problem into smaller pieces before I start coding, rather than guessing at a fix",
     "I'm interested in psychology and how people behave online, which occasionally nudges a small UX decision",

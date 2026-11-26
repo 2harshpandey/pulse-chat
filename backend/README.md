@@ -1,6 +1,6 @@
-# Pulse Chat: Backend Service
+# PulseChat: Backend Service
 
-The real-time server application for **Pulse Chat**, engineered with Node.js, Express, native WebSockets (`ws`), MongoDB with Mongoose, Cloudinary media pipeline, and Winston logging.
+The real-time server application for **PulseChat**, engineered with Node.js, Express, native WebSockets (`ws`), MongoDB with Mongoose, Cloudinary media pipeline, and Winston logging.
 
 ---
 

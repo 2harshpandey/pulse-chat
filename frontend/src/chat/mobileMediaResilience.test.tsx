@@ -462,7 +462,7 @@ describe('Mobile Media Upload & Reconnect Resilience', () => {
     // Test OtherTabOverlay UI & Use Here callback
     const onUseHere = vi.fn();
     render(<OtherTabOverlay isOpen={true} onUseHere={onUseHere} />);
-    expect(screen.getByText('Pulse Chat is open in another tab')).toBeDefined();
+    expect(screen.getByText('PulseChat is open in another tab')).toBeDefined();
     fireEvent.click(screen.getByRole('button', { name: 'Use Here' }));
     expect(onUseHere).toHaveBeenCalledTimes(1);
   });

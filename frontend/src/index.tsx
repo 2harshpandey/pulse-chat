@@ -21,11 +21,16 @@ if (typeof window !== 'undefined') {
     const apiBase = resolveApiBaseUrl();
     if (apiBase && !apiBase.includes(window.location.host)) {
       const origin = new URL(apiBase).origin;
-      const preconnect = document.createElement('link');
-      preconnect.rel = 'preconnect';
-      preconnect.href = origin;
-      preconnect.crossOrigin = 'anonymous';
-      document.head.appendChild(preconnect);
+      const pathname = window.location.pathname;
+      const isStaticLanding = pathname === '/' || pathname === '/index.html' || pathname === '/about-developer';
+
+      if (!isStaticLanding) {
+        const preconnect = document.createElement('link');
+        preconnect.rel = 'preconnect';
+        preconnect.href = origin;
+        preconnect.crossOrigin = 'anonymous';
+        document.head.appendChild(preconnect);
+      }
 
       const dnsPrefetch = document.createElement('link');
       dnsPrefetch.rel = 'dns-prefetch';

@@ -8,6 +8,7 @@ import { extractRoomIdFromInput } from '../utils';
 const apiBase = resolveApiBaseUrl();
 
 const getSavedState = (): RoomsStateSnapshot | null => {
+  if (typeof window === 'undefined') return null;
   try {
     const saved = sessionStorage.getItem('pulse_rooms_state');
     if (saved) return JSON.parse(saved);
@@ -41,7 +42,14 @@ export const useRoomsController = () => {
 
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [joinRoomId, setJoinRoomId] = useState('');
-  const [joinUsername, setJoinUsername] = useState(() => localStorage.getItem('pulseUsername') || '');
+  const [joinUsername, setJoinUsername] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    try {
+      return localStorage.getItem('pulseUsername') || '';
+    } catch {
+      return '';
+    }
+  });
   const [joinPasswordInput, setJoinPasswordInput] = useState('');
   const [showJoinModalPw, setShowJoinModalPw] = useState(false);
   const [joinModalError, setJoinModalError] = useState('');

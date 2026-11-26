@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-We actively maintain and provide security patches for the following versions of **Pulse Chat**:
+We actively maintain and provide security patches for the following versions of **PulseChat**:
 
 | Version | Supported          | Security Status                                        |
 | ------- | ------------------ | ------------------------------------------------------ |
@@ -18,14 +18,14 @@ We actively maintain and provide security patches for the following versions of 
 
 ## Reporting a Vulnerability
 
-The Pulse Chat team takes security vulnerabilities seriously. We appreciate the efforts of security researchers and community members in helping make Pulse Chat safe and resilient for all users.
+The PulseChat team takes security vulnerabilities seriously. We appreciate the efforts of security researchers and community members in helping make PulseChat safe and resilient for all users.
 
 ### How to Report
 
 If you discover a security vulnerability or potential exploit, please **do not open a public GitHub issue**. Instead, report it through one of the following confidential channels:
 
 1. **GitHub Private Security Advisory (Preferred):**
-   - Navigate to the [Pulse Chat Security Advisories](https://github.com/2harshpandey/pulse-chat/security/advisories) page.
+   - Navigate to the [PulseChat Security Advisories](https://github.com/2harshpandey/pulse-chat/security/advisories) page.
    - Click **"Report a vulnerability"** to privately submit details to the maintainer.
 
 2. **Direct Contact:**
@@ -54,9 +54,9 @@ When a security report is received:
 
 ---
 
-## Security Safeguards in Pulse Chat
+## Security Safeguards in PulseChat
 
-Pulse Chat implements defense-in-depth measures across all tiers:
+PulseChat implements defense-in-depth measures across all tiers:
 
 - **Session Token Verification:** All incoming WebSocket messages and sensitive REST routes enforce strict session token authentication, preventing unauthorized impersonation or socket hijacking.
 - **WebSocket Abuse & DoS Protection:** Per-connection frame rate limiting (50 frames per second burst cap) and automated 25-second timeouts on unauthenticated socket connections.

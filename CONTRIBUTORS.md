@@ -1,6 +1,6 @@
 # Contributors
 
-Pulse Chat was created and is actively maintained by **Harsh Pandey**.
+PulseChat was created and is actively maintained by **Harsh Pandey**.
 
 ---
 
@@ -12,7 +12,7 @@ Pulse Chat was created and is actively maintained by **Harsh Pandey**.
 
 ## Community Contributors
 
-We deeply value everyone who contributes to Pulse Chat through code, bug reports, security disclosures, or design suggestions.
+We deeply value everyone who contributes to PulseChat through code, bug reports, security disclosures, or design suggestions.
 
 Want to see your name here? Check out our [Contributing Guide](CONTRIBUTING.md) to get started!
 

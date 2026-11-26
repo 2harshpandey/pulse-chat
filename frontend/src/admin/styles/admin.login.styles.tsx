@@ -93,7 +93,7 @@ export const AdminBrandWordmark = styled.h1`
   color: var(--text-heading);
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0;
   transition: color 0.2s ease;
 
   &:hover {
