@@ -33,6 +33,7 @@ lerna-debug.log*
 
 # Build output
 /frontend/build/
+*.tsbuildinfo
 *.zip
 
 # Misc
