@@ -112,17 +112,20 @@ async function runPrerender() {
     const { renderPublicRoute } = require(path.join(SSR_TMP_DIR, 'prerenderEntry.cjs'));
 
     const targets = [
-      { routeKey: 'home', outFile: 'index.html' },
-      { routeKey: 'rooms', outFile: 'room.html' },
-      { routeKey: 'about', outFile: 'about-developer.html' },
+      { routeKey: 'home', outFiles: ['index.html'] },
+      { routeKey: 'rooms', outFiles: ['room/index.html', 'room.html'] },
+      { routeKey: 'about', outFiles: ['about-developer/index.html', 'about-developer.html'] },
     ];
 
     for (const target of targets) {
       const rendered = renderPublicRoute(target.routeKey);
       const finalHtml = injectRoutePayload(templateHtml, rendered);
-      const destPath = path.join(BUILD_DIR, target.outFile);
-      fs.writeFileSync(destPath, finalHtml, 'utf8');
-      console.log(`[prerender] Wrote ${target.outFile} (${Buffer.byteLength(finalHtml, 'utf8')} bytes)`);
+      for (const outFile of target.outFiles) {
+        const destPath = path.join(BUILD_DIR, outFile);
+        fs.mkdirSync(path.dirname(destPath), { recursive: true });
+        fs.writeFileSync(destPath, finalHtml, 'utf8');
+        console.log(`[prerender] Wrote ${outFile} (${Buffer.byteLength(finalHtml, 'utf8')} bytes)`);
+      }
     }
   } finally {
     fs.rmSync(SSR_TMP_DIR, { recursive: true, force: true });

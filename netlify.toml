@@ -1,27 +1,5 @@
 # Netlify configuration
-# Serves prerendered HTML for public SEO routes and SPA fallback for dynamic routes.
-
-[[redirects]]
-  from   = "/room/"
-  to     = "/room"
-  status = 301
-  force  = true
-
-[[redirects]]
-  from   = "/about-developer/"
-  to     = "/about-developer"
-  status = 301
-  force  = true
-
-[[redirects]]
-  from   = "/room"
-  to     = "/room.html"
-  status = 200
-
-[[redirects]]
-  from   = "/about-developer"
-  to     = "/about-developer.html"
-  status = 200
+# Serves static files directly, with SPA fallback for dynamic routes.
 
 [[redirects]]
   from   = "/*"
