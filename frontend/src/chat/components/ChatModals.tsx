@@ -47,6 +47,10 @@ export const ChatModals: React.FC<ChatModalsProps> = ({
         previewActiveIndex={media.previewActiveIndex}
         onSelectActiveIndex={media.setPreviewActiveIndex}
         onRemoveFile={(idx: number) => {
+          if (media.removeStagedFileAt) {
+            media.removeStagedFileAt(idx);
+            return;
+          }
           const removed = media.stagedFiles[idx];
           if (removed) revokeBlobUrl(removed);
           const next = media.stagedFiles.filter((_, i) => i !== idx);
@@ -75,6 +79,10 @@ export const ChatModals: React.FC<ChatModalsProps> = ({
         }}
         captionInputRef={media.previewCaptionInputRef as any}
         onUpdateFile={(idx: number, newFile: File) => {
+          if (media.replaceStagedFileAt) {
+            media.replaceStagedFileAt(idx, newFile);
+            return;
+          }
           media.setStagedFiles((prev) => prev.map((f, i) => (i === idx ? newFile : f)));
         }}
       />

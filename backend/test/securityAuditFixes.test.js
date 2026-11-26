@@ -1058,4 +1058,139 @@ describe('Security Audit Regression Tests', () => {
       }
     });
   });
+
+  describe('Pre-upload ownership enforcement on /api/upload/commit and /api/upload/discard', () => {
+    it('prevents another user from committing or discarding an un-sent pre-upload and cleans up when owner discards', async () => {
+      const express = require('express');
+      const http = require('http');
+      const cloudinary = require('cloudinary').v2;
+      const createMediaRouter = require('../routes/media');
+      const { getRoomState, registerRoomSessionToken, revokeRoomSessionToken } = require('../state');
+
+      const mediaRouter = createMediaRouter(null, { broadcastToAdmins: () => {} });
+      const app = express();
+      app.use(express.json());
+      app.use('/', mediaRouter);
+
+      const stateMe = getRoomState('me');
+      const tokU1 = 'tok_u1_' + crypto.randomBytes(8).toString('hex');
+      const tokU2 = 'tok_u2_' + crypto.randomBytes(8).toString('hex');
+      registerRoomSessionToken('me', 'u1_owner', tokU1);
+      registerRoomSessionToken('me', 'u2_other', tokU2);
+      stateMe.onlineUsers.set('u1_owner', { userId: 'u1_owner', username: 'Owner' });
+      stateMe.onlineUsers.set('u2_other', { userId: 'u2_other', username: 'Other' });
+
+      const origDestroy = cloudinary.uploader.destroy;
+      const destroyedIds = [];
+      cloudinary.uploader.destroy = async (pid) => {
+        destroyedIds.push(pid);
+        return { result: 'ok' };
+      };
+
+      const server = http.createServer(app);
+      await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+      const baseUrl = `http://127.0.0.1:${server.address().port}`;
+
+      try {
+        const fakePublicId = 'pulse_uploads/pre_owned_asset_1';
+        mediaRouter._pendingPreUploads.set(fakePublicId, {
+          publicId: fakePublicId,
+          resourceType: 'image',
+          secureUrl: `https://res.cloudinary.com/demo/image/upload/${fakePublicId}.png`,
+          originalName: 'secret.png',
+          mimetype: 'image/png',
+          size: 4096,
+          roomId: 'me',
+          userId: 'u1_owner',
+          scopeHash: 'test_scope',
+          createdAt: Date.now(),
+        });
+
+        // 1. Different user cannot commit u1_owner's pending pre-upload
+        const badCommit = await fetch(`${baseUrl}/api/upload/commit`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-room-id': 'me',
+            'x-user-id': 'u2_other',
+            'x-session-token': tokU2,
+          },
+          body: JSON.stringify({ publicId: fakePublicId, roomId: 'me', userId: 'u2_other' }),
+        });
+        assert.strictEqual(badCommit.status, 403);
+        assert.strictEqual(mediaRouter._pendingPreUploads.has(fakePublicId), true);
+
+        // 2. Different user cannot discard u1_owner's pending pre-upload
+        const badDiscard = await fetch(`${baseUrl}/api/upload/discard`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-room-id': 'me',
+            'x-user-id': 'u2_other',
+            'x-session-token': tokU2,
+          },
+          body: JSON.stringify({ publicIds: [fakePublicId], roomId: 'me', userId: 'u2_other' }),
+        });
+        assert.strictEqual(badDiscard.status, 200);
+        assert.strictEqual(destroyedIds.length, 0);
+        assert.strictEqual(mediaRouter._pendingPreUploads.has(fakePublicId), true);
+
+        // 3. Owner CAN discard -> Cloudinary destroy is called and map entry is deleted
+        const ownerDiscard = await fetch(`${baseUrl}/api/upload/discard`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-room-id': 'me',
+            'x-user-id': 'u1_owner',
+            'x-session-token': tokU1,
+          },
+          body: JSON.stringify({ uploadIds: ['pre_abc'], publicIds: [fakePublicId], roomId: 'me', userId: 'u1_owner' }),
+        });
+        assert.strictEqual(ownerDiscard.status, 200);
+        assert.deepStrictEqual(destroyedIds, [fakePublicId]);
+        assert.strictEqual(mediaRouter._pendingPreUploads.has(fakePublicId), false);
+
+        // 4. Mid-flight race: owner sends ONLY uploadId without publicId -> reverse map still destroys Cloudinary asset
+        const racePublicId = 'pulse_uploads/pre_race_asset_2';
+        const scopeHash = crypto.createHash('sha256').update('me:u1_owner:127.0.0.1').digest('hex').slice(0, 16);
+        const raceDiscardKey = `${scopeHash}:pre_race_2`;
+        mediaRouter._pendingPreUploads.set(racePublicId, {
+          publicId: racePublicId,
+          resourceType: 'video',
+          secureUrl: `https://res.cloudinary.com/demo/video/upload/${racePublicId}.mp4`,
+          originalName: 'clip.mp4',
+          mimetype: 'video/mp4',
+          size: 8192,
+          roomId: 'me',
+          userId: 'u1_owner',
+          scopeHash,
+          discardKey: raceDiscardKey,
+          createdAt: Date.now(),
+        });
+        mediaRouter._preUploadIdToPublicId.set(raceDiscardKey, racePublicId);
+
+        const raceDiscard = await fetch(`${baseUrl}/api/upload/discard`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-room-id': 'me',
+            'x-user-id': 'u1_owner',
+            'x-session-token': tokU1,
+          },
+          body: JSON.stringify({ uploadIds: ['pre_race_2'], publicIds: [], roomId: 'me', userId: 'u1_owner' }),
+        });
+        assert.strictEqual(raceDiscard.status, 200);
+        assert.strictEqual(destroyedIds.includes(racePublicId), true);
+        assert.strictEqual(mediaRouter._pendingPreUploads.has(racePublicId), false);
+        assert.strictEqual(mediaRouter._preUploadIdToPublicId.has(raceDiscardKey), false);
+      } finally {
+        cloudinary.uploader.destroy = origDestroy;
+        revokeRoomSessionToken('me', 'u1_owner', tokU1);
+        revokeRoomSessionToken('me', 'u2_other', tokU2);
+        stateMe.onlineUsers.delete('u1_owner');
+        stateMe.onlineUsers.delete('u2_other');
+        await new Promise((resolve) => server.close(resolve));
+      }
+    });
+  });
 });

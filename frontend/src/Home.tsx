@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useHomeController } from './home/hooks';
 import { HOME_PAGE_TITLE, useDocumentTitle } from './pageTitle';
@@ -24,6 +24,10 @@ import {
   HighlightCard,
   FaqList,
   FaqItem,
+  FaqQuestionButton,
+  FaqChevron,
+  FaqAnswerCollapse,
+  FaqAnswerInner,
   HomeFooter,
 } from './home/HomeStyledComponents';
 import { AdminLoginModal, FeaturesSection } from './home/components';
@@ -47,6 +51,11 @@ const Home: React.FC = () => {
     adminPasswordInputRef,
     handleAdminSubmit
   } = useHomeController();
+
+  const [openFaqs, setOpenFaqs] = useState<Record<number, boolean>>({});
+  const toggleFaq = (index: number) => {
+    setOpenFaqs((prev) => ({ ...prev, [index]: !prev[index] }));
+  };
 
   const homeSeo = useMemo(() => getPublicSeoConfig('home'), []);
   useDocumentTitle(HOME_PAGE_TITLE);
@@ -193,12 +202,40 @@ const Home: React.FC = () => {
               <p>Quick answers about how PulseChat rooms, privacy, and media sharing work.</p>
             </SectionHeader>
             <FaqList>
-              {HOME_FAQS.map((faq) => (
-                <FaqItem key={faq.question}>
-                  <summary>{faq.question}</summary>
-                  <p>{faq.answer}</p>
-                </FaqItem>
-              ))}
+              {HOME_FAQS.map((faq, index) => {
+                const isOpen = Boolean(openFaqs[index]);
+                const buttonId = `faq-question-${index}`;
+                const panelId = `faq-answer-${index}`;
+                return (
+                  <FaqItem key={faq.question} $isOpen={isOpen}>
+                    <FaqQuestionButton
+                      id={buttonId}
+                      type="button"
+                      aria-expanded={isOpen}
+                      aria-controls={panelId}
+                      onClick={() => toggleFaq(index)}
+                    >
+                      <span>{faq.question}</span>
+                      <FaqChevron $isOpen={isOpen} aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="6 9 12 15 18 9" />
+                        </svg>
+                      </FaqChevron>
+                    </FaqQuestionButton>
+                    <FaqAnswerCollapse
+                      id={panelId}
+                      role="region"
+                      aria-labelledby={buttonId}
+                      aria-hidden={!isOpen}
+                      $isOpen={isOpen}
+                    >
+                      <FaqAnswerInner>
+                        <p>{faq.answer}</p>
+                      </FaqAnswerInner>
+                    </FaqAnswerCollapse>
+                  </FaqItem>
+                );
+              })}
             </FaqList>
           </InfoSection>
         </ContentWrapper>

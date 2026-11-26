@@ -108,39 +108,53 @@ class TransferManager {
   }
 
   // --- UPLOAD LOGIC ---
-  async startUpload(messageId: string, file: File, roomId: string, apiBase: string, userId: string, messageObj?: any): Promise<any> {
+  async startUpload(
+    messageId: string,
+    file: File,
+    roomId: string,
+    apiBase: string,
+    userId: string,
+    messageObj?: any,
+    options?: { isPreUpload?: boolean }
+  ): Promise<any> {
     if (!file || file.size <= 0) {
       const emptyErr = new Error('Cannot upload an empty (0-byte) file.');
       this.handleUploadError(messageId, emptyErr.message);
       throw emptyErr;
     }
 
-    // Save to IndexedDB (including roomId) to survive refresh without leaking across rooms
-    const persistedMetadata = { ...(messageObj || {}), roomId };
-    await setCachedMediaBlob(currentSessionId, messageId, 'upload', file, persistedMetadata);
+    const isPreUpload = Boolean(options?.isPreUpload);
+
+    // Save to IndexedDB only for committed sends (never pollute IndexedDB for un-sent preview staging)
+    if (!isPreUpload) {
+      const persistedMetadata = { ...(messageObj || {}), roomId };
+      await setCachedMediaBlob(currentSessionId, messageId, 'upload', file, persistedMetadata);
+    }
 
     let startProgress = 0;
     let uploadedBytes = 0;
 
-    // Check status
-    try {
-      const sessionToken = getSessionToken(roomId);
-      const statusHeaders: Record<string, string> = {};
-      if (sessionToken) statusHeaders['x-session-token'] = sessionToken;
-      if (roomId) statusHeaders['x-room-id'] = roomId;
-      if (userId) statusHeaders['x-user-id'] = userId;
+    // Check status for resumable uploads (skip extra round-trip for fresh background pre-uploads)
+    if (!isPreUpload) {
+      try {
+        const sessionToken = getSessionToken(roomId);
+        const statusHeaders: Record<string, string> = {};
+        if (sessionToken) statusHeaders['x-session-token'] = sessionToken;
+        if (roomId) statusHeaders['x-room-id'] = roomId;
+        if (userId) statusHeaders['x-user-id'] = userId;
 
-      const statusUrl = `${apiBase}/api/upload/status?uploadId=${encodeURIComponent(messageId)}&roomId=${encodeURIComponent(roomId)}&userId=${encodeURIComponent(userId)}`;
-      const statusRes = await fetch(statusUrl, {
-        headers: statusHeaders,
-      });
-      if (statusRes.ok) {
-        const statusData = await statusRes.json();
-        uploadedBytes = statusData.uploadedBytes || 0;
-        startProgress = (uploadedBytes / file.size) * 0.9;
+        const statusUrl = `${apiBase}/api/upload/status?uploadId=${encodeURIComponent(messageId)}&roomId=${encodeURIComponent(roomId)}&userId=${encodeURIComponent(userId)}`;
+        const statusRes = await fetch(statusUrl, {
+          headers: statusHeaders,
+        });
+        if (statusRes.ok) {
+          const statusData = await statusRes.json();
+          uploadedBytes = statusData.uploadedBytes || 0;
+          startProgress = (uploadedBytes / file.size) * 0.9;
+        }
+      } catch (e) {
+        // Ignore status check errors, will start from 0
       }
-    } catch (e) {
-      // Ignore status check errors, will start from 0
     }
 
     const abortController = new AbortController();
@@ -193,6 +207,9 @@ class TransferManager {
           formData.append('userId', userId);
           formData.append('roomId', roomId);
           formData.append('text', messageObj?.text || '');
+          if (isPreUpload) {
+            formData.append('isPreUpload', 'true');
+          }
           const sessionToken = getSessionToken(roomId);
           if (sessionToken) {
             formData.append('sessionToken', sessionToken);
@@ -301,6 +318,81 @@ class TransferManager {
         }
       }
     });
+  }
+
+  promotePreUpload(messageId: string, file: File, roomId: string, messageObj?: any) {
+    const info = this.transfers.get(messageId);
+    if (info) {
+      info.messageObj = messageObj;
+    }
+    const persistedMetadata = { ...(messageObj || {}), roomId };
+    void setCachedMediaBlob(currentSessionId, messageId, 'upload', file, persistedMetadata).catch(() => {});
+  }
+
+  async commitPreUpload(
+    publicId: string,
+    roomId: string,
+    apiBase: string,
+    userId: string,
+    payload: { text?: string; duration?: number; waveform?: number[] } = {}
+  ): Promise<any> {
+    const sessionToken = getSessionToken(roomId);
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (roomId) headers['x-room-id'] = roomId;
+    if (userId) headers['x-user-id'] = userId;
+    if (sessionToken) headers['x-session-token'] = sessionToken;
+
+    const response = await fetch(`${apiBase}/api/upload/commit`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        publicId,
+        roomId,
+        userId,
+        text: payload.text || '',
+        ...(payload.duration !== undefined ? { duration: payload.duration } : {}),
+        ...(payload.waveform !== undefined ? { waveform: payload.waveform } : {}),
+      }),
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      const err: any = new Error(data.error || `Commit failed (${response.status})`);
+      err.status = response.status;
+      throw err;
+    }
+    return response.json();
+  }
+
+  async discardPreUploads(
+    roomId: string,
+    apiBase: string,
+    userId: string,
+    uploadIds: string[],
+    publicIds: string[],
+    keepalive = false
+  ): Promise<void> {
+    if ((!uploadIds || uploadIds.length === 0) && (!publicIds || publicIds.length === 0)) return;
+    try {
+      const sessionToken = getSessionToken(roomId);
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (roomId) headers['x-room-id'] = roomId;
+      if (userId) headers['x-user-id'] = userId;
+      if (sessionToken) headers['x-session-token'] = sessionToken;
+
+      await fetch(`${apiBase}/api/upload/discard`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          uploadIds,
+          publicIds,
+          roomId,
+          userId,
+        }),
+        keepalive,
+      });
+    } catch (_) {
+      // Best effort cleanup; backend TTL reaper handles offline disconnects
+    }
   }
 
   pauseTransfer(id: string) {

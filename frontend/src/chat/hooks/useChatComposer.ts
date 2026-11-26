@@ -19,6 +19,7 @@ import {
 } from '../utils';
 import { classifyUploadFile } from '../../shared/mediaTypes';
 import { transferManager } from '../TransferManager';
+import type { PreUploadRecord } from './useChatMedia';
 import { useChatDrafts } from './useChatDrafts';
 import { useChatEmojiPicker } from './useChatEmojiPicker';
 import { useComposerShortcuts } from './useComposerShortcuts';
@@ -64,6 +65,7 @@ interface UseChatComposerProps {
   preMediaDraft: string;
   setPreMediaDraft: (draft: string) => void;
   stageFilesForPreview: (files: File[]) => Promise<void>;
+  consumePreUpload?: (file: File) => PreUploadRecord | undefined;
   handleRequestCloseFilePreview: () => void;
   stagedGif: Gif | null;
   setStagedGif: (g: Gif | null) => void;
@@ -138,6 +140,7 @@ export function useChatComposer({
   setPreviewActiveIndex,
   setPreMediaDraft,
   stageFilesForPreview,
+  consumePreUpload,
   handleRequestCloseFilePreview,
   stagedGif,
   setStagedGif,
@@ -394,6 +397,77 @@ export function useChatComposer({
     };
   }, [replyingTo, setReplyingTo]);
 
+  const reconcileAndBroadcastUpload = ({
+    tempId,
+    message,
+    uploadedFileData,
+    preserveDuration,
+    preserveText,
+    fixedType,
+    revokeLocalBlobDelayMs,
+  }: {
+    tempId: string;
+    message: Message;
+    uploadedFileData: any;
+    preserveDuration?: number;
+    preserveText?: { text: string | undefined };
+    fixedType?: Message['type'];
+    revokeLocalBlobDelayMs?: number;
+  }) => {
+    if (uploadedFileData.id && preserveDuration) {
+      setAudioDurationCache(uploadedFileData.id, preserveDuration);
+      if (uploadedFileData.url) setAudioDurationCache(uploadedFileData.url, preserveDuration);
+    }
+    const finalMessage: Message = {
+      ...message,
+      ...uploadedFileData,
+      originalName: chooseReadableFilename(uploadedFileData.originalName, message.originalName),
+      isUploading: false,
+      id: uploadedFileData.id,
+      clientTempId: tempId,
+      localBlobUrl: message.localBlobUrl,
+      ...(preserveDuration !== undefined ? { duration: preserveDuration } : {}),
+      ...(preserveText !== undefined ? { text: preserveText.text } : {}),
+      ...(fixedType ? { type: fixedType } : {}),
+      ...(message.waveform || uploadedFileData.waveform
+        ? { waveform: message.waveform || uploadedFileData.waveform }
+        : {}),
+    };
+    setMessages(prev => reconcileUploadedMessageInList(prev, tempId, finalMessage));
+    if (replyingTo?.id === tempId) setReplyingTo(finalMessage);
+    const { localBlobUrl: _omittedBlob, ...broadcastPayload } = finalMessage;
+    safeSend({ ...broadcastPayload, clientTempId: tempId, roomId });
+    if (revokeLocalBlobDelayMs && message.localBlobUrl) {
+      const blobToRevoke = message.localBlobUrl;
+      setTimeout(() => {
+        try {
+          URL.revokeObjectURL(blobToRevoke);
+          createdBlobUrlsRef.current.delete(blobToRevoke);
+        } catch (_) {}
+      }, revokeLocalBlobDelayMs);
+    }
+  };
+
+  const handleUploadFailure = (
+    tempId: string,
+    file: File,
+    message: Message,
+    logLabel: string,
+    error: any
+  ) => {
+    if (error?.message === 'Aborted') return;
+    console.error(logLabel, error);
+    const errorText = error instanceof Error && error.message ? error.message : (typeof error === 'string' ? error : 'Upload failed');
+    setMessages(prev => prev.map(m => m.id === tempId ? {
+      ...message,
+      url: '',
+      isUploading: false,
+      uploadError: true,
+      originalName: sanitizeFilename(message.originalName || file.name, 'file'),
+      text: errorText,
+    } : m));
+  };
+
   const dispatchOptimisticMediaUpload = ({
     tempId,
     file,
@@ -421,51 +495,18 @@ export function useChatComposer({
 
     transferManager.startUpload(tempId, file, roomId, resolveApiBaseUrl(), userId, message)
       .then(uploadedFileData => {
-        if (uploadedFileData.id && preserveDuration) {
-          setAudioDurationCache(uploadedFileData.id, preserveDuration);
-          if (uploadedFileData.url) setAudioDurationCache(uploadedFileData.url, preserveDuration);
-        }
-        const finalMessage: Message = {
-          ...message,
-          ...uploadedFileData,
-          originalName: chooseReadableFilename(uploadedFileData.originalName, message.originalName),
-          isUploading: false,
-          id: uploadedFileData.id,
-          clientTempId: tempId,
-          localBlobUrl: message.localBlobUrl,
-          ...(preserveDuration !== undefined ? { duration: preserveDuration } : {}),
-          ...(preserveText !== undefined ? { text: preserveText.text } : {}),
-          ...(fixedType ? { type: fixedType } : {}),
-          ...(message.waveform || uploadedFileData.waveform
-            ? { waveform: message.waveform || uploadedFileData.waveform }
-            : {}),
-        };
-        setMessages(prev => reconcileUploadedMessageInList(prev, tempId, finalMessage));
-        if (replyingTo?.id === tempId) setReplyingTo(finalMessage);
-        const { localBlobUrl: _omittedBlob, ...broadcastPayload } = finalMessage;
-        safeSend({ ...broadcastPayload, clientTempId: tempId, roomId });
-        if (revokeLocalBlobDelayMs && message.localBlobUrl) {
-          const blobToRevoke = message.localBlobUrl;
-          setTimeout(() => {
-            try {
-              URL.revokeObjectURL(blobToRevoke);
-              createdBlobUrlsRef.current.delete(blobToRevoke);
-            } catch (_) {}
-          }, revokeLocalBlobDelayMs);
-        }
+        reconcileAndBroadcastUpload({
+          tempId,
+          message,
+          uploadedFileData,
+          preserveDuration,
+          preserveText,
+          fixedType,
+          revokeLocalBlobDelayMs,
+        });
       })
       .catch(error => {
-        if (error.message === 'Aborted') return;
-        console.error(logLabel, error);
-        const errorText = error instanceof Error && error.message ? error.message : (typeof error === 'string' ? error : 'Upload failed');
-        setMessages(prev => prev.map(m => m.id === tempId ? {
-          ...message,
-          url: '',
-          isUploading: false,
-          uploadError: true,
-          originalName: sanitizeFilename(message.originalName || file.name, 'file'),
-          text: errorText,
-        } : m));
+        handleUploadFailure(tempId, file, message, logLabel, error);
       })
       .finally(() => {
         stopSendingActivity();
@@ -473,7 +514,9 @@ export function useChatComposer({
   };
 
   // Send from preview modal
+  const isSendingPreviewRef = useRef(false);
   const handleSendFromPreview = async () => {
+    if (isSendingPreviewRef.current) return;
     if (stagedFiles.length === 0) {
       console.warn('[Composer] handleSendFromPreview aborted: no staged files');
       return;
@@ -490,56 +533,115 @@ export function useChatComposer({
       return;
     }
 
-    if (hasMoreNewerMessagesRef.current) {
-      await jumpToLatestMessages();
-    }
-
-    const replyContext = buildReplyContext();
-    const caption = previewCaption.trim();
-    const batchActivity = getPresenceActivityForFiles(stagedFiles);
-
-    for (let i = 0; i < stagedFiles.length; i++) {
-      const file = stagedFiles[i];
-      const tempId = Date.now().toString() + '_' + i;
-      const fileType = classifyUploadFile(file);
-      const isAudio = fileType === 'audio';
-
-      const fileUrl = registerBlobUrl(URL.createObjectURL(file));
-      let audioDuration: number | undefined = undefined;
-      if (isAudio) {
-        audioDuration = (await resolveAudioDuration(fileUrl, tempId)) || undefined;
-        if (audioDuration) setAudioDurationCache(tempId, audioDuration);
+    isSendingPreviewRef.current = true;
+    try {
+      if (hasMoreNewerMessagesRef.current) {
+        await jumpToLatestMessages();
       }
 
-      const itemText = i === 0 ? caption : undefined;
-      const message: Message = {
-        id: tempId,
-        clientTempId: tempId,
-        localBlobUrl: fileUrl,
-        userId,
-        username: userProfile?.username || '',
-        type: fileType,
-        url: fileUrl,
-        originalName: file.name,
-        size: file.size,
-        duration: audioDuration,
-        text: itemText,
-        timestamp: new Date().toISOString(),
-        replyingTo: i === 0 ? replyContext : undefined,
-        isUploading: true,
-      };
-      dispatchOptimisticMediaUpload({
-        tempId,
-        file,
-        message,
-        activity: batchActivity,
-        preserveDuration: audioDuration,
-        preserveText: { text: itemText },
-        logLabel: 'File upload failed!',
-      });
-    }
+      const replyContext = buildReplyContext();
+      const caption = previewCaption.trim();
+      const batchActivity = getPresenceActivityForFiles(stagedFiles);
+      const apiBase = resolveApiBaseUrl();
 
-    resetInput();
+      for (let i = 0; i < stagedFiles.length; i++) {
+        const file = stagedFiles[i];
+        const pre = consumePreUpload?.(file);
+        const usePre = Boolean(pre && (pre.status === 'completed' || pre.status === 'uploading'));
+        const tempId = usePre && pre ? pre.uploadId : `${Date.now()}_${i}`;
+        const fileType = classifyUploadFile(file);
+        const isAudio = fileType === 'audio';
+
+        const fileUrl = registerBlobUrl(URL.createObjectURL(file));
+        let audioDuration: number | undefined = undefined;
+        if (isAudio) {
+          audioDuration = (await resolveAudioDuration(fileUrl, tempId)) || undefined;
+          if (audioDuration) setAudioDurationCache(tempId, audioDuration);
+        }
+
+        const itemText = i === 0 ? caption : undefined;
+        const message: Message = {
+          id: tempId,
+          clientTempId: tempId,
+          localBlobUrl: fileUrl,
+          userId,
+          username: userProfile?.username || '',
+          type: fileType,
+          url: fileUrl,
+          originalName: file.name,
+          size: file.size,
+          duration: audioDuration,
+          text: itemText,
+          timestamp: new Date().toISOString(),
+          replyingTo: i === 0 ? replyContext : undefined,
+          isUploading: true,
+        };
+
+        if (usePre && pre) {
+          appendMessageToWindow(message);
+          forceScrollToBottomAsync(true);
+          startSendingActivity(batchActivity);
+
+          const resolveUploadedData = async () => {
+            const uploadRes = pre.status === 'completed' && pre.result ? pre.result : await pre.promise;
+            if (!uploadRes?.isPreUpload) return uploadRes;
+            return transferManager.commitPreUpload(uploadRes.id, roomId, apiBase, userId, {
+              text: itemText,
+              duration: audioDuration,
+            });
+          };
+
+          if (pre.status === 'uploading') {
+            transferManager.promotePreUpload(tempId, file, roomId, message);
+          }
+
+          resolveUploadedData()
+            .then(uploadedFileData => {
+              reconcileAndBroadcastUpload({
+                tempId,
+                message,
+                uploadedFileData,
+                preserveDuration: audioDuration,
+                preserveText: { text: itemText },
+              });
+            })
+            .catch(error => {
+              if (error?.status === 404) {
+                // Pre-upload expired before Send; cleanly re-upload without failing user
+                return transferManager.startUpload(tempId, file, roomId, apiBase, userId, message)
+                  .then(uploadedFileData => {
+                    reconcileAndBroadcastUpload({
+                      tempId,
+                      message,
+                      uploadedFileData,
+                      preserveDuration: audioDuration,
+                      preserveText: { text: itemText },
+                    });
+                  })
+                  .catch(err => handleUploadFailure(tempId, file, message, 'File upload failed!', err));
+              }
+              handleUploadFailure(tempId, file, message, 'File upload failed!', error);
+            })
+            .finally(() => {
+              stopSendingActivity();
+            });
+        } else {
+          dispatchOptimisticMediaUpload({
+            tempId,
+            file,
+            message,
+            activity: batchActivity,
+            preserveDuration: audioDuration,
+            preserveText: { text: itemText },
+            logLabel: 'File upload failed!',
+          });
+        }
+      }
+
+      resetInput();
+    } finally {
+      isSendingPreviewRef.current = false;
+    }
   };
 
   // Send message

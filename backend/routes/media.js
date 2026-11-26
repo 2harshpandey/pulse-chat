@@ -268,6 +268,40 @@ module.exports = (wss, broadcasts) => {
   const { broadcastToAdmins } = broadcasts;
   const router = express.Router();
 
+  const pendingPreUploads = new Map(); // publicId -> { publicId, resourceType, secureUrl, originalName, mimetype, size, roomId, userId, scopeHash, discardKey, duration, waveform, createdAt }
+  const preUploadIdToPublicId = new Map(); // `${scopeHash}:${uploadId}` -> publicId
+  const discardedPreUploads = new Map(); // `${scopeHash}:${uploadId}` -> expiresAt
+  const PREUPLOAD_TTL_MS = 30 * 60 * 1000;
+  const DISCARD_TOMBSTONE_TTL_MS = 5 * 60 * 1000;
+  const MAX_PENDING_PREUPLOADS_PER_SCOPE = 30;
+
+  const destroyCloudinaryPreUpload = async (publicId, resourceType = 'image', context = 'pre-upload discard') => {
+    if (!publicId) return;
+    try {
+      await cloudinary.uploader.destroy(publicId, {
+        resource_type: resourceType,
+        invalidate: true,
+      });
+    } catch (err) {
+      logger.warn(`Failed to destroy Cloudinary asset during ${context}:`, { publicId, error: err?.message });
+    }
+  };
+
+  const prunePendingPreUploads = async () => {
+    const now = Date.now();
+    for (const [key, expiresAt] of discardedPreUploads.entries()) {
+      if (expiresAt <= now) discardedPreUploads.delete(key);
+    }
+    for (const [pid, entry] of pendingPreUploads.entries()) {
+      if (now - entry.createdAt > PREUPLOAD_TTL_MS) {
+        pendingPreUploads.delete(pid);
+        if (entry.discardKey) preUploadIdToPublicId.delete(entry.discardKey);
+        await destroyCloudinaryPreUpload(entry.publicId, entry.resourceType, 'expired pre-upload TTL');
+      }
+    }
+  };
+  setInterval(prunePendingPreUploads, 5 * 60 * 1000).unref();
+
   const requireRoomAccessBeforeUpload = async (req, res, next) => {
     try {
       const rawRoomId = req.headers['x-room-id'] || req.query?.roomId;
@@ -517,6 +551,14 @@ module.exports = (wss, broadcasts) => {
         const tmpPath = chunkPathInfo.tmpPath;
         scopeHash = chunkPathInfo.scopeHash;
         chunkClientIp = chunkPathInfo.clientIp;
+        const isPreUpload = req.body?.isPreUpload === 'true' || req.body?.isPreUpload === true;
+        const discardKey = `${scopeHash}:${safeUploadId}`;
+
+        if (isPreUpload && discardedPreUploads.has(discardKey)) {
+          try { await fs.promises.unlink(tmpPath); } catch (_) {}
+          trackUploadEnd(scopeHash, safeUploadId, chunkClientIp);
+          return res.status(410).json({ error: 'Pre-upload was discarded.' });
+        }
 
         // Verify sequential chunk order before reserving an upload tracking slot
         let currentFileSize = 0;
@@ -573,6 +615,68 @@ module.exports = (wss, broadcasts) => {
           }
 
           trackUploadEnd(scopeHash, safeUploadId, chunkClientIp);
+          const resourceType = getUploadResourceType(fileMime, safeName);
+
+          if (isPreUpload && discardedPreUploads.has(discardKey)) {
+            await destroyCloudinaryPreUpload(uploaded.public_id, resourceType, 'cancelled mid-flight pre-upload');
+            return res.status(410).json({ error: 'Pre-upload was discarded.' });
+          }
+
+          if (isPreUpload) {
+            const isAdminHeaderUpload = Boolean(typeof req.headers['x-admin-password'] === 'string' && req.headers['x-admin-password']);
+            const verifiedUserId = isAdminHeaderUpload ? 'admin' : userId;
+            const parsedDuration = req.body?.duration ? Number(req.body.duration) : undefined;
+            let parsedWaveform;
+            if (req.body?.waveform) {
+              try {
+                parsedWaveform = typeof req.body.waveform === 'string' ? JSON.parse(req.body.waveform) : req.body.waveform;
+              } catch {}
+            }
+
+            // Enforce per-session pending pre-upload cap to prevent unbounded orphan storage
+            const scopeEntries = [];
+            for (const entry of pendingPreUploads.values()) {
+              if (entry.scopeHash === scopeHash) scopeEntries.push(entry);
+            }
+            if (scopeEntries.length >= MAX_PENDING_PREUPLOADS_PER_SCOPE) {
+              scopeEntries.sort((a, b) => a.createdAt - b.createdAt);
+              const oldest = scopeEntries[0];
+              if (oldest) {
+                pendingPreUploads.delete(oldest.publicId);
+                if (oldest.discardKey) preUploadIdToPublicId.delete(oldest.discardKey);
+                destroyCloudinaryPreUpload(oldest.publicId, oldest.resourceType, 'pre-upload scope cap eviction');
+              }
+            }
+
+            pendingPreUploads.set(uploaded.public_id, {
+              publicId: uploaded.public_id,
+              resourceType,
+              secureUrl: uploaded.secure_url,
+              originalName: safeName,
+              mimetype: fileMime,
+              size: fileSize,
+              roomId,
+              userId: verifiedUserId,
+              scopeHash,
+              discardKey,
+              duration: parsedDuration,
+              waveform: parsedWaveform,
+              createdAt: Date.now(),
+            });
+            preUploadIdToPublicId.set(discardKey, uploaded.public_id);
+
+            return res.status(200).json({
+              id: uploaded.public_id,
+              type: getMessageFileType(fileMime, safeName),
+              url: uploaded.secure_url,
+              originalName: safeName,
+              size: fileSize,
+              isPreUpload: true,
+              duration: parsedDuration,
+              waveform: parsedWaveform,
+            });
+          }
+
           return await finalizeUploadedMedia({
             req,
             res,
@@ -597,6 +701,121 @@ module.exports = (wss, broadcasts) => {
         return sendUploadErrorResponse(res, err, 'Chunk upload failed.');
       }
     });
+  });
+
+  // --- Commit a completed background pre-upload once user clicks Send ---
+  router.post('/api/upload/commit', apiLimiter, requireRoomAccessBeforeUpload, async (req, res) => {
+    try {
+      const context = await resolveUploadContext(req, res, req.body);
+      if (!context) return;
+
+      const publicId = typeof req.body?.publicId === 'string' ? req.body.publicId.trim() : '';
+      if (!publicId) {
+        return res.status(400).json({ error: 'Missing publicId' });
+      }
+
+      const entry = pendingPreUploads.get(publicId);
+      if (!entry) {
+        return res.status(404).json({ error: 'Pending pre-upload not found or already expired.' });
+      }
+
+      const isAdminHeaderUpload = Boolean(typeof req.headers['x-admin-password'] === 'string' && req.headers['x-admin-password']);
+      const verifiedUserId = isAdminHeaderUpload ? 'admin' : context.userId;
+      if (entry.roomId !== context.canonicalRoomId || entry.userId !== verifiedUserId) {
+        return res.status(403).json({ error: 'Forbidden: pre-upload ownership mismatch.' });
+      }
+
+      pendingPreUploads.delete(publicId);
+      if (entry.discardKey) preUploadIdToPublicId.delete(entry.discardKey);
+
+      if (req.body.duration === undefined && entry.duration !== undefined) {
+        req.body.duration = entry.duration;
+      }
+      if (req.body.waveform === undefined && entry.waveform !== undefined) {
+        req.body.waveform = entry.waveform;
+      }
+
+      return await finalizeUploadedMedia({
+        req,
+        res,
+        canonicalRoomId: context.canonicalRoomId,
+        userId: context.userId,
+        originalName: entry.originalName,
+        mimetype: entry.mimetype,
+        size: entry.size,
+        uploaded: {
+          public_id: entry.publicId,
+          secure_url: entry.secureUrl,
+        },
+        eventErrorLabel: 'Failed to save committed pre-upload event:',
+        logSuffix: ' (pre-uploaded)',
+      });
+    } catch (err) {
+      logger.error('Pre-upload commit error:', { message: err.message });
+      return res.status(500).json({ error: 'Failed to commit pre-upload.' });
+    }
+  });
+
+  // --- Discard cancelled or aborted background pre-uploads ---
+  router.post('/api/upload/discard', apiLimiter, requireRoomAccessBeforeUpload, async (req, res) => {
+    try {
+      const context = await resolveUploadContext(req, res, req.body);
+      if (!context) return;
+
+      const isAdminHeaderUpload = Boolean(typeof req.headers['x-admin-password'] === 'string' && req.headers['x-admin-password']);
+      const verifiedUserId = isAdminHeaderUpload ? 'admin' : context.userId;
+
+      const rawUploadIds = [
+        ...(typeof req.body?.uploadId === 'string' ? [req.body.uploadId] : []),
+        ...(Array.isArray(req.body?.uploadIds) ? req.body.uploadIds : []),
+      ].slice(0, 50);
+
+      const linkedPublicIds = [];
+      for (const rawUploadId of rawUploadIds) {
+        if (typeof rawUploadId !== 'string' || !rawUploadId) continue;
+        const safeUploadId = path.basename(rawUploadId).replace(/[^a-zA-Z0-9_-]/g, '');
+        if (!safeUploadId || safeUploadId !== rawUploadId) continue;
+
+        const chunkPathInfo = getChunkUploadTempPath(safeUploadId, context.canonicalRoomId, req);
+        const discardKey = `${chunkPathInfo.scopeHash}:${safeUploadId}`;
+        discardedPreUploads.set(
+          discardKey,
+          Date.now() + DISCARD_TOMBSTONE_TTL_MS
+        );
+        const mappedPid = preUploadIdToPublicId.get(discardKey);
+        if (mappedPid) {
+          preUploadIdToPublicId.delete(discardKey);
+          linkedPublicIds.push(mappedPid);
+        }
+        try {
+          await fs.promises.unlink(chunkPathInfo.tmpPath);
+        } catch (_) {}
+        trackUploadEnd(chunkPathInfo.scopeHash, safeUploadId, chunkPathInfo.clientIp);
+      }
+
+      const rawPublicIds = [
+        ...(typeof req.body?.publicId === 'string' ? [req.body.publicId] : []),
+        ...(Array.isArray(req.body?.publicIds) ? req.body.publicIds : []),
+        ...linkedPublicIds,
+      ].slice(0, 100);
+
+      for (const pid of rawPublicIds) {
+        if (typeof pid !== 'string' || !pid) continue;
+        const entry = pendingPreUploads.get(pid);
+        if (!entry) continue;
+        if (entry.roomId !== context.canonicalRoomId || entry.userId !== verifiedUserId) {
+          continue;
+        }
+        pendingPreUploads.delete(pid);
+        if (entry.discardKey) preUploadIdToPublicId.delete(entry.discardKey);
+        await destroyCloudinaryPreUpload(entry.publicId, entry.resourceType, 'preview discard');
+      }
+
+      return res.status(200).json({ ok: true });
+    } catch (err) {
+      logger.error('Pre-upload discard error:', { message: err.message });
+      return res.status(500).json({ error: 'Failed to discard pre-upload.' });
+    }
   });
 
   // --- Room Media Gallery ---
@@ -723,5 +942,8 @@ module.exports = (wss, broadcasts) => {
     }
   });
 
+  router._pendingPreUploads = pendingPreUploads;
+  router._preUploadIdToPublicId = preUploadIdToPublicId;
+  router._discardedPreUploads = discardedPreUploads;
   return router;
 };

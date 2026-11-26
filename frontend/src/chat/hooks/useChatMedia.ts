@@ -18,6 +18,14 @@ import { transferManager } from '../TransferManager';
 import { useChatLightbox } from './useChatLightbox';
 import { useChatGifPicker } from './useChatGifPicker';
 
+export interface PreUploadRecord {
+  file: File;
+  uploadId: string;
+  status: 'uploading' | 'completed' | 'aborted' | 'error';
+  result?: any;
+  promise: Promise<any>;
+}
+
 export const compressImage = (file: File): Promise<File> => {
   return new Promise((resolve) => {
     if (
@@ -148,6 +156,7 @@ export function useChatMedia({
     messageInputRef,
     isDesktopInteraction,
     onGifSelectCallback: () => {
+      discardAllPreUploads();
       setStagedFile(null);
       setStagedFiles([]);
       setShowFilePreview(false);
@@ -173,13 +182,111 @@ export function useChatMedia({
   const isMountedRef = useRef(true);
   const activeScopeRef = useRef(`${userId}:${roomId}`);
   activeScopeRef.current = `${userId}:${roomId}`;
+  const preUploadByFileRef = useRef<WeakMap<File, PreUploadRecord>>(new WeakMap());
+  const activePreUploadsRef = useRef<Set<PreUploadRecord>>(new Set());
+
+  const startPreUploadForFile = useCallback(
+    (file: File) => {
+      if (!file || file.size <= 0 || !roomId || !userId || !apiBase || typeof fetch !== 'function') return;
+      if (preUploadByFileRef.current.has(file)) return;
+
+      const uploadId = `pre_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const record: PreUploadRecord = {
+        file,
+        uploadId,
+        status: 'uploading',
+        promise: Promise.resolve(null),
+      };
+
+      preUploadByFileRef.current.set(file, record);
+      activePreUploadsRef.current.add(record);
+
+      const uploadPromise = transferManager
+        .startUpload(uploadId, file, roomId, apiBase, userId, undefined, { isPreUpload: true })
+        .then((res) => {
+          if (record.status === 'aborted') {
+            if (res?.id) {
+              void transferManager.discardPreUploads(roomId, apiBase, userId, [uploadId], [res.id], true);
+            }
+            return res;
+          }
+          record.status = 'completed';
+          record.result = res;
+          return res;
+        })
+        .catch((err) => {
+          if (record.status !== 'aborted') {
+            record.status = 'error';
+          }
+          throw err;
+        });
+
+      // Prevent unhandled rejection warnings when pre-upload is cancelled or fails while preview is open
+      uploadPromise.catch(() => {});
+      record.promise = uploadPromise;
+    },
+    [apiBase, roomId, userId]
+  );
+
+  const discardPreUploadForFile = useCallback(
+    (file: File, keepalive = false) => {
+      const record = preUploadByFileRef.current.get(file);
+      if (!record) return;
+      record.status = 'aborted';
+      preUploadByFileRef.current.delete(file);
+      activePreUploadsRef.current.delete(record);
+      transferManager.cancelTransfer(record.uploadId);
+      const publicIds = record.result?.id ? [record.result.id] : [];
+      if (roomId && userId && apiBase) {
+        void transferManager.discardPreUploads(roomId, apiBase, userId, [record.uploadId], publicIds, keepalive);
+      }
+    },
+    [apiBase, roomId, userId]
+  );
+
+  const discardAllPreUploads = useCallback(
+    (keepalive = false) => {
+      if (activePreUploadsRef.current.size === 0) return;
+      const uploadIds: string[] = [];
+      const publicIds: string[] = [];
+      for (const record of activePreUploadsRef.current) {
+        record.status = 'aborted';
+        preUploadByFileRef.current.delete(record.file);
+        transferManager.cancelTransfer(record.uploadId);
+        uploadIds.push(record.uploadId);
+        if (record.result?.id) publicIds.push(record.result.id);
+      }
+      activePreUploadsRef.current.clear();
+      if (roomId && userId && apiBase && (uploadIds.length > 0 || publicIds.length > 0)) {
+        void transferManager.discardPreUploads(roomId, apiBase, userId, uploadIds, publicIds, keepalive);
+      }
+    },
+    [apiBase, roomId, userId]
+  );
+
+  const consumePreUpload = useCallback((file: File): PreUploadRecord | undefined => {
+    const record = preUploadByFileRef.current.get(file);
+    if (!record) return undefined;
+    preUploadByFileRef.current.delete(file);
+    activePreUploadsRef.current.delete(record);
+    return record;
+  }, []);
+
+  const discardAllPreUploadsRef = useRef(discardAllPreUploads);
+  discardAllPreUploadsRef.current = discardAllPreUploads;
 
   useEffect(() => {
     isMountedRef.current = true;
+    const handlePageHide = () => {
+      discardAllPreUploadsRef.current(true);
+    };
+    window.addEventListener('pagehide', handlePageHide);
     return () => {
       isMountedRef.current = false;
+      window.removeEventListener('pagehide', handlePageHide);
+      discardAllPreUploadsRef.current(true);
     };
-  }, []);
+  }, [roomId, userId]);
 
   // Native file picker tracking
   const notifyNativeFilePickerOpen = useCallback(() => {
@@ -225,6 +332,8 @@ export function useChatMedia({
       if (nonEmptyFiles.length === 0) return;
 
       const compressedFiles = await Promise.all(nonEmptyFiles.map(compressImage));
+      compressedFiles.forEach(startPreUploadForFile);
+
       if (showFilePreview && stagedFiles.length > 0) {
         setStagedFiles((prev) => [...prev, ...compressedFiles]);
         gifPicker.setStagedGif(null);
@@ -245,11 +354,12 @@ export function useChatMedia({
       setShowFilePreview(true);
       gifPicker.setStagedGif(null);
     },
-    [inputMessage, resetInputLayerHeight, setInputMessage, userId, roomId, gifPicker, showFilePreview, stagedFiles.length]
+    [inputMessage, resetInputLayerHeight, setInputMessage, userId, roomId, gifPicker, showFilePreview, stagedFiles.length, startPreUploadForFile]
   );
 
   const closeFilePreviewAndRestoreDraft = useCallback(() => {
     setShowFilePreview(false);
+    discardAllPreUploads();
     stagedFiles.forEach(revokeBlobUrl);
     setStagedFiles([]);
     setStagedFile(null);
@@ -263,7 +373,42 @@ export function useChatMedia({
     }
     setPreviewCaption('');
     setPresenceActivity(null);
-  }, [preMediaDraft, setInputMessage, userId, roomId, setPresenceActivity, stagedFiles]);
+  }, [preMediaDraft, setInputMessage, userId, roomId, setPresenceActivity, stagedFiles, discardAllPreUploads]);
+
+  const removeStagedFileAt = useCallback(
+    (idx: number) => {
+      const removed = stagedFiles[idx];
+      if (removed) {
+        discardPreUploadForFile(removed);
+        revokeBlobUrl(removed);
+      }
+      const next = stagedFiles.filter((_, i) => i !== idx);
+      if (next.length === 0) {
+        closeFilePreviewAndRestoreDraft();
+      } else {
+        setStagedFiles(next);
+        if (previewActiveIndex >= next.length) {
+          setPreviewActiveIndex(next.length - 1);
+        }
+      }
+    },
+    [stagedFiles, discardPreUploadForFile, closeFilePreviewAndRestoreDraft, previewActiveIndex]
+  );
+
+  const replaceStagedFileAt = useCallback(
+    (idx: number, newFile: File) => {
+      const oldFile = stagedFiles[idx];
+      if (oldFile) {
+        discardPreUploadForFile(oldFile);
+        revokeBlobUrl(oldFile);
+      }
+      setStagedFiles((prev) => prev.map((f, i) => (i === idx ? newFile : f)));
+      if (newFile && newFile.size > 0) {
+        startPreUploadForFile(newFile);
+      }
+    },
+    [stagedFiles, discardPreUploadForFile, startPreUploadForFile]
+  );
 
   const handleRequestCloseFilePreview = useCallback(() => {
     if (stagedFiles.length > 0 || previewCaption) {
@@ -741,6 +886,9 @@ export function useChatMedia({
     notifyNativeFilePickerOpen,
     markNativeFilePickerClosed,
     stageFilesForPreview,
+    removeStagedFileAt,
+    replaceStagedFileAt,
+    consumePreUpload,
     closeFilePreviewAndRestoreDraft,
     handleRequestCloseFilePreview,
     handleRequestMediaLoad,

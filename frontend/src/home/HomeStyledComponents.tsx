@@ -48,6 +48,7 @@ export const HeroContainer = styled.div`
   flex-direction: column;
   position: relative;
   overflow-x: clip;
+  overflow-anchor: none;
   background: var(--bg-primary);
   transition: background-color 0.3s ease;
 `;
@@ -190,7 +191,7 @@ export const ContentWrapper = styled.main`
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   padding: 3rem 1.5rem 5rem;
   z-index: 10;
   text-align: center;
@@ -698,31 +699,87 @@ export const FaqList = styled.div`
   gap: 0.75rem;
   max-width: 820px;
   margin: 0 auto;
+  overflow-anchor: none;
 `;
 
-export const FaqItem = styled.details`
+export const FaqItem = styled.article<{ $isOpen?: boolean }>`
   background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
+  border: 1px solid ${p => (p.$isOpen ? 'rgba(59, 130, 246, 0.45)' : 'var(--border-primary)')};
   border-radius: 16px;
-  padding: 1rem 1.25rem;
-  box-shadow: var(--shadow-card);
-  transition: border-color 0.2s ease;
+  box-shadow: ${p => (p.$isOpen ? '0 10px 28px rgba(59, 130, 246, 0.12)' : 'var(--shadow-card)')};
+  overflow: hidden;
+  transition: border-color 0.22s ease, box-shadow 0.22s ease;
 
-  &[open] {
-    border-color: rgba(59, 130, 246, 0.45);
+  &:hover {
+    border-color: ${p => (p.$isOpen ? 'rgba(59, 130, 246, 0.55)' : 'var(--border-secondary)')};
+  }
+`;
+
+export const FaqQuestionButton = styled.button`
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.1rem 1.35rem;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 0.98rem;
+  color: var(--text-heading);
+  line-height: 1.45;
+  -webkit-tap-highlight-color: transparent;
+
+  &:focus-visible {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: -2px;
+    border-radius: 15px;
+  }
+`;
+
+export const FaqChevron = styled.span<{ $isOpen?: boolean }>`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: ${p => (p.$isOpen ? 'rgba(59, 130, 246, 0.16)' : 'rgba(148, 163, 184, 0.1)')};
+  color: ${p => (p.$isOpen ? 'var(--accent-blue)' : 'var(--text-secondary)')};
+  transform: rotate(${p => (p.$isOpen ? '180deg' : '0deg')});
+  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1), background-color 0.2s ease, color 0.2s ease;
+
+  svg {
+    width: 16px;
+    height: 16px;
   }
 
-  summary {
-    cursor: pointer;
-    font-weight: 700;
-    font-size: 0.98rem;
-    color: var(--text-heading);
-    list-style-position: outside;
-    line-height: 1.45;
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
   }
+`;
+
+export const FaqAnswerCollapse = styled.div<{ $isOpen?: boolean }>`
+  display: grid;
+  grid-template-rows: ${p => (p.$isOpen ? '1fr' : '0fr')};
+  opacity: ${p => (p.$isOpen ? 1 : 0)};
+  transition: grid-template-rows 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease;
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: none;
+  }
+`;
+
+export const FaqAnswerInner = styled.div`
+  overflow: hidden;
 
   p {
-    margin: 0.75rem 0 0;
+    margin: 0;
+    padding: 0 1.35rem 1.2rem;
     color: var(--text-secondary);
     font-size: 0.925rem;
     line-height: 1.65;
@@ -742,6 +799,7 @@ export const HomeFooter = styled.footer`
   gap: 1rem;
   position: relative;
   z-index: 10;
+  overflow-anchor: none;
   color: var(--text-secondary);
   font-size: 0.9rem;
   box-sizing: border-box;

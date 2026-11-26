@@ -316,4 +316,88 @@ describe('Audit Fixes & Consolidations Regression Suite', () => {
     expect(currentReplyingTo).toBeNull();
     expect(currentSearchResults?.[0].url).toBeUndefined();
   });
+
+  it('pre-uploads staged media with isPreUpload=true and commits or discards cleanly via TransferManager', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith('/api/upload/chunk')) {
+        const body = init?.body as FormData;
+        expect(body.get('isPreUpload')).toBe('true');
+        return new Response(
+          JSON.stringify({
+            id: 'pulse/pre-test-id',
+            type: 'image',
+            url: 'https://res.cloudinary.com/demo/image/upload/pulse/pre-test-id.png',
+            originalName: 'photo.png',
+            size: 1024,
+            isPreUpload: true,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      if (url.endsWith('/api/upload/commit')) {
+        const parsed = JSON.parse(String(init?.body || '{}'));
+        expect(parsed.publicId).toBe('pulse/pre-test-id');
+        expect(parsed.text).toBe('Hello caption');
+        return new Response(
+          JSON.stringify({
+            id: 'pulse/pre-test-id',
+            type: 'image',
+            url: 'https://res.cloudinary.com/demo/image/upload/pulse/pre-test-id.png',
+            originalName: 'photo.png',
+            size: 1024,
+            text: 'Hello caption',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      if (url.endsWith('/api/upload/discard')) {
+        const parsed = JSON.parse(String(init?.body || '{}'));
+        expect(parsed.uploadIds).toEqual(['pre_123']);
+        expect(parsed.publicIds).toEqual(['pulse/pre-test-id']);
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+      throw new Error(`Unexpected fetch URL: ${url}`);
+    });
+
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = fetchMock as any;
+
+    try {
+      const file = new File([new Uint8Array(1024)], 'photo.png', { type: 'image/png' });
+      const preRes = await transferManager.startUpload(
+        'pre_123',
+        file,
+        'me',
+        'http://localhost:8080',
+        'user-1',
+        undefined,
+        { isPreUpload: true }
+      );
+      expect(preRes.isPreUpload).toBe(true);
+      expect(preRes.id).toBe('pulse/pre-test-id');
+      // Pre-upload must skip /api/upload/status check and only POST chunk
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      const committed = await transferManager.commitPreUpload(
+        preRes.id,
+        'me',
+        'http://localhost:8080',
+        'user-1',
+        { text: 'Hello caption' }
+      );
+      expect(committed.text).toBe('Hello caption');
+
+      await transferManager.discardPreUploads(
+        'me',
+        'http://localhost:8080',
+        'user-1',
+        ['pre_123'],
+        ['pulse/pre-test-id']
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    } finally {
+      globalThis.fetch = origFetch;
+    }
+  });
 });

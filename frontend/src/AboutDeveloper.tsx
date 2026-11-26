@@ -284,11 +284,47 @@ const FullWidthPanel = styled(Panel)`
 `;
 
 const Footer = styled.footer`
+  margin-top: 2.5rem;
+  padding: 1.75rem 0 1rem;
+  border-top: 1px solid var(--border-primary);
   display: flex;
-  justify-content: center;
-  padding: 2rem 0 1rem;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
   color: var(--text-muted);
   font-size: 0.9rem;
+
+  p {
+    margin: 0;
+  }
+
+  nav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 1.25rem;
+  }
+
+  a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-weight: 600;
+    transition: color 0.2s ease;
+
+    &:hover {
+      color: var(--accent-blue);
+    }
+  }
+
+  @media (max-width: 640px) {
+    flex-direction: column;
+    text-align: center;
+
+    nav {
+      justify-content: center;
+    }
+  }
 `;
 
 const AboutDeveloper: React.FC = () => {
@@ -374,10 +410,10 @@ const AboutDeveloper: React.FC = () => {
 
         <Footer>
           <p>I built and maintain PulseChat.</p>
-          <nav aria-label="Related pages" style={{ display: 'flex', justifyContent: 'center', gap: '1.25rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
-            <Link to="/" style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontWeight: 600 }}>PulseChat Home</Link>
-            <Link to="/room" style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontWeight: 600 }}>Explore Public Rooms</Link>
-            <Link to="/room/global" style={{ color: 'var(--text-secondary)', textDecoration: 'none', fontWeight: 600 }}>Global Chat</Link>
+          <nav aria-label="Related pages">
+            <Link to="/">PulseChat Home</Link>
+            <Link to="/room">Explore Public Rooms</Link>
+            <Link to="/room/global">Global Chat</Link>
           </nav>
         </Footer>
       </Content>

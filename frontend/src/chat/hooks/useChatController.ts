@@ -375,6 +375,7 @@ export function useChatController({ isMe, isTempLink }: UseChatControllerProps =
     preMediaDraft: media.preMediaDraft,
     setPreMediaDraft: media.setPreMediaDraft,
     stageFilesForPreview: media.stageFilesForPreview,
+    consumePreUpload: media.consumePreUpload,
     handleRequestCloseFilePreview: media.handleRequestCloseFilePreview,
     stagedGif: media.stagedGif,
     setStagedGif: media.setStagedGif,

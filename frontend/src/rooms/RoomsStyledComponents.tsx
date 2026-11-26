@@ -569,7 +569,6 @@ export const RoomsGuideSection = styled.section`
     font-size: 0.95rem;
     line-height: 1.6;
     margin: 0 0 1.5rem;
-    max-width: 720px;
   }
 `;
 

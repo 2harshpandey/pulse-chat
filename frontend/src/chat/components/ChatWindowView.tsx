@@ -1,6 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import type { ChatController } from '../hooks/useChatController';
-import { compressImage } from '../hooks/useChatMedia';
 import { PinnedMessageBanner } from './PinnedMessageBanner';
 import { ChatFooter } from './ChatFooter';
 import { MessagesList } from './MessagesList';
@@ -430,11 +429,10 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
           }
           if (event.target) event.target.value = '';
         }}
-        onAddFilesChange={async (e) => {
+        onAddFilesChange={(e) => {
           media.markNativeFilePickerClosed();
-          if (e.target.files) {
-            const newFiles = await Promise.all(Array.from(e.target.files).map(compressImage));
-            media.setStagedFiles((prev) => [...prev, ...newFiles]);
+          if (e.target.files && e.target.files.length > 0) {
+            void media.stageFilesForPreview(Array.from(e.target.files));
           }
           if (e.target) e.target.value = '';
         }}
