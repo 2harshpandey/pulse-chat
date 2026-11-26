@@ -62,7 +62,7 @@ describe('Page Titles & Consistent Brand Logo Home Navigation', () => {
     expect(sanitizeTitleSegment('  Hello\n\r\tWorld  ')).toBe('Hello World');
     expect(formatPageTitle('Home')).toBe('Home | PulseChat');
     expect(formatPageTitle('')).toBe('PulseChat');
-    expect(HOME_PAGE_TITLE).toBe('PulseChat — Real-Time Multi-Room Chat Without Signup');
+    expect(HOME_PAGE_TITLE).toBe('PulseChat | Real-Time Multi-Room Chat Without Signup');
     expect(getRoomDisplayLabel('global')).toBe('Global Chat');
     expect(getRoomDisplayLabel('me')).toBe('Private Room');
     expect(getRoomDisplayLabel('abc', 'Study Group')).toBe('Study Group');
@@ -296,6 +296,10 @@ describe('Page Titles & Consistent Brand Logo Home Navigation', () => {
       expect(Array.isArray(parsed['@graph'])).toBe(true);
       expect(serialized).not.toContain('aggregateRating');
       expect(serialized).not.toMatch(/Pulse\s+Chat/);
+      expect(cfg.title).not.toContain('\u2014');
+      expect(cfg.description).not.toContain('\u2014');
+      expect(cfg.ogImageAlt).not.toContain('\u2014');
+      expect(serialized).not.toContain('\u2014');
     }
 
     for (const privatePath of ['/admin', '/admin/global', '/me', '/room/global', '/join/tok123', '/error/404']) {

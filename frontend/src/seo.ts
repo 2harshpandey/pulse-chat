@@ -147,7 +147,7 @@ export function getPublicSeoConfig(routeKey: 'home' | 'rooms' | 'about'): RouteS
   if (routeKey === 'home') {
     const title = HOME_PAGE_TITLE;
     const description =
-      'PulseChat is a real-time multi-room web chat app with password-protected rooms, voice notes, mosaic media albums, and instant invite links—no signup.';
+      'PulseChat is a real-time multi-room web chat app with password-protected rooms, voice notes, mosaic media albums, and instant invite links, with no signup.';
     const canonicalUrl = `${SITE_URL}/`;
     return {
       title,
@@ -156,7 +156,7 @@ export function getPublicSeoConfig(routeKey: 'home' | 'rooms' | 'about'): RouteS
       robots: INDEX_ROBOTS,
       ogType: 'website',
       ogUrl: canonicalUrl,
-      ogImageAlt: 'PulseChat — Real-Time Multi-Room Web Chat Without Signup',
+      ogImageAlt: 'PulseChat | Real-Time Multi-Room Web Chat Without Signup',
       jsonLd: {
         '@context': 'https://schema.org',
         '@graph': [
@@ -240,7 +240,7 @@ export function getPublicSeoConfig(routeKey: 'home' | 'rooms' | 'about'): RouteS
     };
   }
 
-  const title = 'Harsh — Self-Taught Creator of PulseChat | PulseChat';
+  const title = 'Harsh, Self-Taught Creator of PulseChat | PulseChat';
   const description =
     'Meet Harsh, the self-taught University of Delhi developer behind PulseChat, a fast real-time WebSocket chat platform built for privacy and speed.';
   const canonicalUrl = `${SITE_URL}/about-developer`;
@@ -251,7 +251,7 @@ export function getPublicSeoConfig(routeKey: 'home' | 'rooms' | 'about'): RouteS
     robots: INDEX_ROBOTS,
     ogType: 'profile',
     ogUrl: canonicalUrl,
-    ogImageAlt: 'Harsh Pandey — Developer of PulseChat',
+    ogImageAlt: 'Harsh Pandey, Developer of PulseChat',
     jsonLd: {
       '@context': 'https://schema.org',
       '@graph': [
@@ -310,7 +310,7 @@ export function getSeoConfigForPathname(pathname: string): RouteSeoConfig {
     robots: NOINDEX_ROBOTS,
     ogType: 'website',
     ogUrl: `${SITE_URL}${normalized}`,
-    ogImageAlt: 'PulseChat — Real-Time Multi-Room Web Chat',
+    ogImageAlt: 'PulseChat | Real-Time Multi-Room Web Chat',
   };
 }
 

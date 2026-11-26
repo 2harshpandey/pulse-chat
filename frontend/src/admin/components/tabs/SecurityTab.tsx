@@ -119,9 +119,9 @@ export function SecurityTab({ admin }: SecurityTabProps) {
                   </Td>
                   <Td style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#64748b' }}>{user.userId}</Td>
                   <Td style={{ fontSize: '0.85rem' }}>{formatDateTime(user.blockedAt)}</Td>
-                  <Td style={{ fontSize: '0.85rem' }}>{user.reason || '—'}</Td>
+                  <Td style={{ fontSize: '0.85rem' }}>{user.reason || '-'}</Td>
                   <Td style={{ fontSize: '0.8rem', fontFamily: 'monospace' }}>
-                    {user.fingerprints?.ips?.length > 0 ? user.fingerprints.ips.join(', ') : '—'}
+                    {user.fingerprints?.ips?.length > 0 ? user.fingerprints.ips.join(', ') : '-'}
                   </Td>
                   <Td>
                     <SmallSuccessButton onClick={() => handleUnblockUser(user.userId)}>Unblock</SmallSuccessButton>
@@ -153,9 +153,9 @@ export function SecurityTab({ admin }: SecurityTabProps) {
                     <Td>{user.username}</Td>
                     <Td style={{ fontSize: '0.85rem' }}>{formatDateTime(user.blockedAt)}</Td>
                     <Td style={{ fontSize: '0.85rem' }}>
-                      {user.unblockedAt ? formatDateTime(user.unblockedAt) : '—'}
+                      {user.unblockedAt ? formatDateTime(user.unblockedAt) : '-'}
                     </Td>
-                    <Td>{user.reason || '—'}</Td>
+                    <Td>{user.reason || '-'}</Td>
                   </tr>
                 ))}
             </tbody>

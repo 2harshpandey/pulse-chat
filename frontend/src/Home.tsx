@@ -204,7 +204,7 @@ const Home: React.FC = () => {
         </ContentWrapper>
 
         <HomeFooter>
-          <span>PulseChat — Real-Time Multi-Room Web Chat</span>
+          <span>PulseChat | Real-Time Multi-Room Web Chat</span>
           <nav aria-label="Footer navigation">
             <Link to="/room">Explore Public Rooms</Link>
             <Link to="/room/global">Global Chat</Link>

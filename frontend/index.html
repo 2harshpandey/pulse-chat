@@ -12,27 +12,27 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="PulseChat" />
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
-    <meta name="description" content="PulseChat is a real-time multi-room web chat app with password-protected rooms, voice notes, mosaic media albums, and instant invite links—no signup." />
+    <meta name="description" content="PulseChat is a real-time multi-room web chat app with password-protected rooms, voice notes, mosaic media albums, and instant invite links, with no signup." />
     <link rel="canonical" href="https://pulsechat.tech/" />
     <!-- Open Graph / Social Sharing -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="PulseChat" />
     <meta property="og:locale" content="en_US" />
     <meta property="og:url" content="https://pulsechat.tech/" />
-    <meta property="og:title" content="PulseChat — Real-Time Multi-Room Chat Without Signup" />
-    <meta property="og:description" content="PulseChat is a real-time multi-room web chat app with password-protected rooms, voice notes, mosaic media albums, and instant invite links—no signup." />
+    <meta property="og:title" content="PulseChat | Real-Time Multi-Room Chat Without Signup" />
+    <meta property="og:description" content="PulseChat is a real-time multi-room web chat app with password-protected rooms, voice notes, mosaic media albums, and instant invite links, with no signup." />
     <meta property="og:image" content="https://pulsechat.tech/og-image.png" />
     <meta property="og:image:secure_url" content="https://pulsechat.tech/og-image.png" />
     <meta property="og:image:type" content="image/png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="PulseChat — Real-Time Multi-Room Web Chat Without Signup" />
+    <meta property="og:image:alt" content="PulseChat | Real-Time Multi-Room Web Chat Without Signup" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:url" content="https://pulsechat.tech/" />
-    <meta name="twitter:title" content="PulseChat — Real-Time Multi-Room Chat Without Signup" />
-    <meta name="twitter:description" content="PulseChat is a real-time multi-room web chat app with password-protected rooms, voice notes, mosaic media albums, and instant invite links—no signup." />
+    <meta name="twitter:title" content="PulseChat | Real-Time Multi-Room Chat Without Signup" />
+    <meta name="twitter:description" content="PulseChat is a real-time multi-room web chat app with password-protected rooms, voice notes, mosaic media albums, and instant invite links, with no signup." />
     <meta name="twitter:image" content="https://pulsechat.tech/og-image.png" />
-    <meta name="twitter:image:alt" content="PulseChat — Real-Time Multi-Room Web Chat Without Signup" />
+    <meta name="twitter:image:alt" content="PulseChat | Real-Time Multi-Room Web Chat Without Signup" />
     <link rel="image_src" href="https://pulsechat.tech/og-image.png" />
     <!-- Agentic Resource Discovery -->
     <link rel="ard" type="application/json" href="/.well-known/ard.json" />
@@ -54,14 +54,40 @@
           if (metaTheme) {
             metaTheme.setAttribute('content', theme === 'dark' ? '#0f172a' : '#f7fafc');
           }
+          var isStandalone =
+            (window.matchMedia && (
+              window.matchMedia('(display-mode: standalone)').matches ||
+              window.matchMedia('(display-mode: window-controls-overlay)').matches ||
+              window.matchMedia('(display-mode: fullscreen)').matches ||
+              window.matchMedia('(display-mode: minimal-ui)').matches
+            )) ||
+            window.navigator.standalone === true ||
+            (window.location.search && window.location.search.indexOf('pwa=1') !== -1);
+          var path = window.location.pathname;
+          if (isStandalone && (path === '/' || path === '/index.html')) {
+            var lastLoc = localStorage.getItem('pulse_pwa_last_location');
+            if (
+              lastLoc &&
+              lastLoc.charAt(0) === '/' &&
+              lastLoc.charAt(1) !== '/' &&
+              lastLoc !== '/index.html' &&
+              lastLoc.indexOf('/error/') !== 0
+            ) {
+              document.documentElement.classList.add('pulse-pwa-restoring');
+              setTimeout(function () {
+                document.documentElement.classList.remove('pulse-pwa-restoring');
+              }, 1500);
+            }
+          }
         } catch (e) {
           document.documentElement.setAttribute('data-theme', 'dark');
         }
       })();
     </script>
+    <style>html.pulse-pwa-restoring #root { visibility: hidden; }</style>
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.json" />
-    <title>PulseChat — Real-Time Multi-Room Chat Without Signup</title>
+    <title>PulseChat | Real-Time Multi-Room Chat Without Signup</title>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run PulseChat.</noscript>

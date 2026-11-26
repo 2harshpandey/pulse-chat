@@ -56,7 +56,7 @@ export const ERROR_CONFIGS: Record<number, { title: string; description: string;
   },
   500: {
     title: "Internal Server Error",
-    description: "Something went wrong on our end. Our servers are having a moment — we're working to fix it.",
+    description: "Something went wrong on our end. Our servers are having a moment, and we're working to fix it.",
     variant: 'red',
     icon: ServerDown500,
   },
@@ -74,7 +74,7 @@ export const ERROR_CONFIGS: Record<number, { title: string; description: string;
   },
   503: {
     title: "Service Unavailable",
-    description: "PulseChat is temporarily undergoing maintenance. We'll be back shortly — hang tight!",
+    description: "PulseChat is temporarily undergoing maintenance. We'll be back shortly, hang tight!",
     variant: 'amber',
     icon: Maintenance503,
   },

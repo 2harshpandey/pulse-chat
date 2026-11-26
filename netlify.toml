@@ -3,8 +3,13 @@
 
 [[redirects]]
   from   = "/*"
-  to     = "/index.html"
+  to     = "/app.html"
   status = 200
+
+[[headers]]
+  for = "/app.html"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
 
 [[headers]]
   for = "/sitemap.xml"

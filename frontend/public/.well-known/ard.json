@@ -10,7 +10,7 @@
       "displayName": "PulseChat",
       "type": "text/html",
       "url": "https://pulsechat.tech/",
-      "description": "Real-time multi-room web chat platform with voice notes, mosaic media albums, temporary invite links, and password-protected private rooms — no account signup required.",
+      "description": "Real-time multi-room web chat platform with voice notes, mosaic media albums, temporary invite links, and password-protected private rooms, with no account signup required.",
       "capabilities": [
         "RealTimeChat",
         "MultiRoomChannels",

@@ -264,7 +264,7 @@ function AppRoutes() {
           <Route path="/error/408" element={<TimeoutPage />} />
           <Route path="/error/429" element={<RateLimitPage />} />
           <Route path="/error/503" element={<MaintenancePage />} />
-          {/* Catch-all — must be last */}
+          {/* Catch-all: must be last */}
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </React.Suspense>
@@ -273,6 +273,12 @@ function AppRoutes() {
 }
 
 function App() {
+  React.useLayoutEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.documentElement.classList.remove('pulse-pwa-restoring');
+    }
+  }, []);
+
   React.useEffect(() => {
     let scrollTimeout: NodeJS.Timeout;
 

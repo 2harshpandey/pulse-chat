@@ -109,18 +109,18 @@ export function ReportsTab({ admin }: ReportsTabProps) {
                       </Td>
                       <Td style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{formatDateTime(report.reportedAt)}</Td>
                       <Td style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
-                        {report.reportedUserJoinedAt ? formatDateTime(report.reportedUserJoinedAt) : '—'}
+                        {report.reportedUserJoinedAt ? formatDateTime(report.reportedUserJoinedAt) : '-'}
                       </Td>
                       <Td style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}>
                         {report.reportedUserCurrentSessionLoginTime
                           ? formatDateTime(report.reportedUserCurrentSessionLoginTime)
-                          : '—'}
+                          : '-'}
                       </Td>
                       <Td style={{ whiteSpace: 'nowrap' }}>
                         {formatDuration(report.reportedUserCurrentSessionDurationMs)}
                       </Td>
                       <Td style={{ minWidth: '200px', fontSize: '0.76rem' }}>
-                        {joinHistory.length > 0 ? joinHistory.map((entry) => formatDateTime(entry)).join(' | ') : '—'}
+                        {joinHistory.length > 0 ? joinHistory.map((entry) => formatDateTime(entry)).join(' | ') : '-'}
                       </Td>
                     </tr>
                   );
@@ -169,7 +169,7 @@ export function ReportsTab({ admin }: ReportsTabProps) {
                     <UserCardMetaRow>
                       <UserCardMetaLabel>Joined At</UserCardMetaLabel>
                       <UserCardMetaValue>
-                        {report.reportedUserJoinedAt ? formatDateTime(report.reportedUserJoinedAt) : '—'}
+                        {report.reportedUserJoinedAt ? formatDateTime(report.reportedUserJoinedAt) : '-'}
                       </UserCardMetaValue>
                     </UserCardMetaRow>
                     <UserCardMetaRow>
@@ -177,7 +177,7 @@ export function ReportsTab({ admin }: ReportsTabProps) {
                       <UserCardMetaValue>
                         {report.reportedUserCurrentSessionLoginTime
                           ? formatDateTime(report.reportedUserCurrentSessionLoginTime)
-                          : '—'}
+                          : '-'}
                       </UserCardMetaValue>
                     </UserCardMetaRow>
                     <UserCardMetaRow>
@@ -240,7 +240,7 @@ export function ReportsTab({ admin }: ReportsTabProps) {
                   </div>
                   <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
                     <strong>Join History:</strong>{' '}
-                    {joinHistory.length > 0 ? joinHistory.map((entry) => formatDateTime(entry)).join(' | ') : '—'}
+                    {joinHistory.length > 0 ? joinHistory.map((entry) => formatDateTime(entry)).join(' | ') : '-'}
                   </div>
                 </UserCard>
               );

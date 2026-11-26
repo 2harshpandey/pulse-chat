@@ -184,7 +184,7 @@ const Rooms: React.FC = () => {
             <RoomsGuideCard>
               <h3>Open Public Lounges</h3>
               <p>
-                Jump directly into <Link to="/room/global" style={{ color: 'var(--accent-blue)', fontWeight: 600 }}>Global Chat</Link> or any listed public room with just a display name—no account registration required.
+                Jump directly into <Link to="/room/global" style={{ color: 'var(--accent-blue)', fontWeight: 600 }}>Global Chat</Link> or any listed public room with just a display name, with no account registration required.
               </p>
             </RoomsGuideCard>
             <RoomsGuideCard>

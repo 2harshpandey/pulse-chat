@@ -129,7 +129,7 @@ export const formatDateTime = (dateString: string): string =>
   `${formatDate(dateString)} ${formatTime(dateString)}`;
 
 export const formatDuration = (durationMs?: number | null): string => {
-  if (!durationMs || durationMs <= 0) return '—';
+  if (!durationMs || durationMs <= 0) return '-';
   const totalSeconds = Math.floor(durationMs / 1000);
   const days = Math.floor(totalSeconds / 86400);
   const hours = Math.floor((totalSeconds % 86400) / 3600);

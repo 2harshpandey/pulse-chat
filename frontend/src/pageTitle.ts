@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 
 export const BASE_APP_TITLE = 'PulseChat';
-export const HOME_PAGE_TITLE = 'PulseChat — Real-Time Multi-Room Chat Without Signup';
+export const HOME_PAGE_TITLE = 'PulseChat | Real-Time Multi-Room Chat Without Signup';
 
 export function sanitizeTitleSegment(raw?: string | null, maxLength = 48): string {
   if (!raw || typeof raw !== 'string') return '';

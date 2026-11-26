@@ -127,7 +127,7 @@ export function UsersTab({ admin }: UsersTabProps) {
       <SectionTitle style={{ marginTop: '2rem' }}>
         <StatusDot $color="yellow" /> Logged-In Sessions ({loggedInUsersList.length})
         <span style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 400 }}>
-          &mdash; includes offline
+          (includes offline)
         </span>
       </SectionTitle>
       {loggedInUsersList.length === 0 ? (

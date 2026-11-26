@@ -1,6 +1,7 @@
 # https://www.robotstxt.org/robotstxt.html
 User-agent: *
 Allow: /
+Disallow: /app.html
 Disallow: /admin
 Disallow: /me
 Disallow: /join/

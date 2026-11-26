@@ -3,6 +3,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { build } from 'vite';
+import { generateSW } from 'workbox-build';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FRONTEND_ROOT = path.resolve(__dirname, '..');
@@ -84,12 +85,25 @@ function injectRoutePayload(templateHtml, { appHtml, styleTags, seo }) {
   return html;
 }
 
+function buildAppShellHtml(templateHtml) {
+  let html = templateHtml;
+  html = html.replace(/<title>[\s\S]*?<\/title>/i, '<title>PulseChat</title>');
+  html = replaceMetaByName(html, 'robots', 'noindex, nofollow');
+  html = replaceCanonical(html, undefined);
+  return html;
+}
+
 async function runPrerender() {
   if (!fs.existsSync(TEMPLATE_PATH)) {
     throw new Error(`Missing Vite build output at ${TEMPLATE_PATH}`);
   }
 
   const templateHtml = fs.readFileSync(TEMPLATE_PATH, 'utf8');
+
+  // Write the clean SPA fallback shell (empty #root, no Home DOM) before overwriting index.html.
+  const appShellHtml = buildAppShellHtml(templateHtml);
+  fs.writeFileSync(path.join(BUILD_DIR, 'app.html'), appShellHtml, 'utf8');
+  console.log(`[prerender] Wrote app.html (${Buffer.byteLength(appShellHtml, 'utf8')} bytes)`);
 
   try {
     await build({
@@ -127,6 +141,26 @@ async function runPrerender() {
         console.log(`[prerender] Wrote ${outFile} (${Buffer.byteLength(finalHtml, 'utf8')} bytes)`);
       }
     }
+
+    // Regenerate Workbox service worker after all prerendered HTML files and app.html exist
+    // so precache hashes match and navigations to dynamic routes fall back to app.html cleanly.
+    const swResult = await generateSW({
+      globDirectory: BUILD_DIR,
+      globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,json,webmanifest}'],
+      globIgnores: ['og-image.png'],
+      swDest: path.join(BUILD_DIR, 'sw.js'),
+      cleanupOutdatedCaches: true,
+      clientsClaim: true,
+      skipWaiting: true,
+      navigateFallback: '/app.html',
+      navigateFallbackDenylist: [
+        /^\/$/,
+        /^\/index\.html$/,
+        /^\/room\/?$/,
+        /^\/about-developer\/?$/,
+      ],
+    });
+    console.log(`[prerender] Regenerated sw.js (${swResult.count} precache entries)`);
   } finally {
     fs.rmSync(SSR_TMP_DIR, { recursive: true, force: true });
   }
