@@ -98,6 +98,11 @@ function getBaseGraphNodes(): Record<string, unknown>[] {
       operatingSystem: 'Web, Android, iOS, Windows, macOS, Linux',
       browserRequirements: 'Requires JavaScript and WebSocket support',
       isAccessibleForFree: true,
+      offers: {
+        '@type': 'Offer',
+        price: '0',
+        priceCurrency: 'USD',
+      },
       author: { '@id': PERSON_ID },
       publisher: { '@id': ORGANIZATION_ID },
       sameAs: [REPO_URL],
