@@ -145,7 +145,7 @@ const isRoomAccessAllowed = async (rawRoomId, req, options = {}) => {
     if (canonicalRoomId === 'global') return true;
 
     const requiresPassword = canonicalRoomId === 'me'
-      ? Boolean(process.env.CLIENT_PASSWORD)
+      ? true
       : Boolean(room && room.isPrivate);
 
     if (!requiresPassword) {

@@ -918,5 +918,144 @@ describe('Security Audit Regression Tests', () => {
         deleteRoomState(roomId);
       }
     });
+
+    it('fails closed on /me room access and auth when CLIENT_PASSWORD is missing', async () => {
+      delete process.env.CLIENT_PASSWORD;
+
+      const accessWithoutPassword = await isRoomAccessAllowed('me', {
+        headers: {},
+        query: {},
+        body: {},
+        socket: { remoteAddress: '127.0.0.1' },
+      });
+      assert.strictEqual(accessWithoutPassword, false);
+
+      const authRouter = require('../routes/auth');
+      const verifyLayer = authRouter.stack.find(
+        (l) => l.route && l.route.path === '/api/auth/verify' && l.route.methods.post
+      );
+      assert.ok(verifyLayer, 'POST /api/auth/verify route should exist');
+      const verifyHandler = verifyLayer.route.stack[verifyLayer.route.stack.length - 1].handle;
+
+      let statusCode = 200;
+      let payload = null;
+      await verifyHandler(
+        {
+          body: { roomId: 'me', password: 'arbitrary-password', userId: 'u1', username: 'Attacker' },
+          headers: {},
+          socket: { remoteAddress: '127.0.0.1' },
+        },
+        {
+          status(code) {
+            statusCode = code;
+            return this;
+          },
+          json(body) {
+            payload = body;
+            return this;
+          },
+        }
+      );
+
+      assert.strictEqual(statusCode, 503);
+      assert.strictEqual(payload?.success, false);
+
+      // WebSocket user_join to /me without sessionToken must also be blocked
+      const wsSent = [];
+      let terminated = false;
+      const mockWs = {
+        readyState: 1,
+        send: (raw) => wsSent.push(JSON.parse(raw)),
+        terminate: () => { terminated = true; },
+      };
+      await handleUserJoin({
+        ws: mockWs,
+        req: { socket: { remoteAddress: '127.0.0.1' }, headers: {} },
+        parsedMessage: { type: 'user_join', roomId: 'me', userId: 'u_ws_1', username: 'WsAttacker' },
+        wss: { clients: new Set() },
+        broadcastToAdmins: () => {},
+        _broadcast: () => {},
+        _broadcastOnlineUsers: () => {},
+        loadPinnedMessages: async () => {},
+        _getVisibleMessagesQuery: () => ({}),
+      });
+      assert.ok(terminated || wsSent.some((m) => m.type === 'force_logout'));
+    });
+
+    it('retries failed initial MongoDB connection with bounded exponential backoff and prevents concurrent attempts', async () => {
+      const connectDB = require('../db');
+      const { computeBackoffDelayMs, resetDBRetryState } = connectDB;
+
+      // Verify exponential backoff bounds with ±20% jitter: 2s -> 4s -> 8s -> ... capped at 60s
+      for (let i = 0; i < 20; i++) {
+        const d0 = computeBackoffDelayMs(0);
+        const d1 = computeBackoffDelayMs(1);
+        const d2 = computeBackoffDelayMs(2);
+        const dMax = computeBackoffDelayMs(10);
+        assert.ok(d0 >= 1600 && d0 <= 2400, `attempt 0 delay out of range: ${d0}`);
+        assert.ok(d1 >= 3200 && d1 <= 4800, `attempt 1 delay out of range: ${d1}`);
+        assert.ok(d2 >= 6400 && d2 <= 9600, `attempt 2 delay out of range: ${d2}`);
+        assert.ok(dMax >= 48000 && dMax <= 72000, `max delay out of range: ${dMax}`);
+      }
+
+      const origMongoUri = process.env.MONGODB_URI;
+      const origConnect = mongoose.connect;
+      const origSetTimeout = global.setTimeout;
+      const origClearTimeout = global.clearTimeout;
+      let connectCalls = 0;
+      let scheduledTimers = [];
+      let onConnectedCount = 0;
+
+      try {
+        resetDBRetryState();
+        process.env.MONGODB_URI = 'mongodb://127.0.0.1:27017/pulse_retry_test';
+        Object.defineProperty(mongoose.connection, 'readyState', { value: 0, configurable: true });
+
+        global.setTimeout = (fn, ms) => {
+          const handle = { fn, ms, cleared: false, unref() { return this; } };
+          scheduledTimers.push(handle);
+          return handle;
+        };
+        global.clearTimeout = (handle) => {
+          if (handle) handle.cleared = true;
+        };
+
+        let resolveFirstConnect;
+        mongoose.connect = () => {
+          connectCalls += 1;
+          if (connectCalls === 1) {
+            return new Promise((_res, rej) => {
+              resolveFirstConnect = () => rej(new Error('Simulated initial DB outage'));
+            });
+          }
+          Object.defineProperty(mongoose.connection, 'readyState', { value: 1, configurable: true });
+          return Promise.resolve(mongoose);
+        };
+
+        // Concurrent connectDB() calls share a single in-flight attempt
+        const p1 = connectDB({ onConnected: async () => { onConnectedCount += 1; } });
+        const p2 = connectDB();
+        assert.strictEqual(connectCalls, 1);
+        resolveFirstConnect();
+        const [r1, r2] = await Promise.all([p1, p2]);
+        assert.strictEqual(r1, false);
+        assert.strictEqual(r2, false);
+        assert.strictEqual(scheduledTimers.length, 1);
+        assert.ok(scheduledTimers[0].ms >= 1600 && scheduledTimers[0].ms <= 2400);
+
+        // Execute scheduled retry -> succeeds, invokes onConnected, resets backoff
+        await scheduledTimers[0].fn();
+        assert.strictEqual(connectCalls, 2);
+        assert.strictEqual(onConnectedCount, 1);
+        assert.strictEqual(scheduledTimers.length, 1);
+      } finally {
+        resetDBRetryState();
+        mongoose.connect = origConnect;
+        global.setTimeout = origSetTimeout;
+        global.clearTimeout = origClearTimeout;
+        if (origMongoUri === undefined) delete process.env.MONGODB_URI;
+        else process.env.MONGODB_URI = origMongoUri;
+      }
+    });
   });
 });

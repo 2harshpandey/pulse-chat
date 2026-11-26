@@ -44,7 +44,7 @@ const matchesTargetUserSessionToken = ({
 const resolveJoinRoomTarget = async (ws, initialRoomId, username) => {
   const lowerRoomId = typeof initialRoomId === 'string' ? initialRoomId.trim().toLowerCase() : '';
   if (lowerRoomId === 'me') {
-    return { ok: true, roomId: 'me', requiresPassword: Boolean(process.env.CLIENT_PASSWORD) };
+    return { ok: true, roomId: 'me', requiresPassword: true };
   }
   if (lowerRoomId === 'global') {
     return { ok: true, roomId: 'global', requiresPassword: false };

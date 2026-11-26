@@ -184,7 +184,7 @@ router.get('/:id/meta', apiLimiter, async (req, res) => {
       return res.json({
         id: 'me',
         isPrivate: true,
-        requiresPassword: !!process.env.CLIENT_PASSWORD,
+        requiresPassword: true,
         name: 'Private Room',
         description: 'Direct private chat room'
       });
@@ -229,7 +229,11 @@ const verifyRoomJoinCredentials = async ({ req, cleanRoomId, password }) => {
 
   if (lowerRoomId === 'me') {
     const clientPw = process.env.CLIENT_PASSWORD;
-    if (clientPw && (typeof password !== 'string' || !timingSafeEqualStr(password, clientPw))) {
+    if (!clientPw) {
+      logger.error('Security misconfiguration: CLIENT_PASSWORD is not set; rejecting /me room join.');
+      return { status: 503, error: 'Room authentication is currently unavailable.' };
+    }
+    if (typeof password !== 'string' || !timingSafeEqualStr(password, clientPw)) {
       logFailedJoinAttempt('me');
       return { status: 401, error: 'Incorrect password.' };
     }

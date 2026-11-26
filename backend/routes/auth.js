@@ -387,7 +387,12 @@ router.post('/api/auth/verify', authLimiter, checkPasswordRateLimit, async (req,
 
     let isPasswordValid = false;
     if (roomId === 'me') {
-      if (!process.env.CLIENT_PASSWORD || timingSafeEqualStr(password || '', process.env.CLIENT_PASSWORD)) {
+      const clientPw = process.env.CLIENT_PASSWORD;
+      if (!clientPw) {
+        logger.error('Security misconfiguration: CLIENT_PASSWORD is not set; rejecting /me authentication.');
+        return res.status(503).json({ success: false, error: 'Room authentication is currently unavailable.' });
+      }
+      if (timingSafeEqualStr(typeof password === 'string' ? password : '', clientPw)) {
         isPasswordValid = true;
       }
     } else if (roomId === 'global') {

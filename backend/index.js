@@ -4,6 +4,7 @@ require('dotenv').config();
 const http = require('http');
 const express = require('express');
 const helmet = require('helmet');
+const mongoose = require('mongoose');
 const { WebSocketServer } = require('ws');
 const cors = require('cors');
 const cloudinary = require('cloudinary').v2;
@@ -215,6 +216,13 @@ roomsRouter.setBroadcast(broadcastToAdmins);
 // Route mounting
 // ---------------------------------------------------------------------------
 app.get('/health', (_req, res) => res.status(200).send('OK'));
+app.get('/health/live', (_req, res) => res.status(200).json({ status: 'alive' }));
+app.get('/health/ready', (_req, res) => {
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({ status: 'unavailable', db: 'disconnected' });
+  }
+  return res.status(200).json({ status: 'ready', db: 'connected' });
+});
 app.get('/', (_req, res) => res.send('Pulse Chat Server is running!'));
 
 const sanitizeDiagnosticDetails = (details) => {
@@ -251,7 +259,6 @@ app.post('/api/telemetry/diagnostic', diagnosticLimiter, (req, res) => {
 
 // Database readiness check: fail closed with 503 instead of hanging or returning unhandled errors when DB is disconnected
 app.use('/api', (_req, res, next) => {
-  const mongoose = require('mongoose');
   if (mongoose.connection.readyState !== 1) {
     return res.status(503).json({ error: 'Database service is currently unavailable. Please try again shortly.' });
   }
@@ -271,7 +278,9 @@ app.use('/api/rooms', roomsRouter);
 // ---------------------------------------------------------------------------
 // Load persisted chat state from MongoDB
 // ---------------------------------------------------------------------------
+let chatStateLoaded = false;
 const loadGlobalChatState = async () => {
+  if (chatStateLoaded || mongoose.connection.readyState !== 1) return;
   try {
     const states = await ChatState.find({});
     states.forEach(state => {
@@ -280,6 +289,7 @@ const loadGlobalChatState = async () => {
         roomState.frontendHiddenBefore = new Date(state.frontendHiddenBefore);
       }
     });
+    chatStateLoaded = true;
     logger.info(`Loaded chat state for ${states.length} rooms.`);
   } catch (err) {
     logger.error('Failed to load chat states:', err);
@@ -290,7 +300,12 @@ const loadGlobalChatState = async () => {
 // Start server
 // ---------------------------------------------------------------------------
 const startServer = async () => {
-  await connectDB();
+  const missingSecrets = ['CLIENT_PASSWORD', 'ADMIN_PASSWORD', 'ADMIN_SECRET'].filter((k) => !process.env[k]);
+  if (missingSecrets.length > 0) {
+    logger.error(`Security warning: missing required environment variable(s): ${missingSecrets.join(', ')}. Protected /me and admin endpoints will fail closed until configured.`);
+  }
+
+  await connectDB({ onConnected: loadGlobalChatState });
   await loadGlobalChatState();
 
   server.listen(PORT, () => {
