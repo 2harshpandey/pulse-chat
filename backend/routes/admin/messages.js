@@ -7,7 +7,7 @@ const Room = require('../../models/room');
 const { getRoomState } = require('../../state');
 const { adminLimiter, adminAuth, extractIp, toClientMessage, toPublicClientMessage } = require('../../middleware');
 const { unpinIfPinned } = require('../../websocket/pinnedManager');
-const { batchDeleteCloudinaryAssets } = require('../../security');
+const { batchDeleteCloudinaryAssets, extractMediaRecordsFromEvents } = require('../../security');
 const { markRepliesAsDeleted } = require('../../roomAccess');
 const {
   AUDIO_EXT_RE,
@@ -676,15 +676,26 @@ module.exports = (wss, broadcasts) => {
         broadcastToAdmins(roomId, 'bulk_history_update', { events: updatedEvents });
 
       } else if (action === 'delete') {
-        // Clean up Cloudinary assets for media messages in the batch before purging / nullifying
+        // Clean up Cloudinary assets from both active Message records and MessageEvent audit records
+        // (Message.url may have been unset earlier by user delete_for_everyone)
         try {
-          const messagesWithMedia = await Message.find({
-            ...messageTargetQuery,
-            url: { $exists: true, $ne: null }
-          }).select('id url type').lean();
+          const [messagesWithMedia, eventsWithMedia] = await Promise.all([
+            Message.find({
+              ...messageTargetQuery,
+              url: { $exists: true, $ne: null }
+            }).select('id url type').lean(),
+            MessageEvent.find(matchingEventQuery)
+              .select('messageId message.id message.url message.type deletedContent file')
+              .lean(),
+          ]);
 
-          if (messagesWithMedia && messagesWithMedia.length > 0) {
-            batchDeleteCloudinaryAssets(messagesWithMedia).catch((err) => {
+          const mediaToPurge = [
+            ...(messagesWithMedia || []),
+            ...extractMediaRecordsFromEvents(eventsWithMedia),
+          ];
+
+          if (mediaToPurge.length > 0) {
+            batchDeleteCloudinaryAssets(mediaToPurge).catch((err) => {
               logger.warn('Failed to clean up Cloudinary assets during bulk delete:', err.message);
             });
           }

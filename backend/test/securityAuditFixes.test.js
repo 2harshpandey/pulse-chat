@@ -25,7 +25,9 @@ const BlockedUser = require('../models/blockedUser');
 const LoginLockdown = require('../models/loginLockdown');
 const AuditLog = require('../models/auditLog');
 const { handleUserJoin } = require('../websocket/presenceHandler');
-const { handleNewMessage } = require('../websocket/messageHandler');
+const { handleNewMessage, handleDeleteForEveryone } = require('../websocket/messageHandler');
+const cloudinary = require('cloudinary').v2;
+const { extractMediaRecordsFromEvents, batchDeleteCloudinaryAssets } = require('../security');
 
 describe('Security Audit Regression Tests', () => {
   const origClientPassword = process.env.CLIENT_PASSWORD;
@@ -769,6 +771,150 @@ describe('Security Audit Regression Tests', () => {
         });
         assert.strictEqual(res.conflict, true);
       } finally {
+        deleteRoomState(roomId);
+      }
+    });
+
+    it('preserves Cloudinary media on user delete_for_everyone for admin playback while redacting chat tombstone and purging on permanent admin delete', async () => {
+      const roomId = 'me';
+      const userId = 'voice_sender_1';
+      const token = generateSessionToken(userId, roomId);
+      const roomState = getRoomState(roomId);
+      roomState.loggedInUsers.set(userId, {
+        userId,
+        username: 'Khushu',
+        sessionToken: token,
+        sessionTokenHash: hashSessionToken(token),
+      });
+
+      const voiceUrl = 'https://res.cloudinary.com/demo/video/upload/v1795689208/pulse-chat/voice-message-123.webm';
+      const originalMsg = {
+        _id: 'mongo_voice_1',
+        id: 'pulse-chat/voice-message-123',
+        roomId,
+        userId,
+        sender: userId,
+        username: 'Khushu',
+        type: 'audio',
+        url: voiceUrl,
+        originalName: 'voice-message-123.webm',
+        size: 127490,
+        duration: 12,
+        waveform: [0.2, 0.8, 0.4],
+        isDeleted: false,
+      };
+
+      const origMsgFindOne = Message.findOne;
+      const origMsgFindOneAndUpdate = Message.findOneAndUpdate;
+      const origEventFindOne = MessageEvent.findOne;
+      const origEventUpdateMany = MessageEvent.updateMany;
+      const origDestroy = cloudinary.uploader.destroy;
+      const origDeleteResources = cloudinary.api?.delete_resources;
+
+      let destroyCalled = false;
+      let capturedUpdateFilter = null;
+      let capturedUpdateOp = null;
+      let savedDeleteEvent = null;
+      const adminEvents = [];
+      const wsSent = [];
+      const purgedCalls = [];
+
+      try {
+        cloudinary.uploader.destroy = async () => {
+          destroyCalled = true;
+          return { result: 'ok' };
+        };
+        if (cloudinary.api) {
+          cloudinary.api.delete_resources = async (ids, opts) => {
+            purgedCalls.push({ ids, opts });
+            return { deleted: {} };
+          };
+        }
+
+        Message.findOne = () => ({ lean: async () => originalMsg });
+        Message.updateMany = async () => ({ modifiedCount: 0 });
+        MessageEvent.findOne = () => ({ lean: async () => null });
+        MessageEvent.updateMany = async () => ({ modifiedCount: 1 });
+        MessageEvent.prototype.save = async function () {
+          savedDeleteEvent = this;
+          return this;
+        };
+        Message.findOneAndUpdate = async (filter, updateOp) => {
+          capturedUpdateFilter = filter;
+          capturedUpdateOp = updateOp;
+          return {
+            _id: originalMsg._id,
+            id: originalMsg.id,
+            roomId,
+            userId,
+            username: 'Khushu',
+            type: 'audio',
+            isDeleted: true,
+            deletedBy: userId,
+            pinned: null,
+          };
+        };
+
+        const mockWs = {
+          readyState: 1,
+          roomId,
+          userId,
+          username: 'Khushu',
+          sessionToken: token,
+          send: (raw) => wsSent.push(JSON.parse(raw)),
+        };
+        const mockWss = { clients: new Set([mockWs]) };
+
+        await handleDeleteForEveryone({
+          ws: mockWs,
+          parsedMessage: { messageId: originalMsg.id },
+          wss: mockWss,
+          broadcastToAdmins: (_rid, evType, payload) => {
+            if (evType === 'history') adminEvents.push(payload);
+          },
+        });
+
+        // 1. User delete_for_everyone must NOT destroy the Cloudinary file
+        assert.strictEqual(destroyCalled, false);
+
+        // 2. Atomic filter & complete $unset of audio/media fields on Message
+        assert.deepStrictEqual(capturedUpdateFilter.isDeleted, { $ne: true });
+        assert.ok(capturedUpdateOp.$unset);
+        assert.ok('url' in capturedUpdateOp.$unset);
+        assert.ok('duration' in capturedUpdateOp.$unset);
+        assert.ok('waveform' in capturedUpdateOp.$unset);
+
+        // 3. Chat clients receive only the redacted tombstone (no URL/audio metadata)
+        assert.strictEqual(wsSent.length, 1);
+        assert.strictEqual(wsSent[0].type, 'update');
+        assert.strictEqual(wsSent[0].data.isDeleted, true);
+        assert.strictEqual(wsSent[0].data.url, undefined);
+        assert.strictEqual(wsSent[0].data.duration, undefined);
+        assert.strictEqual(wsSent[0].data.waveform, undefined);
+
+        // 4. Admin audit MessageEvent retains deletedContent.url & originalName for playback
+        assert.ok(savedDeleteEvent);
+        assert.strictEqual(savedDeleteEvent.type, 'delete_everyone');
+        assert.strictEqual(savedDeleteEvent.deletedContent.url, voiceUrl);
+        assert.strictEqual(savedDeleteEvent.deletedContent.originalName, 'voice-message-123.webm');
+        assert.strictEqual(adminEvents.length, 1);
+
+        // 5. Permanent admin purge extracts Cloudinary asset from MessageEvent & deduplicates
+        const extracted = extractMediaRecordsFromEvents([
+          savedDeleteEvent,
+          { messageId: originalMsg.id, message: { id: originalMsg.id, url: voiceUrl, type: 'audio' } },
+        ]);
+        await batchDeleteCloudinaryAssets(extracted);
+        assert.strictEqual(purgedCalls.length, 1);
+        assert.deepStrictEqual(purgedCalls[0].ids, ['pulse-chat/voice-message-123']);
+        assert.strictEqual(purgedCalls[0].opts.resource_type, 'video');
+      } finally {
+        Message.findOne = origMsgFindOne;
+        Message.findOneAndUpdate = origMsgFindOneAndUpdate;
+        MessageEvent.findOne = origEventFindOne;
+        MessageEvent.updateMany = origEventUpdateMany;
+        cloudinary.uploader.destroy = origDestroy;
+        if (cloudinary.api) cloudinary.api.delete_resources = origDeleteResources;
         deleteRoomState(roomId);
       }
     });

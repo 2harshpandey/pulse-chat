@@ -72,6 +72,7 @@ const markRepliesAsDeleted = async (roomId, targetMessageIds, deletedBy = 'admin
       $unset: {
         'replyingTo.text': '',
         'replyingTo.url': '',
+        'replyingTo.duration': '',
       },
     }
   ).catch((e) => logger.error(`Failed to update replyingTo on ${context}:`, e));

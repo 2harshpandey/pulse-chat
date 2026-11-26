@@ -539,18 +539,56 @@ const deleteCloudinaryAsset = async (msg, { defaultResourceType = 'image', conte
   }
 };
 
+/**
+ * Extracts normalized media asset descriptors ({ id, url, type }) from MessageEvent
+ * records so permanent admin purges can clean up Cloudinary assets even when
+ * Message.url was unset by user delete_for_everyone.
+ */
+const extractMediaRecordsFromEvents = (events) => {
+  if (!Array.isArray(events) || events.length === 0) return [];
+  const records = [];
+  for (const ev of events) {
+    if (!ev || typeof ev !== 'object') continue;
+    const baseId = ev.messageId || ev.message?.id || ev.file?.publicId;
+    if (ev.message && ev.message.url) {
+      records.push({ id: ev.message.id || baseId, url: ev.message.url, type: ev.message.type });
+    }
+    if (ev.deletedContent && ev.deletedContent.url) {
+      records.push({
+        id: baseId,
+        url: ev.deletedContent.url,
+        type: ev.deletedContent.type || ev.message?.type,
+      });
+    }
+    if (ev.file && ev.file.url) {
+      const mime = String(ev.file.mimetype || '').toLowerCase();
+      const inferredType = mime.startsWith('audio/') ? 'audio'
+        : mime.startsWith('video/') ? 'video'
+        : mime.startsWith('image/') ? 'image'
+        : 'file';
+      records.push({
+        id: ev.file.publicId || baseId,
+        url: ev.file.url,
+        type: inferredType,
+      });
+    }
+  }
+  return records;
+};
+
 const batchDeleteCloudinaryAssets = async (messagesWithMedia) => {
   if (!Array.isArray(messagesWithMedia) || messagesWithMedia.length === 0) return;
-  const groups = { image: [], video: [], raw: [] };
+  const groups = { image: new Set(), video: new Set(), raw: new Set() };
 
   for (const msg of messagesWithMedia) {
     const target = resolveCloudinaryResourceTarget(msg, 'image');
-    if (target) {
-      groups[target.resourceType].push(target.publicId);
+    if (target && groups[target.resourceType]) {
+      groups[target.resourceType].add(target.publicId);
     }
   }
 
-  for (const [resType, ids] of Object.entries(groups)) {
+  for (const [resType, idSet] of Object.entries(groups)) {
+    const ids = Array.from(idSet);
     if (ids.length === 0) continue;
     for (let i = 0; i < ids.length; i += 100) {
       const chunk = ids.slice(i, i + 100);
@@ -589,6 +627,7 @@ module.exports = {
   hasStoredSessionToken,
   matchesStoredSessionToken,
   deleteCloudinaryAsset,
+  extractMediaRecordsFromEvents,
   batchDeleteCloudinaryAssets,
 };
 

@@ -10,19 +10,34 @@ const UserReport = require('../../models/userReport');
 const ChatState = require('../../models/chatState');
 const User = require('../../models/user');
 const TempLink = require('../../models/tempLink');
-const { batchDeleteCloudinaryAssets } = require('../../security');
+const { batchDeleteCloudinaryAssets, extractMediaRecordsFromEvents } = require('../../security');
 const { deleteRoomState } = require('../../state');
 const { adminLimiter, adminAuth, extractIp } = require('../../middleware');
 
 const cleanupRoomMediaAssets = async (roomIdentifiers) => {
   try {
-    const messagesWithMedia = await Message.find({
-      roomId: { $in: roomIdentifiers },
-      url: { $exists: true, $ne: null }
-    }).select('id url type').lean();
+    const [messagesWithMedia, eventsWithMedia] = await Promise.all([
+      Message.find({
+        roomId: { $in: roomIdentifiers },
+        url: { $exists: true, $ne: null }
+      }).select('id url type').lean(),
+      MessageEvent.find({
+        roomId: { $in: roomIdentifiers },
+        $or: [
+          { 'message.url': { $exists: true, $ne: null } },
+          { 'deletedContent.url': { $exists: true, $ne: null } },
+          { 'file.url': { $exists: true, $ne: null } },
+        ],
+      }).select('messageId message.id message.url message.type deletedContent file').lean(),
+    ]);
 
-    if (messagesWithMedia && messagesWithMedia.length > 0) {
-      batchDeleteCloudinaryAssets(messagesWithMedia).catch((err) => {
+    const mediaToPurge = [
+      ...(messagesWithMedia || []),
+      ...extractMediaRecordsFromEvents(eventsWithMedia),
+    ];
+
+    if (mediaToPurge.length > 0) {
+      batchDeleteCloudinaryAssets(mediaToPurge).catch((err) => {
         logger.warn('Failed to clean up Cloudinary assets during room deletion:', err?.message);
       });
     }

@@ -223,7 +223,23 @@ function handleUpdateOrBulkFrame(ctx: WsMessageRouterContext, messageData: any):
       const directMatch =
         updatedMap.get(normalizeMessageId(m.id)) ||
         (m._id ? updatedMap.get(normalizeMessageId(m._id)) : undefined);
-      if (directMatch) return { ...m, ...directMatch };
+      if (directMatch) {
+        if (isDeletedOrVanished(directMatch)) {
+          const {
+            text: _t,
+            url: _u,
+            originalName: _o,
+            size: _s,
+            duration: _d,
+            waveform: _w,
+            reactions: _r,
+            replyingTo: _rt,
+            ...restOld
+          } = m;
+          return { ...restOld, ...directMatch };
+        }
+        return { ...m, ...directMatch };
+      }
       if (m.replyingTo) {
         const matchingUpdated = updatedMessages.find(u => targetMatchesReply(m.replyingTo, u));
         if (matchingUpdated) {
@@ -236,6 +252,7 @@ function handleUpdateOrBulkFrame(ctx: WsMessageRouterContext, messageData: any):
                 deletedBy: matchingUpdated.deletedBy || m.replyingTo.deletedBy,
                 text: undefined,
                 url: undefined,
+                duration: undefined,
               },
             };
           }

@@ -11,6 +11,7 @@ import { QuotedMessageContainer } from './chat/styles/chat.message.styles';
 import { ChatSearchInput } from './chat/Chat.styles';
 import { MAX_MESSAGE_LENGTH, filterValidReactions, normalizeReactionEmoji } from './chat/constants';
 import { transferManager } from './chat/TransferManager';
+import { routeIncomingWsMessage } from './chat/hooks/wsMessageRouter';
 
 describe('Audit Fixes & Consolidations Regression Suite', () => {
   it('preserves ASCII hyphens in repairMojibakeText and sanitizeFilename while repairing mojibake', () => {
@@ -230,5 +231,89 @@ describe('Audit Fixes & Consolidations Regression Suite', () => {
     fireEvent.pointerDown(btn, { button: 0 });
     fireEvent.click(btn);
     expect(onRequestDownload).toHaveBeenCalledTimes(2);
+  });
+
+  it('strips voice/media fields from client React state and replyingTo previews when receiving deleted update frame', () => {
+    let currentMessages: any[] = [
+      {
+        id: 'voice-1',
+        userId: 'u1',
+        username: 'Khushu',
+        type: 'audio',
+        url: 'https://res.cloudinary.com/demo/video/upload/v1/pulse-chat/voice-1.webm',
+        originalName: 'voice-1.webm',
+        size: 12345,
+        duration: 14,
+        waveform: [0.1, 0.9],
+        timestamp: new Date().toISOString(),
+      },
+      {
+        id: 'reply-1',
+        userId: 'u2',
+        username: 'Harsh',
+        type: 'text',
+        text: 'Replying to voice note',
+        timestamp: new Date().toISOString(),
+        replyingTo: {
+          id: 'voice-1',
+          type: 'audio',
+          url: 'https://res.cloudinary.com/demo/video/upload/v1/pulse-chat/voice-1.webm',
+          duration: 14,
+          isDeleted: false,
+        },
+      },
+    ];
+    let currentSearchResults: any[] | null = [...currentMessages];
+    let currentPinned: any[] = [{ id: 'voice-1' }];
+    let currentReplyingTo: any = { id: 'voice-1' };
+
+    const ctx: any = {
+      normalizeMessage: (m: any) => m,
+      setMessages: (updater: any) => {
+        currentMessages = typeof updater === 'function' ? updater(currentMessages) : updater;
+      },
+      setSearchResults: (updater: any) => {
+        currentSearchResults = typeof updater === 'function' ? updater(currentSearchResults) : updater;
+      },
+      setPinnedMessages: (updater: any) => {
+        currentPinned = typeof updater === 'function' ? updater(currentPinned) : updater;
+      },
+      setReplyingTo: (updater: any) => {
+        currentReplyingTo = typeof updater === 'function' ? updater(currentReplyingTo) : updater;
+      },
+    };
+
+    routeIncomingWsMessage(
+      ctx,
+      JSON.stringify({
+        type: 'update',
+        data: {
+          id: 'voice-1',
+          userId: 'u1',
+          username: 'Khushu',
+          type: 'audio',
+          isDeleted: true,
+          deletedBy: 'u1',
+          pinned: null,
+          timestamp: currentMessages[0].timestamp,
+        },
+      })
+    );
+
+    const deletedVoice = currentMessages[0];
+    expect(deletedVoice.isDeleted).toBe(true);
+    expect(deletedVoice.url).toBeUndefined();
+    expect(deletedVoice.originalName).toBeUndefined();
+    expect(deletedVoice.size).toBeUndefined();
+    expect(deletedVoice.duration).toBeUndefined();
+    expect(deletedVoice.waveform).toBeUndefined();
+
+    const updatedReply = currentMessages[1];
+    expect(updatedReply.replyingTo.isDeleted).toBe(true);
+    expect(updatedReply.replyingTo.url).toBeUndefined();
+    expect(updatedReply.replyingTo.duration).toBeUndefined();
+    expect(currentPinned).toEqual([]);
+    expect(currentReplyingTo).toBeNull();
+    expect(currentSearchResults?.[0].url).toBeUndefined();
   });
 });

@@ -12,7 +12,7 @@ const ChatState = require('../models/chatState');
 const { getRoomState, getCachedRoom } = require('../state');
 const { unpinIfPinned, clearAllPins } = require('../websocket/pinnedManager');
 const { adminLimiter, adminAuth, adminSecretAuth } = require('../middleware');
-const { deleteCloudinaryAsset, batchDeleteCloudinaryAssets } = require('../security');
+const { deleteCloudinaryAsset, batchDeleteCloudinaryAssets, extractMediaRecordsFromEvents } = require('../security');
 const { markRepliesAsDeleted } = require('../roomAccess');
 
 module.exports = (wss, broadcasts) => {
@@ -122,13 +122,28 @@ module.exports = (wss, broadcasts) => {
     }
 
     try {
-      const messagesWithMedia = await Message.find({
-        roomId: { $in: roomIdentifiers },
-        url: { $exists: true, $ne: null },
-      }).select('id url type').lean();
+      const [messagesWithMedia, eventsWithMedia] = await Promise.all([
+        Message.find({
+          roomId: { $in: roomIdentifiers },
+          url: { $exists: true, $ne: null },
+        }).select('id url type').lean(),
+        MessageEvent.find({
+          roomId: { $in: roomIdentifiers },
+          $or: [
+            { 'message.url': { $exists: true, $ne: null } },
+            { 'deletedContent.url': { $exists: true, $ne: null } },
+            { 'file.url': { $exists: true, $ne: null } },
+          ],
+        }).select('messageId message.id message.url message.type deletedContent file').lean(),
+      ]);
 
-      if (messagesWithMedia && messagesWithMedia.length > 0) {
-        batchDeleteCloudinaryAssets(messagesWithMedia).catch((e) => {
+      const mediaToPurge = [
+        ...(messagesWithMedia || []),
+        ...extractMediaRecordsFromEvents(eventsWithMedia),
+      ];
+
+      if (mediaToPurge.length > 0) {
+        batchDeleteCloudinaryAssets(mediaToPurge).catch((e) => {
           logger.warn('Failed to clean up Cloudinary assets on chat clear:', e.message);
         });
       }

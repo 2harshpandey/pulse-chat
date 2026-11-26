@@ -6,8 +6,8 @@ const logger = require('../logger');
 const User = require('../models/user');
 const Message = require('../models/message');
 const MessageEvent = require('../models/messageEvent');
-const { toClientMessage } = require('../middleware');
-const { isTrustedMediaUrl, deleteCloudinaryAsset } = require('../security');
+const { toClientMessage, toPublicClientMessage } = require('../middleware');
+const { isTrustedMediaUrl } = require('../security');
 const { verifyActiveSessionToken } = require('../sessionService');
 const { markRepliesAsDeleted } = require('../roomAccess');
 const { normalizeReactionEmoji, filterValidReactions, toReactionMap } = require('../reactions');
@@ -324,11 +324,11 @@ const handleDeleteForEveryone = async ({ ws, parsedMessage, wss, broadcastToAdmi
     }
     operatorUsername = operatorUsername || (ws.isAdmin ? 'Admin' : 'Unknown');
 
-    // Clean up media asset from Cloudinary if this was an uploaded file
-    await deleteCloudinaryAsset(originalMessage, { context: 'delete_for_everyone' });
-
+    // Soft-delete the message for all chat participants while preserving the media asset
+    // on Cloudinary and audit metadata in MessageEvent so admins can inspect/play deleted
+    // media (including voice notes) until an admin permanently purges it.
     const updatedMessage = await Message.findOneAndUpdate(
-      { id: originalMessage.id, roomId },
+      { id: originalMessage.id, roomId, isDeleted: { $ne: true } },
       {
         $set: {
           isDeleted: true,
@@ -340,12 +340,19 @@ const handleDeleteForEveryone = async ({ ws, parsedMessage, wss, broadcastToAdmi
           url: "",
           originalName: "",
           size: "",
+          duration: "",
+          waveform: "",
           reactions: "",
           replyingTo: "",
         }
       },
       { new: true }
     );
+
+    if (!updatedMessage) {
+      logger.warn(`Delete-for-everyone: message ${messageId} not found or already deleted in room ${roomId}. Skipping broadcast.`);
+      return;
+    }
 
     const targetReplyIds = [...candidateIds];
     if (originalMessage && originalMessage._id) {
@@ -401,12 +408,7 @@ const handleDeleteForEveryone = async ({ ws, parsedMessage, wss, broadcastToAdmi
       logger.error('Failed to handle delete event logging:', e);
     }
 
-    if (!updatedMessage) {
-      logger.warn(`Delete-for-everyone: message ${messageId} not found upon update in room ${roomId}. Skipping broadcast.`);
-      return;
-    }
-
-    const updateMsg = { type: 'update', data: toClientMessage(updatedMessage) };
+    const updateMsg = { type: 'update', data: toPublicClientMessage(updatedMessage) };
     wss.clients.forEach(c => {
       if (c.readyState === WebSocket.OPEN && c.roomId === roomId) {
         c.send(JSON.stringify(updateMsg));
