@@ -8,10 +8,12 @@ The real-time server application for **Pulse Chat**, engineered with Node.js, Ex
 
 - **Runtime**: Node.js (>= 20.0.0)
 - **HTTP Framework**: Express 5
-- **Real-Time Layer**: Native WebSocket (`ws`) with ping/pong heartbeats and room connection pooling
+- **Real-Time Layer**: Native WebSocket (`ws`) with ping/pong heartbeats, modular event routing (`messageHandler`, `presenceHandler`, `reportHandler`, `pinnedManager`), and room connection pooling
+- **Session Management & Concurrency**: Centralized `sessionService.js` with bounded multi-device concurrency (up to 5 concurrent sessions per user account), cryptographically hashed tokens, and timing-safe authentication
+- **Room Access & Query Defense**: Centralized `roomAccess.js` enforcing room authorization, visible message projection queries, and reply tombstone cascade sanitization (`$unset: { "replyingTo.text": 1, "replyingTo.url": 1 }`)
 - **Database**: MongoDB via Mongoose ODM
 - **Media Pipeline**: Cloudinary CDN with Multer chunked multipart stream uploads
-- **Security & Moderation**: Helmet CSP, CORS allowlisting, rate limiting (`express-rate-limit`), device fingerprinting, and audit logging
+- **Security & Moderation**: Helmet CSP, CORS allowlisting, rate limiting (`express-rate-limit`), device fingerprinting, async scrypt password verification, and audit logging
 - **Logging**: Structured Winston logging to console and `pulse-activity.log` with IST timezone formatting
 
 ---
@@ -21,10 +23,14 @@ The real-time server application for **Pulse Chat**, engineered with Node.js, Ex
 | Endpoint | Method | Description |
 | --- | --- | --- |
 | `/api/messages` | `GET` | Paginated chat message history with room authorization |
+| `/api/delete/:id` | `DELETE` | Message deletion, Cloudinary asset cleanup, and reply tombstoning |
+| `/api/messages/all` | `DELETE` | Permanent room chat wipe with batch media deletion (admin secret) |
+| `/api/messages/hide-all-frontend` | `POST` | Sets `frontendHiddenBefore` to clear frontend display while preserving DB records |
 | `/api/media/gallery` | `GET` | Cursor-paginated room media items (photos, videos, docs, links) |
 | `/api/upload` | `POST` | Chunked multipart media upload to Cloudinary CDN |
 | `/api/download` | `GET` | Secure download proxy with host allowlisting & filename sanitization |
 | `/api/link-preview` | `GET` | SSRF-hardened Open Graph & favicon metadata extractor |
+| `/api/gifs` | `GET` | GIPHY search and trending GIF proxy |
 | `/api/rooms` | `GET`, `POST` | Room discovery, joining, password verification, and creation |
 | `/api/admin/*` | `*` | Protected administrative endpoints for moderation & telemetry |
 

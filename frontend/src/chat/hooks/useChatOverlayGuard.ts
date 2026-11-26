@@ -34,6 +34,7 @@ interface UseChatOverlayGuardProps {
   handleCloseSearch: () => void;
   mediaGallery?: { items: any[]; initialIndex: number } | null;
   closeMediaGallery?: () => void;
+  overlayGuardPushed?: React.MutableRefObject<boolean>;
 }
 
 export function useChatOverlayGuard({
@@ -69,8 +70,10 @@ export function useChatOverlayGuard({
   handleCloseSearch,
   mediaGallery,
   closeMediaGallery,
+  overlayGuardPushed: externalOverlayGuardPushed,
 }: UseChatOverlayGuardProps) {
-  const overlayGuardPushed = useRef(false);
+  const internalOverlayGuardPushed = useRef(false);
+  const overlayGuardPushed = externalOverlayGuardPushed || internalOverlayGuardPushed;
 
   const stateRef = useRef({
     isSelectModeActive,

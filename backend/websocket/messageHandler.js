@@ -6,17 +6,12 @@ const logger = require('../logger');
 const User = require('../models/user');
 const Message = require('../models/message');
 const MessageEvent = require('../models/messageEvent');
-const UserReport = require('../models/userReport');
-const cloudinary = require('cloudinary').v2;
 const { toClientMessage } = require('../middleware');
-const { timingSafeEqualStr, parseCloudinaryAssetFromUrl, verifySignedSessionToken, hashSessionToken, isTrustedMediaUrl } = require('../security');
+const { isTrustedMediaUrl, deleteCloudinaryAsset } = require('../security');
+const { verifyActiveSessionToken } = require('../sessionService');
+const { markRepliesAsDeleted } = require('../roomAccess');
 const { normalizeReactionEmoji, filterValidReactions, toReactionMap } = require('../reactions');
-const {
-  getRoomState,
-  MIN_REPORT_REASON_LENGTH,
-  MAX_REPORT_REASON_LENGTH,
-  MAX_REPORTED_JOIN_HISTORY,
-} = require('../state');
+const { getRoomState } = require('../state');
 const { unpinIfPinned, broadcastPinnedMessages } = require('./pinnedManager');
 
 const reactionLocks = new Map();
@@ -59,83 +54,27 @@ const buildSafeReplyingTo = (rt) => {
 };
 
 /**
- * Validate the WebSocket's session token against the active room state and HMAC signature.
- * Prevents premature logout when tokens are rotated or when multi-tab / HTTP prefetch races occur,
- * while strictly ensuring that the session token is genuine and authorized for this user and room.
+ * Validate the WebSocket's session token against the active room state, HMAC signature,
+ * and persisted session token hashes.
  */
 const isSocketSessionValid = async (ws, roomId) => {
   if (ws.isAdmin) return true;
   const userId = ws.userId;
-  if (!userId) return false;
-  if (!ws.sessionToken || typeof ws.sessionToken !== 'string') return false;
+  if (!userId || !ws.sessionToken || typeof ws.sessionToken !== 'string') return false;
 
-  const roomState = getRoomState(roomId);
-  const activeSession = roomState.loggedInUsers?.get(userId);
-
-  // Fast path 1: active session exists in memory and string or hash matches
-  if (activeSession) {
-    if (activeSession.sessionToken && timingSafeEqualStr(ws.sessionToken, activeSession.sessionToken)) {
-      return true;
-    }
-    const tokenHash = hashSessionToken(ws.sessionToken);
-    if (activeSession.sessionTokenHash && tokenHash && timingSafeEqualStr(tokenHash, activeSession.sessionTokenHash)) {
-      return true;
-    }
-    if (!activeSession.sessionToken && !activeSession.sessionTokenHash) {
-      return true;
-    }
-  }
-
-  // Deep verification: activeSession is missing in memory (e.g. server restart / pruned state).
-  // Verify ws.sessionToken cryptographically AND check MongoDB to ensure the session was not revoked.
-  const verified = verifySignedSessionToken(ws.sessionToken);
-  const cleanRoomId = (roomId === 'me' || !roomId) ? 'me' : roomId;
-  const isRoomMatch = Boolean(
-    verified &&
-    (verified.roomId === roomId ||
-     verified.roomId === cleanRoomId ||
-     verified.roomId === 'me' ||
-     (cleanRoomId === 'me' && verified.roomId === ''))
-  );
-
-  if (verified && verified.userId === userId && isRoomMatch) {
-    try {
-      const dbUser = await User.findOne({ roomId: String(roomId), userId: String(userId) }).lean();
-      const tokenHash = hashSessionToken(ws.sessionToken);
-      const isDbActive = Boolean(
-        dbUser && (
-          (dbUser.sessionTokenHash && tokenHash && timingSafeEqualStr(tokenHash, dbUser.sessionTokenHash)) ||
-          (dbUser.sessionToken && timingSafeEqualStr(ws.sessionToken, dbUser.sessionToken))
-        )
-      );
-
-      if (isDbActive) {
-        if (activeSession) {
-          activeSession.sessionToken = ws.sessionToken;
-          activeSession.sessionTokenHash = tokenHash;
-        } else if (roomState.loggedInUsers) {
-          roomState.loggedInUsers.set(userId, {
-            userId,
-            username: dbUser?.username || ws.username || 'User',
-            sessionToken: ws.sessionToken,
-            sessionTokenHash: tokenHash,
-            loginTime: new Date(),
-            ip: ws.clientIp || '',
-            userAgent: ws.clientUa || '',
-          });
-        }
-        if (dbUser?.sessionToken && !dbUser?.sessionTokenHash) {
-          User.updateOne(
-            { roomId: String(roomId), userId: String(userId) },
-            { $set: { sessionTokenHash: tokenHash, lastSeen: new Date() }, $unset: { sessionToken: 1 } }
-          ).catch(() => {});
-        }
-        return true;
-      }
-    } catch (_) {}
-  }
-
-  return false;
+  const result = await verifyActiveSessionToken({
+    roomId,
+    rawRoomId: roomId,
+    userId,
+    sessionToken: ws.sessionToken,
+    roomState: getRoomState(roomId),
+    ip: ws.clientIp || '',
+    userAgent: ws.clientUa || '',
+    fallbackUsername: ws.username || 'User',
+    hydrateIfMissing: true,
+    preserveTimestampSession: false,
+  });
+  return result.valid;
 };
 
 /**
@@ -332,266 +271,6 @@ const handleEdit = async ({ ws, parsedMessage, wss, broadcastToAdmins }) => {
   });
 };
 
-const userReportCooldowns = new Map();
-
-if (typeof setInterval !== 'undefined') {
-  setInterval(() => {
-    const cutoff = Date.now() - 60000;
-    for (const [k, v] of userReportCooldowns.entries()) {
-      if (v < cutoff) userReportCooldowns.delete(k);
-    }
-  }, 60000).unref();
-}
-
-/**
- * Handle user report submission.
- */
-const handleReportUser = async ({ ws, parsedMessage, broadcastToAdmins }) => {
-  if (!ws.userId || !ws.username) {
-    ws.send(JSON.stringify({ type: 'report_error', message: 'You must be connected to submit a report.' }));
-    return;
-  }
-
-  const now = Date.now();
-  const lastReportTime = userReportCooldowns.get(ws.userId) || 0;
-  if (now - lastReportTime < 30000) {
-    const remainingSec = Math.ceil((30000 - (now - lastReportTime)) / 1000);
-    ws.send(JSON.stringify({
-      type: 'report_error',
-      message: `Please wait ${remainingSec} seconds before submitting another report.`,
-    }));
-    return;
-  }
-
-  const reportedUserId = typeof parsedMessage.reportedUserId === 'string'
-    ? parsedMessage.reportedUserId.trim()
-    : '';
-  const fallbackReportedUsername = typeof parsedMessage.reportedUsername === 'string'
-    ? parsedMessage.reportedUsername.trim()
-    : '';
-  const messageId = typeof parsedMessage.messageId === 'string'
-    ? parsedMessage.messageId.trim()
-    : '';
-  const reasonRaw = typeof parsedMessage.reason === 'string'
-    ? parsedMessage.reason.replace(/\s+/g, ' ').trim()
-    : '';
-
-  if (!reportedUserId) {
-    ws.send(JSON.stringify({ type: 'report_error', message: 'Missing reported user.' }));
-    return;
-  }
-
-  if (reportedUserId === ws.userId) {
-    ws.send(JSON.stringify({ type: 'report_error', message: 'You cannot report yourself.' }));
-    return;
-  }
-
-  if (reasonRaw.length < MIN_REPORT_REASON_LENGTH) {
-    ws.send(JSON.stringify({
-      type: 'report_error',
-      message: `Please enter at least ${MIN_REPORT_REASON_LENGTH} characters in the reason.`,
-    }));
-    return;
-  }
-
-  if (reasonRaw.length > MAX_REPORT_REASON_LENGTH) {
-    ws.send(JSON.stringify({
-      type: 'report_error',
-      message: `Reason is too long. Maximum ${MAX_REPORT_REASON_LENGTH} characters.`,
-    }));
-    return;
-  }
-
-  userReportCooldowns.set(ws.userId, now);
-
-  const roomId = ws.roomId || 'me';
-  const { onlineUsers, loggedInUsers } = getRoomState(roomId);
-  try {
-    const [reportedUserDoc, reportedMessage] = await Promise.all([
-      User.findOne({ roomId, userId: { $eq: reportedUserId } }).lean(),
-      messageId ? Message.findOne({ roomId, id: { $eq: messageId } }).lean() : Promise.resolve(null),
-    ]);
-
-    const reportedUsername = reportedUserDoc?.username
-      || onlineUsers.get(reportedUserId)?.username
-      || fallbackReportedUsername
-      || 'Unknown';
-
-    const sessionInfo = loggedInUsers.get(reportedUserId);
-    const sessionLoginTime = sessionInfo?.loginTime ? new Date(sessionInfo.loginTime) : null;
-    const sessionDurationMs = sessionLoginTime
-      ? Math.max(0, Date.now() - sessionLoginTime.getTime())
-      : null;
-
-    const joinHistory = Array.isArray(reportedUserDoc?.joinHistory)
-      ? reportedUserDoc.joinHistory
-          .map((d) => new Date(d))
-          .filter((d) => !Number.isNaN(d.getTime()))
-          .slice(-MAX_REPORTED_JOIN_HISTORY)
-      : [];
-
-    const report = await UserReport.create({
-      roomId,
-      reporterUserId: ws.userId,
-      reporterUsername: ws.username,
-      reporterIp: ws.clientIp || '',
-      reporterUserAgent: ws.clientUa || '',
-      reportedUserId,
-      reportedUsername,
-      reason: reasonRaw,
-      messageId: reportedMessage?.id || messageId,
-      messageType: reportedMessage?.type || parsedMessage.messageType || 'text',
-      messageText: reportedMessage?.text || '',
-      messageUrl: reportedMessage?.url || '',
-      messageTimestamp: reportedMessage?.timestamp ? new Date(reportedMessage.timestamp) : null,
-      reportedUserJoinedAt: reportedUserDoc?.createdAt ? new Date(reportedUserDoc.createdAt) : null,
-      reportedUserLastSeen: reportedUserDoc?.lastSeen ? new Date(reportedUserDoc.lastSeen) : null,
-      reportedUserCurrentSessionLoginTime: sessionLoginTime,
-      reportedUserCurrentSessionDurationMs: sessionDurationMs,
-      reportedUserIsOnline: onlineUsers.has(reportedUserId),
-      reportedUserJoinHistory: joinHistory,
-      reportedAt: new Date(),
-    });
-
-    const reportData = typeof report.toObject === 'function' ? report.toObject() : report;
-    broadcastToAdmins(roomId, 'user_reported', reportData);
-    broadcastToAdmins(roomId, 'activity', `User report: '${ws.username}' reported '${reportedUsername}'.`);
-
-    ws.send(JSON.stringify({
-      type: 'report_submitted',
-      data: {
-        reportId: reportData._id,
-        reportedUserId,
-        reportedUsername,
-      },
-    }));
-  } catch (error) {
-    logger.error('Failed to save user report:', { message: error.message, stack: error.stack });
-    ws.send(JSON.stringify({
-      type: 'report_error',
-      message: 'Failed to submit report. Please try again.',
-    }));
-  }
-};
-
-/**
- * Handle pin_message action (admins only).
- */
-const handlePinMessage = async ({ ws, parsedMessage, broadcastPinnedMessages, loadPinnedMessages, broadcastToAdmins }) => {
-  logger.info(`Received pin_message:`, parsedMessage);
-  if (!ws.isAdmin) {
-    logger.warn('Pin failed: not an admin');
-    return;
-  }
-  const { messageId, durationMs, replaceOldest } = parsedMessage;
-  const roomId = ws.roomId || 'me';
-  try {
-    let targetMsgId = messageId;
-    if (mongoose.Types.ObjectId.isValid(messageId)) {
-      const MessageEvent = mongoose.model('MessageEvent');
-      const event = await MessageEvent.findById(messageId).lean();
-      if (event) {
-        if (event.message?.id) targetMsgId = event.message.id;
-        else if (event.message?._id) targetMsgId = event.message._id.toString();
-        else if (event.messageId) targetMsgId = event.messageId;
-      }
-    }
-
-    const msg = await Message.findOne({
-      roomId,
-      $or: [
-        { id: targetMsgId },
-        ...(mongoose.Types.ObjectId.isValid(targetMsgId) ? [{ _id: targetMsgId }] : [])
-      ]
-    }).lean();
-
-    if (!msg) {
-      logger.warn(`Pin failed: message not found in DB for ID ${targetMsgId} (original: ${messageId})`);
-      ws.send(JSON.stringify({ type: 'error', message: 'Failed to pin: Message not found in database.' }));
-      return;
-    }
-
-    if (msg.isDeleted || msg.vanished || msg.text === 'This message has been deleted by an admin.') {
-      logger.warn(`Pin failed: cannot pin deleted message ${targetMsgId}`);
-      ws.send(JSON.stringify({ type: 'pin_error', message: 'Cannot pin a deleted message.' }));
-      return;
-    }
-    logger.info(`Pinning message found in DB: ${msg.id}`);
-
-    const state = getRoomState(roomId);
-    await loadPinnedMessages(roomId);
-
-    if (state.pinnedMessages.length >= 4 && !replaceOldest) {
-      ws.send(JSON.stringify({ type: 'pin_error', message: 'Maximum 4 pinned messages allowed.' }));
-      return;
-    }
-
-    if (state.pinnedMessages.length >= 4 && replaceOldest) {
-      const oldestMsg = state.pinnedMessages[0];
-      await Message.updateOne({ roomId, id: oldestMsg.id }, { $set: { pinned: null } });
-      await MessageEvent.updateMany(
-        { roomId, $or: [{ messageId: oldestMsg.id }, { 'message.id': oldestMsg.id }] },
-        { $set: { 'message.pinned': null } }
-      );
-      state.pinnedMessages.shift();
-    }
-
-    const pinnedAt = new Date();
-    const expiresAt = durationMs ? new Date(pinnedAt.getTime() + durationMs) : null;
-    const pinnedObj = { pinnedAt, expiresAt };
-
-    await Message.updateOne({ roomId, id: msg.id }, { $set: { pinned: pinnedObj } });
-    await MessageEvent.updateMany(
-      { roomId, $or: [{ messageId }, { 'message.id': messageId }, { messageId: targetMsgId }, { 'message.id': targetMsgId }] },
-      { $set: { 'message.pinned': pinnedObj } }
-    );
-    
-    const updatedMsg = { ...msg, pinned: pinnedObj };
-    const existingIndex = state.pinnedMessages.findIndex(p => p.id === msg.id);
-    if (existingIndex >= 0) {
-      state.pinnedMessages[existingIndex] = toClientMessage(updatedMsg);
-    } else {
-      state.pinnedMessages.push(toClientMessage(updatedMsg));
-    }
-    broadcastPinnedMessages(roomId);
-    if (typeof broadcastToAdmins === 'function') {
-      const preview = msg.text ? (msg.text.length > 50 ? msg.text.slice(0, 50) + '...' : msg.text) : (msg.type === 'audio' ? 'Voice note' : (msg.type || 'Media'));
-      const expiryText = expiresAt ? ` (expires in ${Math.round(durationMs / 60000)}m)` : '';
-      broadcastToAdmins(roomId, 'activity', `Admin pinned a message: "${preview}"${expiryText}.`);
-    }
-  } catch (error) {
-    logger.error('Failed to pin message:', error);
-  }
-};
-
-/**
- * Handle unpin_message action (admins only).
- */
-const handleUnpinMessage = async ({ ws, parsedMessage, wss, broadcastToAdmins }) => {
-  if (!ws.isAdmin) return;
-  const { messageId } = parsedMessage;
-  const roomId = ws.roomId || 'me';
-  try {
-    let targetMsgId = messageId;
-    if (mongoose.Types.ObjectId.isValid(messageId)) {
-      const MessageEvent = mongoose.model('MessageEvent');
-      const event = await MessageEvent.findById(messageId).lean();
-      if (event) {
-        if (event.message?.id) targetMsgId = event.message.id;
-        else if (event.message?._id) targetMsgId = event.message._id.toString();
-        else if (event.messageId) targetMsgId = event.messageId;
-      }
-    }
-
-    await unpinIfPinned(wss, roomId, [targetMsgId, messageId]);
-    if (typeof broadcastToAdmins === 'function') {
-      broadcastToAdmins(roomId, 'activity', `Admin unpinned a message.`);
-    }
-  } catch (error) {
-    logger.error('Failed to unpin message:', error);
-  }
-};
-
 /**
  * Handle delete_for_everyone.
  */
@@ -646,25 +325,7 @@ const handleDeleteForEveryone = async ({ ws, parsedMessage, wss, broadcastToAdmi
     operatorUsername = operatorUsername || (ws.isAdmin ? 'Admin' : 'Unknown');
 
     // Clean up media asset from Cloudinary if this was an uploaded file
-    if (originalMessage && originalMessage.url) {
-      let isCloudinary = false;
-      try {
-        const parsed = new URL(originalMessage.url);
-        isCloudinary = parsed.hostname === 'res.cloudinary.com' || parsed.hostname.endsWith('.cloudinary.com');
-      } catch {}
-      if (isCloudinary) {
-        const parsedAsset = parseCloudinaryAssetFromUrl(originalMessage.url);
-        const targetPublicId = parsedAsset?.publicId || (typeof originalMessage.id === 'string' && originalMessage.id.includes('/') ? originalMessage.id : null);
-        const targetResourceType = parsedAsset?.resourceType || (originalMessage.type === 'video' || originalMessage.type === 'audio' ? 'video' : (originalMessage.type === 'file' ? 'raw' : 'image'));
-        if (targetPublicId) {
-          try {
-            await cloudinary.uploader.destroy(targetPublicId, { resource_type: targetResourceType, invalidate: true });
-          } catch (cloudErr) {
-            logger.warn('Cloudinary destroy error during delete_for_everyone:', { error: cloudErr.message });
-          }
-        }
-      }
-    }
+    await deleteCloudinaryAsset(originalMessage, { context: 'delete_for_everyone' });
 
     const updatedMessage = await Message.findOneAndUpdate(
       { id: originalMessage.id, roomId },
@@ -693,26 +354,7 @@ const handleDeleteForEveryone = async ({ ws, parsedMessage, wss, broadcastToAdmi
     if (originalMessage && originalMessage.id && !targetReplyIds.includes(originalMessage.id)) {
       targetReplyIds.push(originalMessage.id);
     }
-    await Message.updateMany(
-      {
-        roomId: String(roomId),
-        $or: [
-          { 'replyingTo.id': { $in: targetReplyIds } },
-          { 'replyingTo._id': { $in: targetReplyIds } },
-          { 'replyingTo.messageId': { $in: targetReplyIds } },
-        ]
-      },
-      {
-        $set: {
-          'replyingTo.isDeleted': true,
-          'replyingTo.deletedBy': operatorUserId,
-        },
-        $unset: {
-          'replyingTo.text': '',
-          'replyingTo.url': '',
-        }
-      }
-    ).catch(e => logger.error('Failed to update replyingTo on delete:', e));
+    await markRepliesAsDeleted(roomId, targetReplyIds, operatorUserId, 'delete');
 
     // Unpin immediately if this message was pinned
     await unpinIfPinned(wss, roomId, candidateIds);
@@ -1019,9 +661,6 @@ const handleNewMessage = async ({ ws, parsedMessage, wss, broadcastToAdmins, _br
 module.exports = {
   handleReact,
   handleEdit,
-  handleReportUser,
-  handlePinMessage,
-  handleUnpinMessage,
   handleDeleteForEveryone,
   handleNewMessage,
 };

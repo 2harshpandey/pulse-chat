@@ -51,7 +51,7 @@ export const HeaderActionsGroup = styled.div`
 export const ChatSearchInput = styled.input<{ $active: boolean }>`
   background: transparent;
   border: none;
-  color: #fff;
+  color: var(--text-primary);
   flex: 1;
   width: 100%;
   min-width: 0;
@@ -61,7 +61,7 @@ export const ChatSearchInput = styled.input<{ $active: boolean }>`
   padding: 0 0 0 0.5rem;
   pointer-events: ${p => p.$active ? 'auto' : 'none'};
   &:focus { outline: none; }
-  &::placeholder { color: #94a3b8; }
+  &::placeholder { color: var(--text-tertiary); }
 `;
 
 export const ChatSearchButton = styled.button`

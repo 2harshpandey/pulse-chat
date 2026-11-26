@@ -1,11 +1,16 @@
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, renderHook, act } from '@testing-library/react';
+import { render, renderHook, act, fireEvent, screen } from '@testing-library/react';
 import { repairMojibakeText, sanitizeFilename, reconcileUploadedMessageInList } from './chat/utils';
 import { classifyUploadFile, isAudioMedia, isVideoMedia, isImageMedia } from './shared/mediaTypes';
 import { useChatLightbox } from './chat/hooks/useChatLightbox';
+import { useChatViewport } from './chat/hooks/useChatViewport';
+import { MediaDownloadButton } from './chat/components/message/MediaDownloadButton';
 import { DownloadProgressRing } from './chat/styles/chat.video.styles';
 import { QuotedMessageContainer } from './chat/styles/chat.message.styles';
+import { ChatSearchInput } from './chat/Chat.styles';
+import { MAX_MESSAGE_LENGTH, filterValidReactions, normalizeReactionEmoji } from './chat/constants';
+import { transferManager } from './chat/TransferManager';
 
 describe('Audit Fixes & Consolidations Regression Suite', () => {
   it('preserves ASCII hyphens in repairMojibakeText and sanitizeFilename while repairing mojibake', () => {
@@ -115,5 +120,115 @@ describe('Audit Fixes & Consolidations Regression Suite', () => {
       .map((s) => s.textContent || '')
       .join('\n');
     expect(styleText).not.toMatch(/:hover\s*\{[^}]*scale\(0\.9/);
+  });
+
+  it('uses theme-aware text color on ChatSearchInput and aligns MAX_MESSAGE_LENGTH with backend', () => {
+    render(<ChatSearchInput $active={true} value="hello" onChange={() => {}} />);
+    const styleText = Array.from(document.querySelectorAll('style'))
+      .map((s) => s.textContent || '')
+      .join('\n');
+    expect(styleText).toContain('color:var(--text-primary)');
+    expect(MAX_MESSAGE_LENGTH).toBe(5000);
+  });
+
+  it('rejects 0-byte file uploads cleanly in TransferManager instead of returning null', async () => {
+    const emptyFile = new File([], 'empty.txt', { type: 'text/plain' });
+    await expect(
+      transferManager.startUpload('empty-up-1', emptyFile, 'me', 'http://localhost:8080', 'user-1')
+    ).rejects.toThrow(/empty \(0-byte\)/i);
+  });
+
+  it('ignores Object.prototype keys in frontend filterValidReactions without crashing', () => {
+    expect(normalizeReactionEmoji('constructor')).toBeNull();
+    expect(normalizeReactionEmoji('__proto__')).toBeNull();
+    const cleaned = filterValidReactions({
+      constructor: [{ userId: 'u1', username: 'Alice' }],
+      '❤️': [{ userId: 'u2', username: 'Bob' }],
+    });
+    expect(Object.prototype.hasOwnProperty.call(cleaned, 'constructor')).toBe(false);
+    expect(cleaned['❤️']).toEqual([{ userId: 'u2', username: 'Bob' }]);
+  });
+
+  it('expands wrapped composer lines under 50 chars and resets height when cleared to empty', () => {
+    const rafCallbacks: FrameRequestCallback[] = [];
+    const rafSpy = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb: FrameRequestCallback) => {
+      rafCallbacks.push(cb);
+      return rafCallbacks.length;
+    });
+    const cafSpy = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+
+    try {
+      const textarea = document.createElement('textarea');
+      const overlay = document.createElement('div');
+      let currentScrollHeight = 48;
+      Object.defineProperty(textarea, 'scrollHeight', {
+        configurable: true,
+        get: () => currentScrollHeight,
+      });
+
+      const chatContainerRef = { current: document.createElement('div') };
+      const inputOverlayRef = { current: overlay };
+      const messageInputRef = { current: textarea };
+
+      const { result } = renderHook(() =>
+        useChatViewport({ chatContainerRef, inputOverlayRef, messageInputRef })
+      );
+
+      // Keystroke 1: single line (48px)
+      textarea.value = 'a';
+      currentScrollHeight = 48;
+      act(() => {
+        result.current.syncInputLayerLayout(textarea, 'a', false);
+        while (rafCallbacks.length) rafCallbacks.shift()?.(0);
+      });
+      expect(textarea.style.height).toBe('48px');
+      expect(overlay.style.height).toBe('48px');
+
+      // Keystroke 32 (under 50 chars, no newline): wrapped onto line 2 (72px) on narrow viewports
+      const wrappedShortText = 'This wraps onto line two early!!';
+      textarea.value = wrappedShortText;
+      currentScrollHeight = 72;
+      act(() => {
+        result.current.syncInputLayerLayout(textarea, wrappedShortText, false);
+        while (rafCallbacks.length) rafCallbacks.shift()?.(0);
+      });
+      expect(textarea.style.height).toBe('72px');
+      expect(overlay.style.height).toBe('72px');
+
+      // Clearing back to empty string resets height to auto immediately
+      textarea.value = '';
+      currentScrollHeight = 48;
+      act(() => {
+        result.current.syncInputLayerLayout(textarea, '', false);
+      });
+      expect(textarea.style.height).toBe('auto');
+      expect(overlay.style.height).toBe('auto');
+    } finally {
+      rafSpy.mockRestore();
+      cafSpy.mockRestore();
+    }
+  });
+
+  it('triggers MediaDownloadButton on both click-only (keyboard/accessibility) and pointerDown without double-firing', () => {
+    const onRequestDownload = vi.fn();
+    render(
+      <MediaDownloadButton
+        messageId="msg-dl-1"
+        url="https://res.cloudinary.com/demo/image/upload/v1/sample.jpg"
+        filename="sample.jpg"
+        onRequestDownload={onRequestDownload}
+      />
+    );
+
+    const btn = screen.getByRole('button', { name: 'Download media' });
+
+    // Synthetic/keyboard click without pointerDown
+    fireEvent.click(btn);
+    expect(onRequestDownload).toHaveBeenCalledTimes(1);
+
+    // Pointer activation followed by click triggers only once
+    fireEvent.pointerDown(btn, { button: 0 });
+    fireEvent.click(btn);
+    expect(onRequestDownload).toHaveBeenCalledTimes(2);
   });
 });

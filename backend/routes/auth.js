@@ -11,7 +11,7 @@ const AuditLog = require('../models/auditLog');
 const TempLink = require('../models/tempLink');
 const Room = require('../models/room');
 const User = require('../models/user');
-const { timingSafeEqualStr, verifyPasswordAsync, hashPasswordAsync, generateSessionToken, verifySignedSessionToken, hashSessionToken } = require('../security');
+const { timingSafeEqualStr, verifyPasswordAsync, hashPasswordAsync, generateSessionToken, hashSessionToken, hasStoredSessionToken, matchesStoredSessionToken } = require('../security');
 const {
   getRoomState,
   userFingerprints,
@@ -27,7 +27,8 @@ const {
   recordFailedPasswordAttempt,
   resetPasswordAttempts,
 } = require('../middleware');
-const { isRoomAccessAllowed } = require('./messages');
+const { isRoomAccessAllowed } = require('../roomAccess');
+const { doesTokenMatchInMemorySession } = require('../sessionService');
 
 // broadcastToAdmins is injected at startup via initRoutes(); stored here.
 let _broadcastToAdmins = () => {};
@@ -78,18 +79,9 @@ async function resolveUsernameCollision({ roomId, username, userId, ip, userAgen
   const prevLogged = roomState.loggedInUsers?.get(takenUser.userId);
   const incomingToken = typeof incomingSessionToken === 'string' && incomingSessionToken.trim() ? incomingSessionToken.trim() : null;
   const incomingHash = incomingToken ? hashSessionToken(incomingToken) : null;
-  let isTokenMatch = Boolean(
-    incomingToken && prevLogged && (
-      (prevLogged.sessionTokenHash && incomingHash && timingSafeEqualStr(incomingHash, prevLogged.sessionTokenHash)) ||
-      (prevLogged.sessionToken && timingSafeEqualStr(incomingToken, prevLogged.sessionToken))
-    )
+  const isTokenMatch = Boolean(
+    incomingToken && doesTokenMatchInMemorySession(prevLogged, incomingToken, incomingHash)
   );
-  if (!isTokenMatch && incomingToken) {
-    const verified = verifySignedSessionToken(incomingToken);
-    if (verified && verified.userId === takenUser.userId && verified.roomId === roomId) {
-      isTokenMatch = true;
-    }
-  }
 
   // Require cryptographic session token match; never fall back to low-entropy device fingerprints
   // or IP alone, which can be collided or spoofed to reclaim active usernames.
@@ -120,22 +112,9 @@ async function resolveUsernameCollision({ roomId, username, userId, ip, userAgen
   return false;
 }
 
-const isTokenMatchingSession = ({ cleanIncoming, incomingTokenHash, session, roomId, userId }) => {
+const isTokenMatchingSession = ({ cleanIncoming, incomingTokenHash, session }) => {
   if (!cleanIncoming) return false;
-  if (session) {
-    if (session.sessionToken && timingSafeEqualStr(cleanIncoming, session.sessionToken)) {
-      return true;
-    }
-    if (session.sessionTokenHash && incomingTokenHash && timingSafeEqualStr(incomingTokenHash, session.sessionTokenHash)) {
-      return true;
-    }
-  }
-  const verified = verifySignedSessionToken(cleanIncoming);
-  return Boolean(
-    verified &&
-    verified.userId === userId &&
-    (verified.roomId === roomId || (roomId === 'me' && verified.roomId === ''))
-  );
+  return doesTokenMatchInMemorySession(session, cleanIncoming, incomingTokenHash);
 };
 
 const resolveAuthenticatedUserId = async ({ userId, roomId, roomState, incomingToken, fingerprint = null, userAgent = '' }) => {
@@ -168,15 +147,12 @@ const resolveAuthenticatedUserId = async ({ userId, roomId, roomState, incomingT
   let hasProtectedSession = Boolean(activeSess && (activeSess.sessionToken || activeSess.sessionTokenHash));
   if (!tokenMatches) {
     const dbUser = await User.findOne({ roomId: String(roomId), userId: String(userId) })
-      .select('sessionToken sessionTokenHash')
+      .select('sessionToken sessionTokenHash sessionTokenHashes')
       .lean();
-    if (dbUser && (dbUser.sessionTokenHash || dbUser.sessionToken)) {
+    if (hasStoredSessionToken(dbUser)) {
       hasProtectedSession = true;
       tokenMatches = Boolean(
-        cleanIncoming && (
-          (dbUser.sessionTokenHash && incomingTokenHash && timingSafeEqualStr(incomingTokenHash, dbUser.sessionTokenHash)) ||
-          (dbUser.sessionToken && timingSafeEqualStr(cleanIncoming, dbUser.sessionToken))
-        )
+        cleanIncoming && matchesStoredSessionToken(dbUser, cleanIncoming, incomingTokenHash)
       );
     }
   }
@@ -318,7 +294,8 @@ const issueAuthenticatedSession = ({
     ...(viaTempLink ? { viaTempLink: true } : {}),
   });
 
-  // Persist hashed session token to MongoDB User document (never store plaintext tokens)
+  // Persist hashed session token to MongoDB User document (never store plaintext tokens).
+  // Retain up to 5 recent hashes so multi-device/multi-tab sessions survive server restarts.
   User.findOneAndUpdate(
     { roomId: String(roomId), userId: String(effectiveUserId) },
     {
@@ -329,6 +306,14 @@ const issueAuthenticatedSession = ({
         sessionTokenHash,
         lastSeen: new Date(),
       },
+      ...(sessionTokenHash ? {
+        $push: {
+          sessionTokenHashes: {
+            $each: [sessionTokenHash],
+            $slice: -5,
+          },
+        },
+      } : {}),
       $unset: {
         sessionToken: 1,
       },

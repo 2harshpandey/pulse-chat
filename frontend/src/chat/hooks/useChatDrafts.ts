@@ -19,12 +19,17 @@ export function useChatDrafts({
 }: UseChatDraftsProps) {
   const currentRoomRef = useRef<string | undefined>(roomId);
   const loadedRoomRef = useRef<string | undefined>(undefined);
+  const skipNextFlushRef = useRef<boolean>(false);
   const inputMessageRef = useRef<string>(inputMessage);
   inputMessageRef.current = inputMessage;
 
   // Flush pending draft for previous room immediately upon room or user transition
   useEffect(() => {
     return () => {
+      if (skipNextFlushRef.current) {
+        skipNextFlushRef.current = false;
+        return;
+      }
       if (userProfile && currentRoomRef.current) {
         try {
           const prevKey = getInputDraftKey(userId, currentRoomRef.current);
@@ -79,5 +84,16 @@ export function useChatDrafts({
     }, 400);
     return () => clearTimeout(timer);
   }, [inputMessage, userId, roomId, userProfile]);
+
+  const clearDraftOnLogout = () => {
+    skipNextFlushRef.current = true;
+    inputMessageRef.current = '';
+    try {
+      localStorage.removeItem(getInputDraftKey(userId, roomId));
+      localStorage.removeItem(getInputDraftKey(userId));
+    } catch (_) {}
+  };
+
+  return { clearDraftOnLogout };
 }
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { Message, ReactionsPopupData } from '../../types';
 import { filterValidReactions } from '../../constants';
-import { sanitizeMediaUrl, withCloudinaryTransform, getMediaGatePreviewUrl, isNonTouchDevice, isPhotoOrGif, copyImageToClipboard } from '../../utils';
+import { sanitizeMediaUrl, withCloudinaryTransform, getMediaGatePreviewUrl, isNonTouchDevice, isPhotoOrGif, copyImageToClipboard, getDeletedForMeIds } from '../../utils';
 import { VideoPlayer } from '../../VideoPlayer';
 import { MediaDownloadButton } from '../message';
 import { usePhotoZoom } from '../../hooks/usePhotoZoom';
@@ -81,7 +81,15 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
   const thumbRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
   const activeItems = useMemo(() => {
-    if (!allMessages || allMessages.length === 0) return items.filter((m) => !m.isDeleted);
+    const deletedForMeSet = new Set(currentUserId ? getDeletedForMeIds(currentUserId) : []);
+    const isNotDeletedForMe = (m: Message) => {
+      if (m.id && deletedForMeSet.has(m.id)) return false;
+      if ((m as any)._id && deletedForMeSet.has((m as any)._id)) return false;
+      return true;
+    };
+    if (!allMessages || allMessages.length === 0) {
+      return items.filter((m) => !m.isDeleted && isNotDeletedForMe(m));
+    }
     const allMsgMap = new Map<string, Message>();
     allMessages.forEach((m) => {
       if (m.id) allMsgMap.set(m.id, m);
@@ -89,6 +97,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
       if ((m as any).clientTempId) allMsgMap.set((m as any).clientTempId, m);
     });
     return items.filter((item) => {
+      if (!isNotDeletedForMe(item)) return false;
       const live =
         allMsgMap.get(item.id) ||
         (item._id ? allMsgMap.get(item._id) : undefined) ||
@@ -98,7 +107,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
       }
       return !item.isDeleted;
     });
-  }, [items, allMessages]);
+  }, [items, allMessages, currentUserId]);
 
   useEffect(() => {
     if (isOpen && activeItems.length === 0) {
@@ -116,14 +125,20 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     zoom.resetZoom();
   }, [currentIndex, isOpen, zoom.resetZoom]);
 
+  const activeItemsLengthRef = useRef(activeItems.length);
+  activeItemsLengthRef.current = activeItems.length;
+  const itemsLengthRef = useRef(items.length);
+  itemsLengthRef.current = items.length;
+
   useEffect(() => {
     if (isOpen) {
-      setCurrentIndex(Math.max(0, Math.min(initialIndex, (activeItems.length > 0 ? activeItems : items).length - 1)));
+      const len = activeItemsLengthRef.current > 0 ? activeItemsLengthRef.current : itemsLengthRef.current;
+      setCurrentIndex(Math.max(0, Math.min(initialIndex, len - 1)));
       setTouchOffset(0);
       setIsSwiping(false);
       setUserNavigated(false);
     }
-  }, [isOpen, initialIndex, activeItems.length, items.length]);
+  }, [isOpen, initialIndex]);
 
   const centerActiveThumb = useCallback((behavior: ScrollBehavior = 'smooth') => {
     const container = thumbsRowRef.current;

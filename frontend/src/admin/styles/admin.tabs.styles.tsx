@@ -732,6 +732,7 @@ export const Badge = styled.span<{ $color: 'green' | 'red' | 'yellow' | 'gray' |
       case 'yellow': return 'background: #fef3c7; color: #92400e;';
       case 'gray': return 'background: #f3f4f6; color: #374151;';
       case 'blue': return 'background: #dbeafe; color: #1e40af;';
+      case 'purple': return 'background: #f3e8ff; color: #7e22ce;';
       default: return '';
     }
   }}

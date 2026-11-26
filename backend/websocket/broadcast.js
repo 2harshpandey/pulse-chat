@@ -19,7 +19,7 @@ const broadcastToAdmins = (roomId, type, data) => {
   const targetRoomClients = (adminClients && adminClients.size > 0) ? Array.from(adminClients) : [];
 
   let superAdminClients = [];
-  if (roomId !== 'me' && roomId !== 'global') {
+  if (roomId !== 'me' && roomId !== 'global' && (type === 'activity' || type === 'audit_log')) {
     const superState = getRoomState('me');
     if (superState && superState.adminClients && superState.adminClients.size > 0) {
       superAdminClients = Array.from(superState.adminClients);

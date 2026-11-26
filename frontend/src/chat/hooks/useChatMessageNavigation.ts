@@ -3,17 +3,16 @@ import type { Message } from '../types';
 import {
   MAX_QUOTE_JUMP_STACK_DEPTH,
   MAX_QUOTE_AUTO_LOAD_PAGES,
-  INITIAL_FIRST_ITEM_INDEX,
   quoteWarn,
 } from '../constants';
 import {
   normalizeMessageId,
   findMessageElement,
-  isGroupStartMessage,
   getSessionToken,
   getDeletedForMeIds,
 } from '../utils';
 import { sendClientDiagnostic } from '../telemetry';
+import { resetMessageWindow } from './chatWindowHelper';
 
 export interface UseChatMessageNavigationProps {
   apiBase: string;
@@ -55,6 +54,7 @@ export interface UseChatMessageNavigationProps {
   setHasMoreNewerMessages: (val: boolean) => void;
   hasMoreNewerMessagesRef: React.MutableRefObject<boolean>;
   isLoadingOlderRef: React.MutableRefObject<boolean>;
+  bumpHistoryEpoch?: () => number;
   fetchAndPrependOlderMessages: (
     beforeCreatedAt: string,
     limit?: number
@@ -101,6 +101,7 @@ export function useChatMessageNavigation({
   setHasMoreNewerMessages,
   hasMoreNewerMessagesRef,
   isLoadingOlderRef,
+  bumpHistoryEpoch,
   fetchAndPrependOlderMessages,
 }: UseChatMessageNavigationProps) {
   const [isLocatingMessage, setIsLocatingMessage] = useState(false);
@@ -400,39 +401,32 @@ export function useChatMessageNavigation({
                 const deletedIds = new Set(normalized.filter((m) => m.isDeleted).map((m) => m.id));
                 const patched = markDeletedReplyTargets(normalized, deletedIds);
 
-                groupStartMessageIdsRef.current.clear();
-                for (let i = 0; i < patched.length; i++) {
-                  const current = patched[i];
-                  const prev = i > 0 ? patched[i - 1] : null;
-                  if (isGroupStartMessage(current, prev)) {
-                    groupStartMessageIdsRef.current.add(current.id);
-                  }
-                }
-
-                setFirstItemIndex(INITIAL_FIRST_ITEM_INDEX);
-                firstItemIndexRef.current = INITIAL_FIRST_ITEM_INDEX;
-                messagesRef.current = patched;
-                setMessages(patched);
-                setNewMessagesWhileScrolledUp(0);
-                messageTailSnapshotRef.current = {
-                  length: patched.length,
-                  lastId: patched.length > 0 ? patched[patched.length - 1].id : null,
-                };
-
                 const oldest = patched.length > 0 ? data.oldestCreatedAt || getMessageCursor(patched[0]) : null;
-                oldestLoadedAtRef.current = oldest;
-                setOldestLoadedAt(oldest);
-
                 const newest =
                   patched.length > 0 ? data.newestCreatedAt || getMessageCursor(patched[patched.length - 1]) : null;
-                newestLoadedAtRef.current = newest;
-                setNewestLoadedAt(newest);
-
-                setHasMoreOlderMessages(Boolean(data.hasMoreOlder));
-                hasMoreOlderMessagesRef.current = Boolean(data.hasMoreOlder);
-
-                setHasMoreNewerMessages(Boolean(data.hasMoreNewer));
-                hasMoreNewerMessagesRef.current = Boolean(data.hasMoreNewer);
+                bumpHistoryEpoch?.();
+                resetMessageWindow({
+                  messages: patched,
+                  oldestCursor: oldest,
+                  newestCursor: newest,
+                  hasMoreOlder: Boolean(data.hasMoreOlder),
+                  hasMoreNewer: Boolean(data.hasMoreNewer),
+                  groupStartMessageIdsRef,
+                  setFirstItemIndex,
+                  firstItemIndexRef,
+                  messagesRef,
+                  setMessages,
+                  setOldestLoadedAt,
+                  oldestLoadedAtRef,
+                  setNewestLoadedAt,
+                  newestLoadedAtRef,
+                  setHasMoreOlderMessages,
+                  hasMoreOlderMessagesRef,
+                  setHasMoreNewerMessages,
+                  hasMoreNewerMessagesRef,
+                  setNewMessagesWhileScrolledUp,
+                  messageTailSnapshotRef,
+                });
 
                 requestAnimationFrame(() => {
                   scrollToLoadedMessage(targetId, behavior, force);
@@ -500,6 +494,7 @@ export function useChatMessageNavigation({
       hasMoreNewerMessagesRef,
       hasMoreOlderMessagesRef,
       historyLoaded,
+      bumpHistoryEpoch,
       isLoadingOlderRef,
       markDeletedReplyTargets,
       messageTailSnapshotRef,

@@ -291,7 +291,8 @@ export const VideoPlayer = ({
         clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
       }
-      if (pendingResumeTimeRef.current > 0) {
+      const hadPendingResume = pendingResumeTimeRef.current > 0;
+      if (hadPendingResume) {
         try {
           video.currentTime = pendingResumeTimeRef.current;
         } catch (_) {}
@@ -304,7 +305,7 @@ export const VideoPlayer = ({
         pendingPlayRef.current = false;
         const p = video.play();
         if (p) p.catch(() => {});
-      } else {
+      } else if (!hadPendingResume) {
         video.currentTime = 0.01;
       }
     };

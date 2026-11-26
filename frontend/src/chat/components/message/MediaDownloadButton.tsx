@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { transferManager, TransferInfo } from '../../TransferManager';
 import { MediaDownloadOverlayBtn, MediaGalleryActionBtn, DownloadProgressRing } from '../../ChatStyledComponents';
 import { downloadFile } from '../../utils';
@@ -42,6 +42,7 @@ export const MediaDownloadButton: React.FC<MediaDownloadButtonProps> = ({
   const [transferInfo, setTransferInfo] = useState<TransferInfo | undefined>(() =>
     transferManager.getTransfer(messageId)
   );
+  const handledPointerDownRef = useRef(false);
 
   useEffect(() => {
     const unsubscribe = transferManager.subscribe((transfers) => {
@@ -85,17 +86,36 @@ export const MediaDownloadButton: React.FC<MediaDownloadButtonProps> = ({
 
   return (
     <BtnComponent
+      type="button"
       style={style}
       className={className}
       title={isDownloading ? 'Tap to cancel download' : 'Download'}
       aria-label={isDownloading ? 'Cancel download' : 'Download media'}
       onPointerDown={(e) => {
+        if ('button' in e && e.button !== 0) return;
+        handledPointerDownRef.current = true;
         // Prevent click loss during high-frequency re-renders
         handleClick(e);
+      }}
+      onPointerCancel={() => {
+        handledPointerDownRef.current = false;
+      }}
+      onBlur={() => {
+        handledPointerDownRef.current = false;
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          handledPointerDownRef.current = false;
+        }
       }}
       onClick={(e) => {
         e.stopPropagation();
         e.preventDefault();
+        if (handledPointerDownRef.current) {
+          handledPointerDownRef.current = false;
+          return;
+        }
+        handleClick(e);
       }}
     >
       {isDownloading ? (

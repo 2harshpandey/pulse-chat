@@ -1,5 +1,6 @@
 import React, { useState, useLayoutEffect } from 'react';
-import { ReactionPicker, ReactionEmoji, ReactionsPopup } from '../Chat.styles';
+import { ReactionPicker, ReactionEmoji } from '../Chat.styles';
+import { ReactionsPopup } from './modals/ReactionsPopup';
 import { QUICK_REACTIONS } from '../constants';
 import type { ReactionsPopupData } from '../types';
 

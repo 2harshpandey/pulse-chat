@@ -1,10 +1,22 @@
 'use strict';
 
 
+const FORBIDDEN_REACTION_KEYS = new Set([
+  '__proto__',
+  'constructor',
+  'prototype',
+  'toString',
+  'valueOf',
+  'hasOwnProperty',
+  'isPrototypeOf',
+  'propertyIsEnumerable',
+  'toLocaleString',
+]);
+
 const normalizeReactionEmoji = (emoji) => {
   if (typeof emoji !== 'string') return null;
   const normalized = emoji.trim().normalize('NFC');
-  if (!normalized || normalized.length > 20) return null;
+  if (!normalized || normalized.length > 20 || FORBIDDEN_REACTION_KEYS.has(normalized)) return null;
   return normalized;
 };
 
@@ -29,7 +41,7 @@ const reactionEntries = (reactions) => {
 };
 
 const filterValidReactions = (reactions) => {
-  const filtered = {};
+  const safeMap = new Map();
 
   for (const [rawEmoji, users] of reactionEntries(reactions)) {
     const emoji = normalizeReactionEmoji(rawEmoji);
@@ -37,11 +49,12 @@ const filterValidReactions = (reactions) => {
 
     const validUsers = users.map(normalizeReactionUser).filter(Boolean);
     if (validUsers.length > 0) {
-      filtered[emoji] = [...(filtered[emoji] || []), ...validUsers];
+      const existing = safeMap.get(emoji) || [];
+      safeMap.set(emoji, [...existing, ...validUsers]);
     }
   }
 
-  return filtered;
+  return Object.fromEntries(safeMap);
 };
 
 const toReactionMap = (reactions) => {

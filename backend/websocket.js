@@ -2,7 +2,7 @@
 
 const logger = require('./logger');
 const { roomStates, getRoomState } = require('./state');
-const { getVisibleMessagesQuery } = require('./routes/media');
+const { getVisibleMessagesQuery } = require('./roomAccess');
 const { extractIp } = require('./middleware');
 
 const {
@@ -18,11 +18,17 @@ const {
   startPinExpirationWatcher,
   unpinIfPinned,
   clearAllPins,
+  handlePinMessage,
+  handleUnpinMessage,
 } = require('./websocket/pinnedManager');
 
 const {
   handleAdminAuth,
 } = require('./websocket/adminHandler');
+
+const {
+  handleReportUser,
+} = require('./websocket/reportHandler');
 
 const {
   handleUserJoin,
@@ -37,9 +43,6 @@ const {
 const {
   handleReact,
   handleEdit,
-  handleReportUser,
-  handlePinMessage,
-  handleUnpinMessage,
   handleDeleteForEveryone,
   handleNewMessage,
 } = require('./websocket/messageHandler');
@@ -472,6 +475,7 @@ const initWebSocket = (wss) => {
         const c = adminConnectionCounts.get(adminIp) || 1;
         adminConnectionCounts.set(adminIp, Math.max(0, c - 1));
       });
+      ws.on('error', (error) => logger.error('Admin WebSocket Error:', { message: error.message }));
       ws.once('message', (rawData) => {
         handleAdminAuth(ws, rawData, broadcastToAdmins, loadPinnedMessages, handleClientMessage);
       });

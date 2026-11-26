@@ -47,19 +47,17 @@ export const ChatModals: React.FC<ChatModalsProps> = ({
         previewActiveIndex={media.previewActiveIndex}
         onSelectActiveIndex={media.setPreviewActiveIndex}
         onRemoveFile={(idx: number) => {
-          media.setStagedFiles((prev) => {
-            const removed = prev[idx];
-            if (removed) revokeBlobUrl(removed);
-            const next = prev.filter((_, i) => i !== idx);
-            if (next.length === 0) {
-              media.closeFilePreviewAndRestoreDraft();
-            } else {
-              if (media.previewActiveIndex >= next.length) {
-                media.setPreviewActiveIndex(next.length - 1);
-              }
+          const removed = media.stagedFiles[idx];
+          if (removed) revokeBlobUrl(removed);
+          const next = media.stagedFiles.filter((_, i) => i !== idx);
+          if (next.length === 0) {
+            media.closeFilePreviewAndRestoreDraft();
+          } else {
+            media.setStagedFiles(next);
+            if (media.previewActiveIndex >= next.length) {
+              media.setPreviewActiveIndex(next.length - 1);
             }
-            return next;
-          });
+          }
         }}
         onAddMoreFiles={() => {
           media.notifyNativeFilePickerOpen();

@@ -24,6 +24,7 @@ export function useAdminController() {
     ? 'me'
     : rawUrlRoomId;
   const [roomId, setRoomId] = useState(normalizedUrlRoomId);
+  const [canonicalRoomId, setCanonicalRoomId] = useState(normalizedUrlRoomId);
   const [isImpersonating] = useState(!!location.state?.isImpersonating);
   const [password, setPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
@@ -91,12 +92,14 @@ export function useAdminController() {
     apiHeaders,
     passwordRef,
     navigate,
+    isImpersonating,
   });
 
   // --- WebSocket Connection ---
   useAdminWebSocket({
     isAuthenticated,
     roomId,
+    canonicalRoomId,
     passwordRef,
     ws,
     setActivityLogs,
@@ -211,9 +214,11 @@ export function useAdminController() {
       usersHook.setUsers(usersData);
       setIsAuthenticated(true);
 
-      // Update URL if the user changed the room ID manually (without retaining plaintext password in history.state)
+      // Update browser URL cleanly without triggering RouteErrorBoundary unmount & logout
       if (urlRoomId !== roomId && !(urlRoomId === undefined && roomId === 'me')) {
-        navigate(`/admin/${roomId}`, { replace: true, state: {} });
+        if (typeof window !== 'undefined' && window.history?.replaceState) {
+          window.history.replaceState(window.history.state, '', `/admin/${roomId}`);
+        }
       }
 
       const headers = { 'x-admin-password': authenticatedPassword, 'x-room-id': roomId };
@@ -298,6 +303,9 @@ export function useAdminController() {
       }
       if (detailsRes.status === 'fulfilled' && detailsRes.value.ok) {
         const d = await detailsRes.value.json();
+        if (d.id) {
+          setCanonicalRoomId(String(d.id));
+        }
         roomSettingsHook.setRoomSettingsName(d.name || '');
         roomSettingsHook.setRoomSettingsDesc(d.description || '');
         roomSettingsHook.setRoomSettingsAlias(d.alias || '');

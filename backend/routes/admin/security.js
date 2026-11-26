@@ -54,7 +54,7 @@ module.exports = (wss, broadcasts) => {
 
   // --- Login Lockdown ---
   router.post('/api/admin/login-lockdown', adminLimiter, adminAuth, async (req, res) => {
-    const { type, customMinutes } = req.body;
+    const { type, customMinutes } = req.body || {};
     const roomId = req.roomId;
     if (!type) return res.status(400).json({ error: 'Lockdown type is required.' });
 

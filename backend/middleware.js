@@ -132,6 +132,7 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
   validate: { ip: false, default: true },
   keyGenerator: getClientIp,
+  skip: (req) => req.path === '/api/upload/chunk',
   message: { error: 'Too many requests, please try again later.' },
 });
 
@@ -545,6 +546,17 @@ const toClientMessage = (msg) => {
   return { ...plain, reactions: filterValidReactions(plain.reactions) };
 };
 
+// Strip hidden/deleted message payload fields before sending to regular chat clients
+// (admin endpoints still use toClientMessage to inspect retained hidden messages).
+const toPublicClientMessage = (msg) => {
+  const clientMsg = toClientMessage(msg);
+  if (!clientMsg || (!clientMsg.isDeleted && !clientMsg.vanished)) {
+    return clientMsg;
+  }
+  const { text: _t, url: _u, originalName: _o, size: _s, duration: _d, waveform: _w, ...safeTombstone } = clientMsg;
+  return safeTombstone;
+};
+
 // Strips sensitive bearer session tokens and token hashes before transmitting logged-in user lists to admin clients
 const toSafeLoggedInUserList = (loggedInUsers) => {
   if (!loggedInUsers) return [];
@@ -561,6 +573,7 @@ const isPasswordLocked = (key) => {
 };
 
 module.exports = {
+  getClientIp,
   extractIp,
   authLimiter,
   uploadLimiter,
@@ -586,5 +599,6 @@ module.exports = {
   isUserBlocked,
   isLoginLocked,
   toClientMessage,
+  toPublicClientMessage,
   setBroadcast,
 };

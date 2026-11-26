@@ -46,13 +46,47 @@ export interface TransferInfo {
   messageObj?: any;
 }
 
+const MAX_CONCURRENT_UPLOADS = 2;
+
 class TransferManager {
   private transfers: Map<string, TransferInfo> = new Map();
   private listeners: Set<(transfers: Map<string, TransferInfo>) => void> = new Set();
   // Tracks how many uploads are currently in-flight (HTTP). Used by Chat.tsx
   // to prevent proactive WebSocket reconnect during active uploads.
   public activeUploadCount = 0;
+  private runningSlotCount = 0;
+  private uploadWaitQueue: Array<() => void> = [];
   private restoredObjectUrls: Map<string, string> = new Map();
+
+  private acquireUploadSlot(abortSignal: AbortSignal): Promise<void> {
+    if (this.runningSlotCount < MAX_CONCURRENT_UPLOADS) {
+      this.runningSlotCount++;
+      return Promise.resolve();
+    }
+    return new Promise((resolve, reject) => {
+      if (abortSignal.aborted) {
+        return reject(new Error('Aborted'));
+      }
+      const onReady = () => {
+        abortSignal.removeEventListener('abort', onAbort);
+        this.runningSlotCount++;
+        resolve();
+      };
+      const onAbort = () => {
+        const idx = this.uploadWaitQueue.indexOf(onReady);
+        if (idx !== -1) this.uploadWaitQueue.splice(idx, 1);
+        reject(new Error('Aborted'));
+      };
+      abortSignal.addEventListener('abort', onAbort, { once: true });
+      this.uploadWaitQueue.push(onReady);
+    });
+  }
+
+  private releaseUploadSlot() {
+    this.runningSlotCount = Math.max(0, this.runningSlotCount - 1);
+    const next = this.uploadWaitQueue.shift();
+    if (next) next();
+  }
 
   subscribe(listener: (transfers: Map<string, TransferInfo>) => void) {
     this.listeners.add(listener);
@@ -75,8 +109,15 @@ class TransferManager {
 
   // --- UPLOAD LOGIC ---
   async startUpload(messageId: string, file: File, roomId: string, apiBase: string, userId: string, messageObj?: any): Promise<any> {
-    // Save to IndexedDB to survive refresh
-    await setCachedMediaBlob(currentSessionId, messageId, 'upload', file, messageObj);
+    if (!file || file.size <= 0) {
+      const emptyErr = new Error('Cannot upload an empty (0-byte) file.');
+      this.handleUploadError(messageId, emptyErr.message);
+      throw emptyErr;
+    }
+
+    // Save to IndexedDB (including roomId) to survive refresh without leaking across rooms
+    const persistedMetadata = { ...(messageObj || {}), roomId };
+    await setCachedMediaBlob(currentSessionId, messageId, 'upload', file, persistedMetadata);
 
     let startProgress = 0;
     let uploadedBytes = 0;
@@ -123,7 +164,11 @@ class TransferManager {
 
     this.activeUploadCount++;
     return new Promise(async (resolve, reject) => {
+      let slotAcquired = false;
       try {
+        await this.acquireUploadSlot(abortController.signal);
+        slotAcquired = true;
+
         let lastResponseData = null;
         for (let i = startChunkIndex; i < totalChunks; i++) {
           if (abortController.signal.aborted) {
@@ -186,19 +231,21 @@ class TransferManager {
 
               if (!response.ok) {
                 const data = await response.json().catch(() => ({}));
-                // Don't retry on permanent errors (4xx)
-                if (response.status >= 400 && response.status < 500) {
-                  throw new Error(data.error || 'Upload failed');
+                // Retry on transient 429 rate-limits, abort immediately on other permanent 4xx errors
+                if (response.status >= 400 && response.status < 500 && response.status !== 429) {
+                  const permanentErr: any = new Error(data.error || 'Upload failed');
+                  permanentErr.isPermanent = true;
+                  throw permanentErr;
                 }
                 lastChunkError = new Error(data.error || `Server error ${response.status}`);
-                continue; // retry on 5xx
+                continue; // retry on 429 / 5xx
               }
 
               lastResponseData = await response.json();
               chunkSuccess = true;
               break;
             } catch (fetchErr: any) {
-              if (fetchErr.name === 'AbortError') throw fetchErr; // don't retry aborts
+              if (fetchErr.name === 'AbortError' || fetchErr.isPermanent) throw fetchErr; // don't retry aborts or 4xx
               lastChunkError = fetchErr;
               // Network error — retry
             }
@@ -247,6 +294,10 @@ class TransferManager {
         } else {
           this.handleUploadError(messageId, err.message || 'Upload failed');
           reject(err);
+        }
+      } finally {
+        if (slotAcquired) {
+          this.releaseUploadSlot();
         }
       }
     });
@@ -453,15 +504,20 @@ class TransferManager {
     if (restored) this.notify();
   }
 
-  // Restore session uploads from IndexedDB
-  async restoreSessionUploads(): Promise<any[]> {
+  // Restore session uploads from IndexedDB scoped to the active room
+  async restoreSessionUploads(roomId?: string): Promise<any[]> {
     await clearOtherSessions(currentSessionId);
     
     const records = await getCachedMediaForUser(currentSessionId);
     const restoredMessages: any[] = [];
+    const normalizedTargetRoom = roomId ? roomId.trim().toLowerCase() : null;
     
     for (const record of records) {
       if (record.sourceUrl === 'upload' && record.metadata) {
+        const recordRoom = typeof record.metadata.roomId === 'string' ? record.metadata.roomId.trim().toLowerCase() : null;
+        if (normalizedTargetRoom && recordRoom && recordRoom !== normalizedTargetRoom) {
+          continue;
+        }
         if (!this.transfers.has(record.messageId)) {
           const file = new File([record.blob], record.metadata.originalName || 'file', { type: record.blob.type });
           this.transfers.set(record.messageId, {
@@ -470,6 +526,7 @@ class TransferManager {
             state: 'paused',
             progress: 0,
             file,
+            messageObj: record.metadata,
           });
         }
         

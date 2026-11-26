@@ -5,6 +5,7 @@ interface UseAdminRoomSettingsOptions {
   apiHeaders: () => Record<string, string>;
   passwordRef: React.MutableRefObject<string>;
   navigate: (to: string, options?: any) => void;
+  isImpersonating?: boolean;
 }
 
 export function useAdminRoomSettings({
@@ -12,6 +13,7 @@ export function useAdminRoomSettings({
   apiHeaders,
   passwordRef,
   navigate,
+  isImpersonating = false,
 }: UseAdminRoomSettingsOptions) {
   const [roomSettingsName, setRoomSettingsName] = useState('');
   const [roomSettingsDesc, setRoomSettingsDesc] = useState('');
@@ -166,11 +168,19 @@ export function useAdminRoomSettings({
       });
       const data = await res.json();
       if (res.ok) {
+        if (!data.newAlias) {
+          setRoomIdSuccess('Room ID is already set to this value.');
+          setRoomSettingsLoading(false);
+          return;
+        }
         setRoomIdSuccess('Room ID updated successfully. You will be redirected...');
         setRoomSettingsAlias(data.newAlias);
         setRoomSettingsLastIdChange(data.lastIdChangeAt);
         setTimeout(() => {
-          navigate(`/admin/${data.newAlias}`, { replace: true });
+          navigate(`/admin/${data.newAlias}`, {
+            replace: true,
+            state: { autoLoginPassword: passwordRef.current, isImpersonating },
+          });
         }, 3000);
       } else {
         setRoomIdError(data.error || 'Failed to update Room ID.');

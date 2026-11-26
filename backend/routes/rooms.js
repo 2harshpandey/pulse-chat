@@ -69,7 +69,7 @@ if (typeof setInterval !== 'undefined') {
 
 // Create a new room
 router.post('/', apiLimiter, async (req, res) => {
-  const { name, isPrivate, joinPassword, description, adminPassword, fpData } = req.body;
+  const { name, isPrivate, joinPassword, description, adminPassword, fpData } = req.body || {};
 
   if (!name || !adminPassword || typeof name !== 'string' || typeof adminPassword !== 'string' || !name.trim() || !adminPassword.trim()) {
     return res.status(400).json({ error: 'Name and Admin Password are required.' });
@@ -262,7 +262,7 @@ const verifyRoomJoinCredentials = async ({ req, cleanRoomId, password }) => {
 
 // Verify room join credentials before connecting
 router.post('/verify-join', authLimiter, checkPasswordRateLimit, async (req, res) => {
-  const { roomId, password } = req.body;
+  const { roomId, password } = req.body || {};
   if (!roomId || typeof roomId !== 'string' || !roomId.trim()) {
     return res.status(400).json({ error: 'Room ID must be a non-empty string.' });
   }
@@ -374,7 +374,7 @@ router.get('/search', apiLimiter, async (req, res) => {
 
 // Verify password
 router.post('/join', authLimiter, checkPasswordRateLimit, async (req, res) => {
-  const { id, joinPassword } = req.body;
+  const { id, joinPassword } = req.body || {};
   if (!id || typeof id !== 'string' || !id.trim()) {
     return res.status(400).json({ error: 'Room ID is required.' });
   }
@@ -392,7 +392,7 @@ router.post('/join', authLimiter, checkPasswordRateLimit, async (req, res) => {
 
 // Verify admin access
 router.post('/admin-auth', authLimiter, checkAdminPasswordRateLimit, async (req, res) => {
-  const { roomId, adminPassword } = req.body;
+  const { roomId, adminPassword } = req.body || {};
   
   if (!roomId || typeof roomId !== 'string' || !roomId.trim() || !adminPassword || typeof adminPassword !== 'string') {
     return res.status(400).json({ error: 'Room ID and Admin Password must be non-empty strings.' });
@@ -492,7 +492,7 @@ router.get('/admin/details', adminLimiter, adminAuthWithAudit, async (req, res) 
 });
 
 router.put('/admin/details', adminLimiter, adminAuthWithAudit, async (req, res) => {
-  const { name, description } = req.body;
+  const { name, description } = req.body || {};
 
   if (name !== undefined) {
     if (typeof name !== 'string' || !name.trim() || name.length > 50) {
@@ -523,7 +523,7 @@ router.put('/admin/details', adminLimiter, adminAuthWithAudit, async (req, res) 
 });
 
 router.put('/admin/roomId', adminLimiter, adminAuthWithAudit, async (req, res) => {
-  const { newRoomId } = req.body;
+  const { newRoomId } = req.body || {};
   if (typeof newRoomId !== 'string' || !newRoomId.trim()) {
     return res.status(400).json({ error: 'New Room ID is required.' });
   }
@@ -579,7 +579,7 @@ router.put('/admin/roomId', adminLimiter, adminAuthWithAudit, async (req, res) =
 });
 
 router.put('/admin/joinPassword', adminLimiter, adminAuthWithAudit, async (req, res) => {
-  const { currentPassword, newPassword } = req.body;
+  const { currentPassword, newPassword } = req.body || {};
   const joinPwLockKey = `${req.passwordRateLimitKey}_joinpw`;
   const remaining = isPasswordLocked(joinPwLockKey);
   if (remaining > 0) {

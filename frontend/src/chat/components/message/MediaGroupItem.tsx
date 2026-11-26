@@ -33,9 +33,8 @@ import {
   MediaLoadLabel,
   MediaLoadPreview,
   MediaSizeBadge,
-  DownloadProgressRing,
 } from '../../ChatStyledComponents';
-import { renderTextWithLinks } from '../../renderMessage';
+import { renderTextWithLinks } from '../../utils/urlLinkUtils';
 import {
   MessageQuotedPreview,
   MessageActionMenuPortal,
@@ -45,39 +44,7 @@ import {
   MediaDownloadButton,
   MediaCopyButton,
 } from './index';
-
-const DownloadSvg = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-    <polyline points="7 10 12 15 17 10" />
-    <line x1="12" y1="15" x2="12" y2="3" />
-  </svg>
-);
-
-const CancelSvg = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="6" y1="6" x2="18" y2="18" />
-    <line x1="18" y1="6" x2="6" y2="18" />
-  </svg>
-);
-
-const PlaySvg = () => (
-  <svg viewBox="0 0 24 24" fill="currentColor" stroke="none">
-    <polygon points="8 5 19 12 8 19" />
-  </svg>
-);
-
-const RingedProgressIcon = ({ progress }: { progress: number }) => (
-  <DownloadProgressRing $progress={progress} $visible={true}>
-    <svg className="ring-svg" width="36" height="36" viewBox="0 0 36 36" aria-hidden="true" style={{ width: '100%', height: '100%' }}>
-      <circle className="track" cx="18" cy="18" r="15.8" />
-      <circle className="progress" cx="18" cy="18" r="15.8" />
-    </svg>
-    <span className="cancel-icon" style={{ pointerEvents: 'none' }}>
-      <CancelSvg />
-    </span>
-  </DownloadProgressRing>
-);
+import { DownloadSvg, PlaySvg, RingedProgressIcon } from './MediaOverlayPrimitives';
 
 export interface MediaGroupItemProps {
   messages: Message[];

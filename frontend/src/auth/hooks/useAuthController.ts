@@ -51,32 +51,61 @@ export const useAuthController = ({
   useEffect(() => {
     setRoomName('');
     setRoomDescription('');
+    setError('');
     const params = new URLSearchParams(window.location.search);
     const token = params.get('token') || tempToken;
     const lowerRoom = (roomId || '').toLowerCase();
     if (token) {
       setIsTempLink(true);
       setRequiresPassword(false);
-    } else if (lowerRoom === 'global') {
+      return;
+    }
+
+    setIsTempLink(false);
+    if (lowerRoom === 'global') {
       setRequiresPassword(false);
-    } else if (roomId && lowerRoom !== 'me') {
+      return;
+    }
+
+    if (lowerRoom === 'me') {
+      setRequiresPassword(true);
+      return;
+    }
+
+    if (roomId) {
+      setRequiresPassword(null);
+      const controller = new AbortController();
       const apiBase = resolveApiBaseUrl();
-      fetch(`${apiBase}/api/rooms/${roomId}/meta`)
-        .then(res => res.json())
-        .then(data => {
+      fetch(`${apiBase}/api/rooms/${roomId}/meta`, { signal: controller.signal })
+        .then(async (res) => {
+          const data = await res.json().catch(() => null);
+          if (controller.signal.aborted) return;
+          if (!res.ok) {
+            setRequiresPassword(false);
+            setError((data && data.error) || (res.status === 404 ? 'Chat room not found.' : 'Failed to load room details.'));
+            return;
+          }
           if (data && data.id && data.id !== roomId) {
             navigate(data.id === 'me' ? '/me' : `/room/${data.id}`, { replace: true, state: location.state });
             return;
           }
           if (data && typeof data.requiresPassword === 'boolean') {
             setRequiresPassword(data.requiresPassword);
+          } else {
+            setRequiresPassword(true);
           }
           if (data && data.name) setRoomName(String(data.name));
           if (data && data.description) setRoomDescription(data.description);
         })
-        .catch(console.error);
+        .catch((err: any) => {
+          if (err?.name === 'AbortError' || controller.signal.aborted) return;
+          console.error(err);
+          setRequiresPassword(true);
+          setError('Could not load room details. Please try again.');
+        });
+      return () => controller.abort();
     }
-  }, [roomId, tempToken]);
+  }, [roomId, tempToken, navigate]);
 
   useEffect(() => {
     const vv = window.visualViewport;
@@ -132,22 +161,27 @@ export const useAuthController = ({
         const resp = await fetch(`${apiBase}/api/auth/verify-temp`, {
           method: 'POST',
           headers: authHeaders,
-          body: JSON.stringify({ token, username: username.trim(), userId: submittingUserId, fingerprint, roomId }),
+          body: JSON.stringify({ token, username: username.trim(), userId: submittingUserId, fingerprint, ...(roomId ? { roomId } : {}) }),
         });
         if (resp.ok) {
           const data = await resp.json();
+          const verifiedRoomId = data.roomId || roomId || 'me';
           if (data.sessionToken) {
-            setSessionToken(data.sessionToken, data.roomId || roomId);
+            setSessionToken(data.sessionToken, verifiedRoomId);
           }
           localStorage.setItem('pulseUsername', username.trim());
-          localStorage.setItem(`pulseUsername_${roomId}`, username.trim());
-          if (data.roomId) {
-            localStorage.setItem('pulseRoomId', data.roomId);
-          }
+          localStorage.setItem(`pulseUsername_${verifiedRoomId}`, username.trim());
+          localStorage.setItem('pulseRoomId', verifiedRoomId);
           const verifiedUserId = data.userId || submittingUserId;
           localStorage.setItem('pulseUserId', verifiedUserId);
           setCookie('pulseUserId', verifiedUserId, 30);
-          onAuthSuccess({ userId: verifiedUserId, username: username.trim(), roomId: data.roomId });
+          try {
+            sessionStorage.setItem(`pulseVerifiedTemp_${token}`, verifiedRoomId);
+          } catch (_) {}
+          onAuthSuccess({ userId: verifiedUserId, username: username.trim(), roomId: verifiedRoomId });
+          if (isTempLink) {
+            navigate(verifiedRoomId === 'me' ? '/me' : `/room/${verifiedRoomId}`, { replace: true });
+          }
         } else {
           const d = await resp.json().catch(() => ({}));
           if (resp.status === 429) {

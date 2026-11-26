@@ -23,13 +23,14 @@ export const rememberLinkPreview = (url: string, data: LinkPreviewData | null): 
 };
 
 export const fetchLinkPreviewData = (url: string, roomId?: string): Promise<LinkPreviewData | null> => {
-  if (linkPreviewCache.has(url)) return Promise.resolve(linkPreviewCache.get(url) ?? null);
-  if (linkPreviewInFlight.has(url)) return linkPreviewInFlight.get(url)!;
+  const currentRoomId = roomId || getStoredValue('pulseRoomId') || getStoredValue('pulse_room_id') || 'me';
+  const cacheKey = `${currentRoomId}:${url}`;
+  if (linkPreviewCache.has(cacheKey)) return Promise.resolve(linkPreviewCache.get(cacheKey) ?? null);
+  if (linkPreviewInFlight.has(cacheKey)) return linkPreviewInFlight.get(cacheKey)!;
 
   const promise = (async () => {
     try {
       const apiBase = resolveApiBaseUrl();
-      const currentRoomId = roomId || getStoredValue('pulseRoomId') || getStoredValue('pulse_room_id') || 'me';
       const previewEndpoint = `${apiBase}/api/link-preview?url=${encodeURIComponent(url)}&roomId=${encodeURIComponent(currentRoomId)}`;
       
       const headers: Record<string, string> = {
@@ -43,16 +44,15 @@ export const fetchLinkPreviewData = (url: string, roomId?: string): Promise<Link
       const res = await fetch(previewEndpoint, { headers });
       if (!res.ok) throw new Error('bad response');
       const json: LinkPreviewData = await res.json();
-      rememberLinkPreview(url, json);
+      rememberLinkPreview(cacheKey, json);
       return json;
     } catch {
-      rememberLinkPreview(url, null);
       return null;
     } finally {
-      linkPreviewInFlight.delete(url);
+      linkPreviewInFlight.delete(cacheKey);
     }
   })();
 
-  linkPreviewInFlight.set(url, promise);
+  linkPreviewInFlight.set(cacheKey, promise);
   return promise;
 };

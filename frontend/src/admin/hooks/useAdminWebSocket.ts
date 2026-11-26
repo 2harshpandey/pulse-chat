@@ -5,6 +5,7 @@ import type { UserProfile, BlockedUserData, LockdownData, AuditLogData, LoggedIn
 interface UseAdminWebSocketOptions {
   isAuthenticated: boolean;
   roomId: string;
+  canonicalRoomId?: string;
   passwordRef: React.MutableRefObject<string>;
   ws: React.MutableRefObject<WebSocket | null>;
   setActivityLogs: React.Dispatch<React.SetStateAction<string[]>>;
@@ -32,6 +33,7 @@ const safeSessionStorageSet = (key: string, value: string) => {
 export function useAdminWebSocket({
   isAuthenticated,
   roomId,
+  canonicalRoomId,
   passwordRef,
   ws,
   setActivityLogs,
@@ -49,6 +51,8 @@ export function useAdminWebSocket({
 }: UseAdminWebSocketOptions) {
   const roomIdRef = useRef(roomId);
   roomIdRef.current = roomId;
+  const canonicalRoomIdRef = useRef(canonicalRoomId || roomId);
+  canonicalRoomIdRef.current = canonicalRoomId || roomId;
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -93,9 +97,29 @@ export function useAdminWebSocket({
           return;
         }
 
+        const activeCanonicalRoomId = canonicalRoomIdRef.current || currentRoomId;
+        const matchesCurrentRoom = (msgRoomId?: string) =>
+          !msgRoomId || msgRoomId === currentRoomId || msgRoomId === activeCanonicalRoomId;
+        const isSuperMonitorScope =
+          currentRoomId === 'me' ||
+          currentRoomId === 'global' ||
+          activeCanonicalRoomId === 'me' ||
+          activeCanonicalRoomId === 'global';
+
+        if (
+          message.type !== 'activity' &&
+          message.type !== 'audit_log' &&
+          message.type !== 'server_logs' &&
+          message.type !== 'error' &&
+          message.type !== 'pin_error' &&
+          !matchesCurrentRoom(message.roomId)
+        ) {
+          return;
+        }
+
         switch (message.type) {
           case 'activity':
-            if ((currentRoomId !== 'me' && currentRoomId !== 'global') && message.roomId && message.roomId !== currentRoomId) {
+            if (!isSuperMonitorScope && !matchesCurrentRoom(message.roomId)) {
               break;
             }
             setActivityLogs((prev) => {
@@ -130,11 +154,14 @@ export function useAdminWebSocket({
           case 'bulk_history_update':
             setHistoryLogs((prev) => {
               const updated = [...prev];
-              message.data.events.forEach((ev: any) => {
-                const targetMsgId = ev.message?.id || ev.messageId || ev.file?.publicId;
-                const idx = updated.findIndex(
-                  (l) => l._id === ev._id || (targetMsgId && (l.messageId === targetMsgId || l.message?.id === targetMsgId || l.file?.publicId === targetMsgId))
-                );
+              (message.data?.events || []).forEach((ev: any) => {
+                let idx = ev._id ? updated.findIndex((l) => l._id === ev._id) : -1;
+                if (idx === -1) {
+                  const targetMsgId = ev.message?.id || ev.messageId || ev.file?.publicId;
+                  idx = updated.findIndex(
+                    (l) => targetMsgId && (l.messageId === targetMsgId || l.message?.id === targetMsgId || l.file?.publicId === targetMsgId)
+                  );
+                }
                 if (idx !== -1) updated[idx] = ev;
               });
               return updated;
@@ -214,7 +241,7 @@ export function useAdminWebSocket({
             setLockdownStatus(message.data);
             break;
           case 'audit_log':
-            if ((currentRoomId !== 'me' && currentRoomId !== 'global') && message.data?.roomId && message.data.roomId !== currentRoomId) {
+            if (!isSuperMonitorScope && !matchesCurrentRoom(message.data?.roomId || message.roomId)) {
               break;
             }
             setAuditLogs((prev) => [{ ...message.data, _id: Date.now().toString() }, ...prev].slice(0, 200));

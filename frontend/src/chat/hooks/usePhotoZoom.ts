@@ -235,6 +235,9 @@ export function usePhotoZoom(options?: UsePhotoZoomOptions): UsePhotoZoomReturn 
     if (e.pointerType === 'touch') {
       lastTouchTimeRef.current = Date.now();
     }
+    try {
+      e.currentTarget?.setPointerCapture?.(e.pointerId);
+    } catch (_) {}
     pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     setIsInteracting(true);
 
@@ -307,6 +310,11 @@ export function usePhotoZoom(options?: UsePhotoZoomOptions): UsePhotoZoomReturn 
       if (e.pointerType === 'touch') {
         lastTouchTimeRef.current = Date.now();
       }
+      try {
+        if (e.currentTarget?.hasPointerCapture?.(e.pointerId)) {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        }
+      } catch (_) {}
       pointersRef.current.delete(e.pointerId);
 
       // Check for tap / double tap gesture
@@ -359,6 +367,25 @@ export function usePhotoZoom(options?: UsePhotoZoomOptions): UsePhotoZoomReturn 
     },
     [handleDoubleTap]
   );
+
+  useEffect(() => {
+    if (!isInteracting) return;
+    const handleGlobalPointerEnd = (e: PointerEvent) => {
+      if (!pointersRef.current.has(e.pointerId)) return;
+      pointersRef.current.delete(e.pointerId);
+      if (pointersRef.current.size === 0) {
+        setIsInteracting(false);
+        dragRef.current = null;
+        pinchRef.current = null;
+      }
+    };
+    window.addEventListener('pointerup', handleGlobalPointerEnd);
+    window.addEventListener('pointercancel', handleGlobalPointerEnd);
+    return () => {
+      window.removeEventListener('pointerup', handleGlobalPointerEnd);
+      window.removeEventListener('pointercancel', handleGlobalPointerEnd);
+    };
+  }, [isInteracting]);
 
   const handleImageLoad = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget;

@@ -1,6 +1,6 @@
 import React, { useContext } from 'react';
 import EmojiPicker, { EmojiStyle, Theme } from 'emoji-picker-react';
-import { useParams } from 'react-router-dom';
+import { useParams, useLocation } from 'react-router-dom';
 import Auth from './Auth';
 import { UserContext } from './UserContext';
 import { getInputDraftKey } from './chat/constants';
@@ -154,8 +154,7 @@ function ChatAuthenticated({ isMe, isTempLink }: ChatProps) {
             loadedMediaSrcById={c.media.loadedMediaSrcById}
             onShowToast={c.msgs.triggerAlbumDownloadToast}
             onLogout={() => {
-              localStorage.removeItem(getInputDraftKey(c.userIdRef.current, c.roomId));
-              localStorage.removeItem(getInputDraftKey(c.userIdRef.current));
+              c.composer.clearDraftOnLogout();
               if (c.ws.current && c.ws.current.readyState === WebSocket.OPEN) {
                 c.ws.current.send(JSON.stringify({ type: 'user_logout', userId: c.userIdRef.current, roomId: c.roomId }));
               }
@@ -163,7 +162,7 @@ function ChatAuthenticated({ isMe, isTempLink }: ChatProps) {
                 clearOverlayGuardHistoryEntry();
                 c.overlayGuardPushed.current = false;
               }
-              c.userContext?.logout();
+              c.userContext?.logout(c.roomId);
             }}
           />
         </LayoutContainer>
@@ -193,10 +192,20 @@ function ChatAuthenticated({ isMe, isTempLink }: ChatProps) {
 function Chat({ isMe, isTempLink }: ChatProps = {}) {
   const userContext = useContext(UserContext);
   const { token: tempToken, roomId: urlRoomId } = useParams<{ token?: string; roomId?: string }>();
+  const location = useLocation();
+  const locationState = location.state as { autoJoin?: boolean } | null;
   const isMeRoom = isMe || urlRoomId?.toLowerCase() === 'me';
-  const roomId = isMeRoom ? 'me' : (urlRoomId || userContext?.profile?.roomId || 'me');
+  const verifiedTempRoom = (isTempLink && tempToken && typeof sessionStorage !== 'undefined')
+    ? sessionStorage.getItem(`pulseVerifiedTemp_${tempToken}`)
+    : null;
+  const roomId = isMeRoom
+    ? 'me'
+    : (urlRoomId || verifiedTempRoom || (isTempLink ? '' : (userContext?.profile?.roomId || 'me')));
 
-  if (!userContext?.profile) {
+  const needsTempLinkAuth = Boolean(isTempLink && tempToken && !verifiedTempRoom);
+  const needsAutoJoinReauth = Boolean(locationState?.autoJoin);
+
+  if (!userContext?.profile || needsTempLinkAuth || needsAutoJoinReauth) {
     return <Auth onAuthSuccess={userContext?.login ?? (() => {})} tempToken={tempToken || null} roomId={roomId} />;
   }
 

@@ -124,7 +124,7 @@ export const AuthCard: React.FC<AuthCardProps> = ({ controller, roomId = 'me' })
         )}
       </BrandSection>
 
-      {requiresPassword === null ? (
+      {requiresPassword === null && !error ? (
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '120px', marginBottom: '1rem' }}>
           <div style={{ width: '30px', height: '30px', border: '3px solid rgba(99,102,241,0.2)', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>

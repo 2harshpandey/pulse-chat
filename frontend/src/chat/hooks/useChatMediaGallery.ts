@@ -132,7 +132,7 @@ export function useChatMediaGallery({ roomId, isActive, userId }: UseChatMediaGa
         if (!isMountedRef.current) return;
         setError('Failed to load media. Please try again.');
       } finally {
-        if (isMountedRef.current) {
+        if (isMountedRef.current && abortRef.current === controller) {
           setIsLoading(false);
         }
       }

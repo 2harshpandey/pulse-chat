@@ -76,4 +76,22 @@ describe('Persistent Session Token Management', () => {
     removeAuthSessionToken('me');
     expect(getAuthSessionToken('me')).toBeNull();
   });
+
+  it('prevents cross-room token poisoning when global fallback belongs to another room and supports case-insensitive room lookup', () => {
+    const encodePayload = (obj: Record<string, unknown>) =>
+      btoa(JSON.stringify(obj)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const globalToken = `pls.${encodePayload({ userId: 'u1', roomId: 'global', iat: Date.now() })}.sig_g`;
+    const privateToken = `pls.${encodePayload({ userId: 'u1', roomId: 'myroom', iat: Date.now() })}.sig_p`;
+
+    setSessionToken(privateToken, 'myroom');
+    // Visiting /global overwrites the unscoped global fallback
+    setSessionToken(globalToken, 'global');
+
+    // Case-different URL lookup still finds the canonical private room token
+    expect(getSessionToken('MyRoom')).toBe(privateToken);
+
+    // Asking for an unauthenticated private room must NOT return or cache globalToken
+    expect(getSessionToken('other-private')).toBeNull();
+    expect(localStorage.getItem('pulseSessionToken_other-private')).toBeNull();
+  });
 });

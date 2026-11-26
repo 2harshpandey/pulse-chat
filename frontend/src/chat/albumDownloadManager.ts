@@ -145,9 +145,11 @@ class AlbumDownloadManager {
       sendClientDiagnostic('album_zip_download_error', { albumId, error: String(err) });
       return false;
     } finally {
-      this.abortControllers.delete(albumId);
-      this.activeDownloads.delete(albumId);
-      this.notify();
+      if (this.abortControllers.get(albumId) === controller) {
+        this.abortControllers.delete(albumId);
+        this.activeDownloads.delete(albumId);
+        this.notify();
+      }
     }
   }
 }

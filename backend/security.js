@@ -106,7 +106,7 @@ const buildSafeDownloadUrl = (parsedUrl, allowedHost) => {
   return safeUrl.href;
 };
 
-const assertSafeDownloadUrl = async (targetUrl) => {
+const assertSafeDownloadUrl = async (targetUrl, { allowSignedCloudinaryApi = false } = {}) => {
   let parsed;
   try {
     parsed = new URL(targetUrl);
@@ -123,7 +123,7 @@ const assertSafeDownloadUrl = async (targetUrl) => {
     throw new Error('Blocked hostname.');
   }
 
-  const allowedHost = getAllowedDownloadHost(hostname);
+  const allowedHost = getAllowedDownloadHost(hostname) || (allowSignedCloudinaryApi && hostname === 'api.cloudinary.com' ? 'api.cloudinary.com' : '');
   if (!allowedHost) {
     throw new Error('Untrusted download host.');
   }
@@ -146,8 +146,8 @@ const assertSafeDownloadUrl = async (targetUrl) => {
   return buildSafeDownloadUrl(parsed, allowedHost);
 };
 
-const runWithSafeRedirects = async (executor, initialUrl) => {
-  let currentUrl = await assertSafeDownloadUrl(initialUrl);
+const runWithSafeRedirects = async (executor, initialUrl, options = {}) => {
+  let currentUrl = await assertSafeDownloadUrl(initialUrl, options);
   const maxRedirects = 3;
 
   for (let i = 0; i <= maxRedirects; i += 1) {
@@ -156,7 +156,7 @@ const runWithSafeRedirects = async (executor, initialUrl) => {
       const location = response.headers?.location;
       if (!location) throw new Error('Redirect missing location.');
       const nextUrl = new URL(location, currentUrl).href;
-      currentUrl = await assertSafeDownloadUrl(nextUrl);
+      currentUrl = await assertSafeDownloadUrl(nextUrl, options);
       continue;
     }
     return response;
@@ -466,21 +466,87 @@ const hashSessionToken = (token) => {
   return crypto.createHash('sha256').update(token.trim()).digest('hex');
 };
 
+/**
+ * Returns true if a persisted User document holds any active session token or hash.
+ */
+const hasStoredSessionToken = (userDoc) => Boolean(
+  userDoc && (
+    userDoc.sessionTokenHash ||
+    userDoc.sessionToken ||
+    (Array.isArray(userDoc.sessionTokenHashes) && userDoc.sessionTokenHashes.length > 0)
+  )
+);
+
+/**
+ * Constant-time check of an incoming raw token / SHA-256 hash against a User document's
+ * primary hash, bounded multi-device hash history, or legacy plaintext token.
+ */
+const matchesStoredSessionToken = (userDoc, rawToken, incomingHash) => {
+  if (!userDoc || !rawToken) return false;
+  const resolvedHash = incomingHash || hashSessionToken(rawToken);
+  if (userDoc.sessionTokenHash && resolvedHash && timingSafeEqualStr(resolvedHash, userDoc.sessionTokenHash)) {
+    return true;
+  }
+  if (Array.isArray(userDoc.sessionTokenHashes) && resolvedHash) {
+    for (const storedHash of userDoc.sessionTokenHashes) {
+      if (typeof storedHash === 'string' && storedHash && timingSafeEqualStr(resolvedHash, storedHash)) {
+        return true;
+      }
+    }
+  }
+  if (userDoc.sessionToken && timingSafeEqualStr(rawToken, userDoc.sessionToken)) {
+    return true;
+  }
+  return false;
+};
+
+const resolveCloudinaryResourceTarget = (msg, defaultResourceType = 'image') => {
+  if (!msg || !msg.url) return null;
+  let isCloudinary = false;
+  try {
+    const parsed = new URL(msg.url);
+    isCloudinary = parsed.hostname === 'res.cloudinary.com' || parsed.hostname.endsWith('.cloudinary.com');
+  } catch {}
+  if (!isCloudinary) return null;
+
+  const parsedAsset = parseCloudinaryAssetFromUrl(msg.url);
+  const publicId = parsedAsset?.publicId || (typeof msg.id === 'string' && msg.id.includes('/') ? msg.id : null);
+  if (!publicId) return null;
+
+  const fallbackType = (msg.type === 'video' || msg.type === 'audio')
+    ? 'video'
+    : (msg.type === 'file' ? 'raw' : defaultResourceType);
+  const resourceType = parsedAsset?.resourceType || fallbackType;
+  return {
+    publicId,
+    resourceType: (resourceType === 'video' || resourceType === 'raw') ? resourceType : 'image',
+  };
+};
+
+/**
+ * Deletes a single Cloudinary asset associated with a message record if present.
+ */
+const deleteCloudinaryAsset = async (msg, { defaultResourceType = 'image', context = 'message delete' } = {}) => {
+  const target = resolveCloudinaryResourceTarget(msg, defaultResourceType);
+  if (!target) return;
+  try {
+    await cloudinary.uploader.destroy(target.publicId, {
+      resource_type: target.resourceType,
+      invalidate: true,
+    });
+  } catch (cloudErr) {
+    logger.warn(`Cloudinary destroy error during ${context}:`, { error: cloudErr.message });
+  }
+};
+
 const batchDeleteCloudinaryAssets = async (messagesWithMedia) => {
   if (!Array.isArray(messagesWithMedia) || messagesWithMedia.length === 0) return;
   const groups = { image: [], video: [], raw: [] };
 
   for (const msg of messagesWithMedia) {
-    if (!msg || !msg.url) continue;
-    const parsedAsset = parseCloudinaryAssetFromUrl(msg.url);
-    const targetPublicId = parsedAsset?.publicId || (typeof msg.id === 'string' && msg.id.includes('/') ? msg.id : null);
-    const targetResourceType = parsedAsset?.resourceType || (msg.type === 'video' || msg.type === 'audio' ? 'video' : (msg.type === 'file' ? 'raw' : 'image'));
-    if (targetPublicId) {
-      if (groups[targetResourceType]) {
-        groups[targetResourceType].push(targetPublicId);
-      } else {
-        groups.raw.push(targetPublicId);
-      }
+    const target = resolveCloudinaryResourceTarget(msg, 'image');
+    if (target) {
+      groups[target.resourceType].push(target.publicId);
     }
   }
 
@@ -520,6 +586,9 @@ module.exports = {
   generateSessionToken,
   verifySignedSessionToken,
   hashSessionToken,
+  hasStoredSessionToken,
+  matchesStoredSessionToken,
+  deleteCloudinaryAsset,
   batchDeleteCloudinaryAssets,
 };
 

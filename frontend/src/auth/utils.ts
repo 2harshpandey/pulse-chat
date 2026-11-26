@@ -19,25 +19,63 @@ export const deleteCookie = (name: string): void => {
   document.cookie = `${encodeURIComponent(name)}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Strict${isHttps ? '; Secure' : ''}`;
 };
 
+const getSignedTokenRoomId = (token: string): string | null => {
+  if (!token || !token.startsWith('pls.')) return null;
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const pad = base64.length % 4 === 0 ? '' : '='.repeat(4 - (base64.length % 4));
+    const parsed = JSON.parse(atob(base64 + pad));
+    return typeof parsed?.roomId === 'string' ? parsed.roomId : null;
+  } catch {
+    return null;
+  }
+};
+
+const isTokenValidForRoom = (token: string, roomId: string): boolean => {
+  const payloadRoomId = getSignedTokenRoomId(token);
+  if (payloadRoomId === null) return true; // Non-JSON or legacy opaque token
+  const normalizedTarget = roomId.trim().toLowerCase() || 'me';
+  const normalizedTokenRoom = payloadRoomId.trim().toLowerCase() || 'me';
+  return normalizedTarget === normalizedTokenRoom;
+};
+
+const readRoomScopedToken = (roomKey: string): string | null => (
+  localStorage.getItem(`pulseSessionToken_${roomKey}`) ||
+  sessionStorage.getItem(`pulseSessionToken_${roomKey}`) ||
+  getCookie(`pulseSessionToken_${roomKey}`)
+);
+
 export const getSessionToken = (roomId?: string): string | null => {
   if (typeof window === 'undefined') return null;
   try {
     let token: string | null = null;
+    let fromUnscopedFallback = false;
+
     if (roomId) {
-      token =
-        localStorage.getItem(`pulseSessionToken_${roomId}`) ||
-        sessionStorage.getItem(`pulseSessionToken_${roomId}`) ||
-        getCookie(`pulseSessionToken_${roomId}`);
+      const candidate = readRoomScopedToken(roomId) || (roomId.toLowerCase() !== roomId ? readRoomScopedToken(roomId.toLowerCase()) : null);
+      if (candidate && isTokenValidForRoom(candidate, roomId)) {
+        token = candidate;
+      }
     }
+
     if (!token) {
-      token =
+      const globalCandidate =
         localStorage.getItem('pulseSessionToken') ||
         sessionStorage.getItem('pulseSessionToken') ||
         getCookie('pulseSessionToken');
+      if (globalCandidate) {
+        if (!roomId || isTokenValidForRoom(globalCandidate, roomId)) {
+          token = globalCandidate;
+          fromUnscopedFallback = Boolean(roomId);
+        }
+      }
     }
+
     if (token) {
       try {
-        if (roomId) {
+        if (roomId && (!fromUnscopedFallback || getSignedTokenRoomId(token) !== null)) {
           if (!sessionStorage.getItem(`pulseSessionToken_${roomId}`)) {
             sessionStorage.setItem(`pulseSessionToken_${roomId}`, token);
           }
@@ -45,11 +83,13 @@ export const getSessionToken = (roomId?: string): string | null => {
             localStorage.setItem(`pulseSessionToken_${roomId}`, token);
           }
         }
-        if (!sessionStorage.getItem('pulseSessionToken')) {
-          sessionStorage.setItem('pulseSessionToken', token);
-        }
-        if (!localStorage.getItem('pulseSessionToken')) {
-          localStorage.setItem('pulseSessionToken', token);
+        if (!fromUnscopedFallback) {
+          if (!sessionStorage.getItem('pulseSessionToken')) {
+            sessionStorage.setItem('pulseSessionToken', token);
+          }
+          if (!localStorage.getItem('pulseSessionToken')) {
+            localStorage.setItem('pulseSessionToken', token);
+          }
         }
       } catch (_) {}
       return token;
@@ -68,6 +108,11 @@ export const setSessionToken = (token: string, roomId?: string): void => {
       localStorage.setItem(`pulseSessionToken_${roomId}`, token);
       sessionStorage.setItem(`pulseSessionToken_${roomId}`, token);
       setCookie(`pulseSessionToken_${roomId}`, token, 30);
+      const lowerRoom = roomId.toLowerCase();
+      if (lowerRoom !== roomId) {
+        localStorage.setItem(`pulseSessionToken_${lowerRoom}`, token);
+        sessionStorage.setItem(`pulseSessionToken_${lowerRoom}`, token);
+      }
     }
   } catch (_) {}
 };
@@ -82,6 +127,12 @@ export const removeSessionToken = (roomId?: string): void => {
       localStorage.removeItem(`pulseSessionToken_${roomId}`);
       sessionStorage.removeItem(`pulseSessionToken_${roomId}`);
       deleteCookie(`pulseSessionToken_${roomId}`);
+      const lowerRoom = roomId.toLowerCase();
+      if (lowerRoom !== roomId) {
+        localStorage.removeItem(`pulseSessionToken_${lowerRoom}`);
+        sessionStorage.removeItem(`pulseSessionToken_${lowerRoom}`);
+        deleteCookie(`pulseSessionToken_${lowerRoom}`);
+      }
     } else {
       for (let i = localStorage.length - 1; i >= 0; i--) {
         const key = localStorage.key(i);

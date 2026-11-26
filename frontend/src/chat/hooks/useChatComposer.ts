@@ -14,13 +14,14 @@ import {
   resolveAudioDuration,
   getPresenceActivityForFile,
   getPresenceActivityForFiles,
-  findLastEditableSentMessage,
+  extractFilesFromClipboard,
   reconcileUploadedMessageInList,
 } from '../utils';
 import { classifyUploadFile } from '../../shared/mediaTypes';
 import { transferManager } from '../TransferManager';
 import { useChatDrafts } from './useChatDrafts';
 import { useChatEmojiPicker } from './useChatEmojiPicker';
+import { useComposerShortcuts } from './useComposerShortcuts';
 
 interface UseChatComposerProps {
   inputMessage: string;
@@ -216,7 +217,7 @@ export function useChatComposer({
     onTyping: handleTyping,
   });
 
-  useChatDrafts({
+  const { clearDraftOnLogout } = useChatDrafts({
     userId,
     roomId,
     userProfile,
@@ -237,148 +238,43 @@ export function useChatComposer({
     }
   }, [inputMessage, messageInputRef, resetInputLayerHeight, skipNextInputLayoutSyncRef, syncInputLayerLayout]);
 
-  // Click outside to close menus and pickers
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Node;
-      setTimeout(() => {
-        const targetEl = event.target as Element;
-        if (!targetEl.closest('.more-action-button')) {
-          if (deleteMenuRef.current && !deleteMenuRef.current.contains(target)) setActiveDeleteMenu(null);
-        }
-        if (gifPickerRef.current && !gifPickerRef.current.contains(target)) closeGifPicker();
-        if (
-          plusMenuRef.current &&
-          !plusMenuRef.current.contains(target) &&
-          !plusButtonRef.current?.contains(target)
-        ) {
-          setIsPlusMenuOpen(false);
-        }
-        if (
-          emojiPickerRef.current &&
-          !emojiPickerRef.current.contains(target) &&
-          !emojiButtonRef.current?.contains(target)
-        ) {
-          closeEmojiPicker(false);
-        }
-      }, 0);
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [closeEmojiPicker, closeGifPicker, deleteMenuRef, gifPickerRef, setActiveDeleteMenu]);
-
-  const tryEditLastSentMessage = useCallback((): boolean => {
-    if (!handleStartEdit || editingMessageId) return false;
-    if ((inputMessageRef.current || inputMessage).length > 0) return false;
-    if (stagedFile || stagedFiles.length > 0 || stagedGif || showFilePreview) return false;
-    if (isSelectModeActive || lightboxUrl || isDeleteConfirmationVisible || isUserListVisible || isSearchActive) {
-      return false;
-    }
-
-    const lastEditable = findLastEditableSentMessage(messagesRef.current, userId);
-    if (!lastEditable) return false;
-
-    if (replyingTo) {
-      setReplyingTo(null);
-    }
-    if (emojiPickerPosition) {
-      closeEmojiPicker(false);
-    }
-    if (isPlusMenuOpen) {
-      setIsPlusMenuOpen(false);
-    }
-
-    handleStartEdit(lastEditable);
-    handleTyping(null);
-    if (lastEditable.id) {
-      scrollToLoadedMessage?.(lastEditable.id, 'auto', false);
-    }
-    return true;
-  }, [
-    closeEmojiPicker,
-    editingMessageId,
-    emojiPickerPosition,
-    handleStartEdit,
-    handleTyping,
+  const { tryEditLastSentMessage } = useComposerShortcuts({
+    userId,
     inputMessage,
     inputMessageRef,
-    isDeleteConfirmationVisible,
-    isPlusMenuOpen,
-    isSearchActive,
-    isSelectModeActive,
-    isUserListVisible,
-    lightboxUrl,
+    messageInputRef,
     messagesRef,
-    replyingTo,
-    scrollToLoadedMessage,
-    setReplyingTo,
-    showFilePreview,
-    stagedFile,
-    stagedFiles.length,
-    stagedGif,
-    userId,
-  ]);
-
-  // Escape key handler
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (showFilePreview) {
-          handleRequestCloseFilePreview();
-        } else if (lightboxUrl) {
-          closeLightbox();
-        } else if (editingMessageId) {
-          e.preventDefault();
-          handleCancelEdit();
-          handleTyping(null);
-        } else if (replyingTo) {
-          setReplyingTo(null);
-        }
-      }
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [
-    handleRequestCloseFilePreview,
-    closeLightbox,
+    deleteMenuRef,
+    gifPickerRef,
+    plusMenuRef,
+    plusButtonRef,
+    emojiPickerRef,
+    emojiButtonRef,
+    isPlusMenuOpen,
+    setIsPlusMenuOpen,
+    emojiPickerPosition,
+    closeEmojiPicker,
+    closeGifPicker,
+    setActiveDeleteMenu,
     editingMessageId,
+    handleStartEdit,
     handleCancelEdit,
-    handleTyping,
     replyingTo,
-    showFilePreview,
     setReplyingTo,
+    stagedFile,
+    stagedFilesCount: stagedFiles.length,
+    stagedGif,
+    showFilePreview,
+    handleRequestCloseFilePreview,
     lightboxUrl,
-  ]);
-
-  // WhatsApp / Telegram-style keyboard shortcuts (desktop only):
-  // - ArrowUp (when box is empty and body is focused): edit last sent message
-  // - Printable character (when outside inputs): focus composer automatically
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if ((e as any).isComposing || e.keyCode === 229) return;
-      if (document.activeElement === messageInputRef.current) return;
-      const tag = (document.activeElement as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (document.activeElement as HTMLElement)?.isContentEditable) return;
-      if (isSelectModeActive || !!lightboxUrl || isDeleteConfirmationVisible || isUserListVisible) return;
-      const isMobileOS = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-        typeof navigator !== 'undefined' ? navigator.userAgent || '' : ''
-      );
-      if (isMobileOS && isTouchDevice()) return;
-
-      if (e.key === 'ArrowUp' && !e.shiftKey) {
-        if (document.activeElement === document.body && tryEditLastSentMessage()) {
-          e.preventDefault();
-        }
-        return;
-      }
-
-      if (e.key.length !== 1) return;
-      messageInputRef.current?.focus();
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [isSelectModeActive, lightboxUrl, isDeleteConfirmationVisible, isUserListVisible, messageInputRef, tryEditLastSentMessage]);
+    closeLightbox,
+    isSelectModeActive,
+    isDeleteConfirmationVisible,
+    isUserListVisible,
+    isSearchActive,
+    handleTyping,
+    scrollToLoadedMessage,
+  });
 
   // Reset input helper
   const resetInput = useCallback(() => {
@@ -881,34 +777,6 @@ export function useChatComposer({
     }
   };
 
-  const extractFilesFromClipboard = (clipboardData: DataTransfer): File[] => {
-    const collectedFiles = new Map<string, File>();
-    const addCollectedFile = (file: File | null) => {
-      if (!file) return;
-
-      const mime = file.type || 'application/octet-stream';
-      const extensionFromMime = mime.includes('/') ? mime.split('/')[1].split('+')[0] : 'bin';
-      const safeExt = (extensionFromMime || 'bin').replace(/[^a-z0-9]/gi, '').toLowerCase() || 'bin';
-      const hasName = Boolean(file.name && file.name.trim());
-      const fileName = hasName ? file.name : `pasted-${Date.now()}.${safeExt}`;
-      const normalized = hasName
-        ? file
-        : new File([file], fileName, { type: mime, lastModified: Date.now() });
-
-      const key = `${normalized.name}:${normalized.size}:${normalized.type}`;
-      if (!collectedFiles.has(key)) collectedFiles.set(key, normalized);
-    };
-
-    Array.from(clipboardData.files || []).forEach((file) => addCollectedFile(file));
-
-    Array.from(clipboardData.items || []).forEach((item) => {
-      if (item.kind !== 'file') return;
-      addCollectedFile(item.getAsFile());
-    });
-
-    return Array.from(collectedFiles.values());
-  };
-
   // Global window paste handler: allows pasting photos/videos/media even when the chat input box is not highlighted
   useEffect(() => {
     const handleGlobalPaste = (e: ClipboardEvent) => {
@@ -1099,6 +967,7 @@ export function useChatComposer({
     handleSendVoiceNote,
     handleSendFromPreview,
     resetInput,
+    clearDraftOnLogout,
     handleClearChat,
     handleHeaderButtonPointerDown,
     handleChatAreaClick,

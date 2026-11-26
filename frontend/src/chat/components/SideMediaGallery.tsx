@@ -27,7 +27,7 @@ import {
   MediaGallerySentinel,
   MediaGalleryDateDivider,
   MediaGalleryDateBadge,
-} from '../styles/chat.message.styles';
+} from '../styles/chat.sideGallery.styles';
 
 export interface SideMediaGalleryProps {
   roomId: string;
@@ -265,7 +265,7 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
       const isImage = item.type === 'image' || item.type === 'gif' || item.type === 'photo';
       const isVideo = item.type === 'video';
       const isFile = item.type === 'file' || item.type === 'doc';
-      const isLink = item.type === 'link' || (item.type === 'text' && Boolean(item.text && /https?:\/\//i.test(item.text)));
+      const isLink = item.type === 'link' || (item.type === 'text' && Boolean(item.text && /(?:https?:\/\/|www\.)[^\s]+/i.test(item.text)));
 
       // Photos
       if (isImage) {

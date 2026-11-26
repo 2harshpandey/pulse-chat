@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Message } from '../types';
 import type { UserProfile, PresenceActivity } from '../../UserContext';
-import { clearOverlayGuardHistoryEntry, resolveApiBaseUrl, isGroupStartMessage, getSessionToken, setSessionToken, normalizeMessageId } from '../utils';
-import { transferManager } from '../TransferManager';
-import { INITIAL_HISTORY_BATCH_SIZE, INITIAL_FIRST_ITEM_INDEX } from '../constants';
+import { resolveApiBaseUrl, getSessionToken } from '../utils';
 import { initTelemetryContext, updateTelemetryWs } from '../telemetry';
+import { routeIncomingWsMessage } from './wsMessageRouter';
 
 interface UseChatWebSocketProps {
   ws?: React.MutableRefObject<WebSocket | null>;
@@ -394,465 +393,67 @@ export function useChatWebSocket({
         }
       };
 
-      ws.current.onmessage = async (event: MessageEvent) => {
-        let messageData: any;
-        try {
-          messageData = JSON.parse(event.data);
-        } catch (parseErr) {
-          console.warn('[WebSocket] Malformed non-JSON frame received:', parseErr);
-          return;
-        }
-        if (!messageData || typeof messageData !== 'object') return;
-        if (messageData.type === 'ping') {
-          lastPingAtRef.current = Date.now();
-          if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-            try {
-              ws.current.send(JSON.stringify({ type: 'pong' }));
-            } catch (_) {}
-          }
-          return;
-        }
-        if (messageData.type === 'pong') {
-          lastPingAtRef.current = Date.now();
-          return;
-        }
-        if (messageData.type === 'auth_success') {
-          isRoomJoinedRef.current = true;
-          setIsRoomJoined(true);
-          if (messageData.sessionToken) {
-            setSessionToken(messageData.sessionToken, roomId);
-          }
-          if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-            try {
-              while (pendingOutgoingQueueRef.current.length > 0) {
-                const queued = pendingOutgoingQueueRef.current.shift();
-                if (queued) ws.current.send(queued);
-              }
-            } catch (queueErr) {
-              console.warn('Failed to flush queued outgoing frames after auth_success:', queueErr);
-            }
-          }
-          return;
-        }
-        if (messageData.type === 'force_logout') {
-          sessionStorage.setItem('authError', messageData.message || 'You have been logged out.');
-          if (overlayGuardPushed.current) {
-            clearOverlayGuardHistoryEntry();
-            overlayGuardPushed.current = false;
-          }
-          logout();
-          return;
-        }
-        if (messageData.type === 'session_displaced') {
-          shouldReconnect = false;
-          if (reconnectTimerRef.current) {
-            clearTimeout(reconnectTimerRef.current);
-            reconnectTimerRef.current = null;
-          }
-          if (ws.current) {
-            ws.current.onclose = null;
-            ws.current.close();
-            ws.current = null;
-          }
-          setIsConnected(false);
-          isRoomJoinedRef.current = false;
-          setIsRoomJoined(false);
-          onSessionDisplaced?.();
-          return;
-        }
-        if (messageData.type === 'username_taken') {
-          console.warn('Username collision detected - terminating reconnect loop');
-          if (reconnectTimerRef.current) {
-            clearTimeout(reconnectTimerRef.current);
-            reconnectTimerRef.current = null;
-          }
-          if (ws.current) {
-            ws.current.onclose = null;
-            ws.current.close();
-          }
-          setIsConnected(false);
-          sessionStorage.setItem('authError', messageData.message || 'This username is active in another session.');
-          if (overlayGuardPushed.current) {
-            clearOverlayGuardHistoryEntry();
-            overlayGuardPushed.current = false;
-          }
-          logout();
-          return;
-        }
-        if (messageData.type === 'error') {
-          console.warn('[WebSocket Error Frame]', messageData.message);
-          if (typeof messageData.message === 'string' && /authentication required/i.test(messageData.message)) {
-            if (reconnectTimerRef.current) {
-              clearTimeout(reconnectTimerRef.current);
-              reconnectTimerRef.current = null;
-            }
-            if (ws.current) {
-              ws.current.onclose = null;
-              ws.current.close();
-            }
-            setIsConnected(false);
-            sessionStorage.setItem('authError', messageData.message);
-            if (overlayGuardPushed.current) {
-              clearOverlayGuardHistoryEntry();
-              overlayGuardPushed.current = false;
-            }
-            logout();
-          }
-          return;
-        }
-        if (messageData.type === 'pinned_messages_update') {
-          const rawPins = Array.isArray(messageData.data) ? messageData.data : [];
-          const normalizedPins = rawPins.map(normalizeMessage);
-          const validPins = normalizedPins.filter(
-            (m: any) => m && !m.isDeleted && !m.vanished && m.text !== 'This message has been deleted by an admin.'
-          );
-          setPinnedMessages(validPins);
-          setCurrentPinnedIndex(prev => {
-            if (validPins.length === 0) return 0;
-            return prev >= validPins.length ? 0 : prev;
-          });
-          return;
-        }
-        if (messageData.type === 'history') {
-          hasInitialScrolled.current = false;
-          initialHistoryBottomStabilized.current = false;
-          suppressInitialBottomPinRef.current = false;
-          initialTopMostItemIndexRef.current = null;
-          const rawHistory = Array.isArray(messageData.data) ? messageData.data : [];
-          const processed = filterVisibleMessages(rawHistory.map(normalizeMessage));
-
-          groupStartMessageIdsRef.current.clear();
-          for (let i = 0; i < processed.length; i++) {
-            const current = processed[i];
-            const prev = i > 0 ? processed[i - 1] : null;
-            if (isGroupStartMessage(current, prev)) {
-              groupStartMessageIdsRef.current.add(current.id);
-            }
-          }
-
-          setMessages(prev => {
-            const historyIds = new Set<string>();
-            const historyTempIds = new Set<string>();
-            for (const m of processed) {
-              if (m.id) historyIds.add(normalizeMessageId(m.id));
-              if ((m as any)._id) historyIds.add(normalizeMessageId((m as any)._id));
-              if ((m as any).clientTempId) historyTempIds.add(normalizeMessageId((m as any).clientTempId));
-            }
-            const inFlightToKeep = prev.filter(m => {
-              const normId = normalizeMessageId(m.id);
-              const normMongoId = (m as any)._id ? normalizeMessageId((m as any)._id) : '';
-              const rawTempId = (m as any).clientTempId;
-              const normTempId = rawTempId ? normalizeMessageId(rawTempId) : '';
-              const alreadyInHistory = Boolean(
-                (normId && (historyIds.has(normId) || historyTempIds.has(normId))) ||
-                (normMongoId && (historyIds.has(normMongoId) || historyTempIds.has(normMongoId))) ||
-                (normTempId && (historyIds.has(normTempId) || historyTempIds.has(normTempId)))
-              );
-              if (alreadyInHistory) return false;
-              if (m.isUploading || m.uploadError) return true;
-              // Never carry forward already-persisted old DB messages that happen to have a clientTempId;
-              // only keep genuine local optimistic messages whose id is still the temporary clientTempId.
-              return Boolean(normTempId && normId === normTempId && !normMongoId);
-            });
-            const merged = inFlightToKeep.length === 0 ? processed : [...processed, ...inFlightToKeep];
-            if (messagesRef) messagesRef.current = merged;
-            return merged;
-          });
-          setNewMessagesWhileScrolledUp(0);
-          messageTailSnapshotRef.current = {
-            length: processed.length,
-            lastId: processed.length > 0 ? processed[processed.length - 1].id : null,
-          };
-          setFirstItemIndex(INITIAL_FIRST_ITEM_INDEX);
-          const cursorFromServer =
-            typeof messageData.oldestCreatedAt === 'string' && messageData.oldestCreatedAt
-              ? messageData.oldestCreatedAt
-              : null;
-          const nextOldestCursor = cursorFromServer || getMessageCursor(processed[0]);
-          setOldestLoadedAt(nextOldestCursor);
-          oldestLoadedAtRef.current = nextOldestCursor;
-          const nextHasMore =
-            typeof messageData.hasMoreHistory === 'boolean'
-              ? messageData.hasMoreHistory
-              : processed.length >= INITIAL_HISTORY_BATCH_SIZE;
-          setHasMoreOlderMessages(nextHasMore);
-          hasMoreOlderMessagesRef.current = nextHasMore;
-
-          const newestCursor = getMessageCursor(processed[processed.length - 1]) || null;
-          newestLoadedAtRef.current = newestCursor;
-          setNewestLoadedAt(newestCursor);
-          setHasMoreNewerMessages(false);
-          hasMoreNewerMessagesRef.current = false;
-
-          setHistoryLoaded(true);
-          setHistorySessionId(prev => prev + 1);
-          const isInitialHistory = !hasLoadedInitialHistory;
-          hasLoadedInitialHistory = true;
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(
-              new CustomEvent('pulse:history_synced', {
-                detail: { messages: processed, roomId, isInitial: isInitialHistory },
-              })
-            );
-          }
-          transferManager.restoreSessionDownloads().catch(console.error);
-          transferManager.restoreSessionUploads().then((restoredUploads) => {
-            if (restoredUploads.length > 0) {
-              setMessages(prev => {
-                const existingIds = new Set<string>();
-                for (const m of prev) {
-                  if (m.id) existingIds.add(normalizeMessageId(m.id));
-                  if ((m as any).clientTempId) existingIds.add(normalizeMessageId((m as any).clientTempId));
-                }
-                const uniqueRestored = restoredUploads.filter(m => {
-                  const nId = normalizeMessageId(m.id);
-                  const nTemp = (m as any).clientTempId ? normalizeMessageId((m as any).clientTempId) : '';
-                  return (!nId || !existingIds.has(nId)) && (!nTemp || !existingIds.has(nTemp));
-                });
-                if (uniqueRestored.length === 0) return prev;
-                const merged = [...prev, ...uniqueRestored];
-                if (messagesRef) messagesRef.current = merged;
-                return merged;
-              });
-            }
-          });
-        } else if (messageData.type === 'online_users') {
-          setOnlineUsers(messageData.data);
-        } else if (messageData.type === 'report_submitted') {
-          setIsSubmittingReport(false);
-          setReportError('');
-          setReportReason('');
-          setReportTargetMessage(null);
-          setIsReportModalVisible(false);
-        } else if (messageData.type === 'report_error') {
-          setIsSubmittingReport(false);
-          setReportError(
-            typeof messageData.message === 'string'
-              ? messageData.message
-              : 'Failed to submit report. Please try again.'
-          );
-        } else if (messageData.type === 'chat_cleared' || messageData.type === 'chat_hidden_for_everyone') {
-          setMessages([]);
-          setPinnedMessages([]);
-          setCurrentPinnedIndex(0);
-          setNewMessagesWhileScrolledUp(0);
-          messageTailSnapshotRef.current = { length: 0, lastId: null };
-          setHasMoreOlderMessages(false);
-          hasMoreOlderMessagesRef.current = false;
-          setOldestLoadedAt(null);
-          oldestLoadedAtRef.current = null;
-          setFirstItemIndex(INITIAL_FIRST_ITEM_INDEX);
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('pulse:chat_cleared', { detail: { roomId } }));
-          }
-        } else if (messageData.type === 'delete') {
-          const targetId = messageData.id;
-          setMessages(prev => prev.filter(m => m.id !== targetId));
-          setSearchResults(prev => (prev ? prev.filter(m => m.id !== targetId) : null));
-          setReplyingTo(prev => (prev && prev.id === targetId ? null : prev));
-          setPinnedMessages(prev => prev.filter(p => p.id !== targetId));
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('pulse:message_deleted', { detail: { ids: [targetId] } }));
-          }
-        } else if (messageData.type === 'update' || messageData.type === 'bulk_update') {
-          const updatedMessages: Message[] =
-            messageData.type === 'update'
-              ? [normalizeMessage(messageData.data)]
-              : messageData.messages.map(normalizeMessage);
-
-          const isDeletedOrVanished = (msg: any): boolean =>
-            Boolean(
-              msg?.isDeleted ||
-              msg?.vanished ||
-              msg?.text === 'This message has been deleted.' ||
-              msg?.text === 'This message has been deleted by an admin.'
-            );
-
-          const isHardRemovedForPinOrReply = (msg: any): boolean =>
-            Boolean(
-              msg?.isDeleted ||
-              msg?.vanished ||
-              msg?.text === 'This message has been deleted by an admin.'
-            );
-
-          const targetMatchesReply = (replyingTo: any, update: Message): boolean => {
-            if (!replyingTo || !update) return false;
-            const replyIds = [
-              normalizeMessageId(replyingTo.id),
-              normalizeMessageId(replyingTo._id),
-              normalizeMessageId(replyingTo.messageId),
-              normalizeMessageId(replyingTo.clientTempId),
-            ].filter(Boolean);
-            const updateIds = [
-              normalizeMessageId(update.id),
-              normalizeMessageId(update._id),
-              normalizeMessageId((update as any).clientTempId),
-            ].filter(Boolean);
-            return replyIds.some(rid => updateIds.includes(rid));
-          };
-
-          const updatedMap = new Map<string, Message>();
-          updatedMessages.forEach((m: any) => {
-            if (m.id) updatedMap.set(normalizeMessageId(m.id), m);
-            if (m._id) updatedMap.set(normalizeMessageId(m._id), m);
-          });
-
-          const applyUpdatesToList = (list: Message[]) =>
-            list.map(m => {
-              const directMatch =
-                updatedMap.get(normalizeMessageId(m.id)) ||
-                (m._id ? updatedMap.get(normalizeMessageId(m._id)) : undefined);
-              if (directMatch) return { ...m, ...directMatch };
-              if (m.replyingTo) {
-                const matchingUpdated = updatedMessages.find(u => targetMatchesReply(m.replyingTo, u));
-                if (matchingUpdated) {
-                  if (isDeletedOrVanished(matchingUpdated)) {
-                    return {
-                      ...m,
-                      replyingTo: {
-                        ...m.replyingTo,
-                        isDeleted: true,
-                        deletedBy: matchingUpdated.deletedBy || m.replyingTo.deletedBy,
-                        text: undefined,
-                        url: undefined,
-                      },
-                    };
-                  }
-                  if (matchingUpdated.edited && matchingUpdated.text && !m.replyingTo.isGroup && m.replyingTo.type !== 'group') {
-                    return {
-                      ...m,
-                      replyingTo: {
-                        ...m.replyingTo,
-                        text: matchingUpdated.text,
-                        edited: true,
-                      },
-                    };
-                  }
-                }
-              }
-              return m;
-            });
-
-          setMessages(prev => applyUpdatesToList(prev));
-          setSearchResults(prev => (prev ? applyUpdatesToList(prev) : null));
-          setReplyingTo(prev => {
-            if (!prev) return prev;
-            const prevNormId = normalizeMessageId(prev.id);
-            const prevNormMongoId = prev._id ? normalizeMessageId(prev._id) : undefined;
-            const updatedTarget =
-              (prevNormId ? updatedMap.get(prevNormId) : undefined) ||
-              (prevNormMongoId ? updatedMap.get(prevNormMongoId) : undefined);
-            if (!updatedTarget) return prev;
-            if (isHardRemovedForPinOrReply(updatedTarget)) return null;
-            return { ...prev, ...updatedTarget };
-          });
-
-          const deletedOrVanishedIds = new Set(
-            updatedMessages
-              .filter(isHardRemovedForPinOrReply)
-              .flatMap((m: any) => [normalizeMessageId(m.id), m._id ? normalizeMessageId(m._id) : ''].filter(Boolean))
-          );
-          setPinnedMessages(prev =>
-            prev
-              .filter(p => {
-                const pId = normalizeMessageId(p.id);
-                const pMongoId = p._id ? normalizeMessageId(p._id) : '';
-                return !deletedOrVanishedIds.has(pId) && (!pMongoId || !deletedOrVanishedIds.has(pMongoId));
-              })
-              .map(p => {
-                const match =
-                  updatedMap.get(normalizeMessageId(p.id)) ||
-                  (p._id ? updatedMap.get(normalizeMessageId(p._id)) : undefined);
-                return match ? { ...p, ...match } : p;
-              })
-          );
-        } else if (messageData.type === 'bulk_delete') {
-          const deletedIds = new Set(messageData.messageIds);
-          setMessages(prev => prev.filter(m => !deletedIds.has(m.id)));
-          setSearchResults(prev => (prev ? prev.filter(m => !deletedIds.has(m.id)) : null));
-          setReplyingTo(prev => {
-            if (prev && deletedIds.has(prev.id)) return null;
-            return prev;
-          });
-          setPinnedMessages(prev => prev.filter(p => !deletedIds.has(p.id)));
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('pulse:message_deleted', { detail: { ids: messageData.messageIds } }));
-          }
-        } else {
-          const normalized = normalizeMessage(messageData);
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('pulse:new_message', { detail: { message: normalized, roomId } }));
-          }
-          const isJoinNotification =
-            normalized.type === 'system_notification' &&
-            /has joined the chat/i.test(normalized.text || '');
-          const isIncomingMessage =
-            normalized.type !== 'system_notification' && normalized.userId !== userId;
-          if (isJoinNotification || isIncomingMessage) {
-            void playNotificationSound(isJoinNotification ? 'join' : 'message');
-          }
-          if (messageData.clientTempId) {
-            const incomingTempId = normalizeMessageId(messageData.clientTempId);
-            const hasLocalOptimisticMatch = Boolean(
-              incomingTempId &&
-              messagesRef?.current?.some(
-                m =>
-                  normalizeMessageId(m.id) === incomingTempId ||
-                  normalizeMessageId((m as any).clientTempId) === incomingTempId ||
-                  (m.replyingTo &&
-                    (normalizeMessageId(m.replyingTo.id) === incomingTempId ||
-                      normalizeMessageId((m.replyingTo as any).clientTempId) === incomingTempId))
-              )
-            );
-            if (hasLocalOptimisticMatch) {
-              setMessages(prev => {
-                let matched = false;
-                const updated = prev.map(m => {
-                  if (
-                    normalizeMessageId(m.id) === incomingTempId ||
-                    normalizeMessageId((m as any).clientTempId) === incomingTempId
-                  ) {
-                    matched = true;
-                    return {
-                      ...normalized,
-                      clientTempId: messageData.clientTempId,
-                      localBlobUrl: (m as any).localBlobUrl || (normalized as any).localBlobUrl,
-                    };
-                  }
-                  if (
-                    m.replyingTo &&
-                    (normalizeMessageId(m.replyingTo.id) === incomingTempId ||
-                      normalizeMessageId((m.replyingTo as any).clientTempId) === incomingTempId)
-                  ) {
-                    const isGroup = Boolean(m.replyingTo.isGroup || m.replyingTo.type === 'group');
-                    return {
-                      ...m,
-                      replyingTo: {
-                        ...m.replyingTo,
-                        id: normalized.id,
-                        url: isGroup ? undefined : (normalized.url || m.replyingTo.url),
-                        type: isGroup ? 'group' : (normalized.type !== 'system_notification' ? normalized.type : m.replyingTo.type),
-                      },
-                    };
-                  }
-                  return m;
-                });
-                const next = matched ? updated : [...updated, normalized];
-                if (messagesRef) messagesRef.current = next;
-                return next;
-              });
-              if (!hasMoreNewerMessagesRef.current) {
-                const newCursor = getMessageCursor(normalized) || normalized.createdAt || normalized.timestamp || null;
-                if (newCursor) {
-                  newestLoadedAtRef.current = newCursor;
-                  setNewestLoadedAt(newCursor);
-                }
-              }
-              return;
-            }
-          }
-          appendMessageToWindowRef.current(normalized);
-        }
+      ws.current.onmessage = (event: MessageEvent) => {
+        routeIncomingWsMessage(
+          {
+            ws,
+            userId,
+            roomId,
+            logout,
+            overlayGuardPushed,
+            playNotificationSound,
+            setMessages,
+            messagesRef,
+            setPinnedMessages,
+            setCurrentPinnedIndex,
+            setHistoryLoaded,
+            setHistorySessionId,
+            setFirstItemIndex,
+            setOldestLoadedAt,
+            oldestLoadedAtRef,
+            setHasMoreOlderMessages,
+            hasMoreOlderMessagesRef,
+            setHasMoreNewerMessages,
+            hasMoreNewerMessagesRef,
+            setNewestLoadedAt,
+            newestLoadedAtRef,
+            setNewMessagesWhileScrolledUp,
+            messageTailSnapshotRef,
+            groupStartMessageIdsRef,
+            hasInitialScrolled,
+            initialHistoryBottomStabilized,
+            suppressInitialBottomPinRef,
+            initialTopMostItemIndexRef,
+            normalizeMessage,
+            filterVisibleMessages,
+            getMessageCursor,
+            appendMessageToWindowRef,
+            setSearchResults,
+            setReplyingTo,
+            setOnlineUsers,
+            setIsSubmittingReport,
+            setReportError,
+            setReportReason,
+            setReportTargetMessage,
+            setIsReportModalVisible,
+            lastPingAtRef,
+            isRoomJoinedRef,
+            setIsRoomJoined,
+            setIsConnected,
+            pendingOutgoingQueueRef,
+            reconnectTimerRef,
+            onSessionDisplaced,
+            stopReconnect: () => {
+              shouldReconnect = false;
+            },
+            consumeIsInitialHistory: () => {
+              const isInitial = !hasLoadedInitialHistory;
+              hasLoadedInitialHistory = true;
+              return isInitial;
+            },
+          },
+          event.data
+        );
       };
     };
 

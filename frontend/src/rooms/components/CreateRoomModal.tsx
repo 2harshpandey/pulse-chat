@@ -118,8 +118,26 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
               />
             </InputWrapper>
             {customId && (
-              <div style={{ fontSize: '0.85rem', marginTop: '0.5rem', color: checkingId ? 'var(--text-secondary)' : idAvailable ? 'var(--accent-green)' : 'var(--accent-red)' }}>
-                {checkingId ? 'Checking availability...' : idAvailable ? '✓ ID is available' : '✗ ID is taken'}
+              <div
+                style={{
+                  fontSize: '0.85rem',
+                  marginTop: '0.5rem',
+                  color: checkingId
+                    ? 'var(--text-secondary)'
+                    : idAvailable === true
+                    ? 'var(--accent-green)'
+                    : idAvailable === false
+                    ? 'var(--accent-red)'
+                    : 'var(--text-secondary)',
+                }}
+              >
+                {checkingId
+                  ? 'Checking availability...'
+                  : idAvailable === true
+                  ? '✓ ID is available'
+                  : idAvailable === false
+                  ? '✗ ID is taken'
+                  : 'Unable to check availability'}
               </div>
             )}
           </FormGroup>

@@ -261,6 +261,11 @@ app.use('/api', (_req, res, next) => {
 app.use('/', authRouter);
 app.use('/', require('./routes/admin')(wss, broadcasts));
 app.use('/', require('./routes/media')(wss, broadcasts));
+app.use('/', require('./routes/messageLifecycle')(wss, broadcasts));
+app.use('/', require('./routes/messages'));
+app.use('/', require('./routes/gifs'));
+app.use('/', require('./routes/linkPreview'));
+app.use('/', require('./routes/download'));
 app.use('/api/rooms', roomsRouter);
 
 // ---------------------------------------------------------------------------

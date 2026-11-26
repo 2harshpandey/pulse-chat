@@ -159,6 +159,8 @@ export function useChatMedia({
 
   // Media Loading & Hydration
   const [loadedMediaMessageIds, setLoadedMediaMessageIds] = useState<string[]>([]);
+  const loadedMediaMessageIdsRef = useRef<string[]>(loadedMediaMessageIds);
+  loadedMediaMessageIdsRef.current = loadedMediaMessageIds;
   const [mediaLoadProgressById, setMediaLoadProgressById] = useState<Record<string, number>>({});
   const [loadedMediaSrcById, setLoadedMediaSrcById] = useState<Record<string, string>>({});
   const [downloadProgressById, setDownloadProgressById] = useState<Record<string, number>>({});
@@ -168,6 +170,16 @@ export function useChatMedia({
   const mediaCacheHydrationInFlightRef = useRef<Set<string>>(new Set());
   const mediaLoadAbortControllersRef = useRef(new Map<string, AbortController>());
   const isNativeFilePickerOpenRef = useRef(false);
+  const isMountedRef = useRef(true);
+  const activeScopeRef = useRef(`${userId}:${roomId}`);
+  activeScopeRef.current = `${userId}:${roomId}`;
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // Native file picker tracking
   const notifyNativeFilePickerOpen = useCallback(() => {
@@ -209,11 +221,19 @@ export function useChatMedia({
   // Stage files helper
   const stageFilesForPreview = useCallback(
     async (files: File[]) => {
-      if (files.length === 0) return;
+      const nonEmptyFiles = files.filter((f) => f && f.size > 0);
+      if (nonEmptyFiles.length === 0) return;
+
+      const compressedFiles = await Promise.all(nonEmptyFiles.map(compressImage));
+      if (showFilePreview && stagedFiles.length > 0) {
+        setStagedFiles((prev) => [...prev, ...compressedFiles]);
+        gifPicker.setStagedGif(null);
+        return;
+      }
+
       const carriedCaption = inputMessage;
       setPreMediaDraft(carriedCaption);
 
-      const compressedFiles = await Promise.all(files.map(compressImage));
       setStagedFiles(compressedFiles);
       setPreviewActiveIndex(0);
       setPreviewCaption(carriedCaption);
@@ -225,7 +245,7 @@ export function useChatMedia({
       setShowFilePreview(true);
       gifPicker.setStagedGif(null);
     },
-    [inputMessage, resetInputLayerHeight, setInputMessage, userId, roomId, gifPicker]
+    [inputMessage, resetInputLayerHeight, setInputMessage, userId, roomId, gifPicker, showFilePreview, stagedFiles.length]
   );
 
   const closeFilePreviewAndRestoreDraft = useCallback(() => {
@@ -357,7 +377,7 @@ export function useChatMedia({
   // Hydrate cached media blobs
   useEffect(() => {
     if (!isLoggedIn || messages.length === 0) return;
-    let isCancelled = false;
+    const effectScope = `${userId}:${roomId}`;
     const loadedMessageIds = new Set(loadedMediaMessageIds);
 
     messages.forEach((message) => {
@@ -377,7 +397,7 @@ export function useChatMedia({
 
       void getCachedMediaBlob(userId, message.id, safeUrl)
         .then((cachedBlob) => {
-          if (isCancelled || !cachedBlob || cachedBlob.size <= 0) return;
+          if (!isMountedRef.current || activeScopeRef.current !== effectScope || !cachedBlob || cachedBlob.size <= 0) return;
 
           let finalBlob = cachedBlob;
           if (!cachedBlob.type || cachedBlob.type === 'application/octet-stream') {
@@ -405,17 +425,13 @@ export function useChatMedia({
           mediaCacheHydrationInFlightRef.current.delete(lookupKey);
         });
     });
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [messages, loadedMediaMessageIds, loadedMediaSrcById, isLoggedIn, userId]);
+  }, [messages, loadedMediaMessageIds, loadedMediaSrcById, isLoggedIn, userId, roomId]);
 
   // Request media load
   const handleRequestMediaLoad = useCallback(
     (messageId: string, mediaUrl?: string, allowCancel: boolean = true) => {
       if (!messageId || !mediaUrl) return;
-      if (loadedMediaMessageIds.includes(messageId)) return;
+      if (loadedMediaMessageIdsRef.current.includes(messageId)) return;
       if (mediaLoadInFlightRef.current.has(messageId)) {
         if (!allowCancel) return;
         mediaLoadAbortControllersRef.current.get(messageId)?.abort();
@@ -510,12 +526,15 @@ export function useChatMedia({
               : next;
           });
         } finally {
-          mediaLoadInFlightRef.current.delete(messageId);
-          setMediaLoadProgressById((prev) => {
-            if (!(messageId in prev)) return prev;
-            const { [messageId]: _discard, ...rest } = prev;
-            return rest;
-          });
+          if (mediaLoadAbortControllersRef.current.get(messageId) === abortController) {
+            mediaLoadAbortControllersRef.current.delete(messageId);
+            mediaLoadInFlightRef.current.delete(messageId);
+            setMediaLoadProgressById((prev) => {
+              if (!(messageId in prev)) return prev;
+              const { [messageId]: _discard, ...rest } = prev;
+              return rest;
+            });
+          }
         }
       })();
     },
@@ -546,11 +565,13 @@ export function useChatMedia({
           ? 'sending_video'
           : 'sending_file';
 
+      const resumePromise = transferManager.resumeUpload(messageId, roomId, apiBase, userId);
+      if (!resumePromise) return;
+
       startSendingActivity?.(activity);
 
-      transferManager
-        .resumeUpload(messageId, roomId, apiBase, userId)
-        ?.catch((error) => {
+      resumePromise
+        .catch((error) => {
           if (error.message === 'Aborted') return;
           setMessages((prev) =>
             prev.map((m) =>

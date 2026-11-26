@@ -4,8 +4,6 @@ const express = require('express');
 const mongoose = require('mongoose');
 const logger = require('../logger');
 const Message = require('../models/message');
-const User = require('../models/user');
-const { verifyPasswordAsync, timingSafeEqualStr, verifySignedSessionToken, hashSessionToken } = require('../security');
 const {
   getRoomState,
   getCachedRoom,
@@ -14,172 +12,12 @@ const {
 } = require('../state');
 const {
   apiLimiter,
-  toClientMessage,
-  extractIp,
-  isUserBlocked,
-  getAdminLockRemainingSeconds,
-  recordFailedAdminAttemptAcrossScope,
-  resetAdminAttemptsAcrossScope,
+  toPublicClientMessage,
 } = require('../middleware');
-
-const getVisibleMessagesQuery = (beforeTimestamp, frontendHiddenBefore) => {
-  const createdAt = {};
-
-  if (frontendHiddenBefore instanceof Date && !Number.isNaN(frontendHiddenBefore.getTime())) {
-    createdAt.$gt = frontendHiddenBefore;
-  }
-
-  if (beforeTimestamp instanceof Date && !Number.isNaN(beforeTimestamp.getTime())) {
-    createdAt.$lt = beforeTimestamp;
-  }
-
-  const query = { vanished: { $ne: true }, type: { $ne: 'client_diagnostic' } };
-  if (Object.keys(createdAt).length > 0) {
-    query.createdAt = createdAt;
-  }
-  return query;
-};
-
-const isRoomAccessAllowed = async (rawRoomId, req, options = {}) => {
-  const { requireSession = false } = options;
-  const roomId = typeof rawRoomId === 'string' && rawRoomId.trim() ? rawRoomId.trim() : 'me';
-  const userId = req.headers['x-user-id'] || req.query?.userId || req.body?.userId;
-  const clientIp = extractIp(req);
-  const userAgent = req.headers['user-agent'] || '';
-
-  const cleanRoomId = typeof roomId === 'string' ? roomId.trim() : 'me';
-  const lowerRoomId = cleanRoomId.toLowerCase();
-  let canonicalRoomId = lowerRoomId === 'me' ? 'me' : lowerRoomId === 'global' ? 'global' : cleanRoomId;
-  let room = null;
-
-  if (canonicalRoomId !== 'me' && canonicalRoomId !== 'global') {
-    try {
-      room = await getCachedRoom(cleanRoomId);
-      if (!room) {
-        return false;
-      }
-      canonicalRoomId = room.id;
-    } catch (err) {
-      logger.error('Failed to lookup room access requirements:', err);
-      return false;
-    }
-  }
-
-  // Check if requesting user or IP is blocked from this room using canonicalRoomId
-  try {
-    const safeUserId = typeof userId === 'string' && userId.trim() ? userId.trim() : null;
-    const blockCheck = await isUserBlocked(canonicalRoomId, safeUserId, clientIp, userAgent);
-    if (blockCheck.blocked) {
-      return false;
-    }
-  } catch (err) {
-    logger.warn('Failed to verify block check status (failing closed):', err?.message);
-    return false;
-  }
-
-  // Check admin authorization header with the same strict lockout enforcement as adminAuth
-  const adminPassword = req.headers['x-admin-password'];
-  if (adminPassword && typeof adminPassword === 'string') {
-    const adminLockKey = `${clientIp}_${canonicalRoomId.toLowerCase()}`;
-    if (getAdminLockRemainingSeconds(adminLockKey, clientIp) > 0) {
-      return false;
-    }
-
-    let isAdminValid = false;
-    if (process.env.ADMIN_PASSWORD && timingSafeEqualStr(adminPassword, process.env.ADMIN_PASSWORD)) {
-      isAdminValid = true;
-    } else if (room && await verifyPasswordAsync(adminPassword, room.adminPassword)) {
-      isAdminValid = true;
-    }
-
-    if (isAdminValid) {
-      resetAdminAttemptsAcrossScope(adminLockKey, clientIp);
-      return true;
-    }
-
-    recordFailedAdminAttemptAcrossScope(adminLockKey, clientIp, req);
-    return false;
-  }
-
-  if (!requireSession) {
-    if (canonicalRoomId === 'global') return true;
-
-    // Check room password requirements
-    const requiresPassword = canonicalRoomId === 'me'
-      ? Boolean(process.env.CLIENT_PASSWORD)
-      : Boolean(room && room.isPrivate);
-
-    if (!requiresPassword) {
-      return true;
-    }
-  }
-
-  // Check if requesting user has an active authenticated session using canonical room state
-  const rawSessionToken = req.headers['x-session-token'] || req.body?.sessionToken;
-  const sessionToken = typeof rawSessionToken === 'string' && rawSessionToken.trim() ? rawSessionToken.trim() : null;
-
-  if (typeof userId === 'string' && userId.trim() && sessionToken) {
-    const cleanUserId = userId.trim();
-    const roomState = getRoomState(canonicalRoomId);
-
-    // 1. Check in-memory session
-    if (roomState && roomState.loggedInUsers) {
-      const session = roomState.loggedInUsers.get(cleanUserId);
-      if (session) {
-        if (session.sessionToken && timingSafeEqualStr(sessionToken, session.sessionToken)) {
-          return true;
-        }
-        const incomingHash = hashSessionToken(sessionToken);
-        if (session.sessionTokenHash && incomingHash && timingSafeEqualStr(incomingHash, session.sessionTokenHash)) {
-          return true;
-        }
-      }
-    }
-
-    // 2. Cross-restart / multi-instance fallback: verify signed token AND active DB record
-    const verifiedData = verifySignedSessionToken(sessionToken);
-    if (verifiedData && verifiedData.userId === cleanUserId && (verifiedData.roomId === canonicalRoomId || verifiedData.roomId === roomId)) {
-      try {
-        const userDoc = await User.findOne({ roomId: canonicalRoomId, userId: cleanUserId }).lean();
-        const incomingHash = hashSessionToken(sessionToken);
-        const isDbTokenValid = Boolean(
-          userDoc && (
-            (userDoc.sessionTokenHash && incomingHash && timingSafeEqualStr(incomingHash, userDoc.sessionTokenHash)) ||
-            (userDoc.sessionToken && timingSafeEqualStr(sessionToken, userDoc.sessionToken))
-          )
-        );
-        if (isDbTokenValid) {
-          if (userDoc.sessionToken && !userDoc.sessionTokenHash) {
-            User.updateOne({ _id: userDoc._id }, { $set: { sessionTokenHash: incomingHash }, $unset: { sessionToken: 1 } }).catch(() => {});
-          }
-          if (roomState && roomState.loggedInUsers) {
-            const existingSession = roomState.loggedInUsers.get(cleanUserId);
-            let tokenToKeep = sessionToken;
-            if (existingSession && existingSession.sessionToken) {
-              const existingData = verifySignedSessionToken(existingSession.sessionToken);
-              const incomingData = verifySignedSessionToken(sessionToken);
-              if (existingData && typeof existingData.iat === 'number' && incomingData && typeof incomingData.iat === 'number' && existingData.iat >= incomingData.iat) {
-                tokenToKeep = existingSession.sessionToken;
-              }
-            }
-            roomState.loggedInUsers.set(cleanUserId, {
-              userId: cleanUserId,
-              username: userDoc.username || existingSession?.username || cleanUserId,
-              sessionToken: tokenToKeep,
-              sessionTokenHash: hashSessionToken(tokenToKeep),
-              loginTime: existingSession?.loginTime || new Date(),
-              ip: clientIp,
-              userAgent,
-            });
-          }
-          return true;
-        }
-      } catch (_) {}
-    }
-  }
-
-  return false;
-};
+const {
+  buildVisibleMessagesQuery,
+  isRoomAccessAllowed,
+} = require('../roomAccess');
 
 const router = express.Router();
 
@@ -228,7 +66,7 @@ router.get('/api/messages/search', apiLimiter, async (req, res) => {
       query.createdAt = { $gt: frontendHiddenBefore };
     }
     const messages = await Message.find(query).sort({ createdAt: -1 }).limit(200).maxTimeMS(5000).lean();
-    res.json(messages.reverse().map(toClientMessage)); // chronological order and clean reactions for the chat display
+    res.json(messages.reverse().map(toPublicClientMessage)); // chronological order and clean reactions for the chat display
   } catch (error) {
     logger.error('Failed to search messages:', error);
     res.status(500).json({ error: 'Failed to search messages' });
@@ -300,7 +138,7 @@ router.get('/api/messages', apiLimiter, async (req, res) => {
         const pageNewer = hasMoreNewer ? newerRows.slice(0, halfSize) : newerRows;
 
         const allRows = [...pageOlder.reverse(), targetMsg, ...pageNewer];
-        const messages = allRows.map(toClientMessage);
+        const messages = allRows.map(toPublicClientMessage);
         const oldestCreatedAt = messages.length > 0 ? messages[0].createdAt : null;
         const newestCreatedAt = messages.length > 0 ? messages[messages.length - 1].createdAt : null;
 
@@ -345,12 +183,12 @@ router.get('/api/messages', apiLimiter, async (req, res) => {
         .lean();
       const hasMore = rows.length > pageSize;
       const pageRows = hasMore ? rows.slice(0, pageSize) : rows;
-      const messages = pageRows.map(toClientMessage);
+      const messages = pageRows.map(toPublicClientMessage);
       const newestCreatedAt = messages.length > 0 ? messages[messages.length - 1].createdAt : null;
       return res.json({ messages, hasMore, newestCreatedAt });
     }
 
-    const query = getVisibleMessagesQuery(beforeDate, getRoomState(roomId).frontendHiddenBefore);
+    const query = buildVisibleMessagesQuery(beforeDate, getRoomState(roomId).frontendHiddenBefore);
     
     const rows = await Message.find({ roomId, ...query })
       .sort({ createdAt: -1 })
@@ -359,7 +197,7 @@ router.get('/api/messages', apiLimiter, async (req, res) => {
 
     const hasMore = rows.length > pageSize;
     const pageRows = hasMore ? rows.slice(0, pageSize) : rows;
-    const messages = pageRows.reverse().map(toClientMessage);
+    const messages = pageRows.reverse().map(toPublicClientMessage);
     const oldestCreatedAt = messages.length > 0 ? messages[0].createdAt : null;
 
     res.json({ messages, hasMore, oldestCreatedAt });
@@ -370,5 +208,3 @@ router.get('/api/messages', apiLimiter, async (req, res) => {
 });
 
 module.exports = router;
-module.exports.getVisibleMessagesQuery = getVisibleMessagesQuery;
-module.exports.isRoomAccessAllowed = isRoomAccessAllowed;

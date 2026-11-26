@@ -21,6 +21,7 @@ import {
   getStoredValue,
 } from '../utils';
 import { albumDownloadManager } from '../albumDownloadManager';
+import { resetMessageWindow } from './chatWindowHelper';
 
 export interface UseChatMessagesProps {
   userId: string;
@@ -67,6 +68,11 @@ export function useChatMessages({
   const setHistorySessionId = useCallback((valOrUpdater: number | ((prev: number) => number)) => {
     historyEpochRef.current += 1;
     setHistorySessionIdState(valOrUpdater);
+  }, []);
+
+  const bumpHistoryEpoch = useCallback(() => {
+    historyEpochRef.current += 1;
+    return historyEpochRef.current;
   }, []);
 
   const [firstItemIndex, setFirstItemIndexState] = useState(INITIAL_FIRST_ITEM_INDEX);
@@ -584,37 +590,30 @@ export function useChatMessages({
       const deletedIds = new Set(normalized.filter((m) => m.isDeleted).map((m) => m.id));
       const patched = markDeletedReplyTargets(normalized, deletedIds);
 
-      groupStartMessageIdsRef.current.clear();
-      for (let i = 0; i < patched.length; i++) {
-        const current = patched[i];
-        const prev = i > 0 ? patched[i - 1] : null;
-        if (isGroupStartMessage(current, prev)) {
-          groupStartMessageIdsRef.current.add(current.id);
-        }
-      }
-
-      setFirstItemIndex(INITIAL_FIRST_ITEM_INDEX);
-      firstItemIndexRef.current = INITIAL_FIRST_ITEM_INDEX;
-      messagesRef.current = patched;
-      setMessages(patched);
-
       const oldest = patched.length > 0 ? (payload.oldestCreatedAt || getMessageCursor(patched[0])) : null;
-      oldestLoadedAtRef.current = oldest;
-      setOldestLoadedAt(oldest);
-
       const newest = patched.length > 0 ? getMessageCursor(patched[patched.length - 1]) : null;
-      newestLoadedAtRef.current = newest;
-      setNewestLoadedAt(newest);
-
-      setHasMoreOlderMessages(serverHasMore);
-      hasMoreOlderMessagesRef.current = serverHasMore;
-      setHasMoreNewerMessages(false);
-      hasMoreNewerMessagesRef.current = false;
-      setNewMessagesWhileScrolledUp(0);
-      messageTailSnapshotRef.current = {
-        length: patched.length,
-        lastId: patched.length > 0 ? patched[patched.length - 1].id : null,
-      };
+      resetMessageWindow({
+        messages: patched,
+        oldestCursor: oldest,
+        newestCursor: newest,
+        hasMoreOlder: serverHasMore,
+        hasMoreNewer: false,
+        groupStartMessageIdsRef,
+        setFirstItemIndex,
+        firstItemIndexRef,
+        messagesRef,
+        setMessages,
+        setOldestLoadedAt,
+        oldestLoadedAtRef,
+        setNewestLoadedAt,
+        newestLoadedAtRef,
+        setHasMoreOlderMessages,
+        hasMoreOlderMessagesRef,
+        setHasMoreNewerMessages,
+        hasMoreNewerMessagesRef,
+        setNewMessagesWhileScrolledUp,
+        messageTailSnapshotRef,
+      });
 
       scrollToBottom('auto', true);
       requestAnimationFrame(() => syncBottomStateFromScroller());
@@ -646,32 +645,28 @@ export function useChatMessages({
         const patched = markDeletedReplyTargets(normalized, deletedIds);
 
         if (!isCancelled && messagesRef.current.length === 0 && patched.length > 0) {
-          groupStartMessageIdsRef.current.clear();
-          for (let i = 0; i < patched.length; i++) {
-            const current = patched[i];
-            const prev = i > 0 ? patched[i - 1] : null;
-            if (isGroupStartMessage(current, prev)) {
-              groupStartMessageIdsRef.current.add(current.id);
-            }
-          }
-
-          setFirstItemIndex(INITIAL_FIRST_ITEM_INDEX);
-          firstItemIndexRef.current = INITIAL_FIRST_ITEM_INDEX;
-          messagesRef.current = patched;
-          setMessages(patched);
-
           const oldest = patched.length > 0 ? (payload.oldestCreatedAt || getMessageCursor(patched[0])) : null;
-          oldestLoadedAtRef.current = oldest;
-          setOldestLoadedAt(oldest);
-
           const newest = patched.length > 0 ? getMessageCursor(patched[patched.length - 1]) : null;
-          newestLoadedAtRef.current = newest;
-          setNewestLoadedAt(newest);
-
-          setHasMoreOlderMessages(serverHasMore);
-          hasMoreOlderMessagesRef.current = serverHasMore;
-          setHasMoreNewerMessages(false);
-          hasMoreNewerMessagesRef.current = false;
+          resetMessageWindow({
+            messages: patched,
+            oldestCursor: oldest,
+            newestCursor: newest,
+            hasMoreOlder: serverHasMore,
+            hasMoreNewer: false,
+            groupStartMessageIdsRef,
+            setFirstItemIndex,
+            firstItemIndexRef,
+            messagesRef,
+            setMessages,
+            setOldestLoadedAt,
+            oldestLoadedAtRef,
+            setNewestLoadedAt,
+            newestLoadedAtRef,
+            setHasMoreOlderMessages,
+            hasMoreOlderMessagesRef,
+            setHasMoreNewerMessages,
+            hasMoreNewerMessagesRef,
+          });
 
           setHistoryLoaded(true);
           setHistorySessionId(prev => prev + 1);
@@ -810,6 +805,7 @@ export function useChatMessages({
     setHistoryLoaded,
     historySessionId,
     setHistorySessionId,
+    bumpHistoryEpoch,
     firstItemIndex,
     setFirstItemIndex,
     firstItemIndexRef,

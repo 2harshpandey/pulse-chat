@@ -6,7 +6,7 @@ import { NEWER_LOAD_TRIGGER_PX, MAX_MESSAGES_WINDOW } from '../constants';
 import { recordChatScroll } from '../chatScrollState';
 import { formatPageTitle, getRoomDisplayLabel, useDocumentTitle } from '../../pageTitle';
 import type { Message } from '../types';
-import { getUserId, resolveApiBaseUrl, downloadFile, findMessageElement, canEditMessage } from '../utils';
+import { getUserId, resolveApiBaseUrl, downloadFile, findMessageElement, canEditMessage, setCookie } from '../utils';
 import { isAudioMedia, isVideoMedia } from '../../shared/mediaTypes';
 import { albumDownloadManager } from '../albumDownloadManager';
 import {
@@ -74,6 +74,15 @@ export function useChatController({ isMe, isTempLink }: UseChatControllerProps =
   const ws = useRef<WebSocket | null>(null);
   const overlayGuardPushed = useRef(false);
   const apiBase = resolveApiBaseUrl();
+
+  // Keep persisted active roomId synchronized when navigating between rooms cleanly
+  useEffect(() => {
+    if (!userContext?.profile || !roomId) return;
+    try {
+      localStorage.setItem('pulseRoomId', roomId);
+      setCookie('pulseRoomId', roomId, 30);
+    } catch (_) {}
+  }, [userContext?.profile, roomId]);
 
   // Redirect meta roomId if needed and capture canonical room name
   useEffect(() => {
@@ -197,6 +206,7 @@ export function useChatController({ isMe, isTempLink }: UseChatControllerProps =
     setHasMoreNewerMessages: msgs.setHasMoreNewerMessages,
     hasMoreNewerMessagesRef: msgs.hasMoreNewerMessagesRef,
     isLoadingOlderRef: msgs.isLoadingOlderRef,
+    bumpHistoryEpoch: msgs.bumpHistoryEpoch,
     fetchAndPrependOlderMessages: msgs.fetchAndPrependOlderMessages,
   });
 
@@ -432,6 +442,7 @@ export function useChatController({ isMe, isTempLink }: UseChatControllerProps =
     handleCloseSearch: search.handleCloseSearch,
     mediaGallery: media.mediaGallery,
     closeMediaGallery: media.closeMediaGallery,
+    overlayGuardPushed,
   });
 
   // Hide global home button

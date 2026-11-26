@@ -13,7 +13,7 @@ const {
   parseCloudinaryAssetFromUrl,
 } = require('../security');
 const { apiLimiter } = require('../middleware');
-const { isRoomAccessAllowed } = require('./messages');
+const { isRoomAccessAllowed } = require('../roomAccess');
 
 // Issue 13: Allowlist of content types safe to echo back to the browser.
 // Any type not in this set defaults to application/octet-stream (force-download)
@@ -123,9 +123,10 @@ router.all('/api/download', apiLimiter, async (req, res) => {
       }
     }
 
-    const getSafeAxiosUrl = (urlStr) => {
+    const getSafeAxiosUrl = (urlStr, allowSignedCloudinaryApi = false) => {
       const u = new URL(urlStr);
-      const allowedHost = getAllowedDownloadHost(u.hostname);
+      const allowedHost = getAllowedDownloadHost(u.hostname) ||
+        (allowSignedCloudinaryApi && u.hostname.toLowerCase() === 'api.cloudinary.com' ? 'api.cloudinary.com' : '');
       if (!allowedHost) throw new Error('Untrusted host in proxy');
 
       // Reconstruct URL using the server-controlled allowedHost string to satisfy CodeQL.
@@ -133,14 +134,14 @@ router.all('/api/download', apiLimiter, async (req, res) => {
       return `${u.protocol}//${allowedHost}${u.pathname}${u.search}`;
     };
 
-    const fetchHead = (targetUrl) => axios.head(getSafeAxiosUrl(targetUrl), {
+    const fetchHead = (targetUrl, allowSignedCloudinaryApi = false) => axios.head(getSafeAxiosUrl(targetUrl, allowSignedCloudinaryApi), {
       headers: upstreamHeaders,
       timeout: 20000,
       maxRedirects: 0,
       validateStatus: (status) => status >= 200 && status < 400,
     });
 
-    const fetchBody = (targetUrl) => axios.get(getSafeAxiosUrl(targetUrl), {
+    const fetchBody = (targetUrl, allowSignedCloudinaryApi = false) => axios.get(getSafeAxiosUrl(targetUrl, allowSignedCloudinaryApi), {
       headers: upstreamHeaders,
       responseType: 'stream',
       timeout: 30000,
@@ -150,11 +151,11 @@ router.all('/api/download', apiLimiter, async (req, res) => {
 
     const runWithCloudinaryFallback = async (executor) => {
       try {
-        return await runWithSafeRedirects(executor, parsedUrl.href);
+        return await runWithSafeRedirects((u) => executor(u, false), parsedUrl.href);
       } catch (err) {
         const attachmentUrl = getSignedCloudinaryDownloadUrl(parsedUrl.href, safeFilename);
         if (!attachmentUrl) throw err;
-        return runWithSafeRedirects(executor, attachmentUrl);
+        return runWithSafeRedirects((u) => executor(u, true), attachmentUrl, { allowSignedCloudinaryApi: true });
       }
     };
 

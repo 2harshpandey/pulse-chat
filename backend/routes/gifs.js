@@ -4,7 +4,7 @@ const express = require('express');
 const axios = require('axios');
 const logger = require('../logger');
 const { apiLimiter } = require('../middleware');
-const { isRoomAccessAllowed } = require('./messages');
+const { isRoomAccessAllowed } = require('../roomAccess');
 
 const GIPHY_API_KEY = process.env.GIPHY_API_KEY;
 const GIPHY_API_URL = 'https://api.giphy.com/v1/gifs';

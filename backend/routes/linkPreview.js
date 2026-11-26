@@ -23,7 +23,7 @@ const previewLimiter = rateLimit({
   message: { error: 'Too many link preview requests. Please slow down.' },
   skip: (req) => req.method === 'OPTIONS',
 });
-const { isRoomAccessAllowed } = require('./messages');
+const { isRoomAccessAllowed } = require('../roomAccess');
 
 const router = express.Router();
 
@@ -263,7 +263,11 @@ router.get('/api/link-preview', previewLimiter, async (req, res) => {
           port: parsedUrl.port || (isHttps ? 443 : 80),
           path: `${parsedUrl.pathname}${parsedUrl.search}`,
           method: 'GET',
-          lookup: (_hostname, _options, callback) => {
+          lookup: (_hostname, options, callback) => {
+            if (options && options.all) {
+              callback(null, [{ address: pinnedIp, family: pinnedFamily }]);
+              return;
+            }
             callback(null, pinnedIp, pinnedFamily);
           },
           headers: {

@@ -4,14 +4,14 @@ import {
   LinkPreviewCard, LinkPreviewImageWrapper, LinkPreviewImage, LinkPreviewBody, LinkPreviewSiteName,
   LinkPreviewTitle, LinkPreviewDesc,
 } from './ChatStyledComponents';
-import { getRootDomain, isDomainOrSubdomain, isAmazonHost, getHostnameFromUrl } from './utils';
+import { getRootDomain, isDomainOrSubdomain, isAmazonHost, getHostnameFromUrl, getStoredValue } from './utils';
 
 import {
   linkPreviewCache,
   getLinkPreviewFallback,
   fetchLinkPreviewData
 } from './linkPreviewState';
-import { safeHref } from './renderMessage';
+import { safeHref } from './utils/urlLinkUtils';
 
 export const LinkPreviewSkeleton = ({ sender }: { sender: 'me' | 'other' }) => (
   <LinkPreviewCard
@@ -28,11 +28,14 @@ export const LinkPreviewSkeleton = ({ sender }: { sender: 'me' | 'other' }) => (
   </LinkPreviewCard>
 );
 
-export const LinkPreview: React.FC<{ url: string; sender: 'me' | 'other' }> = React.memo(({ url, sender }) => {
+export const LinkPreview: React.FC<{ url: string; sender: 'me' | 'other'; roomId?: string }> = React.memo(({ url, sender, roomId }) => {
+  const activeRoomId = roomId || getStoredValue('pulseRoomId') || getStoredValue('pulse_room_id') || 'me';
+  const cacheKey = `${activeRoomId}:${url}`;
+
   const [data, setData] = useState<LinkPreviewData | null | undefined>(
     () => {
-      if (!linkPreviewCache.has(url)) return null;
-      return linkPreviewCache.get(url) ?? getLinkPreviewFallback(url);
+      if (!linkPreviewCache.has(cacheKey)) return null;
+      return linkPreviewCache.get(cacheKey) ?? getLinkPreviewFallback(url);
     }
   );
 
@@ -40,17 +43,17 @@ export const LinkPreview: React.FC<{ url: string; sender: 'me' | 'other' }> = Re
 
   useEffect(() => {
     setCandidateIdx(0);
-    if (linkPreviewCache.has(url)) {
-      setData(linkPreviewCache.get(url) ?? getLinkPreviewFallback(url));
+    if (linkPreviewCache.has(cacheKey)) {
+      setData(linkPreviewCache.get(cacheKey) ?? getLinkPreviewFallback(url));
       return;
     }
     let cancelled = false;
     (async () => {
-      const result = await fetchLinkPreviewData(url);
+      const result = await fetchLinkPreviewData(url, activeRoomId);
       if (!cancelled) setData(result ?? getLinkPreviewFallback(url));
     })();
     return () => { cancelled = true; };
-  }, [url]);
+  }, [url, cacheKey, activeRoomId]);
 
   const rootDomain = data ? getRootDomain(data.hostname) : '';
   const host = data ? data.hostname.replace(/^www\./i, '').toLowerCase() : '';

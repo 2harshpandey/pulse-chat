@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import type { UserProfile } from '../types';
 import { isGifLog, isPhotoLog, isVideoLog, isDocumentLog } from '../utils';
 
@@ -11,6 +11,8 @@ interface UseAdminMessagesOptions {
 
 export function useAdminMessages({ apiUrl, apiHeaders, users, ws }: UseAdminMessagesOptions) {
   const [historyLogs, setHistoryLogs] = useState<any[]>([]);
+  const historyLogsRef = useRef<any[]>(historyLogs);
+  historyLogsRef.current = historyLogs;
   const [pinnedMessages, setPinnedMessages] = useState<any[]>([]);
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
   const [showBulkDeleteModal, setShowBulkDeleteModal] = useState(false);
@@ -237,6 +239,10 @@ export function useAdminMessages({ apiUrl, apiHeaders, users, ws }: UseAdminMess
     }
   };
 
+  // Keep latest pinnedMessages in a ref so pin updates don't wipe paginated historyLogs for other filters
+  const pinnedMessagesRef = React.useRef(pinnedMessages);
+  pinnedMessagesRef.current = pinnedMessages;
+
   // Re-fetch from server when dropdown filter changes so the server query is exact
   const isFirstMountRef = React.useRef(true);
   useEffect(() => {
@@ -276,9 +282,10 @@ export function useAdminMessages({ apiUrl, apiHeaders, users, ws }: UseAdminMess
           : data.oldestCreatedAt;
 
         let finalIncoming = incoming;
-        if (filterEventType === 'Pinned Messages' && pinnedMessages.length > 0) {
+        const currentPins = pinnedMessagesRef.current;
+        if (filterEventType === 'Pinned Messages' && currentPins.length > 0) {
           const existingIds = new Set(incoming.map((i: any) => extractMessageId(i)));
-          const missingPins = pinnedMessages.filter((p: any) => !existingIds.has(p.id));
+          const missingPins = currentPins.filter((p: any) => !existingIds.has(p.id));
           if (missingPins.length > 0) {
             const syntheticEvents = missingPins.map((p: any) => ({
               _id: p._id || p.id,
@@ -309,7 +316,29 @@ export function useAdminMessages({ apiUrl, apiHeaders, users, ws }: UseAdminMess
     return () => {
       isCancelled = true;
     };
-  }, [filterEventType, filterMessageId, filterUser, filterContent, apiUrl, apiHeaders, pinnedMessages]);
+  }, [filterEventType, filterMessageId, filterUser, filterContent, apiUrl, apiHeaders]);
+
+  // Sync pinned messages view only when specifically filtering by Pinned Messages
+  useEffect(() => {
+    if (filterEventType !== 'Pinned Messages') return;
+    setHistoryLogs((prev) => {
+      const existingIds = new Set(prev.map((i: any) => extractMessageId(i)));
+      const missingPins = pinnedMessages.filter((p: any) => !existingIds.has(p.id));
+      if (missingPins.length === 0) return prev;
+      const syntheticEvents = missingPins.map((p: any) => ({
+        _id: p._id || p.id,
+        roomId: p.roomId || 'me',
+        type: 'create',
+        messageId: p.id,
+        message: p,
+        userId: p.userId || 'unknown',
+        username: p.username || p.sender || 'Unknown',
+        timestamp: p.timestamp || p.createdAt || new Date(),
+        createdAt: p.createdAt || p.timestamp || new Date(),
+      }));
+      return [...prev, ...syntheticEvents];
+    });
+  }, [filterEventType, pinnedMessages]);
 
   const loadMoreLogs = useCallback(async () => {
     // If we already have more filtered logs in memory than currently displayed, reveal 50 more
@@ -359,15 +388,19 @@ export function useAdminMessages({ apiUrl, apiHeaders, users, ws }: UseAdminMess
             : null
           : data.oldestCreatedAt;
 
-        let addedCount = 0;
-        setHistoryLogs((prev) => {
-          const existingIds = new Set(prev.map((item) => item._id || extractMessageId(item)));
-          const uniqueIncoming = incoming.filter(
-            (item: any) => !existingIds.has(item._id || extractMessageId(item))
-          );
-          addedCount = uniqueIncoming.length;
-          return [...prev, ...uniqueIncoming];
-        });
+        const existingSnapshotIds = new Set(historyLogsRef.current.map((item) => item._id || extractMessageId(item)));
+        const uniqueIncoming = incoming.filter(
+          (item: any) => !existingSnapshotIds.has(item._id || extractMessageId(item))
+        );
+        const addedCount = uniqueIncoming.length;
+        if (addedCount > 0) {
+          historyLogsRef.current = [...historyLogsRef.current, ...uniqueIncoming];
+          setHistoryLogs((prev) => {
+            const existingIds = new Set(prev.map((item) => item._id || extractMessageId(item)));
+            const fresh = uniqueIncoming.filter((item: any) => !existingIds.has(item._id || extractMessageId(item)));
+            return fresh.length > 0 ? [...prev, ...fresh] : prev;
+          });
+        }
 
         cursor = nextOldestCursor;
         setHasMoreLogs(nextHasMore);

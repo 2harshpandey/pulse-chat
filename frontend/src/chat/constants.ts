@@ -1,7 +1,7 @@
 // --- CHAT CONSTANTS ---
 
 /** WhatsApp-equivalent message character limit. */
-export const MAX_MESSAGE_LENGTH = 65536;
+export const MAX_MESSAGE_LENGTH = 5000;
 
 export const getInputDraftKey = (userId: string, roomId?: string): string => {
   const cleanRoom = typeof roomId === 'string' && roomId.trim() ? roomId.trim() : '';
@@ -124,17 +124,29 @@ export type QuickReaction = typeof QUICK_REACTIONS[number];
 export type ReactionUser = { userId: string; username: string; isAlbum?: boolean };
 export type ReactionMap = Record<string, ReactionUser[]>;
 
+const FORBIDDEN_REACTION_KEYS = new Set([
+  '__proto__',
+  'constructor',
+  'prototype',
+  'toString',
+  'valueOf',
+  'hasOwnProperty',
+  'isPrototypeOf',
+  'propertyIsEnumerable',
+  'toLocaleString',
+]);
+
 export const normalizeReactionEmoji = (emoji: unknown): string | null => {
   if (typeof emoji !== 'string') return null;
   const normalized = emoji.trim().normalize('NFC');
-  if (!normalized || normalized.length > 20) return null;
+  if (!normalized || normalized.length > 20 || FORBIDDEN_REACTION_KEYS.has(normalized)) return null;
   return normalized;
 };
 
 export const filterValidReactions = (rawReactions: unknown): ReactionMap => {
-  const normalizedReactions: ReactionMap = {};
-  if (!rawReactions || typeof rawReactions !== 'object') return normalizedReactions;
+  if (!rawReactions || typeof rawReactions !== 'object') return {};
 
+  const safeMap = new Map<string, ReactionUser[]>();
   const entries: [string, any][] = rawReactions instanceof Map
     ? Array.from(rawReactions.entries())
     : Object.entries(rawReactions as Record<string, unknown>);
@@ -156,9 +168,10 @@ export const filterValidReactions = (rawReactions: unknown): ReactionMap => {
       .filter((user): user is ReactionUser => Boolean(user));
 
     if (validUsers.length > 0) {
-      normalizedReactions[emoji] = [...(normalizedReactions[emoji] || []), ...validUsers];
+      const existing = safeMap.get(emoji) || [];
+      safeMap.set(emoji, [...existing, ...validUsers]);
     }
   }
 
-  return normalizedReactions;
+  return Object.fromEntries(safeMap);
 };

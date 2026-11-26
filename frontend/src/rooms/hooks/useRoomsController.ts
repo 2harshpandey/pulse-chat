@@ -117,33 +117,50 @@ export const useRoomsController = () => {
       setCheckingId(false);
       return;
     }
+    const controller = new AbortController();
     setCheckingId(true);
     const delay = setTimeout(async () => {
       try {
-        const res = await fetch(`${apiBase}/api/rooms/check-id?id=${encodeURIComponent(customId.trim())}`);
+        const res = await fetch(`${apiBase}/api/rooms/check-id?id=${encodeURIComponent(trimmedId)}`, {
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
         if (res.ok) {
           const data = await res.json();
           setIdAvailable(data.available);
         } else {
           setIdAvailable(null);
         }
-      } catch {
+      } catch (err: any) {
+        if (err?.name === 'AbortError' || controller.signal.aborted) return;
         setIdAvailable(null);
       } finally {
-        setCheckingId(false);
+        if (!controller.signal.aborted) {
+          setCheckingId(false);
+        }
       }
     }, 1000);
-    return () => clearTimeout(delay);
+    return () => {
+      clearTimeout(delay);
+      controller.abort();
+    };
   }, [customId]);
 
+  const activeListFetchAbortRef = useRef<AbortController | null>(null);
+
   const fetchRooms = async (pageNumber = 1) => {
+    activeListFetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    activeListFetchAbortRef.current = controller;
     try {
       if (pageNumber === 1) setLoading(true);
       else setIsLoadingMore(true);
 
-      const res = await fetch(`${apiBase}/api/rooms?page=${pageNumber}`);
+      const res = await fetch(`${apiBase}/api/rooms?page=${pageNumber}`, { signal: controller.signal });
+      if (controller.signal.aborted) return;
       if (res.ok) {
         const data = await res.json();
+        if (controller.signal.aborted) return;
         const newRooms = Array.isArray(data) ? data : (data.rooms || []);
         const more = data.hasMore || false;
 
@@ -154,11 +171,14 @@ export const useRoomsController = () => {
         }
         setHasMore(more);
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === 'AbortError' || controller.signal.aborted) return;
       console.error('Failed to fetch rooms:', err);
     } finally {
-      setLoading(false);
-      setIsLoadingMore(false);
+      if (!controller.signal.aborted) {
+        setLoading(false);
+        setIsLoadingMore(false);
+      }
     }
   };
 
@@ -171,27 +191,42 @@ export const useRoomsController = () => {
     if (!searchQuery.trim()) {
       setPage(1);
       fetchRooms(1);
-      return;
+      return () => {
+        activeListFetchAbortRef.current?.abort();
+      };
     }
+    activeListFetchAbortRef.current?.abort();
+    const controller = new AbortController();
+    activeListFetchAbortRef.current = controller;
     const delay = setTimeout(async () => {
       setLoading(true);
       setPage(1);
       try {
-        const res = await fetch(`${apiBase}/api/rooms/search?q=${encodeURIComponent(searchQuery.trim())}&page=1`);
+        const res = await fetch(`${apiBase}/api/rooms/search?q=${encodeURIComponent(searchQuery.trim())}&page=1`, {
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
         if (res.ok) {
           const data = await res.json();
+          if (controller.signal.aborted) return;
           const newRooms = Array.isArray(data) ? data : (data.rooms || []);
           const more = data.hasMore || false;
           setRooms(newRooms);
           setHasMore(more);
         }
-      } catch (err) {
+      } catch (err: any) {
+        if (err?.name === 'AbortError' || controller.signal.aborted) return;
         console.error('Search failed:', err);
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     }, 500);
-    return () => clearTimeout(delay);
+    return () => {
+      clearTimeout(delay);
+      controller.abort();
+    };
   }, [searchQuery]);
 
   const loadMore = async () => {

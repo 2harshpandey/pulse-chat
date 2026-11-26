@@ -26,7 +26,7 @@ export interface UserProfile {
 interface UserContextType {
   profile: UserProfile | null;
   login: (profile: UserProfile) => void;
-  logout: () => void;
+  logout: (roomIdOverride?: string) => void;
 }
 
 export const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -79,9 +79,9 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setProfile(userProfile);
   };
 
-  const logout = () => {
+  const logout = (roomIdOverride?: string) => {
     const userId = localStorage.getItem('pulseUserId') || getCookie('pulseUserId') || '';
-    const currentRoomId = profile?.roomId || localStorage.getItem('pulseRoomId') || undefined;
+    const currentRoomId = roomIdOverride || profile?.roomId || localStorage.getItem('pulseRoomId') || undefined;
     if (userId) {
       void clearCachedMediaForUser(userId);
     }

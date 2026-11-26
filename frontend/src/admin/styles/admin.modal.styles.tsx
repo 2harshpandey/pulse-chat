@@ -20,7 +20,7 @@ export const ModalContent = styled.div`
   max-width: 400px;
   padding: 1.5rem;
   box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);
-  color: white;
+  color: var(--text-primary, #f8fafc);
 `;
 
 export const ModalHeader = styled.h3`

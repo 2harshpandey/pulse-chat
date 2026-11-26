@@ -117,14 +117,19 @@ export const ErrorPage: React.FC<ErrorPageProps> = ({
       setCountdown(prev => {
         if (prev <= 1) {
           clearInterval(interval);
-          navigate('/');
           return 0;
         }
         return prev - 1;
       });
     }, 1000);
     return () => clearInterval(interval);
-  }, [autoRedirectSeconds, navigate]);
+  }, [autoRedirectSeconds]);
+
+  useEffect(() => {
+    if (autoRedirectSeconds && autoRedirectSeconds > 0 && countdown === 0) {
+      navigate('/');
+    }
+  }, [autoRedirectSeconds, countdown, navigate]);
 
   const handleGoHome = useCallback(() => navigate('/'), [navigate]);
   const handleRefresh = useCallback(() => window.location.reload(), []);

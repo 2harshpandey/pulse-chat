@@ -14,5 +14,6 @@ export * from './styles/chat.animations';
 export * from './styles/chat.layout.styles';
 export * from './styles/chat.media.styles';
 export * from './styles/chat.message.styles';
+export * from './styles/chat.sideGallery.styles';
 export * from './styles/chat.video.styles';
 export * from './styles/chat.ui.styles';

@@ -206,6 +206,7 @@ export function useVoiceRecorder() {
   const errorTimerRef = useRef<NodeJS.Timeout | null>(null);
   const onErrorHandlerRef = useRef<((msg: string) => void) | undefined>(undefined);
   const pendingSegmentFinalizeRef = useRef<Promise<void> | null>(null);
+  const isMountedRef = useRef(true);
   const cachedPreviewRef = useRef<{
     segmentCount: number;
     snapshot: VoicePreviewSnapshot;
@@ -264,7 +265,9 @@ export function useVoiceRecorder() {
 
   // Cleanup on unmount
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
+      isMountedRef.current = false;
       clearCachedPreview();
       cleanupAudioHardware();
     };
@@ -469,6 +472,12 @@ export function useVoiceRecorder() {
 
     try {
       const stream = await acquireMicrophoneStream();
+      if (!isMountedRef.current) {
+        stream.getTracks().forEach((track) => {
+          try { track.stop(); } catch {}
+        });
+        return false;
+      }
 
       clearCachedPreview();
       segmentsRef.current = [];

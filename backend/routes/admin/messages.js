@@ -5,9 +5,10 @@ const MessageEvent = require('../../models/messageEvent');
 const AuditLog = require('../../models/auditLog');
 const Room = require('../../models/room');
 const { getRoomState } = require('../../state');
-const { adminLimiter, adminAuth, extractIp, toClientMessage } = require('../../middleware');
+const { adminLimiter, adminAuth, extractIp, toClientMessage, toPublicClientMessage } = require('../../middleware');
 const { unpinIfPinned } = require('../../websocket/pinnedManager');
 const { batchDeleteCloudinaryAssets } = require('../../security');
+const { markRepliesAsDeleted } = require('../../roomAccess');
 const {
   AUDIO_EXT_RE,
   AUDIO_URL_OR_EXT_RE,
@@ -27,6 +28,43 @@ module.exports = (wss, broadcasts) => {
   const { broadcastToAdmins, broadcast } = broadcasts;
   const router = express.Router();
 
+  const streamJsonArrayExport = async ({ res, cursor, filename, errorMessage, logLabel }) => {
+    try {
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
+      res.write('[\n');
+      let isFirst = true;
+      for await (const doc of cursor) {
+        if (!isFirst) {
+          res.write(',\n');
+        } else {
+          isFirst = false;
+        }
+        res.write(JSON.stringify(doc, null, 2));
+      }
+      res.write('\n]');
+      res.end();
+    } catch (err) {
+      logger.error(logLabel, err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: errorMessage });
+      } else {
+        res.end();
+      }
+    }
+  };
+
+  const appendOrCondition = (query, orClause) => {
+    if (query.$and) {
+      query.$and.push({ $or: orClause });
+    } else if (query.$or) {
+      query.$and = [{ $or: query.$or }, { $or: orClause }];
+      delete query.$or;
+    } else {
+      query.$or = orClause;
+    }
+  };
+
   // --- Message / History ---
   router.get('/api/admin/messages', adminLimiter, adminAuth, async (req, res) => {
     const roomId = req.roomId;
@@ -45,30 +83,14 @@ module.exports = (wss, broadcasts) => {
 
   router.get('/api/admin/export-full-db', adminLimiter, adminAuth, async (req, res) => {
     if (!req.isSuperAdmin) return res.status(403).json({ error: 'Forbidden' });
-    try {
-      res.setHeader('Content-Type', 'application/json');
-      res.setHeader('Content-Disposition', 'attachment; filename=pulse_full_db_export.json');
-      res.write('[\n');
-      let isFirst = true;
-      const cursor = Message.find({}).sort({ createdAt: 1 }).lean().cursor();
-      for await (const doc of cursor) {
-        if (!isFirst) {
-          res.write(',\n');
-        } else {
-          isFirst = false;
-        }
-        res.write(JSON.stringify(doc, null, 2));
-      }
-      res.write('\n]');
-      res.end();
-    } catch (err) {
-      logger.error('Failed to export full database:', err);
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'Failed to export full database' });
-      } else {
-        res.end();
-      }
-    }
+    const cursor = Message.find({}).sort({ createdAt: 1 }).lean().cursor();
+    return streamJsonArrayExport({
+      res,
+      cursor,
+      filename: 'pulse_full_db_export.json',
+      errorMessage: 'Failed to export full database',
+      logLabel: 'Failed to export full database:',
+    });
   });
 
   router.get('/api/admin/export-all-messages', adminLimiter, adminAuth, async (req, res) => {
@@ -143,30 +165,14 @@ module.exports = (wss, broadcasts) => {
 
   router.get('/api/admin/export-messages', adminLimiter, adminAuth, async (req, res) => {
     const roomId = req.roomId;
-    try {
-      res.setHeader('Content-Type', 'application/json');
-      res.setHeader('Content-Disposition', 'attachment; filename=messages_export.json');
-      res.write('[\n');
-      let isFirst = true;
-      const cursor = Message.find({ roomId }).sort({ createdAt: 1 }).lean().cursor();
-      for await (const doc of cursor) {
-        if (!isFirst) {
-          res.write(',\n');
-        } else {
-          isFirst = false;
-        }
-        res.write(JSON.stringify(doc, null, 2));
-      }
-      res.write('\n]');
-      res.end();
-    } catch (err) {
-      logger.error('Failed to export messages:', err);
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'Failed to export messages' });
-      } else {
-        res.end();
-      }
-    }
+    const cursor = Message.find({ roomId }).sort({ createdAt: 1 }).lean().cursor();
+    return streamJsonArrayExport({
+      res,
+      cursor,
+      filename: 'messages_export.json',
+      errorMessage: 'Failed to export messages',
+      logLabel: 'Failed to export messages:',
+    });
   });
 
   const syncedRooms = new Set();
@@ -462,18 +468,10 @@ module.exports = (wss, broadcasts) => {
       if (String(messageId).length > 200) return res.status(400).json({ error: 'messageId filter too long' });
       const escaped = String(messageId).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       if (escaped) {
-        const msgIdOr = [
+        appendOrCondition(query, [
           { messageId: { $regex: escaped, $options: 'i' } },
           { 'message.id': { $regex: escaped, $options: 'i' } },
-        ];
-        if (query.$and) {
-          query.$and.push({ $or: msgIdOr });
-        } else if (query.$or) {
-          query.$and = [{ $or: query.$or }, { $or: msgIdOr }];
-          delete query.$or;
-        } else {
-          query.$or = msgIdOr;
-        }
+        ]);
       }
     }
 
@@ -481,18 +479,10 @@ module.exports = (wss, broadcasts) => {
       if (String(user).length > 200) return res.status(400).json({ error: 'user filter too long' });
       const escaped = String(user).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       if (escaped) {
-        const userOr = [
+        appendOrCondition(query, [
           { username: { $regex: escaped, $options: 'i' } },
           { userId: { $regex: escaped, $options: 'i' } },
-        ];
-        if (query.$and) {
-          query.$and.push({ $or: userOr });
-        } else if (query.$or) {
-          query.$and = [{ $or: query.$or }, { $or: userOr }];
-          delete query.$or;
-        } else {
-          query.$or = userOr;
-        }
+        ]);
       }
     }
 
@@ -500,21 +490,13 @@ module.exports = (wss, broadcasts) => {
       if (String(content).length > 200) return res.status(400).json({ error: 'content filter too long' });
       const escaped = String(content).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       if (escaped) {
-        const contentOr = [
+        appendOrCondition(query, [
           { 'message.text': { $regex: escaped, $options: 'i' } },
           { oldText: { $regex: escaped, $options: 'i' } },
           { newText: { $regex: escaped, $options: 'i' } },
           { 'deletedContent.text': { $regex: escaped, $options: 'i' } },
           { 'file.originalname': { $regex: escaped, $options: 'i' } },
-        ];
-        if (query.$and) {
-          query.$and.push({ $or: contentOr });
-        } else if (query.$or) {
-          query.$and = [{ $or: query.$or }, { $or: contentOr }];
-          delete query.$or;
-        } else {
-          query.$or = contentOr;
-        }
+        ]);
       }
     }
 
@@ -549,7 +531,7 @@ module.exports = (wss, broadcasts) => {
   // --- Bulk Message Actions ---
   router.post('/api/admin/messages/bulk-action', adminLimiter, adminAuth, async (req, res) => {
     const roomId = req.roomId;
-    const { messageIds, action, vanish } = req.body;
+    const { messageIds, action, vanish } = req.body || {};
 
     if (!Array.isArray(messageIds) || messageIds.length === 0) {
       return res.status(400).json({ error: 'No message IDs provided.' });
@@ -655,10 +637,7 @@ module.exports = (wss, broadcasts) => {
           : { $set: { isDeleted: true, deletedBy: 'admin', pinned: null } };
 
         await Message.updateMany(messageTargetQuery, updatePayload);
-        await Message.updateMany(
-          { roomId, 'replyingTo.id': { $in: finalTargetMessageIds } },
-          { $set: { 'replyingTo.isDeleted': true, 'replyingTo.deletedBy': 'admin' } }
-        ).catch((e) => logger.error('Failed to update replyingTo on admin hide:', e));
+        await markRepliesAsDeleted(roomId, finalTargetMessageIds, 'admin', 'admin hide');
 
         const eventPayload = vanish
           ? { $set: { 'message.vanished': true, 'message.isDeleted': true, 'message.deletedBy': 'admin', 'message.pinned': null, vanished: true, isDeleted: true, deletedBy: 'admin' } }
@@ -681,7 +660,7 @@ module.exports = (wss, broadcasts) => {
           broadcastToAdmins(roomId, 'activity', `${messageIds.length} message(s) vanished from frontend by super admin (retained in DB).`);
         } else {
           const updatedMessages = await Message.find({ roomId, id: { $in: finalTargetMessageIds } }).lean();
-          broadcast(roomId, { type: 'bulk_update', messages: updatedMessages });
+          broadcast(roomId, { type: 'bulk_update', messages: updatedMessages.map(toPublicClientMessage) });
           const auditEntry = await AuditLog.create({
             roomId,
             type: 'messages_hidden',
@@ -722,10 +701,7 @@ module.exports = (wss, broadcasts) => {
         broadcastToAdmins(roomId, 'bulk_history_delete', { messageIds: Array.from(allDeletedIds) });
 
         if (vanish) {
-          await Message.updateMany(
-            { roomId, 'replyingTo.id': { $in: finalTargetMessageIds } },
-            { $set: { 'replyingTo.isDeleted': true, 'replyingTo.deletedBy': 'admin' } }
-          ).catch((e) => logger.error('Failed to update replyingTo on admin vanish:', e));
+          await markRepliesAsDeleted(roomId, finalTargetMessageIds, 'admin', 'admin vanish');
           await Message.deleteMany(messageTargetQuery);
           await unpinIfPinned(wss, roomId, finalTargetMessageIds);
 
@@ -755,14 +731,11 @@ module.exports = (wss, broadcasts) => {
               },
             }
           );
-          await Message.updateMany(
-            { roomId, 'replyingTo.id': { $in: finalTargetMessageIds } },
-            { $set: { 'replyingTo.isDeleted': true, 'replyingTo.deletedBy': 'admin' } }
-          ).catch((e) => logger.error('Failed to update replyingTo on admin delete:', e));
+          await markRepliesAsDeleted(roomId, finalTargetMessageIds, 'admin', 'admin delete');
           await unpinIfPinned(wss, roomId, finalTargetMessageIds);
 
           const updatedMessages = await Message.find({ roomId, id: { $in: finalTargetMessageIds } }).lean();
-          broadcast(roomId, { type: 'bulk_update', messages: updatedMessages });
+          broadcast(roomId, { type: 'bulk_update', messages: updatedMessages.map(toPublicClientMessage) });
 
           const auditEntry = await AuditLog.create({
             roomId,

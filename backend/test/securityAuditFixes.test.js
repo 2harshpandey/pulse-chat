@@ -3,7 +3,7 @@ const assert = require('node:assert');
 const mongoose = require('mongoose');
 
 const { isAllowedDownloadHost, isTrustedMediaUrl, generateSessionToken, hashSessionToken, hashPassword, hashPasswordAsync, verifyPasswordAsync } = require('../security');
-const { isRoomAccessAllowed } = require('../routes/messages');
+const { isRoomAccessAllowed } = require('../roomAccess');
 const { resolveAuthenticatedUserId } = require('../routes/auth');
 const linkPreviewRouter = require('../routes/linkPreview');
 const {
@@ -507,6 +507,270 @@ describe('Security Audit Regression Tests', () => {
       assert.notStrictEqual(keyRoomA1, keyGlobal);
       assert.ok(keyRoomA1.includes('v=SECRET_1'));
       assert.ok(keyRoomA1.startsWith('roomA:'));
+    });
+
+    it('emits retryable error instead of force_logout on transient DB error during private-room cross-restart auth', async () => {
+      process.env.CLIENT_PASSWORD = 'super-secret-room-pw';
+      Object.defineProperty(mongoose.connection, 'readyState', { value: 1, configurable: true });
+      const userId = 'transient_db_user';
+      const token = generateSessionToken(userId, 'me');
+      User.findOne = () => ({
+        lean: async () => {
+          throw new Error('ECONNRESET: transient Mongo socket drop');
+        },
+      });
+
+      const sent = [];
+      const ws = {
+        readyState: 1,
+        send: (payload) => sent.push(JSON.parse(payload)),
+        terminate: () => {},
+      };
+      const req = { ip: '203.0.113.11', headers: { 'user-agent': 'test-agent' } };
+
+      await handleUserJoin({
+        ws,
+        req,
+        parsedMessage: { type: 'user_join', roomId: 'me', userId, username: 'Harsh', sessionToken: token },
+        wss: { clients: new Set() },
+        broadcastToAdmins: () => {},
+        _broadcast: () => {},
+        _broadcastOnlineUsers: () => {},
+        loadPinnedMessages: async () => {},
+        _getVisibleMessagesQuery: () => ({}),
+      });
+
+      assert.strictEqual(sent.some((m) => m.type === 'force_logout'), false);
+      assert.ok(sent.some((m) => m.type === 'error' && !/authentication required/i.test(m.message)));
+    });
+
+    it('authenticates across restart using bounded sessionTokenHashes history when another device refreshed', async () => {
+      process.env.CLIENT_PASSWORD = 'super-secret-room-pw';
+      Object.defineProperty(mongoose.connection, 'readyState', { value: 1, configurable: true });
+      const userId = 'multi_device_user';
+      const deviceAToken = generateSessionToken(userId, 'me');
+      const deviceBToken = generateSessionToken(userId, 'me');
+      const deviceAHash = hashSessionToken(deviceAToken);
+      const deviceBHash = hashSessionToken(deviceBToken);
+
+      User.findOne = () => ({
+        lean: async () => ({
+          _id: 'mock_user_id',
+          roomId: 'me',
+          userId,
+          username: 'Harsh',
+          sessionTokenHash: deviceBHash,
+          sessionTokenHashes: [deviceAHash, deviceBHash],
+        }),
+      });
+      User.findOneAndUpdate = () => Promise.resolve({});
+      BlockedUser.findOne = () => ({ lean: async () => null });
+      LoginLockdown.findOne = () => ({ sort: async () => null });
+      const origMsgFind = Message.find;
+      Message.find = () => ({
+        sort: () => ({
+          limit: () => ({
+            lean: async () => [],
+          }),
+        }),
+      });
+
+      const sent = [];
+      const ws = {
+        readyState: 1,
+        send: (payload) => sent.push(JSON.parse(payload)),
+        terminate: () => {},
+      };
+      const req = { ip: '203.0.113.12', headers: { 'user-agent': 'test-agent' } };
+
+      try {
+        await handleUserJoin({
+          ws,
+          req,
+          parsedMessage: { type: 'user_join', roomId: 'me', userId, username: 'Harsh', sessionToken: deviceAToken },
+          wss: { clients: new Set() },
+          broadcastToAdmins: () => {},
+          _broadcast: () => {},
+          _broadcastOnlineUsers: () => {},
+          loadPinnedMessages: async () => {},
+          _getVisibleMessagesQuery: () => ({}),
+        });
+
+        assert.ok(sent.some((m) => m.type === 'auth_success'));
+        assert.strictEqual(sent.some((m) => m.type === 'force_logout'), false);
+      } finally {
+        Message.find = origMsgFind;
+        getRoomState('me').loggedInUsers.delete(userId);
+        getRoomState('me').onlineUsers.delete(userId);
+      }
+    });
+
+    it('accepts multi-device sessionTokenHashes inside isSocketSessionValid during handleNewMessage', async () => {
+      const roomId = 'test-multidevice-msg-room';
+      const roomState = getRoomState(roomId);
+      const userId = 'multi_device_msg_user';
+      const tokenDevice1 = generateSessionToken(userId, roomId);
+      const tokenDevice2 = generateSessionToken(userId, roomId);
+      const hashDevice1 = hashSessionToken(tokenDevice1);
+      const hashDevice2 = hashSessionToken(tokenDevice2);
+
+      // Device 2 logged in later, updating active sessionTokenHash while preserving hashDevice1 in sessionTokenHashes
+      roomState.loggedInUsers.set(userId, {
+        userId,
+        username: 'Harsh',
+        sessionToken: tokenDevice2,
+        sessionTokenHash: hashDevice2,
+      });
+
+      const savedDocs = [];
+      Message.prototype.save = async function () {
+        savedDocs.push(this);
+      };
+      MessageEvent.prototype.save = async function () {};
+      User.findOne = () => ({
+        lean: async () => ({
+          username: 'Harsh',
+          sessionTokenHash: hashDevice2,
+          sessionTokenHashes: [hashDevice1, hashDevice2],
+        }),
+      });
+
+      const sent = [];
+      const ws = {
+        userId,
+        username: 'Harsh',
+        roomId,
+        sessionToken: tokenDevice1,
+        readyState: 1,
+        send: (payload) => sent.push(JSON.parse(payload)),
+        terminate: () => {},
+      };
+
+      try {
+        await handleNewMessage({
+          ws,
+          parsedMessage: { type: 'text', id: 'multi-dev-msg-1', text: 'Hello from device 1' },
+          wss: { clients: new Set([ws]) },
+          broadcastToAdmins: () => {},
+          _broadcastOnlineUsers: () => {},
+        });
+        assert.strictEqual(savedDocs.length, 1);
+        assert.strictEqual(sent.some((m) => m.type === 'force_logout'), false);
+      } finally {
+        deleteRoomState(roomId);
+      }
+    });
+
+    it('aborts handleUserJoin cleanly if socket closes before async DB checks complete', async () => {
+      Object.defineProperty(mongoose.connection, 'readyState', { value: 1, configurable: true });
+      const roomId = 'global';
+      const userId = 'mid_join_disconnect_user';
+
+      const ws = {
+        readyState: 1,
+        send: () => {},
+        terminate: () => {},
+      };
+      BlockedUser.findOne = () => ({
+        lean: async () => {
+          // Simulate client disconnecting while async DB check is in flight
+          ws.readyState = 3;
+          return null;
+        },
+      });
+      LoginLockdown.findOne = () => ({ sort: async () => null });
+      User.findOne = () => ({ select: () => ({ lean: async () => null }) });
+
+      await handleUserJoin({
+        ws,
+        req: { ip: '203.0.113.15', headers: { 'user-agent': 'test-agent' } },
+        parsedMessage: { type: 'user_join', roomId, userId, username: 'EphemeralUser' },
+        wss: { clients: new Set() },
+        broadcastToAdmins: () => {},
+        _broadcast: () => {},
+        _broadcastOnlineUsers: () => {},
+        loadPinnedMessages: async () => {},
+        _getVisibleMessagesQuery: () => ({}),
+      });
+
+      assert.strictEqual(getRoomState(roomId).onlineUsers.has(userId), false);
+    });
+
+    it('exports getClientIp from middleware.js for rate limiters', () => {
+      const middleware = require('../middleware');
+      assert.strictEqual(typeof middleware.getClientIp, 'function');
+    });
+
+    it('drops Object.prototype keys in filterValidReactions without throwing', () => {
+      const { filterValidReactions, normalizeReactionEmoji } = require('../reactions');
+      assert.strictEqual(normalizeReactionEmoji('constructor'), null);
+      assert.strictEqual(normalizeReactionEmoji('__proto__'), null);
+      assert.strictEqual(normalizeReactionEmoji('👍'), '👍');
+
+      const sanitized = filterValidReactions({
+        constructor: [{ userId: 'u1', username: 'Alice' }],
+        toString: [{ userId: 'u2', username: 'Bob' }],
+        '👍': [{ userId: 'u3', username: 'Carol' }],
+      });
+      assert.strictEqual(Object.prototype.hasOwnProperty.call(sanitized, 'constructor'), false);
+      assert.strictEqual(Object.prototype.hasOwnProperty.call(sanitized, 'toString'), false);
+      assert.deepStrictEqual(sanitized['👍'], [{ userId: 'u3', username: 'Carol' }]);
+    });
+
+    it('redacts text/url/originalName in toPublicClientMessage when isDeleted is true while keeping admin toClientMessage intact', () => {
+      const { toClientMessage, toPublicClientMessage } = require('../middleware');
+      const hiddenDoc = {
+        id: 'm_hidden_1',
+        roomId: 'me',
+        userId: 'u1',
+        username: 'Alice',
+        type: 'file',
+        text: 'secret text',
+        url: 'https://res.cloudinary.com/demo/raw/upload/secret.pdf',
+        originalName: 'secret.pdf',
+        size: 1024,
+        isDeleted: true,
+        deletedBy: 'admin',
+      };
+
+      const adminView = toClientMessage(hiddenDoc);
+      assert.strictEqual(adminView.text, 'secret text');
+      assert.strictEqual(adminView.url, hiddenDoc.url);
+
+      const clientView = toPublicClientMessage(hiddenDoc);
+      assert.strictEqual(clientView.isDeleted, true);
+      assert.strictEqual(clientView.deletedBy, 'admin');
+      assert.strictEqual(clientView.text, undefined);
+      assert.strictEqual(clientView.url, undefined);
+      assert.strictEqual(clientView.originalName, undefined);
+      assert.strictEqual(clientView.size, undefined);
+    });
+
+    it('rejects revoked HMAC session tokens in resolveAuthenticatedUserId when session changed', async () => {
+      const roomId = 'test_revoked_hmac_room';
+      const userId = 'revoked_victim';
+      const revokedToken = generateSessionToken(userId, roomId);
+      const currentToken = generateSessionToken(userId, roomId);
+      const roomState = getRoomState(roomId);
+      roomState.onlineUsers.set(userId, { userId, username: 'Victim' });
+      roomState.loggedInUsers.set(userId, {
+        userId,
+        username: 'Victim',
+        sessionToken: currentToken,
+        sessionTokenHash: hashSessionToken(currentToken),
+      });
+
+      try {
+        const res = await resolveAuthenticatedUserId({
+          userId,
+          roomId,
+          roomState,
+          incomingToken: revokedToken,
+        });
+        assert.strictEqual(res.conflict, true);
+      } finally {
+        deleteRoomState(roomId);
+      }
     });
   });
 });

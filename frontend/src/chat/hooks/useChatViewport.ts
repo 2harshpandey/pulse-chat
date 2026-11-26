@@ -631,22 +631,16 @@ export function useChatViewport({
       const nextValue = value ?? textarea.value;
       const isShrinking = nextValue.length < lastInputValueLengthRef.current;
 
-      const isShortSingleLine = !nextValue.includes('\n') && nextValue.length < 50;
-      if (isShortSingleLine && lastInputHeightRef.current > 0 && lastInputHeightRef.current <= 48) {
-        lastInputValueLengthRef.current = nextValue.length;
+      cancelAnimationFrame(resizeRafRef.current);
+      if (!nextValue) {
+        resetInputLayerHeight();
+        lastInputValueLengthRef.current = 0;
         return;
       }
 
-      cancelAnimationFrame(resizeRafRef.current);
       const wasAtBottom = isAtBottomRef.current;
 
       resizeRafRef.current = requestAnimationFrame(() => {
-        if (!nextValue) {
-          resetInputLayerHeight();
-          lastInputValueLengthRef.current = 0;
-          return;
-        }
-
         if (isShrinking) {
           textarea.style.height = 'auto';
           if (overlay) overlay.style.height = 'auto';

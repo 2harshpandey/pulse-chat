@@ -15,7 +15,7 @@ module.exports = (wss, broadcasts) => {
   router.get('/api/admin/users', adminLimiter, adminAuth, async (req, res) => {
     const roomId = req.roomId;
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 500, 1), 1000);
-    const users = await User.find({ roomId }).select('-sessionToken -sessionTokenHash').sort({ createdAt: -1 }).limit(limit).lean();
+    const users = await User.find({ roomId }).select('-sessionToken -sessionTokenHash -sessionTokenHashes').sort({ createdAt: -1 }).limit(limit).lean();
     res.json(users);
   });
 
@@ -62,7 +62,7 @@ module.exports = (wss, broadcasts) => {
     // Invalidate session in MongoDB so the revoked token cannot re-authenticate
     await User.updateOne(
       { roomId: String(roomId), userId: String(userId) },
-      { $unset: { sessionToken: 1, sessionTokenHash: 1 } }
+      { $unset: { sessionToken: 1, sessionTokenHash: 1, sessionTokenHashes: 1 } }
     ).catch((err) => logger.error('Failed to clear sessionToken on force-logout:', err));
 
     await AuditLog.create({
@@ -108,7 +108,7 @@ module.exports = (wss, broadcasts) => {
     // Invalidate all sessions in MongoDB for this room
     await User.updateMany(
       { roomId: String(roomId) },
-      { $unset: { sessionToken: 1, sessionTokenHash: 1 } }
+      { $unset: { sessionToken: 1, sessionTokenHash: 1, sessionTokenHashes: 1 } }
     ).catch((err) => logger.error('Failed to clear sessionTokens on force-logout-all:', err));
 
     await AuditLog.create({
@@ -124,7 +124,7 @@ module.exports = (wss, broadcasts) => {
   });
 
   router.post('/api/admin/block-user', adminLimiter, adminAuth, async (req, res) => {
-    const { userId: rawUserId, username, reason } = req.body;
+    const { userId: rawUserId, username, reason } = req.body || {};
     const roomId = req.roomId;
     if (!rawUserId || typeof rawUserId !== 'string' || !rawUserId.trim()) {
       return res.status(400).json({ error: 'userId is required and must be a non-empty string.' });
@@ -240,7 +240,7 @@ module.exports = (wss, broadcasts) => {
       // Invalidate session in MongoDB so the blocked user's token cannot re-authenticate
       await User.updateOne(
         { roomId: String(roomId), userId: String(userId) },
-        { $unset: { sessionToken: 1, sessionTokenHash: 1 } }
+        { $unset: { sessionToken: 1, sessionTokenHash: 1, sessionTokenHashes: 1 } }
       ).catch((err) => logger.error('Failed to clear sessionToken on block-user:', err));
 
       await AuditLog.create({
