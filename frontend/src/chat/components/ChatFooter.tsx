@@ -3,7 +3,7 @@ import EmojiPicker, { EmojiClickData, EmojiStyle, Theme } from 'emoji-picker-rea
 import type { Message, Gif } from '../types';
 import { MAX_MESSAGE_LENGTH } from '../constants';
 import { sanitizeMediaUrl } from '../utils';
-import { CANDIDATE_URL_RE, renderTextWithLinks } from '../utils/urlLinkUtils';
+import { detectFirstUrl, renderTextWithLinks } from '../utils/urlLinkUtils';
 import { FilmIcon, FileIcon } from '../TypingIndicator';
 import {
   Footer,
@@ -471,9 +471,7 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
 
                 <InputTextWrapper>
                   {(() => {
-                    CANDIDATE_URL_RE.lastIndex = 0;
-                    const hasUrl = CANDIDATE_URL_RE.test(normalizedOverlayMessage);
-                    CANDIDATE_URL_RE.lastIndex = 0;
+                    const hasUrl = Boolean(detectFirstUrl(normalizedOverlayMessage));
                     return (
                       <>
                         {hasUrl && (

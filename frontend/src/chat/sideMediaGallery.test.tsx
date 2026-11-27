@@ -732,5 +732,141 @@ describe('Media Viewer Side Panel and Tab Switching', () => {
       expect(screen.getByText(getMediaDateGroupLabel('2026-10-27T14:00:00.000Z'))).toBeDefined();
       expect(screen.getByText(getMediaDateGroupLabel('2026-07-12T10:00:00.000Z'))).toBeDefined();
     });
+
+    it('filters out false-positive text items like awwww..., www..., https://..., and never opens relative /www URLs', async () => {
+      const mockItems = [
+        {
+          id: 'false-awww-1',
+          type: 'text',
+          text: 'Awwww... Toh aao mummy...',
+          createdAt: '2026-10-28T10:00:00.000Z',
+        },
+        {
+          id: 'false-wow-2',
+          type: 'text',
+          text: 'Wowwww.... That is why',
+          createdAt: '2026-10-28T09:00:00.000Z',
+        },
+        {
+          id: 'false-www-3',
+          type: 'text',
+          text: 'www... hello',
+          createdAt: '2026-10-28T08:00:00.000Z',
+        },
+        {
+          id: 'false-https-4',
+          type: 'text',
+          text: 'https://...',
+          createdAt: '2026-10-28T07:00:00.000Z',
+        },
+        {
+          id: 'false-email-5',
+          type: 'text',
+          text: 'Reach me at user@www.google.com',
+          createdAt: '2026-10-28T06:00:00.000Z',
+        },
+        {
+          id: 'valid-bare-link-6',
+          type: 'text',
+          text: 'Check rebrand.ly/harshphotos now',
+          createdAt: '2026-10-27T10:00:00.000Z',
+        },
+      ];
+
+      vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ items: mockItems, hasMore: false }),
+        } as any)
+      );
+
+      const windowOpenSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+
+      render(<SideMediaGallery roomId="test-room" isActive={true} />);
+
+      await waitFor(() => {
+        expect(screen.getByTitle('Open rebrand.ly')).toBeDefined();
+      });
+
+      // None of the false-positive items or empty Oct 28 divider should render
+      expect(screen.queryByTitle('Open Link')).toBeNull();
+      expect(screen.queryByText('Oct 28, 2026')).toBeNull();
+      expect(screen.queryByText(/Awwww/)).toBeNull();
+      expect(screen.queryByText(/Wowwww/)).toBeNull();
+
+      // Dispatching live false-positive messages over pulse:new_message must also be ignored
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('pulse:new_message', {
+            detail: {
+              roomId: 'test-room',
+              message: {
+                id: 'live-false-awww',
+                type: 'text',
+                text: 'awwww... live test',
+                createdAt: '2026-11-27T12:00:00.000Z',
+              },
+            },
+          })
+        );
+      });
+
+      expect(screen.queryByText(/awwww... live test/)).toBeNull();
+
+      // Clicking valid bare domain link opens full https:// URL cleanly
+      act(() => {
+        fireEvent.click(screen.getByTitle('Open rebrand.ly'));
+      });
+      expect(windowOpenSpy).toHaveBeenCalledWith(
+        'https://rebrand.ly/harshphotos',
+        '_blank',
+        'noopener,noreferrer'
+      );
+    });
+
+    it('opens link items pointing to image URLs as external links rather than lightbox/media gallery', async () => {
+      const mockItems = [
+        {
+          id: 'link-with-img-ext',
+          type: 'link',
+          url: 'https://example.com/photo.jpg',
+          text: 'https://example.com/photo.jpg',
+          createdAt: '2026-10-27T10:00:00.000Z',
+        },
+      ];
+
+      vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ items: mockItems, hasMore: false }),
+        } as any)
+      );
+
+      const openMediaGalleryMock = vi.fn();
+      const windowOpenSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+
+      render(
+        <SideMediaGallery
+          roomId="test-room"
+          isActive={true}
+          openMediaGallery={openMediaGalleryMock}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTitle('Open example.com')).toBeDefined();
+      });
+
+      act(() => {
+        fireEvent.click(screen.getByTitle('Open example.com'));
+      });
+
+      expect(openMediaGalleryMock).not.toHaveBeenCalled();
+      expect(windowOpenSpy).toHaveBeenCalledWith(
+        'https://example.com/photo.jpg',
+        '_blank',
+        'noopener,noreferrer'
+      );
+    });
   });
 });

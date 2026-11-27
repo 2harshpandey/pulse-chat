@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useCallback, useMemo } from 'react';
 import type { Message } from '../types';
 import { useChatMediaGallery, type GalleryFilter, type GalleryItem } from '../hooks/useChatMediaGallery';
 import { sanitizeMediaUrl, withCloudinaryTransform, downloadFile } from '../utils';
+import { detectFirstUrl, normalizeUrl, safeExternalUrl } from '../utils/urlLinkUtils';
 import { IMAGE_URL_RE, VIDEO_URL_RE } from '../../shared/mediaTypes';
 import {
   MediaGalleryPanelRoot,
@@ -90,14 +91,29 @@ export const getMediaDateGroupLabel = (timestamp?: string | number | Date): stri
   });
 };
 
-const extractUrlFromText = (text: string): string | null => {
-  const match = text.match(/(?:https?:\/\/|www\.)[^\s]+/i);
-  if (!match) return null;
-  let raw = match[0].replace(/[.,;:!?)'">\]]+$/, '');
-  if (/^www\./i.test(raw)) {
-    raw = `https://${raw}`;
+const extractGalleryLinkUrl = (item?: GalleryItem | null): string | null => {
+  if (!item) return null;
+  if (item.linkUrl) {
+    const safeFromBackend = safeExternalUrl(item.linkUrl);
+    if (safeFromBackend) return safeFromBackend;
   }
-  return raw;
+  if (item.text) {
+    const fromText = detectFirstUrl(item.text);
+    if (fromText) {
+      const safe = safeExternalUrl(fromText);
+      if (safe) return safe;
+    }
+  }
+  if (item.url) {
+    const normalized = normalizeUrl(item.url);
+    if (normalized) {
+      const safe = safeExternalUrl(normalized.href);
+      if (safe) return safe;
+    }
+    const directSafe = safeExternalUrl(item.url);
+    if (directSafe) return directSafe;
+  }
+  return null;
 };
 
 const isPlayableType = (type?: string, url?: string): boolean => {
@@ -122,9 +138,8 @@ export const isDisplayableMediaItem = (item?: GalleryItem | null): boolean => {
   if (isFile) {
     return Boolean(item.url);
   }
-  const isLink = item.type === 'link' || (item.type === 'text' && Boolean(item.text && /(?:https?:\/\/|www\.)[^\s]+/i.test(item.text)));
-  if (isLink) {
-    return Boolean(item.url || (item.text && extractUrlFromText(item.text)));
+  if (item.type === 'link' || item.type === 'text') {
+    return Boolean(extractGalleryLinkUrl(item));
   }
   return false;
 };
@@ -195,8 +210,8 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
 
   const handleMediaClick = useCallback(
     (item: GalleryItem) => {
-      const isPlayable = isPlayableType(item.type, item.url);
-      const isLink = item.type === 'link' || (item.type === 'text' && Boolean(item.text && /(?:https?:\/\/|www\.)[^\s]+/i.test(item.text)));
+      const isPlayable = item.type !== 'link' && item.type !== 'text' && isPlayableType(item.type, item.url);
+      const resolvedLinkUrl = (item.type === 'link' || item.type === 'text') ? extractGalleryLinkUrl(item) : null;
 
       if (isPlayable) {
         const targetList =
@@ -241,14 +256,10 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
             }
           });
         }
-      } else if (isLink) {
-        const rawText = item.text || item.url || '';
-        const urlStr = extractUrlFromText(rawText) || item.url;
-        if (urlStr) {
-          const safe = sanitizeMediaUrl(urlStr);
-          if (safe) {
-            window.open(safe, '_blank', 'noopener,noreferrer');
-          }
+      } else if (resolvedLinkUrl) {
+        const safeTarget = safeExternalUrl(resolvedLinkUrl);
+        if (safeTarget) {
+          window.open(safeTarget, '_blank', 'noopener,noreferrer');
         }
       } else if (item.url) {
         const safe = sanitizeMediaUrl(item.url);
@@ -265,7 +276,7 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
       const isImage = item.type === 'image' || item.type === 'gif' || item.type === 'photo';
       const isVideo = item.type === 'video';
       const isFile = item.type === 'file' || item.type === 'doc';
-      const isLink = item.type === 'link' || (item.type === 'text' && Boolean(item.text && /(?:https?:\/\/|www\.)[^\s]+/i.test(item.text)));
+      const linkUrl = (item.type === 'link' || item.type === 'text') ? extractGalleryLinkUrl(item) : null;
 
       // Photos
       if (isImage) {
@@ -396,16 +407,12 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
       }
 
       // Links
-      if (isLink) {
-        const rawText = item.text || item.url || '';
-        const urlStr = extractUrlFromText(rawText) || item.url || '';
+      if (linkUrl) {
         let domain = '';
-        if (urlStr) {
-          try {
-            domain = new URL(urlStr).hostname.replace(/^www\./i, '');
-          } catch (_) {
-            domain = 'Link';
-          }
+        try {
+          domain = new URL(linkUrl).hostname.replace(/^www\./i, '');
+        } catch (_) {
+          domain = '';
         }
 
         return (

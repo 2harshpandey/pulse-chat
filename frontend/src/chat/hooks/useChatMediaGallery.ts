@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getSessionToken, getUserId, resolveApiBaseUrl, getDeletedForMeIds, getStoredValue } from '../utils';
+import { detectFirstUrl, normalizeUrl, safeExternalUrl } from '../utils/urlLinkUtils';
 
 export type GalleryFilter = 'photo' | 'video' | 'doc' | 'link' | null;
 
@@ -7,6 +8,7 @@ export interface GalleryItem {
   id: string;
   type: string;
   url?: string;
+  linkUrl?: string;
   originalName?: string;
   size?: number;
   createdAt?: string;
@@ -181,8 +183,8 @@ export function useChatMediaGallery({ roomId, isActive, userId }: UseChatMediaGa
       const isVideo = msg.type === 'video';
       const isDoc = msg.type === 'file' || msg.type === 'doc';
       const isLink =
-        (msg.type === 'link' || msg.type === 'text') &&
-        Boolean(msg.text && /(?:https?:\/\/|www\.)[^\s]+/i.test(msg.text));
+        (msg.type === 'link' && Boolean((msg.url && (normalizeUrl(msg.url) || safeExternalUrl(msg.url))) || (msg.text && detectFirstUrl(msg.text)))) ||
+        (msg.type === 'text' && Boolean(msg.text && detectFirstUrl(msg.text)));
 
       if (filter === 'photo' && !isImage) return;
       if (filter === 'video' && !isVideo) return;

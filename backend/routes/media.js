@@ -25,6 +25,12 @@ const {
 } = require('../security');
 const { isRoomAccessAllowed } = require('../roomAccess');
 const {
+  MONGODB_CANDIDATE_URL_REGEX,
+  normalizeUrl,
+  detectFirstUrl,
+  isValidExternalHttpUrl,
+} = require('../utils/urlUtils');
+const {
   isAudioMimeOrExt,
   getUploadResourceType,
   getMessageFileType,
@@ -885,6 +891,21 @@ module.exports = (wss, broadcasts) => {
       }
 
       const cleanType = typeof type === 'string' ? type.toLowerCase() : null;
+      const isValidGalleryMessage = (item) => {
+        if (!item) return false;
+        if (item.type === 'image' || item.type === 'gif' || item.type === 'photo' || item.type === 'video' || item.type === 'audio' || item.type === 'file' || item.type === 'doc') {
+          return typeof item.url === 'string' && item.url.trim().length > 0;
+        }
+        if (item.type === 'link' || item.type === 'text') {
+          const hasValidUrlField =
+            typeof item.url === 'string' &&
+            (isValidExternalHttpUrl(item.url) || (item.type === 'link' && Boolean(normalizeUrl(item.url))));
+          const hasValidTextUrl = typeof item.text === 'string' && Boolean(detectFirstUrl(item.text));
+          return hasValidUrlField || hasValidTextUrl;
+        }
+        return false;
+      };
+
       if (cleanType === 'photo' || cleanType === 'image') {
         query.type = { $in: ['image', 'gif', 'photo'] };
         query.url = { $exists: true, $nin: [null, ''] };
@@ -898,42 +919,129 @@ module.exports = (wss, broadcasts) => {
         query.type = { $in: ['file', 'doc'] };
         query.url = { $exists: true, $nin: [null, ''] };
       } else if (cleanType === 'link') {
-        query.type = { $in: ['text', 'link'] };
-        query.text = { $regex: /(?:https?:\/\/|www\.)[^\s]+/i };
+        query.$or = [
+          { type: 'link', url: { $exists: true, $nin: [null, ''] } },
+          { type: { $in: ['text', 'link'] }, text: { $regex: MONGODB_CANDIDATE_URL_REGEX } },
+        ];
       } else {
         query.$or = [
           { type: { $in: ['image', 'video', 'file', 'gif', 'photo', 'doc'] }, url: { $exists: true, $nin: [null, ''] } },
-          { type: 'link' },
-          { type: 'text', text: { $regex: /(?:https?:\/\/|www\.)[^\s]+/i } }
+          { type: 'link', url: { $exists: true, $nin: [null, ''] } },
+          { type: { $in: ['text', 'link'] }, text: { $regex: MONGODB_CANDIDATE_URL_REGEX } },
         ];
       }
 
-      const messages = await Message.find(query)
-        .select('id _id type url originalName size createdAt timestamp userId username text duration')
-        .sort({ createdAt: -1 })
-        .limit(limit + 1)
-        .lean();
+      const needsLinkValidation = !cleanType || cleanType === 'link';
+      const collected = [];
+      let hasMore = false;
+      let fallbackCursorDate = null;
 
-      const hasMore = messages.length > limit;
-      const results = hasMore ? messages.slice(0, limit) : messages;
+      if (!needsLinkValidation) {
+        const messages = await Message.find(query)
+          .select('id _id type url originalName size createdAt timestamp userId username text duration')
+          .sort({ createdAt: -1 })
+          .limit(limit + 1)
+          .lean();
+        hasMore = messages.length > limit;
+        collected.push(...(hasMore ? messages.slice(0, limit) : messages));
+      } else {
+        const MAX_LINK_FILTER_BATCHES = 5;
+        let batchBefore = beforeDate;
+        for (let batch = 0; batch < MAX_LINK_FILTER_BATCHES; batch += 1) {
+          if (
+            frontendHiddenBefore instanceof Date &&
+            !Number.isNaN(frontendHiddenBefore.getTime()) &&
+            batchBefore &&
+            batchBefore.getTime() <= frontendHiddenBefore.getTime()
+          ) {
+            hasMore = false;
+            break;
+          }
+
+          const batchQuery = { ...query };
+          if (batchBefore) {
+            batchQuery.createdAt = {
+              ...(query.createdAt || {}),
+              $lt: batchBefore,
+            };
+          }
+
+          const batchMessages = await Message.find(batchQuery)
+            .select('id _id type url originalName size createdAt timestamp userId username text duration')
+            .sort({ createdAt: -1 })
+            .limit(limit + 1)
+            .lean();
+
+          const batchHasMore = batchMessages.length > limit;
+          const pageRows = batchHasMore ? batchMessages.slice(0, limit) : batchMessages;
+
+          for (const row of pageRows) {
+            if (isValidGalleryMessage(row)) {
+              collected.push(row);
+              if (collected.length > limit) break;
+            }
+          }
+
+          if (collected.length > limit) {
+            hasMore = true;
+            break;
+          }
+
+          if (!batchHasMore || pageRows.length === 0) {
+            hasMore = false;
+            break;
+          }
+
+          const lastRaw = pageRows[pageRows.length - 1];
+          const lastRawDate = lastRaw ? (lastRaw.createdAt || lastRaw.timestamp) : null;
+          if (!lastRawDate) {
+            hasMore = false;
+            break;
+          }
+          const parsedLastRawDate = new Date(lastRawDate);
+          if (
+            Number.isNaN(parsedLastRawDate.getTime()) ||
+            (batchBefore && parsedLastRawDate.getTime() >= batchBefore.getTime())
+          ) {
+            hasMore = false;
+            break;
+          }
+          batchBefore = parsedLastRawDate;
+          fallbackCursorDate = parsedLastRawDate;
+          hasMore = batch === MAX_LINK_FILTER_BATCHES - 1;
+        }
+      }
+
+      const results = collected.length > limit ? collected.slice(0, limit) : collected;
       const lastItem = results.length > 0 ? results[results.length - 1] : null;
-      const cursorDate = lastItem ? (lastItem.createdAt || lastItem.timestamp) : null;
+      const cursorDate = hasMore
+        ? (collected.length > limit && lastItem
+            ? (lastItem.createdAt || lastItem.timestamp)
+            : fallbackCursorDate)
+        : null;
       const nextCursor = cursorDate
         ? new Date(cursorDate).toISOString()
         : null;
 
-      const items = results.map((item) => ({
-        id: String(item.id || item._id || ''),
-        type: item.type,
-        url: typeof item.url === 'string' ? item.url : undefined,
-        originalName: typeof item.originalName === 'string' ? item.originalName.slice(0, 500) : undefined,
-        size: typeof item.size === 'number' ? item.size : undefined,
-        createdAt: item.createdAt ? new Date(item.createdAt).toISOString() : (item.timestamp ? new Date(item.timestamp).toISOString() : undefined),
-        userId: typeof item.userId === 'string' ? item.userId : undefined,
-        username: typeof item.username === 'string' ? item.username.slice(0, 200) : undefined,
-        text: typeof item.text === 'string' ? item.text.slice(0, 1000) : undefined,
-        duration: typeof item.duration === 'number' ? item.duration : undefined,
-      }));
+      const items = results.map((item) => {
+        const resolvedLinkUrl =
+          (item.type === 'link' || item.type === 'text')
+            ? (isValidExternalHttpUrl(item.url) ? item.url : (detectFirstUrl(item.text) || undefined))
+            : undefined;
+        return {
+          id: String(item.id || item._id || ''),
+          type: item.type,
+          url: typeof item.url === 'string' ? item.url : undefined,
+          linkUrl: resolvedLinkUrl,
+          originalName: typeof item.originalName === 'string' ? item.originalName.slice(0, 500) : undefined,
+          size: typeof item.size === 'number' ? item.size : undefined,
+          createdAt: item.createdAt ? new Date(item.createdAt).toISOString() : (item.timestamp ? new Date(item.timestamp).toISOString() : undefined),
+          userId: typeof item.userId === 'string' ? item.userId : undefined,
+          username: typeof item.username === 'string' ? item.username.slice(0, 200) : undefined,
+          text: typeof item.text === 'string' ? item.text.slice(0, 1000) : undefined,
+          duration: typeof item.duration === 'number' ? item.duration : undefined,
+        };
+      });
 
       res.status(200).json({ items, hasMore, nextCursor });
     } catch (error) {

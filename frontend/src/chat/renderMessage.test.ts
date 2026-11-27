@@ -49,16 +49,56 @@ describe('renderMessage URL detection and normalization', () => {
     expect(firstUrl).toBe('https://web.whatsapp.com');
   });
 
-  it('does not treat email addresses or non-domains as bare links', () => {
+  it('does not treat email addresses, expressive dot words (awwww...), broken schemes, or non-domains as links', () => {
     const text1 = 'Contact user@gmail.com for details';
     expect(detectFirstUrl(text1)).toBeNull();
 
     const text2 = 'Contact user@web.whatsapp.com for details';
     expect(detectFirstUrl(text2)).toBeNull();
 
+    const text3 = 'Contact user@www.google.com for details';
+    expect(detectFirstUrl(text3)).toBeNull();
+
+    expect(detectFirstUrl('Awwww... Toh aao mummy...')).toBeNull();
+    expect(detectFirstUrl('Wowwww.... That is nice')).toBeNull();
+    expect(detectFirstUrl('www...')).toBeNull();
+    expect(detectFirstUrl('www.')).toBeNull();
+    expect(detectFirstUrl('www.hello')).toBeNull();
+    expect(detectFirstUrl('www.fake.gfdgf')).toBeNull();
+    expect(detectFirstUrl('https://...')).toBeNull();
+    expect(detectFirstUrl('https://')).toBeNull();
+    expect(detectFirstUrl('https://hello')).toBeNull();
+    expect(detectFirstUrl('https://12345')).toBeNull();
+    expect(detectFirstUrl('https://1.2')).toBeNull();
+    expect(detectFirstUrl('http://0x7f000001')).toBeNull();
+    expect(detectFirstUrl('kar.do kab.se kaha.pe ghar.in do.it what.is come.in')).toBeNull();
+    expect(detectFirstUrl('/www')).toBeNull();
+    expect(detectFirstUrl('//evil.com')).toBeNull();
+    expect(detectFirstUrl('javascript:alert(1)')).toBeNull();
+
     expect(normalizeUrl('192.168.1.1')).toBeNull();
     expect(normalizeUrl('version 1.0.0')).toBeNull();
     expect(normalizeUrl('file.unknownext')).toBeNull();
+    expect(normalizeUrl('archive.zip')).toBeNull();
+    expect(normalizeUrl('file.co.unknownext')).toBeNull();
+  });
+
+  it('extracts valid URL even when awwww... precedes it and preserves balanced parens & % encoding', async () => {
+    const { safeHref, safeExternalUrl } = await import('./utils/urlLinkUtils');
+    expect(detectFirstUrl('Awwww... check https://www.youtube.com/watch?v=123.')).toBe(
+      'https://www.youtube.com/watch?v=123'
+    );
+    expect(normalizeUrl('https://en.wikipedia.org/wiki/Foo_(bar)')?.href).toBe(
+      'https://en.wikipedia.org/wiki/Foo_(bar)'
+    );
+    expect(detectFirstUrl('(https://en.wikipedia.org/wiki/Foo_(bar)).')).toBe(
+      'https://en.wikipedia.org/wiki/Foo_(bar)'
+    );
+    expect(safeHref('https://en.wikipedia.org/wiki/C%2B%2B')).toBe(
+      'https://en.wikipedia.org/wiki/C%2B%2B'
+    );
+    expect(safeHref('javascript:alert(1)')).toBe('#');
+    expect(safeExternalUrl('/www')).toBeNull();
   });
 
   it('correctly resolves root domain for favicons', async () => {
