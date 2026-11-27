@@ -93,6 +93,15 @@ export function useAdminController() {
     passwordRef,
     navigate,
     isImpersonating,
+    onAliasUpdated: (newAlias: string) => {
+      try {
+        const currentLogs = sessionStorage.getItem(`admin-activity-logs-${roomId}`);
+        if (currentLogs) {
+          sessionStorage.setItem(`admin-activity-logs-${newAlias}`, currentLogs);
+        }
+      } catch (_) {}
+      setRoomId(newAlias);
+    },
   });
 
   // --- WebSocket Connection ---
@@ -309,7 +318,7 @@ export function useAdminController() {
         roomSettingsHook.setRoomSettingsName(d.name || '');
         roomSettingsHook.setRoomSettingsDesc(d.description || '');
         roomSettingsHook.setRoomSettingsAlias(d.alias || '');
-        roomSettingsHook.setRoomSettingsNewId(d.alias || roomId || '');
+        roomSettingsHook.setRoomSettingsNewId(d.alias || (roomId.length <= 30 ? roomId : ''));
         roomSettingsHook.setRoomSettingsLastIdChange(d.lastIdChangeAt || null);
         roomSettingsHook.setRoomSettingsHasJoinPassword(d.hasJoinPassword || false);
       }
@@ -370,6 +379,7 @@ export function useAdminController() {
     toggleTheme,
     urlRoomId,
     roomId,
+    canonicalRoomId,
     setRoomId,
     navigate,
     location,
@@ -482,10 +492,21 @@ export function useAdminController() {
     roomSettingsAlias: roomSettingsHook.roomSettingsAlias,
     roomSettingsLastIdChange: roomSettingsHook.roomSettingsLastIdChange,
     roomSettingsLoading: roomSettingsHook.roomSettingsLoading,
-    roomSettingsSuccess: roomSettingsHook.roomSettingsSuccess,
-    roomSettingsError: roomSettingsHook.roomSettingsError,
+    detailsSaving: roomSettingsHook.detailsSaving,
+    roomIdSaving: roomSettingsHook.roomIdSaving,
+    passwordSaving: roomSettingsHook.passwordSaving,
+    detailsSuccess: roomSettingsHook.detailsSuccess,
+    setDetailsSuccess: roomSettingsHook.setDetailsSuccess,
+    detailsError: roomSettingsHook.detailsError,
+    setDetailsError: roomSettingsHook.setDetailsError,
     roomIdSuccess: roomSettingsHook.roomIdSuccess,
+    setRoomIdSuccess: roomSettingsHook.setRoomIdSuccess,
     roomIdError: roomSettingsHook.roomIdError,
+    setRoomIdError: roomSettingsHook.setRoomIdError,
+    passwordSuccess: roomSettingsHook.passwordSuccess,
+    setPasswordSuccess: roomSettingsHook.setPasswordSuccess,
+    passwordError: roomSettingsHook.passwordError,
+    setPasswordError: roomSettingsHook.setPasswordError,
     roomSettingsCurrentPassword: roomSettingsHook.roomSettingsCurrentPassword,
     setRoomSettingsCurrentPassword: roomSettingsHook.setRoomSettingsCurrentPassword,
     roomSettingsNewPassword: roomSettingsHook.roomSettingsNewPassword,

@@ -480,23 +480,23 @@ export function MessagesTab({ admin }: MessagesTabProps) {
                           </div>
                         ) : (log.type === 'delete_everyone' || log.type === 'delete') ? (
                           <div style={{ display: 'flex', justifyContent: 'center' }}>
-                            <Badge $color="yellow" style={{ whiteSpace: 'nowrap' }}>
-                              Deleted by User
+                            <Badge $color="red" style={{ whiteSpace: 'nowrap' }}>
+                              <StatusDot $color="red" /> Deleted by User
                             </Badge>
                           </div>
                         ) : (log.type === 'create' || log.type === 'upload') && (laterDeletedByUserIds.has(extractMessageId(log)) || (log.message?.isDeleted && log.message?.deletedBy !== 'admin') || (log.isDeleted && log.deletedBy !== 'admin')) ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
                             <Badge $color="green" style={{ whiteSpace: 'nowrap' }}>
-                              Sent
+                              <StatusDot $color="green" /> Sent
                             </Badge>
-                            <Badge $color="yellow" style={{ fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
-                              ↳ Deleted by User
+                            <Badge $color="red" style={{ fontSize: '0.7rem', whiteSpace: 'nowrap' }}>
+                              <StatusDot $color="red" /> ↳ Deleted by User
                             </Badge>
                           </div>
                         ) : (
                           <div style={{ display: 'flex', justifyContent: 'center' }}>
                             <Badge $color="green" style={{ whiteSpace: 'nowrap' }}>
-                              Active
+                              <StatusDot $color="green" /> Active
                             </Badge>
                           </div>
                         )}

@@ -208,33 +208,33 @@ export const getLinkStatus = (link: TempLinkData): { status: 'active' | 'expired
 export const auditTypeLabel = (type: string, details?: any): string => {
   if (type === 'messages_deleted_disappear') {
     if (details?.action === 'hide') {
-      return '💨 Messages Vanished (Hidden)';
+      return 'Messages Vanished (Hidden)';
     }
-    return '🗑️ Messages Deleted (Disappeared)';
+    return 'Messages Deleted (Disappeared)';
   }
 
   const labels: Record<string, string> = {
-    'user_blocked': '🚫 User Blocked',
-    'user_unblocked': '✅ User Unblocked',
-    'user_force_logged_out': '🔒 Force Logged Out',
-    'join_failed_blocked': '⛔ Join Failed (Blocked)',
-    'join_failed_lockdown': '🔐 Join Failed (Lockdown)',
-    'join_failed_password': '❌ Join Failed (Wrong Password)',
-    'join_failed_username_taken': '⚠️ Join Failed (Username Taken)',
-    'temp_link_created': '🔗 Temp Link Created',
-    'temp_link_revoked': '🔗 Temp Link Revoked',
-    'temp_link_used': '🔗 Temp Link Used',
-    'temp_link_expired_attempt': '🔗 Expired Link Attempt',
-    'lockdown_enabled': '🔒 Lockdown Enabled',
-    'lockdown_disabled': '🔓 Lockdown Disabled',
-    'join_failed_rate_limit': '⏱️ Join Failed (Rate Limit Lockout)',
-    'potential_bruteforce_detected': '🚨 Potential Brute Force Detected',
-    'admin_auth_failed': '🛑 Admin Authentication Failed',
-    'force_logged_out_all': '⚠️ All Users Force Logged Out',
-    'messages_deleted_disappear': '🗑️ Messages Deleted (Disappeared)',
-    'messages_deleted_bubble': '🗑️ Messages Deleted (Bubble Kept)',
-    'messages_hidden': '👁️ Messages Hidden',
-    'room_deleted': '🗑️ Room Deleted',
+    'user_blocked': 'User Blocked',
+    'user_unblocked': 'User Unblocked',
+    'user_force_logged_out': 'Force Logged Out',
+    'join_failed_blocked': 'Join Failed (Blocked)',
+    'join_failed_lockdown': 'Join Failed (Lockdown)',
+    'join_failed_password': 'Join Failed (Wrong Password)',
+    'join_failed_username_taken': 'Join Failed (Username Taken)',
+    'temp_link_created': 'Temp Link Created',
+    'temp_link_revoked': 'Temp Link Revoked',
+    'temp_link_used': 'Temp Link Used',
+    'temp_link_expired_attempt': 'Expired Link Attempt',
+    'lockdown_enabled': 'Lockdown Enabled',
+    'lockdown_disabled': 'Lockdown Disabled',
+    'join_failed_rate_limit': 'Join Failed (Rate Limit Lockout)',
+    'potential_bruteforce_detected': 'Potential Brute Force Detected',
+    'admin_auth_failed': 'Admin Authentication Failed',
+    'force_logged_out_all': 'All Users Force Logged Out',
+    'messages_deleted_disappear': 'Messages Deleted (Disappeared)',
+    'messages_deleted_bubble': 'Messages Deleted (Bubble Kept)',
+    'messages_hidden': 'Messages Hidden',
+    'room_deleted': 'Room Deleted',
   };
   return labels[type] || type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 };

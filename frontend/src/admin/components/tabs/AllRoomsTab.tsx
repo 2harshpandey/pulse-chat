@@ -9,6 +9,7 @@ import {
   Td,
   Badge,
   Button,
+  LogsCountBadge,
 } from '../../AdminStyledComponents';
 
 export interface AllRoomsTabProps {
@@ -20,9 +21,13 @@ export function AllRoomsTab({ admin }: AllRoomsTabProps) {
 
   return (
     <ScrollContainer>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <h2>All Chat Rooms</h2>
-        <span style={{ color: '#64748b', fontSize: '0.9rem' }}>Total: {globalRooms.length}</span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+          <h2 style={{ margin: 0 }}>All Chat Rooms</h2>
+          <LogsCountBadge>
+            {globalRooms.length} {globalRooms.length === 1 ? 'room' : 'rooms'}
+          </LogsCountBadge>
+        </div>
       </div>
       {isRoomsLoading ? (
         <div

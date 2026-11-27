@@ -30,33 +30,33 @@ describe('Audit Log Label Formatting and SecurityTab', () => {
   describe('auditTypeLabel utility', () => {
     it('formats messages_deleted_disappear with delete action correctly', () => {
       const label = auditTypeLabel('messages_deleted_disappear', { action: 'delete' });
-      expect(label).toBe('🗑️ Messages Deleted (Disappeared)');
+      expect(label).toBe('Messages Deleted (Disappeared)');
     });
 
     it('formats messages_deleted_disappear with hide action correctly', () => {
       const label = auditTypeLabel('messages_deleted_disappear', { action: 'hide' });
-      expect(label).toBe('💨 Messages Vanished (Hidden)');
+      expect(label).toBe('Messages Vanished (Hidden)');
     });
 
     it('formats messages_deleted_disappear with no details as standard disappeared message', () => {
       const label = auditTypeLabel('messages_deleted_disappear');
-      expect(label).toBe('🗑️ Messages Deleted (Disappeared)');
+      expect(label).toBe('Messages Deleted (Disappeared)');
     });
 
     it('formats messages_deleted_bubble and messages_hidden properly', () => {
-      expect(auditTypeLabel('messages_deleted_bubble')).toBe('🗑️ Messages Deleted (Bubble Kept)');
-      expect(auditTypeLabel('messages_hidden')).toBe('👁️ Messages Hidden');
+      expect(auditTypeLabel('messages_deleted_bubble')).toBe('Messages Deleted (Bubble Kept)');
+      expect(auditTypeLabel('messages_hidden')).toBe('Messages Hidden');
     });
 
     it('formats room_deleted properly', () => {
-      expect(auditTypeLabel('room_deleted')).toBe('🗑️ Room Deleted');
+      expect(auditTypeLabel('room_deleted')).toBe('Room Deleted');
     });
 
     it('formats standard security audit types with icons', () => {
-      expect(auditTypeLabel('join_failed_username_taken')).toBe('⚠️ Join Failed (Username Taken)');
-      expect(auditTypeLabel('join_failed_password')).toBe('❌ Join Failed (Wrong Password)');
-      expect(auditTypeLabel('user_force_logged_out')).toBe('🔒 Force Logged Out');
-      expect(auditTypeLabel('potential_bruteforce_detected')).toBe('🚨 Potential Brute Force Detected');
+      expect(auditTypeLabel('join_failed_username_taken')).toBe('Join Failed (Username Taken)');
+      expect(auditTypeLabel('join_failed_password')).toBe('Join Failed (Wrong Password)');
+      expect(auditTypeLabel('user_force_logged_out')).toBe('Force Logged Out');
+      expect(auditTypeLabel('potential_bruteforce_detected')).toBe('Potential Brute Force Detected');
     });
 
     it('formats unknown underscored types into Title Case fallback', () => {
@@ -78,7 +78,7 @@ describe('Audit Log Label Formatting and SecurityTab', () => {
       const admin = createMockAdmin({ auditLogs: sampleLogs });
       render(<SecurityTab admin={admin} />);
 
-      expect(screen.getByText('🗑️ Messages Deleted (Disappeared)')).toBeInTheDocument();
+      expect(screen.getByText('Messages Deleted (Disappeared)')).toBeInTheDocument();
       expect(screen.getByText(/Count:\s*3\s*messages/i)).toBeInTheDocument();
       expect(screen.getByText(/Action:\s*Permanent delete/i)).toBeInTheDocument();
     });
@@ -96,7 +96,7 @@ describe('Audit Log Label Formatting and SecurityTab', () => {
       const admin = createMockAdmin({ auditLogs: sampleLogs });
       render(<SecurityTab admin={admin} />);
 
-      expect(screen.getByText('💨 Messages Vanished (Hidden)')).toBeInTheDocument();
+      expect(screen.getByText('Messages Vanished (Hidden)')).toBeInTheDocument();
       expect(screen.getByText(/Count:\s*1\s*message/i)).toBeInTheDocument();
       expect(screen.getByText(/Action:\s*Hidden from chat/i)).toBeInTheDocument();
     });
@@ -117,9 +117,29 @@ describe('Audit Log Label Formatting and SecurityTab', () => {
       render(<SecurityTab admin={admin} />);
 
       expect(screen.getByText('[Room: room-alpha]')).toBeInTheDocument();
-      expect(screen.getByText('❌ Join Failed (Wrong Password)')).toBeInTheDocument();
+      expect(screen.getByText('Join Failed (Wrong Password)')).toBeInTheDocument();
       expect(screen.getByText(/User:\s*genericUser/i)).toBeInTheDocument();
       expect(screen.getByText(/IP:\s*192\.168\.1\.1/i)).toBeInTheDocument();
+    });
+
+    it('renders No Lockdown badge when lockdown is inactive and Disable Lockdown when active', () => {
+      const adminInactive = createMockAdmin({ lockdownStatus: { isActive: false } });
+      const { rerender } = render(<SecurityTab admin={adminInactive} />);
+
+      expect(screen.getByText('No Lockdown')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /disable lockdown/i })).toBeNull();
+
+      const adminActive = createMockAdmin({ lockdownStatus: { isActive: true } });
+      rerender(<SecurityTab admin={adminActive} />);
+
+      expect(screen.getByText('LOCKDOWN ACTIVE')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /disable lockdown/i })).toBeInTheDocument();
+
+      const styleText = Array.from(document.querySelectorAll('style'))
+        .map((s) => s.textContent || '')
+        .join('\n');
+      expect(styleText).toContain('--card-dark-bg:var(--bg-secondary)');
+      expect(styleText).toContain('--card-dark-bg:linear-gradient(135deg,rgba(239,68,68,0.14),rgba(127,29,29,0.28))');
     });
   });
 });

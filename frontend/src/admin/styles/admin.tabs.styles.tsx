@@ -175,47 +175,81 @@ export const ToolbarButton = styled.button<{
     transition: transform 0.2s ease;
   }
 
+  background: var(--tb-bg);
+  color: var(--tb-color);
+  border: 1px solid var(--tb-border);
+  box-shadow: var(--tb-shadow);
+
+  &:hover:not(:disabled) {
+    background: var(--tb-hover-bg);
+    color: var(--tb-hover-color);
+    border-color: var(--tb-hover-border);
+    box-shadow: var(--tb-hover-shadow);
+    transform: translateY(-1px);
+  }
+
+  [data-theme='dark'] & {
+    background: var(--tb-dark-bg);
+    color: var(--tb-dark-color);
+    border-color: var(--tb-dark-border);
+
+    &:hover:not(:disabled) {
+      background: var(--tb-dark-hover-bg);
+      color: var(--tb-dark-hover-color);
+      border-color: var(--tb-dark-hover-border);
+    }
+  }
+
   ${(p: any) =>
     p.$variant === 'danger'
       ? css`
-          background-color: #ef4444;
-          color: #ffffff;
-          border: 1px solid #dc2626;
-          box-shadow: 0 1px 2px rgba(239, 68, 68, 0.2);
-          &:hover:not(:disabled) {
-            background-color: #dc2626;
-            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
-            transform: translateY(-1px);
-          }
+          --tb-bg: #ef4444;
+          --tb-color: #ffffff;
+          --tb-border: #dc2626;
+          --tb-shadow: 0 1px 2px rgba(239, 68, 68, 0.2);
+          --tb-hover-bg: #dc2626;
+          --tb-hover-color: #ffffff;
+          --tb-hover-border: #dc2626;
+          --tb-hover-shadow: 0 4px 12px rgba(239, 68, 68, 0.35);
+          --tb-dark-bg: #b91c1c;
+          --tb-dark-color: #ffffff;
+          --tb-dark-border: #ef4444;
+          --tb-dark-hover-bg: #dc2626;
+          --tb-dark-hover-color: #ffffff;
+          --tb-dark-hover-border: #f87171;
         `
       : p.$variant === 'primary'
       ? css`
-          background-color: #2563eb;
-          color: #ffffff;
-          border: 1px solid #1d4ed8;
-          box-shadow: 0 1px 2px rgba(37, 99, 235, 0.16);
-          &:hover:not(:disabled) {
-            background-color: #1d4ed8;
-            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
-            transform: translateY(-1px);
-          }
-          [data-theme='dark'] & {
-            background-color: #1e40af;
-            border-color: #3b82f6;
-            &:hover:not(:disabled) {
-              background-color: #2563eb;
-            }
-          }
+          --tb-bg: #2563eb;
+          --tb-color: #ffffff;
+          --tb-border: #1d4ed8;
+          --tb-shadow: 0 1px 2px rgba(37, 99, 235, 0.16);
+          --tb-hover-bg: #1d4ed8;
+          --tb-hover-color: #ffffff;
+          --tb-hover-border: #1d4ed8;
+          --tb-hover-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+          --tb-dark-bg: #1e40af;
+          --tb-dark-color: #ffffff;
+          --tb-dark-border: #3b82f6;
+          --tb-dark-hover-bg: #2563eb;
+          --tb-dark-hover-color: #ffffff;
+          --tb-dark-hover-border: #60a5fa;
         `
       : css`
-          background: ${p.$active ? 'var(--bg-tab-active)' : 'var(--bg-tertiary)'};
-          color: ${p.$active ? 'var(--accent-blue)' : 'var(--text-secondary)'};
-          border: 1px solid ${p.$active ? 'var(--accent-blue)' : 'var(--border-secondary)'};
-          &:hover:not(:disabled) {
-            border-color: var(--accent-blue);
-            color: var(--accent-blue);
-            transform: translateY(-1px);
-          }
+          --tb-bg: ${p.$active ? 'var(--bg-tab-active)' : 'var(--bg-tertiary)'};
+          --tb-color: ${p.$active ? 'var(--accent-blue)' : 'var(--text-secondary)'};
+          --tb-border: ${p.$active ? 'var(--accent-blue)' : 'var(--border-secondary)'};
+          --tb-shadow: none;
+          --tb-hover-bg: var(--bg-hover);
+          --tb-hover-color: var(--accent-blue);
+          --tb-hover-border: var(--accent-blue);
+          --tb-hover-shadow: none;
+          --tb-dark-bg: ${p.$active ? 'var(--bg-tab-active)' : 'var(--bg-tertiary)'};
+          --tb-dark-color: ${p.$active ? '#60a5fa' : 'var(--text-secondary)'};
+          --tb-dark-border: ${p.$active ? '#3b82f6' : 'var(--border-secondary)'};
+          --tb-dark-hover-bg: var(--bg-hover);
+          --tb-dark-hover-color: #93c5fd;
+          --tb-dark-hover-border: #60a5fa;
         `}
 
   &:active:not(:disabled) {
@@ -587,6 +621,93 @@ export const LogsTabHeaderRow = styled.div`
   }
 `;
 
+export const LogsHeaderTitleGroup = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  min-width: 0;
+
+  h2 {
+    margin: 0;
+    font-size: 1.45rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+    transition: color 0.3s ease;
+  }
+
+  @media (max-width: 600px) {
+    gap: 0.5rem;
+    h2 {
+      font-size: 1.2rem;
+    }
+  }
+`;
+
+export const LogsRoomChip = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.22rem 0.55rem;
+  border-radius: 8px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-secondary);
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  line-height: 1.2;
+  transition: all 0.2s ease;
+  max-width: 320px;
+  min-width: 0;
+
+  svg.icon-room {
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+    color: var(--accent-blue);
+  }
+
+  span.label-room {
+    font-weight: 500;
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-weight: 600;
+    color: var(--text-primary);
+    max-width: 170px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    display: inline-block;
+    vertical-align: middle;
+  }
+
+  &:hover {
+    border-color: var(--border-primary);
+    background: var(--bg-secondary);
+  }
+
+  @media (max-width: 600px) {
+    max-width: 240px;
+    code {
+      max-width: 105px;
+    }
+  }
+
+  @media (max-width: 400px) {
+    max-width: 180px;
+    code {
+      max-width: 65px;
+    }
+  }
+`;
+
+export const LogsCountBadge = styled(MessagesCountBadge)``;
+
 export const LogsCopyButton = styled.button<{ $copied?: boolean }>`
   display: inline-flex;
   align-items: center;
@@ -603,52 +724,71 @@ export const LogsCopyButton = styled.button<{ $copied?: boolean }>`
   letter-spacing: -0.01em;
   font-family: inherit;
 
-  /* Default / Idle State */
-  background: ${(p: any) => (p.$copied ? '#ecfdf5' : 'var(--bg-secondary)')};
-  color: ${(p: any) => (p.$copied ? '#059669' : 'var(--text-secondary)')};
-  border: 1px solid ${(p: any) => (p.$copied ? '#10b981' : 'var(--border-secondary)')};
-  box-shadow: ${(p: any) =>
-    p.$copied
-      ? '0 0 0 1px rgba(16, 185, 129, 0.2), 0 2px 8px rgba(16, 185, 129, 0.15)'
-      : '0 1px 2px rgba(0, 0, 0, 0.05)'};
+  /* Default / Idle State using CSS vars so instances never collide in dark mode */
+  background: var(--lcb-bg);
+  color: var(--lcb-color);
+  border: 1px solid var(--lcb-border);
+  box-shadow: var(--lcb-shadow);
 
-  /* Dark mode */
+  ${(p: any) =>
+    p.$copied
+      ? css`
+          --lcb-bg: #ecfdf5;
+          --lcb-color: #059669;
+          --lcb-border: #10b981;
+          --lcb-shadow: 0 0 0 1px rgba(16, 185, 129, 0.2), 0 2px 8px rgba(16, 185, 129, 0.15);
+          --lcb-hover-bg: #d1fae5;
+          --lcb-hover-color: #059669;
+          --lcb-hover-border: #059669;
+          --lcb-hover-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+          --lcb-dark-bg: rgba(16, 185, 129, 0.15);
+          --lcb-dark-color: #34d399;
+          --lcb-dark-border: #10b981;
+          --lcb-dark-shadow: 0 0 0 1px rgba(16, 185, 129, 0.3), 0 2px 10px rgba(16, 185, 129, 0.2);
+          --lcb-dark-hover-bg: rgba(16, 185, 129, 0.22);
+          --lcb-dark-hover-color: #34d399;
+          --lcb-dark-hover-border: #34d399;
+          --lcb-dark-hover-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
+        `
+      : css`
+          --lcb-bg: var(--bg-secondary);
+          --lcb-color: var(--text-secondary);
+          --lcb-border: var(--border-secondary);
+          --lcb-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+          --lcb-hover-bg: var(--bg-hover);
+          --lcb-hover-color: var(--accent-blue);
+          --lcb-hover-border: var(--accent-blue);
+          --lcb-hover-shadow: 0 4px 12px rgba(59, 130, 246, 0.12);
+          --lcb-dark-bg: var(--bg-tab-active);
+          --lcb-dark-color: var(--text-primary);
+          --lcb-dark-border: var(--border-secondary);
+          --lcb-dark-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+          --lcb-dark-hover-bg: #334155;
+          --lcb-dark-hover-color: #93c5fd;
+          --lcb-dark-hover-border: #60a5fa;
+          --lcb-dark-hover-shadow: 0 4px 14px rgba(59, 130, 246, 0.2);
+        `}
+
   [data-theme='dark'] & {
-    background: ${(p: any) => (p.$copied ? 'rgba(16, 185, 129, 0.15)' : 'var(--bg-tab-active)')};
-    color: ${(p: any) => (p.$copied ? '#34d399' : 'var(--text-primary)')};
-    border-color: ${(p: any) => (p.$copied ? '#10b981' : 'var(--border-secondary)')};
-    box-shadow: ${(p: any) =>
-      p.$copied
-        ? '0 0 0 1px rgba(16, 185, 129, 0.3), 0 2px 10px rgba(16, 185, 129, 0.2)'
-        : '0 1px 3px rgba(0, 0, 0, 0.2)'};
+    background: var(--lcb-dark-bg);
+    color: var(--lcb-dark-color);
+    border-color: var(--lcb-dark-border);
+    box-shadow: var(--lcb-dark-shadow);
   }
 
   &:hover:not(:disabled) {
     transform: translateY(-1px);
-    ${(p: any) =>
-      p.$copied
-        ? css`
-            background: #d1fae5;
-            border-color: #059669;
-            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
-            [data-theme='dark'] & {
-              background: rgba(16, 185, 129, 0.22);
-              border-color: #34d399;
-              box-shadow: 0 4px 14px rgba(16, 185, 129, 0.3);
-            }
-          `
-        : css`
-            background: var(--bg-hover);
-            border-color: var(--accent-blue);
-            color: var(--accent-blue);
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.12);
-            [data-theme='dark'] & {
-              background: #334155;
-              border-color: #60a5fa;
-              color: #93c5fd;
-              box-shadow: 0 4px 14px rgba(59, 130, 246, 0.2);
-            }
-          `}
+    background: var(--lcb-hover-bg);
+    color: var(--lcb-hover-color);
+    border-color: var(--lcb-hover-border);
+    box-shadow: var(--lcb-hover-shadow);
+
+    [data-theme='dark'] & {
+      background: var(--lcb-dark-hover-bg);
+      color: var(--lcb-dark-hover-color);
+      border-color: var(--lcb-dark-hover-border);
+      box-shadow: var(--lcb-dark-hover-shadow);
+    }
   }
 
   &:active:not(:disabled) {
@@ -681,29 +821,54 @@ export const LogsCopyButton = styled.button<{ $copied?: boolean }>`
 `;
 
 export const Card = styled.div<{ $variant?: 'default' | 'success' | 'warning' | 'danger' }>`
-  background: ${(p: any) => {
-    switch (p.$variant) {
-      case 'success': return 'linear-gradient(135deg, #f0fdf4, #dcfce7)';
-      case 'warning': return 'linear-gradient(135deg, #fffbeb, #fef3c7)';
-      case 'danger': return 'linear-gradient(135deg, #fef2f2, #fee2e2)';
-      default: return 'var(--bg-secondary)';
-    }
-  }};
-  border: 1px solid ${(p: any) => {
-    switch (p.$variant) {
-      case 'success': return '#86efac';
-      case 'warning': return '#fcd34d';
-      case 'danger': return '#fca5a5';
-      default: return 'var(--border-primary)';
-    }
-  }};
   border-radius: 12px;
   padding: 1.25rem;
   margin-bottom: 1rem;
   transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
   animation: ${cardEntrance} 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
   &:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
   &:active { transform: translateY(0); }
+
+  ${(p: any) => {
+    switch (p.$variant) {
+      case 'success':
+        return `
+          --card-bg: linear-gradient(135deg, #f0fdf4, #dcfce7);
+          --card-border: #86efac;
+          --card-dark-bg: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(6, 78, 59, 0.22));
+          --card-dark-border: rgba(52, 211, 153, 0.35);
+        `;
+      case 'warning':
+        return `
+          --card-bg: linear-gradient(135deg, #fffbeb, #fef3c7);
+          --card-border: #fcd34d;
+          --card-dark-bg: linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(120, 53, 15, 0.22));
+          --card-dark-border: rgba(251, 191, 36, 0.35);
+        `;
+      case 'danger':
+        return `
+          --card-bg: linear-gradient(135deg, #fef2f2, #fee2e2);
+          --card-border: #fca5a5;
+          --card-dark-bg: linear-gradient(135deg, rgba(239, 68, 68, 0.14), rgba(127, 29, 29, 0.28));
+          --card-dark-border: rgba(248, 113, 113, 0.38);
+        `;
+      default:
+        return `
+          --card-bg: var(--bg-secondary);
+          --card-border: var(--border-primary);
+          --card-dark-bg: var(--bg-secondary);
+          --card-dark-border: var(--border-primary);
+        `;
+    }
+  }}
+
+  [data-theme='dark'] & {
+    background: var(--card-dark-bg);
+    border-color: var(--card-dark-border);
+  }
+
   @media (max-width: 480px) { padding: 1rem; border-radius: 8px; }
 `;
 
@@ -718,24 +883,119 @@ export const LinkCard = styled(Card)`
 export const Badge = styled.span<{ $color: 'green' | 'red' | 'yellow' | 'gray' | 'blue' | 'purple' }>`
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.35rem;
   padding: 0.2rem 0.65rem;
   border-radius: 999px;
   font-size: 0.75rem;
   font-weight: 600;
   animation: ${badgePop} 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
   transition: transform 0.2s ease;
+  background: var(--badge-bg);
+  color: var(--badge-color);
+  border: 1px solid var(--badge-border);
+
   ${(p: any) => {
     switch (p.$color) {
-      case 'green': return 'background: #dcfce7; color: #166534;';
-      case 'red': return 'background: #fee2e2; color: #991b1b;';
-      case 'yellow': return 'background: #fef3c7; color: #92400e;';
-      case 'gray': return 'background: #f3f4f6; color: #374151;';
-      case 'blue': return 'background: #dbeafe; color: #1e40af;';
-      case 'purple': return 'background: #f3e8ff; color: #7e22ce;';
-      default: return '';
+      case 'green':
+        return `
+          --badge-bg: #dcfce7;
+          --badge-color: #166534;
+          --badge-border: transparent;
+          --badge-dark-bg: rgba(16, 185, 129, 0.18);
+          --badge-dark-color: #34d399;
+          --badge-dark-border: rgba(52, 211, 153, 0.3);
+        `;
+      case 'red':
+        return `
+          --badge-bg: #fee2e2;
+          --badge-color: #991b1b;
+          --badge-border: transparent;
+          --badge-dark-bg: rgba(239, 68, 68, 0.2);
+          --badge-dark-color: #fca5a5;
+          --badge-dark-border: rgba(248, 113, 113, 0.35);
+        `;
+      case 'yellow':
+        return `
+          --badge-bg: #fef3c7;
+          --badge-color: #92400e;
+          --badge-border: transparent;
+          --badge-dark-bg: rgba(245, 158, 11, 0.18);
+          --badge-dark-color: #fcd34d;
+          --badge-dark-border: rgba(251, 191, 36, 0.3);
+        `;
+      case 'gray':
+        return `
+          --badge-bg: #f3f4f6;
+          --badge-color: #374151;
+          --badge-border: transparent;
+          --badge-dark-bg: rgba(148, 163, 184, 0.16);
+          --badge-dark-color: #cbd5e1;
+          --badge-dark-border: rgba(148, 163, 184, 0.28);
+        `;
+      case 'blue':
+        return `
+          --badge-bg: #dbeafe;
+          --badge-color: #1e40af;
+          --badge-border: transparent;
+          --badge-dark-bg: rgba(59, 130, 246, 0.2);
+          --badge-dark-color: #93c5fd;
+          --badge-dark-border: rgba(96, 165, 250, 0.3);
+        `;
+      case 'purple':
+        return `
+          --badge-bg: #f3e8ff;
+          --badge-color: #7e22ce;
+          --badge-border: transparent;
+          --badge-dark-bg: rgba(168, 85, 247, 0.2);
+          --badge-dark-color: #d8b4fe;
+          --badge-dark-border: rgba(192, 132, 252, 0.32);
+        `;
+      default:
+        return `
+          --badge-bg: transparent;
+          --badge-color: inherit;
+          --badge-border: transparent;
+          --badge-dark-bg: transparent;
+          --badge-dark-color: inherit;
+          --badge-dark-border: transparent;
+        `;
     }
   }}
+
+  [data-theme='dark'] & {
+    background: var(--badge-dark-bg);
+    color: var(--badge-dark-color);
+    border-color: var(--badge-dark-border);
+  }
+`;
+
+export const LockdownMetaText = styled.span`
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #991b1b;
+
+  [data-theme='dark'] & {
+    color: #fca5a5;
+  }
+`;
+
+export const LinkTimerText = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #047857;
+
+  svg {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+  }
+
+  [data-theme='dark'] & {
+    color: #34d399;
+  }
 `;
 
 export const StatusDot = styled.span<{ $color: 'green' | 'red' | 'yellow' | 'gray' }>`
@@ -777,10 +1037,11 @@ export const CopyButton = styled.button`
   background: none;
   border: 1px solid var(--border-secondary);
   border-radius: 8px;
-  padding: 0.35rem 0.6rem;
+  padding: 0.35rem 0.65rem;
   cursor: pointer;
-  color: var(--text-tertiary);
-  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  font-weight: 600;
   transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
   white-space: nowrap;
   &:hover { background: var(--bg-hover); border-color: var(--text-muted); color: var(--text-primary); transform: scale(1.05); }

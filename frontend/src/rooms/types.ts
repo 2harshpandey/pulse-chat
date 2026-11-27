@@ -1,5 +1,7 @@
 export interface Room {
   id: string;
+  canonicalId?: string;
+  alias?: string;
   name: string;
   description?: string;
   isPrivate: boolean;

@@ -43,8 +43,12 @@ export function UsersTab({ admin }: UsersTabProps) {
     <ScrollContainer>
       {onlineUsersList.length > 0 && (
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
-          <DangerButton onClick={handleForceLogoutAll} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            ⚡ Force Logout All ({onlineUsersList.length})
+          <DangerButton onClick={handleForceLogoutAll} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem' }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M18.36 6.64a9 9 0 1 1-12.73 0" />
+              <line x1="12" y1="2" x2="12" y2="12" />
+            </svg>
+            Force Logout All ({onlineUsersList.length})
           </DangerButton>
         </div>
       )}

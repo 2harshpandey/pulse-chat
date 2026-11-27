@@ -120,7 +120,7 @@ export const useRoomsController = () => {
       setCheckingId(false);
       return;
     }
-    if (!/^[a-zA-Z0-9._]{1,30}$/.test(trimmedId)) {
+    if (!/^[a-zA-Z0-9._]{1,30}$/.test(trimmedId) || trimmedId === '.' || trimmedId === '..') {
       setIdAvailable(false);
       setCheckingId(false);
       return;
@@ -266,6 +266,9 @@ export const useRoomsController = () => {
     e.preventDefault();
     if (!roomName.trim()) return setFormError('Room Name is required');
     if (!customId.trim()) return setFormError('Room ID is required');
+    if (customId.trim() === '.' || customId.trim() === '..') {
+      return setFormError('Room ID cannot be "." or ".."');
+    }
     if (idAvailable === false) return setFormError('Please choose an available Room ID');
 
     if (adminPassword.length < 6) return setFormError('Admin Password must be at least 6 characters');

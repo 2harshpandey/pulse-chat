@@ -113,7 +113,7 @@ router.post('/', apiLimiter, async (req, res) => {
     let id;
     
     if (alias) {
-      if (!/^[a-zA-Z0-9._]{1,30}$/.test(alias)) {
+      if (!/^[a-zA-Z0-9._]{1,30}$/.test(alias) || alias === '.' || alias === '..') {
         return res.status(400).json({ error: 'Room ID must be 1-30 characters, containing only letters, numbers, periods, and underscores.' });
       }
       
@@ -159,12 +159,15 @@ router.post('/', apiLimiter, async (req, res) => {
 router.get('/check-id', apiLimiter, async (req, res) => {
   const { id } = req.query;
   if (!id || typeof id !== 'string') return res.status(400).json({ error: 'ID is required.' });
-  if (id.length > 30) return res.json({ available: false });
-  if (id.toLowerCase() === 'me' || id.toLowerCase() === 'global') {
+  const cleanId = id.trim();
+  if (!/^[a-zA-Z0-9._]{1,30}$/.test(cleanId) || cleanId === '.' || cleanId === '..') {
+    return res.json({ available: false });
+  }
+  if (cleanId.toLowerCase() === 'me' || cleanId.toLowerCase() === 'global') {
     return res.json({ available: false });
   }
   try {
-    const safeId = escapeRegExp(id);
+    const safeId = escapeRegExp(cleanId);
     const existing = await Room.findOne({ $or: [{ id: new RegExp(`^${safeId}$`, 'i') }, { alias: new RegExp(`^${safeId}$`, 'i') }] });
     res.json({ available: !existing });
   } catch (err) {
@@ -282,6 +285,22 @@ router.post('/verify-join', authLimiter, checkPasswordRateLimit, async (req, res
   }
 });
 
+const formatPublicRoomSummary = (room, countMap) => {
+  const canonicalId = room.id;
+  const activeId = room.alias || room.id;
+  const state = getRoomState(canonicalId);
+  return {
+    id: activeId,
+    canonicalId,
+    alias: room.alias || undefined,
+    name: room.name,
+    description: room.description,
+    isPrivate: room.isPrivate,
+    onlineCount: state.onlineUsers.size,
+    totalMessages: countMap.get(canonicalId) || 0,
+  };
+};
+
 // Get public rooms
 router.get('/', apiLimiter, async (req, res) => {
   try {
@@ -298,20 +317,7 @@ router.get('/', apiLimiter, async (req, res) => {
     const roomIds = publicRooms.map(r => r.id);
     const countMap = await getCachedMessageCounts(roomIds);
 
-    const roomsWithStats = publicRooms.map((room) => {
-      const state = getRoomState(room.id);
-      const onlineCount = state.onlineUsers.size;
-      const totalMessages = countMap.get(room.id) || 0;
-      
-      return {
-        id: room.id,
-        name: room.name,
-        description: room.description,
-        isPrivate: room.isPrivate,
-        onlineCount,
-        totalMessages
-      };
-    });
+    const roomsWithStats = publicRooms.map((room) => formatPublicRoomSummary(room, countMap));
 
     res.json({ rooms: roomsWithStats, hasMore });
   } catch (error) {
@@ -340,6 +346,7 @@ router.get('/search', apiLimiter, async (req, res) => {
     const query = {
       isPrivate: false,
       $or: [
+        { alias: new RegExp(`^${safeQ}`, 'i') },
         { id: new RegExp(`^${safeQ}`, 'i') },
         { name: new RegExp(safeQ, 'i') }
       ]
@@ -354,20 +361,7 @@ router.get('/search', apiLimiter, async (req, res) => {
     const roomIds = rooms.map(r => r.id);
     const countMap = await getCachedMessageCounts(roomIds);
 
-    const roomsWithStats = rooms.map((room) => {
-      const state = getRoomState(room.id);
-      const onlineCount = state.onlineUsers.size;
-      const totalMessages = countMap.get(room.id) || 0;
-      
-      return {
-        id: room.id,
-        name: room.name,
-        description: room.description,
-        isPrivate: room.isPrivate,
-        onlineCount,
-        totalMessages
-      };
-    });
+    const roomsWithStats = rooms.map((room) => formatPublicRoomSummary(room, countMap));
 
     res.json({ rooms: roomsWithStats, hasMore });
   } catch (error) {
@@ -538,11 +532,13 @@ router.put('/admin/roomId', adminLimiter, adminAuthWithAudit, async (req, res) =
 
     // Validate newRoomId
     const alias = newRoomId.trim();
-    if (!/^[a-zA-Z0-9._]{1,30}$/.test(alias)) {
+    if (!/^[a-zA-Z0-9._]{1,30}$/.test(alias) || alias === '.' || alias === '..') {
       return res.status(400).json({ error: 'Room ID must be 1-30 characters, containing only letters, numbers, periods, and underscores.' });
     }
 
-    if (room.alias === alias) return res.json({ success: true }); // No change
+    if (room.alias === alias || (!room.alias && room.id === alias)) {
+      return res.json({ success: true }); // No change
+    }
 
     // Enforce 14-day limit
     if (room.lastIdChangeAt) {
@@ -575,7 +571,7 @@ router.put('/admin/roomId', adminLimiter, adminAuthWithAudit, async (req, res) =
       ]).catch((err) => logger.error('Failed to migrate records to canonical roomId on alias change:', err));
     }
 
-    res.json({ success: true, newAlias: alias, lastIdChangeAt: room.lastIdChangeAt });
+    res.json({ success: true, newAlias: alias, canonicalId: room.id, lastIdChangeAt: room.lastIdChangeAt });
   } catch (error) {
     logger.error('Failed to update room ID:', error);
     res.status(500).json({ error: 'Failed to update room ID.' });
@@ -594,9 +590,19 @@ router.put('/admin/joinPassword', adminLimiter, adminAuthWithAudit, async (req, 
     const room = await loadCustomRoomForMutation(req, res);
     if (!room) return;
 
-    if (room.joinPassword && !await verifyPasswordAsync(currentPassword, room.joinPassword)) {
-      recordFailedPasswordAttempt(joinPwLockKey, req);
-      return res.status(400).json({ error: 'Current password is not correct.' });
+    if (room.joinPassword) {
+      if (
+        typeof currentPassword !== 'string' ||
+        !currentPassword ||
+        !await verifyPasswordAsync(currentPassword, room.joinPassword)
+      ) {
+        recordFailedPasswordAttempt(joinPwLockKey, req);
+        return res.status(400).json({ error: 'Current password is not correct.' });
+      }
+    } else if (typeof currentPassword === 'string' && currentPassword.trim().length > 0) {
+      return res.status(400).json({
+        error: 'This room is currently public and has no join password. Leave current password empty to set one.',
+      });
     }
 
     resetPasswordAttempts(joinPwLockKey);

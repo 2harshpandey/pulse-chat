@@ -8,6 +8,7 @@ import {
   LinkCard,
   Badge,
   StatusDot,
+  LinkTimerText,
   LinkUrlBox,
   CopyButton,
   UsedByList,
@@ -45,7 +46,7 @@ export function AccessLinksTab({ admin }: AccessLinksTabProps) {
           {creatingLink ? 'Creating...' : '+ Generate New Link'}
         </Button>
       </div>
-      <p style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
+      <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
         Generate secure temporary links for password-free access. Links expire in 5 minutes.
       </p>
 
@@ -80,22 +81,41 @@ export function AccessLinksTab({ admin }: AccessLinksTabProps) {
                     {label}
                   </Badge>
                   {status === 'active' && (
-                    <span style={{ fontSize: '0.8rem', color: '#059669', fontWeight: 600 }}>
-                      ⏱️ {getTimeRemaining(link.expiresAt)} remaining
-                    </span>
+                    <LinkTimerText>
+                      <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <circle cx="12" cy="12" r="10" />
+                        <polyline points="12 6 12 12 16 14" />
+                      </svg>
+                      <span>{getTimeRemaining(link.expiresAt)} remaining</span>
+                    </LinkTimerText>
                   )}
                 </div>
                 <LinkUrlBox>
-                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--text-primary)' }}>
                     {window.location.origin}/join/{link.token.substring(0, 12)}...
                   </span>
                   {status === 'active' && (
                     <CopyButton onClick={() => handleCopyLink(link.token, link._id)}>
-                      {copiedLinkId === link._id ? '✓ Copied!' : 'Copy'}
+                      {copiedLinkId === link._id ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                          Copied!
+                        </span>
+                      ) : (
+                        'Copy'
+                      )}
                     </CopyButton>
                   )}
                 </LinkUrlBox>
-                <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#94a3b8' }}>
+                <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                   Created: {formatDateTime(link.createdAt)}
                   {link.revokedAt && ` · Revoked: ${formatDateTime(link.revokedAt)}`}
                 </div>

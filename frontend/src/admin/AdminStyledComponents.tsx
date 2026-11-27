@@ -5,3 +5,4 @@ export * from './styles/admin.login.styles';
 export * from './styles/admin.table.styles';
 export * from './styles/admin.tabs.styles';
 export * from './styles/admin.modal.styles';
+export * from './styles/admin.settings.styles';

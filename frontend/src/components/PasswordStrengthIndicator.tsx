@@ -15,7 +15,7 @@ export const BarsContainer = styled.div`
 export const StrengthBar = styled.div<{ $active: boolean; $color: string }>`
   flex: 1;
   border-radius: 4px;
-  background: ${p => p.$active ? p.$color : 'rgba(255, 255, 255, 0.1)'};
+  background: ${p => p.$active ? p.$color : 'rgba(148, 163, 184, 0.28)'};
   transition: all 0.3s ease;
 `;
 

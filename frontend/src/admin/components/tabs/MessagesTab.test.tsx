@@ -160,4 +160,39 @@ describe('MessagesTab responsive toolbar and controls', () => {
     render(<MessagesTab admin={admin} />);
     expect(screen.getByText('Deleted by Admin')).toBeInTheDocument();
   });
+
+  it('renders Active badge for standard active messages and Deleted by User for deleted events', () => {
+    const admin = createMockAdmin({
+      filteredHistoryLogs: [
+        {
+          _id: 'active-log-1',
+          type: 'create',
+          messageId: 'pulse-chat/msg-active',
+          message: { id: 'pulse-chat/msg-active', text: 'Hello', type: 'text' },
+          username: 'charlie',
+          timestamp: Date.now(),
+        },
+        {
+          _id: 'delete-log-1',
+          type: 'delete_everyone',
+          messageId: 'pulse-chat/msg-deleted',
+          username: 'charlie',
+          timestamp: Date.now(),
+        },
+      ],
+    });
+
+    render(<MessagesTab admin={admin} />);
+    expect(screen.getByText('Active')).toBeInTheDocument();
+    expect(screen.getByText('Deleted by User')).toBeInTheDocument();
+
+    // Verify styled-components CSS uses isolated per-instance custom properties in dark mode
+    const styleText = Array.from(document.querySelectorAll('style'))
+      .map((s) => s.textContent || '')
+      .join('\n');
+    expect(styleText).toContain('--badge-dark-bg:rgba(16,185,129,0.18)');
+    expect(styleText).toContain('--badge-dark-bg:rgba(239,68,68,0.2)');
+    expect(styleText).toContain('--tb-dark-bg:#b91c1c');
+    expect(styleText).toContain('--tb-dark-bg:#1e40af');
+  });
 });

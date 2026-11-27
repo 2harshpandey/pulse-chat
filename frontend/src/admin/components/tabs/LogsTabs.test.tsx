@@ -115,6 +115,30 @@ describe('LogsCopyButton and Logs Tabs', () => {
       const copyBtn = screen.getByRole('button', { name: /copy logs/i });
       expect(copyBtn).toBeDisabled();
     });
+
+    it('renders room chip and copies room ID when roomId is specific room', async () => {
+      const specificRoomId = '1be8016d7f1b24c76abadb34bb7d837e241cc685ebbf24f4';
+      const admin = createMockAdmin({
+        roomId: specificRoomId,
+        activityLogs: ['[12:00:00 PM] Test event.'],
+      });
+
+      render(<LiveActivityTab admin={admin} />);
+
+      expect(screen.getByRole('heading', { level: 2, name: /real-time activity/i })).toBeInTheDocument();
+      expect(screen.getByText('Room:')).toBeInTheDocument();
+      expect(screen.getByText(specificRoomId)).toBeInTheDocument();
+
+      const copyRoomBtn = screen.getByRole('button', { name: /copy room id/i });
+      expect(copyRoomBtn).toBeInTheDocument();
+
+      fireEvent.click(copyRoomBtn);
+      expect(copySpy).toHaveBeenCalledWith(specificRoomId);
+
+      await waitFor(() => {
+        expect(copyRoomBtn).toHaveAttribute('title', 'Copied Room ID!');
+      });
+    });
   });
 
   describe('ServerLogsTab', () => {
