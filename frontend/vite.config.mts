@@ -20,6 +20,7 @@ export default defineConfig(({ mode }) => {
         injectRegister: 'script-defer',
         includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'pulse_logo.webp'],
         manifest: {
+          id: '/',
           name: 'PulseChat',
           short_name: 'PulseChat',
           description: 'Real-time multi-room web chat with voice notes, mosaic media albums, and password-protected private rooms.',
@@ -28,19 +29,29 @@ export default defineConfig(({ mode }) => {
           display: 'standalone',
           orientation: 'portrait-primary',
           start_url: '/',
+          scope: '/',
+          categories: ['social', 'chat'],
           icons: [
             {
-              src: 'android-chrome-192x192.png',
+              src: '/android-chrome-192x192.png',
               sizes: '192x192',
-              type: 'image/png'
+              type: 'image/png',
+              purpose: 'any'
             },
             {
-              src: 'android-chrome-512x512.png',
+              src: '/android-chrome-192x192.png',
+              sizes: '192x192',
+              type: 'image/png',
+              purpose: 'maskable'
+            },
+            {
+              src: '/android-chrome-512x512.png',
               sizes: '512x512',
-              type: 'image/png'
+              type: 'image/png',
+              purpose: 'any'
             },
             {
-              src: 'android-chrome-512x512.png',
+              src: '/android-chrome-512x512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'maskable'
