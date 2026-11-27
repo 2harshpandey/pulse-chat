@@ -941,6 +941,171 @@ export const ConfirmationContent = styled.div`
   div { display: flex; gap: 1rem; justify-content: center; }
 `;
 
+export const DeleteDialogOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.58);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 10000;
+  animation: ${reactionsModalFadeIn} 0.16s ease-out forwards;
+
+  [data-theme='light'] & {
+    background: rgba(15, 23, 42, 0.36);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+`;
+
+export const DeleteDialogCard = styled.div`
+  width: min(92vw, 356px);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-primary);
+  border-radius: 16px;
+  padding: 1.35rem 1.35rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.06);
+  animation: ${fadeInScale} 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+
+  [data-theme='dark'] & {
+    background: #111827;
+    border-color: rgba(255, 255, 255, 0.09);
+    box-shadow: 0 24px 56px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+`;
+
+export const DeleteDialogTitle = styled.h3`
+  margin: 0 0 0.4rem;
+  font-size: 1.05rem;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  color: var(--text-heading);
+`;
+
+export const DeleteDialogSubtitle = styled.p`
+  margin: 0 0 1.2rem;
+  font-size: 0.84rem;
+  line-height: 1.48;
+  color: var(--text-secondary);
+`;
+
+export const DeleteDialogActions = styled.div<{ $columns?: 1 | 2 }>`
+  width: 100%;
+  display: grid;
+  grid-template-columns: ${({ $columns }) => ($columns === 2 ? '1fr 1fr' : '1fr')};
+  gap: 0.5rem;
+`;
+
+const deleteBtnBase = css`
+  width: 100%;
+  height: 40px;
+  padding: 0 1rem;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.12s ease;
+  outline: none;
+
+  &:focus-visible {
+    box-shadow: 0 0 0 2px var(--accent-blue);
+  }
+
+  &:active {
+    transform: scale(0.985);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+    &:active {
+      transform: none;
+    }
+  }
+`;
+
+export const DeleteBtnPrimary = styled.button`
+  ${deleteBtnBase}
+  border: 1px solid transparent;
+  background: #dc2626;
+  color: #ffffff;
+
+  &:hover {
+    background: #b91c1c;
+  }
+
+  [data-theme='dark'] & {
+    background: #dc2626;
+    border-color: rgba(255, 255, 255, 0.08);
+    &:hover {
+      background: #ef4444;
+    }
+  }
+`;
+
+export const DeleteBtnSecondary = styled.button`
+  ${deleteBtnBase}
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #dc2626;
+
+  &:hover {
+    background: #fef2f2;
+    border-color: #fecaca;
+  }
+
+  [data-theme='dark'] & {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.09);
+    color: #f87171;
+
+    &:hover {
+      background: rgba(239, 68, 68, 0.12);
+      border-color: rgba(248, 113, 113, 0.28);
+    }
+  }
+`;
+
+export const DeleteBtnCancel = styled.button`
+  ${deleteBtnBase}
+  border: 1px solid var(--border-primary);
+  background: transparent;
+  color: var(--text-secondary);
+
+  &:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+  }
+
+  [data-theme='dark'] & {
+    border-color: rgba(255, 255, 255, 0.09);
+    background: transparent;
+    color: #94a3b8;
+
+    &:hover {
+      background: rgba(255, 255, 255, 0.06);
+      color: #f1f5f9;
+      border-color: rgba(255, 255, 255, 0.16);
+    }
+  }
+`;
+
 export const ReportModal = styled.div`
   position: fixed;
   inset: 0;

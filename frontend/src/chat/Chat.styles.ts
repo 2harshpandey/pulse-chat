@@ -157,9 +157,9 @@ export const CopiedToast = styled.div<{ $visible: boolean }>`
   }
 `;
 
-export const AlbumDownloadToast = styled.div<{ $visible: boolean; $isError?: boolean }>`
-  position: absolute;
-  bottom: 90px;
+export const AlbumDownloadToast = styled.div<{ $visible: boolean; $isError?: boolean; $isSuccess?: boolean; $isFixed?: boolean }>`
+  position: ${p => p.$isFixed ? 'fixed' : 'absolute'};
+  bottom: ${p => p.$isFixed ? '98px' : '90px'};
   left: 50%;
   transform: translateX(-50%) translateY(${p => p.$visible ? '0' : '16px'}) scale(${p => p.$visible ? 1 : 0.94});
   opacity: ${p => p.$visible ? 1 : 0};
@@ -176,12 +176,14 @@ export const AlbumDownloadToast = styled.div<{ $visible: boolean; $isError?: boo
   gap: 10px;
   box-shadow: ${p => p.$isError 
     ? '0 10px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(239, 68, 68, 0.35)' 
-    : '0 10px 30px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(56, 189, 248, 0.18)'};
+    : p.$isSuccess
+      ? '0 10px 30px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(34, 197, 94, 0.25)'
+      : '0 10px 30px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(56, 189, 248, 0.18)'};
   transition: all 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
   z-index: 10002;
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid ${p => p.$isError ? 'rgba(239, 68, 68, 0.45)' : 'rgba(56, 189, 248, 0.25)'};
+  border: 1px solid ${p => p.$isError ? 'rgba(239, 68, 68, 0.45)' : p.$isSuccess ? 'rgba(34, 197, 94, 0.32)' : 'rgba(56, 189, 248, 0.25)'};
   max-width: min(calc(100vw - 48px), 640px);
   width: max-content;
   justify-content: center;
@@ -194,7 +196,7 @@ export const AlbumDownloadToast = styled.div<{ $visible: boolean; $isError?: boo
   [data-theme='light'] & {
     background: ${p => p.$isError ? 'rgba(254, 242, 242, 0.96)' : 'rgba(255, 255, 255, 0.95)'};
     color: ${p => p.$isError ? '#991b1b' : '#0f172a'};
-    border: 1px solid ${p => p.$isError ? 'rgba(239, 68, 68, 0.5)' : '#cbd5e1'};
+    border: 1px solid ${p => p.$isError ? 'rgba(239, 68, 68, 0.5)' : p.$isSuccess ? 'rgba(34, 197, 94, 0.42)' : '#cbd5e1'};
     box-shadow: ${p => p.$isError
       ? '0 10px 25px rgba(239, 68, 68, 0.2), 0 0 0 1px rgba(239, 68, 68, 0.3)'
       : '0 10px 25px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.05)'};
@@ -203,13 +205,13 @@ export const AlbumDownloadToast = styled.div<{ $visible: boolean; $isError?: boo
   svg {
     width: 17px;
     height: 17px;
-    color: ${p => p.$isError ? '#ef4444' : '#38bdf8'};
-    stroke: ${p => p.$isError ? '#ef4444' : '#38bdf8'};
+    color: ${p => p.$isError ? '#ef4444' : p.$isSuccess ? '#22c55e' : '#38bdf8'};
+    stroke: ${p => p.$isError ? '#ef4444' : p.$isSuccess ? '#22c55e' : '#38bdf8'};
     flex-shrink: 0;
   }
 
   @media (max-width: 768px) {
-    bottom: 82px;
+    bottom: ${p => p.$isFixed ? '92px' : '82px'};
     padding: 9px 18px;
     font-size: 0.83rem;
     width: max-content;

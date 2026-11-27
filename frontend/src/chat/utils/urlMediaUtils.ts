@@ -340,6 +340,23 @@ export const getPresenceActivityForFiles = (files: File[]): PresenceActivity => 
   return 'sending_file';
 };
 
+export const isGifUrl = (url?: string | null): boolean => {
+  if (!url) return false;
+  return isGiphyUrl(url) || /\.gif(?:$|[?#])/i.test(url);
+};
+
+/**
+ * Checks whether a message represents an animated GIF (uploaded GIF or Giphy GIF).
+ */
+export const isGifMessage = (
+  msg?: { type?: string; url?: string; originalName?: string; [key: string]: any } | null
+): boolean => {
+  if (!msg) return false;
+  if ((msg.type || '').toLowerCase() === 'gif') return true;
+  if (msg.originalName && /\.gif$/i.test(msg.originalName)) return true;
+  return isGifUrl(msg.url);
+};
+
 /**
  * Checks if a message is specifically a photo or GIF (not video, audio, or document).
  */

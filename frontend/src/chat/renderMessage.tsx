@@ -5,7 +5,7 @@ import {
   sanitizeMediaUrl, getMediaGatePreviewUrl,
   formatMediaSize, getFileContainerLabel,
   downloadFile, getDisplayFilename,
-  isNonTouchDevice, isPhotoOrGif,
+  isNonTouchDevice, isPhotoOrGif, isGifMessage,
 } from './utils';
 import {
   VALID_TLDS,
@@ -166,6 +166,7 @@ export const renderMessageContent = (
           {msg.url && !shouldGateMedia && isNonTouchDevice() && isPhotoOrGif(msg) && (
             <MediaCopyButton
               url={msg.url}
+              isGif={isGifMessage(msg)}
               style={{
                 position: 'absolute',
                 top: '6px',

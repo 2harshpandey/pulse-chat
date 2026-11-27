@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import type { ChatController } from '../hooks/useChatController';
 import { PinnedMessageBanner } from './PinnedMessageBanner';
 import { ChatFooter } from './ChatFooter';
@@ -108,6 +109,119 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
             : 'Preparing ZIP...')
           : '';
 
+  const isViewerOpen = Boolean(media.mediaGallery || media.lightboxUrl);
+  const lowerToastText = statusToastText.toLowerCase();
+  const isErrorStatusToast = Boolean(statusErrorToast) || lowerToastText.includes('failed');
+  const isCopySuccessStatusToast = !isErrorStatusToast && lowerToastText.includes('copied');
+
+  const statusToastNode = (
+    <AlbumDownloadToast
+      key={statusToastKey}
+      $visible={isStatusToastVisible}
+      $isError={isErrorStatusToast}
+      $isSuccess={isCopySuccessStatusToast}
+      $isFixed={isViewerOpen}
+      data-testid="album-download-toast"
+      aria-live="polite"
+    >
+      {isErrorStatusToast ? (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#ef4444"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ width: '18px', height: '18px' }}
+        >
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+      ) : nav.isLocatingMessage || albumDownload.isDownloading ? (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#38bdf8"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ width: '18px', height: '18px', animation: 'spin 1s linear infinite' }}
+        >
+          <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+        </svg>
+      ) : isCopySuccessStatusToast ? (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#22c55e"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ width: '18px', height: '18px' }}
+        >
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      ) : lowerToastText.includes('download') ? (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#38bdf8"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ width: '18px', height: '18px' }}
+        >
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="7 10 12 15 17 10" />
+          <line x1="12" y1="15" x2="12" y2="3" />
+        </svg>
+      ) : (
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#38bdf8"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ width: '18px', height: '18px' }}
+        >
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="16" x2="12" y2="12"></line>
+          <line x1="12" y1="8" x2="12.01" y2="8"></line>
+        </svg>
+      )}
+      <span>{statusToastText}</span>
+      {albumDownload.isDownloading && !statusErrorToast && !nav.isLocatingMessage && !msgs.albumDownloadToast && (
+        <AlbumDownloadCancelButton
+          type="button"
+          data-testid="cancel-album-download-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            albumDownload.cancelDownload();
+          }}
+          title="Cancel album download"
+          aria-label="Cancel download"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="12"
+            height="12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+          <span>Cancel</span>
+        </AlbumDownloadCancelButton>
+      )}
+    </AlbumDownloadToast>
+  );
+
   return (
     <ChatWindow>
       <PinnedMessageBanner
@@ -199,6 +313,7 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
             onVideoFullscreenEnter={viewport.handleVideoFullscreenEnter}
             onMediaLoadError={media.handleMediaError}
             onShowToast={triggerStatusErrorToast}
+            onInitiateDelete={selection.handleInitiateDeleteForMessage}
           />
         </MessagesContainer>
 
@@ -258,97 +373,9 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
         Copied to clipboard
       </CopiedToast>
 
-      <AlbumDownloadToast
-        key={statusToastKey}
-        $visible={isStatusToastVisible}
-        $isError={Boolean(statusErrorToast)}
-        data-testid="album-download-toast"
-        aria-live="polite"
-      >
-        {statusErrorToast ? (
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#ef4444"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{ width: '18px', height: '18px' }}
-          >
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="8" x2="12" y2="12"></line>
-            <line x1="12" y1="16" x2="12.01" y2="16"></line>
-          </svg>
-        ) : nav.isLocatingMessage || albumDownload.isDownloading ? (
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#38bdf8"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{ width: '18px', height: '18px', animation: 'spin 1s linear infinite' }}
-          >
-            <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
-          </svg>
-        ) : statusToastText.toLowerCase().includes('download') ? (
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#38bdf8"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{ width: '18px', height: '18px' }}
-          >
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
-          </svg>
-        ) : (
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#38bdf8"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={{ width: '18px', height: '18px' }}
-          >
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="16" x2="12" y2="12"></line>
-            <line x1="12" y1="8" x2="12.01" y2="8"></line>
-          </svg>
-        )}
-        <span>{statusToastText}</span>
-        {albumDownload.isDownloading && !statusErrorToast && !nav.isLocatingMessage && !msgs.albumDownloadToast && (
-          <AlbumDownloadCancelButton
-            type="button"
-            data-testid="cancel-album-download-btn"
-            onClick={(e) => {
-              e.stopPropagation();
-              albumDownload.cancelDownload();
-            }}
-            title="Cancel album download"
-            aria-label="Cancel download"
-          >
-            <svg
-              viewBox="0 0 24 24"
-              width="12"
-              height="12"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-            <span>Cancel</span>
-          </AlbumDownloadCancelButton>
-        )}
-      </AlbumDownloadToast>
+      {isViewerOpen && typeof document !== 'undefined'
+        ? createPortal(statusToastNode, document.body)
+        : statusToastNode}
 
       <TypingIndicator onlineUsers={socket.onlineUsers} currentUserId={userIdRef.current} />
 

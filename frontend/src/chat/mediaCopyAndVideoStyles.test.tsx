@@ -1,9 +1,10 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { isNonTouchDevice, isPhotoOrGif, hasMediaAttachment, copyImageToClipboard } from './utils';
+import { isNonTouchDevice, isPhotoOrGif, isGifMessage, hasMediaAttachment, copyImageToClipboard } from './utils';
 import { MessageActionMenuPortal } from './components/message/MessageActionMenuPortal';
 import { MediaGalleryModal } from './components/modals/MediaGalleryModal';
+import { DeleteConfirmModal } from './components/modals/DeleteConfirmModal';
 import { ChatFooter, type ChatFooterProps } from './components/ChatFooter';
 import { CVPBottomRow, CVPIconBtn } from './styles/chat.video.styles';
 import { VideoPlayer } from './VideoPlayer';
@@ -1123,5 +1124,274 @@ describe('Quoted media bubble width constraint', () => {
 
     const { container } = render(<MessageItem {...makeBaseItemProps(textMsg)} />);
     expect(container.querySelector('[data-quoted-width-constrain="true"]')).toBeNull();
+  });
+});
+
+describe('GIF Copy Toast, Non-Touch Direct Delete, DeleteConfirmModal Escape & Fullscreen Toast', () => {
+  const originalMatchMedia = window.matchMedia;
+  const originalClipboard = navigator.clipboard;
+
+  afterEach(() => {
+    window.matchMedia = originalMatchMedia;
+    Object.defineProperty(navigator, 'clipboard', {
+      value: originalClipboard,
+      configurable: true,
+      writable: true,
+    });
+    vi.restoreAllMocks();
+  });
+
+  const mockPointer = (fine: boolean) => {
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: fine ? query.includes('(pointer: fine)') : query.includes('(pointer: coarse)'),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+  };
+
+  it('identifies GIF messages accurately via isGifMessage', () => {
+    expect(isGifMessage({ type: 'gif', url: 'https://example.com/anim' })).toBe(true);
+    expect(isGifMessage({ type: 'image', url: 'https://media.giphy.com/media/xyz/giphy.gif' })).toBe(true);
+    expect(isGifMessage({ type: 'image', url: 'https://res.cloudinary.com/demo/image/upload/v1/anim.gif' })).toBe(true);
+    expect(isGifMessage({ type: 'image', url: 'https://example.com/photo', originalName: 'funny.GIF' })).toBe(true);
+    expect(isGifMessage({ type: 'image', url: 'https://example.com/photo.jpg' })).toBe(false);
+  });
+
+  it('dispatches "GIF link copied to clipboard" when copying a GIF URL fallback', async () => {
+    const writeTextMock = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: {
+        write: vi.fn().mockRejectedValue(new Error('Binary write failed')),
+        writeText: writeTextMock,
+      },
+      configurable: true,
+      writable: true,
+    });
+    (window as any).isSecureContext = true;
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Network error'));
+
+    const onToast = vi.fn();
+    const ok = await copyImageToClipboard('https://media.giphy.com/media/abc/giphy.gif', onToast);
+    expect(ok).toBe(true);
+    expect(onToast).toHaveBeenCalledWith('GIF link copied to clipboard');
+  });
+
+  it('dispatches "GIF copied to clipboard" when copying a GIF in binary clipboard mode', async () => {
+    class MockClipboardItem {
+      constructor(public data: Record<string, Blob>) {}
+    }
+    (globalThis as any).ClipboardItem = MockClipboardItem;
+    const writeMock = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { write: writeMock },
+      configurable: true,
+      writable: true,
+    });
+    (window as any).isSecureContext = true;
+
+    const mockPngOrGifBlob = new Blob(['fake'], { type: 'image/png' });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      blob: async () => mockPngOrGifBlob,
+    } as any);
+
+    const toastListener = vi.fn();
+    window.addEventListener('pulse:status_toast', toastListener);
+
+    const ok = await copyImageToClipboard(
+      'https://res.cloudinary.com/demo/image/upload/v1/pulse.gif',
+      undefined,
+      { isGif: true }
+    );
+    expect(ok).toBe(true);
+    expect(toastListener).toHaveBeenCalled();
+    const lastDetail = (toastListener.mock.calls[0][0] as CustomEvent).detail;
+    expect(lastDetail.message).toBe('GIF copied to clipboard');
+
+    window.removeEventListener('pulse:status_toast', toastListener);
+  });
+
+  it('renders "Copy GIF" in MediaGalleryModal and MessageActionMenuPortal for GIF messages on non-touch devices', () => {
+    mockPointer(true);
+
+    const gifMsg: Message = {
+      id: 'gif-1',
+      userId: 'user-1',
+      username: 'Harsh',
+      timestamp: new Date().toISOString(),
+      type: 'image',
+      url: 'https://media.giphy.com/media/abc/giphy.gif',
+    };
+
+    render(
+      <MessageActionMenuPortal
+        msg={gifMsg}
+        currentUserId="user-1"
+        canEdit={false}
+        menuPos={{ top: 100, left: 100 }}
+        setActiveDeleteMenu={vi.fn()}
+        handleSetReply={vi.fn()}
+        handleToggleSelectMessage={vi.fn()}
+        handleCopy={vi.fn()}
+        handleOpenReport={vi.fn()}
+        handleStartEdit={vi.fn()}
+        deleteMenuRef={{ current: null }}
+      />
+    );
+    expect(screen.getByText('Copy GIF')).toBeDefined();
+
+    render(
+      <MediaGalleryModal
+        isOpen={true}
+        items={[gifMsg]}
+        initialIndex={0}
+        onClose={vi.fn()}
+        currentUserId="user-1"
+      />
+    );
+    const galleryCopyBtn = screen.getByTestId('gallery-copy-image-btn');
+    expect(galleryCopyBtn.getAttribute('aria-label')).toBe('Copy GIF');
+  });
+
+  it('NON-TOUCH: clicking Delete in three-dot menu directly calls onInitiateDelete without entering select mode footer', () => {
+    mockPointer(true);
+    const onToggleSelect = vi.fn();
+    const onInitiateDelete = vi.fn();
+    const setActiveDeleteMenu = vi.fn();
+
+    const msg: Message = {
+      id: 'm-del-1',
+      userId: 'user-1',
+      username: 'Harsh',
+      text: 'Hello',
+      type: 'text',
+      timestamp: new Date().toISOString(),
+    };
+
+    render(
+      <MessageActionMenuPortal
+        msg={msg}
+        currentUserId="user-1"
+        canEdit={true}
+        menuPos={{ top: 100, left: 100 }}
+        setActiveDeleteMenu={setActiveDeleteMenu}
+        handleSetReply={vi.fn()}
+        handleToggleSelectMessage={onToggleSelect}
+        onInitiateDelete={onInitiateDelete}
+        handleCopy={vi.fn()}
+        handleOpenReport={vi.fn()}
+        handleStartEdit={vi.fn()}
+        deleteMenuRef={{ current: null }}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('delete-message-menu-item'));
+    expect(onInitiateDelete).toHaveBeenCalledTimes(1);
+    expect(onInitiateDelete).toHaveBeenCalledWith(msg);
+    expect(onToggleSelect).not.toHaveBeenCalled();
+    expect(setActiveDeleteMenu).toHaveBeenCalledWith(null);
+  });
+
+  it('TOUCH: clicking Delete in three-dot menu still enters select mode footer via handleToggleSelectMessage', () => {
+    mockPointer(false);
+    const onToggleSelect = vi.fn();
+    const onInitiateDelete = vi.fn();
+
+    const msg: Message = {
+      id: 'm-del-touch-1',
+      userId: 'user-1',
+      username: 'Harsh',
+      text: 'Hello mobile',
+      type: 'text',
+      timestamp: new Date().toISOString(),
+    };
+
+    render(
+      <MessageActionMenuPortal
+        msg={msg}
+        currentUserId="user-1"
+        canEdit={true}
+        menuPos={{ top: 100, left: 100 }}
+        setActiveDeleteMenu={vi.fn()}
+        handleSetReply={vi.fn()}
+        handleToggleSelectMessage={onToggleSelect}
+        onInitiateDelete={onInitiateDelete}
+        handleCopy={vi.fn()}
+        handleOpenReport={vi.fn()}
+        handleStartEdit={vi.fn()}
+        deleteMenuRef={{ current: null }}
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('delete-message-menu-item'));
+    expect(onToggleSelect).toHaveBeenCalledTimes(1);
+    expect(onToggleSelect).toHaveBeenCalledWith('m-del-touch-1');
+    expect(onInitiateDelete).not.toHaveBeenCalled();
+  });
+
+  it('DeleteConfirmModal closes on Escape without propagating Escape to underlying MediaGalleryModal', () => {
+    const onCancelDelete = vi.fn();
+    const onCloseGallery = vi.fn();
+
+    const photoItem: Message = {
+      id: 'm-photo-esc',
+      userId: 'user-1',
+      username: 'Harsh',
+      timestamp: new Date().toISOString(),
+      type: 'image',
+      url: 'https://example.com/photo.jpg',
+    };
+
+    render(
+      <>
+        <MediaGalleryModal
+          isOpen={true}
+          items={[photoItem]}
+          initialIndex={0}
+          onClose={onCloseGallery}
+          currentUserId="user-1"
+        />
+        <DeleteConfirmModal
+          isOpen={true}
+          selectedCount={1}
+          canDeleteForEveryone={true}
+          onCancel={onCancelDelete}
+          onDeleteForMe={vi.fn()}
+          onDeleteForEveryone={vi.fn()}
+        />
+      </>
+    );
+
+    expect(screen.getByText('Delete 1 message?')).toBeDefined();
+    expect(screen.getByText('Delete for everyone')).toBeDefined();
+    expect(screen.getByText('Delete for me')).toBeDefined();
+    expect(screen.getByText('Cancel')).toBeDefined();
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onCancelDelete).toHaveBeenCalledTimes(1);
+    expect(onCloseGallery).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsafe URL schemes (e.g. javascript:) in copyImageToClipboard without fetching or writing to clipboard', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const writeTextMock = vi.fn();
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: writeTextMock },
+      configurable: true,
+      writable: true,
+    });
+
+    const onToast = vi.fn();
+    const ok = await copyImageToClipboard('javascript:alert(1)', onToast);
+    expect(ok).toBe(false);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(writeTextMock).not.toHaveBeenCalled();
+    expect(onToast).toHaveBeenCalledWith('Failed to copy image');
   });
 });

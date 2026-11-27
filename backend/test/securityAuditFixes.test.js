@@ -1,5 +1,6 @@
 const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
+const crypto = require('node:crypto');
 const mongoose = require('mongoose');
 
 const { isAllowedDownloadHost, isTrustedMediaUrl, generateSessionToken, hashSessionToken, hashPassword, hashPasswordAsync, verifyPasswordAsync } = require('../security');
@@ -1065,20 +1066,31 @@ describe('Security Audit Regression Tests', () => {
       const http = require('http');
       const cloudinary = require('cloudinary').v2;
       const createMediaRouter = require('../routes/media');
-      const { getRoomState, registerRoomSessionToken, revokeRoomSessionToken } = require('../state');
+      const { getRoomState } = require('../state');
 
       const mediaRouter = createMediaRouter(null, { broadcastToAdmins: () => {} });
       const app = express();
       app.use(express.json());
       app.use('/', mediaRouter);
 
-      const stateMe = getRoomState('me');
-      const tokU1 = 'tok_u1_' + crypto.randomBytes(8).toString('hex');
-      const tokU2 = 'tok_u2_' + crypto.randomBytes(8).toString('hex');
-      registerRoomSessionToken('me', 'u1_owner', tokU1);
-      registerRoomSessionToken('me', 'u2_other', tokU2);
-      stateMe.onlineUsers.set('u1_owner', { userId: 'u1_owner', username: 'Owner' });
-      stateMe.onlineUsers.set('u2_other', { userId: 'u2_other', username: 'Other' });
+      const roomId = 'global';
+      const stateGlobal = getRoomState(roomId);
+      const tokU1 = generateSessionToken('u1_owner', roomId);
+      const tokU2 = generateSessionToken('u2_other', roomId);
+      stateGlobal.loggedInUsers.set('u1_owner', {
+        userId: 'u1_owner',
+        username: 'Owner',
+        sessionToken: tokU1,
+        sessionTokenHash: hashSessionToken(tokU1),
+      });
+      stateGlobal.loggedInUsers.set('u2_other', {
+        userId: 'u2_other',
+        username: 'Other',
+        sessionToken: tokU2,
+        sessionTokenHash: hashSessionToken(tokU2),
+      });
+      stateGlobal.onlineUsers.set('u1_owner', { userId: 'u1_owner', username: 'Owner' });
+      stateGlobal.onlineUsers.set('u2_other', { userId: 'u2_other', username: 'Other' });
 
       const origDestroy = cloudinary.uploader.destroy;
       const destroyedIds = [];
@@ -1100,7 +1112,7 @@ describe('Security Audit Regression Tests', () => {
           originalName: 'secret.png',
           mimetype: 'image/png',
           size: 4096,
-          roomId: 'me',
+          roomId,
           userId: 'u1_owner',
           scopeHash: 'test_scope',
           createdAt: Date.now(),
@@ -1111,11 +1123,11 @@ describe('Security Audit Regression Tests', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-room-id': 'me',
+            'x-room-id': roomId,
             'x-user-id': 'u2_other',
             'x-session-token': tokU2,
           },
-          body: JSON.stringify({ publicId: fakePublicId, roomId: 'me', userId: 'u2_other' }),
+          body: JSON.stringify({ publicId: fakePublicId, roomId, userId: 'u2_other' }),
         });
         assert.strictEqual(badCommit.status, 403);
         assert.strictEqual(mediaRouter._pendingPreUploads.has(fakePublicId), true);
@@ -1125,11 +1137,11 @@ describe('Security Audit Regression Tests', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-room-id': 'me',
+            'x-room-id': roomId,
             'x-user-id': 'u2_other',
             'x-session-token': tokU2,
           },
-          body: JSON.stringify({ publicIds: [fakePublicId], roomId: 'me', userId: 'u2_other' }),
+          body: JSON.stringify({ publicIds: [fakePublicId], roomId, userId: 'u2_other' }),
         });
         assert.strictEqual(badDiscard.status, 200);
         assert.strictEqual(destroyedIds.length, 0);
@@ -1140,11 +1152,11 @@ describe('Security Audit Regression Tests', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-room-id': 'me',
+            'x-room-id': roomId,
             'x-user-id': 'u1_owner',
             'x-session-token': tokU1,
           },
-          body: JSON.stringify({ uploadIds: ['pre_abc'], publicIds: [fakePublicId], roomId: 'me', userId: 'u1_owner' }),
+          body: JSON.stringify({ uploadIds: ['pre_abc'], publicIds: [fakePublicId], roomId, userId: 'u1_owner' }),
         });
         assert.strictEqual(ownerDiscard.status, 200);
         assert.deepStrictEqual(destroyedIds, [fakePublicId]);
@@ -1152,7 +1164,7 @@ describe('Security Audit Regression Tests', () => {
 
         // 4. Mid-flight race: owner sends ONLY uploadId without publicId -> reverse map still destroys Cloudinary asset
         const racePublicId = 'pulse_uploads/pre_race_asset_2';
-        const scopeHash = crypto.createHash('sha256').update('me:u1_owner:127.0.0.1').digest('hex').slice(0, 16);
+        const scopeHash = crypto.createHash('sha256').update(`${roomId}:u1_owner:127.0.0.1`).digest('hex').slice(0, 16);
         const raceDiscardKey = `${scopeHash}:pre_race_2`;
         mediaRouter._pendingPreUploads.set(racePublicId, {
           publicId: racePublicId,
@@ -1161,7 +1173,7 @@ describe('Security Audit Regression Tests', () => {
           originalName: 'clip.mp4',
           mimetype: 'video/mp4',
           size: 8192,
-          roomId: 'me',
+          roomId,
           userId: 'u1_owner',
           scopeHash,
           discardKey: raceDiscardKey,
@@ -1173,11 +1185,11 @@ describe('Security Audit Regression Tests', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-room-id': 'me',
+            'x-room-id': roomId,
             'x-user-id': 'u1_owner',
             'x-session-token': tokU1,
           },
-          body: JSON.stringify({ uploadIds: ['pre_race_2'], publicIds: [], roomId: 'me', userId: 'u1_owner' }),
+          body: JSON.stringify({ uploadIds: ['pre_race_2'], publicIds: [], roomId, userId: 'u1_owner' }),
         });
         assert.strictEqual(raceDiscard.status, 200);
         assert.strictEqual(destroyedIds.includes(racePublicId), true);
@@ -1185,10 +1197,10 @@ describe('Security Audit Regression Tests', () => {
         assert.strictEqual(mediaRouter._preUploadIdToPublicId.has(raceDiscardKey), false);
       } finally {
         cloudinary.uploader.destroy = origDestroy;
-        revokeRoomSessionToken('me', 'u1_owner', tokU1);
-        revokeRoomSessionToken('me', 'u2_other', tokU2);
-        stateMe.onlineUsers.delete('u1_owner');
-        stateMe.onlineUsers.delete('u2_other');
+        stateGlobal.loggedInUsers.delete('u1_owner');
+        stateGlobal.loggedInUsers.delete('u2_other');
+        stateGlobal.onlineUsers.delete('u1_owner');
+        stateGlobal.onlineUsers.delete('u2_other');
         await new Promise((resolve) => server.close(resolve));
       }
     });

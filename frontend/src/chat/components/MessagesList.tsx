@@ -209,6 +209,7 @@ export interface MessagesListProps {
   onVideoFullscreenEnter: (messageId: string) => void;
   onMediaLoadError?: (messageId: string, url?: string) => void;
   onShowToast?: (msg: string) => void;
+  onInitiateDelete?: (message: Message | Message[]) => void;
 }
 
 export const MessagesList = React.memo(function MessagesList({
@@ -253,6 +254,7 @@ export const MessagesList = React.memo(function MessagesList({
   onVideoFullscreenEnter,
   onMediaLoadError,
   onShowToast,
+  onInitiateDelete,
 }: MessagesListProps) {
   const pinnedMessageIdSet = useMemo(
     () =>
@@ -536,6 +538,7 @@ export const MessagesList = React.memo(function MessagesList({
                 quotedPreviewThumbUrl={resolvedQuotedThumbUrl}
                 onOpenQuotedMedia={handleOpenQuotedMedia}
                 onShowToast={onShowToast}
+                onInitiateDelete={onInitiateDelete}
               />
             </div>
           );
@@ -608,6 +611,7 @@ export const MessagesList = React.memo(function MessagesList({
               quotedPreviewThumbUrl={resolvedQuotedThumbUrl}
               onOpenQuotedMedia={handleOpenQuotedMedia}
               onShowToast={onShowToast}
+              onInitiateDelete={onInitiateDelete}
             />
           </div>
         );

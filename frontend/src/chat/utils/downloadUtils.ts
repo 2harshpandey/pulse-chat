@@ -8,6 +8,7 @@ import {
   ALLOWED_DOWNLOAD_HOSTS,
   getStoredValue,
   isGiphyUrl,
+  isGifUrl,
   resolveApiBaseUrl,
   sanitizeFilename,
   sanitizeMediaUrl,
@@ -332,10 +333,12 @@ export const downloadAlbumAsZip = async (
  */
 export async function copyImageToClipboard(
   imageUrl: string,
-  onToast?: (msg: string) => void
+  onToast?: (msg: string) => void,
+  options?: { isGif?: boolean }
 ): Promise<boolean> {
   if (!imageUrl || typeof window === 'undefined') return false;
-  const safeUrl = sanitizeMediaUrl(imageUrl) || imageUrl;
+  const safeUrl = sanitizeMediaUrl(imageUrl);
+  let isGif = Boolean(options?.isGif) || isGifUrl(safeUrl || imageUrl);
 
   const notify = (msg: string) => {
     if (onToast) {
@@ -345,11 +348,19 @@ export async function copyImageToClipboard(
     }
   };
 
+  if (!safeUrl) {
+    notify(isGif ? 'Failed to copy GIF' : 'Failed to copy image');
+    return false;
+  }
+
   if (typeof navigator !== 'undefined' && navigator.clipboard?.write && window.isSecureContext && typeof ClipboardItem !== 'undefined') {
     try {
       const res = await fetch(safeUrl, { mode: 'cors' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const rawBlob = await res.blob();
+      if (rawBlob.type === 'image/gif') {
+        isGif = true;
+      }
 
       let pngBlob: Blob;
       if (rawBlob.type === 'image/png') {
@@ -391,7 +402,7 @@ export async function copyImageToClipboard(
       await navigator.clipboard.write([
         new ClipboardItem({ 'image/png': pngBlob }),
       ]);
-      notify('Image copied to clipboard');
+      notify(isGif ? 'GIF copied to clipboard' : 'Image copied to clipboard');
       return true;
     } catch (err) {
       console.warn('[copyImageToClipboard] Direct blob copy failed, falling back:', err);
@@ -401,13 +412,13 @@ export async function copyImageToClipboard(
   try {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(safeUrl);
-      notify('Image link copied to clipboard');
+      notify(isGif ? 'GIF link copied to clipboard' : 'Image link copied to clipboard');
       return true;
     }
   } catch (err) {
     console.error('[copyImageToClipboard] All clipboard copy strategies failed:', err);
   }
 
-  notify('Failed to copy image');
+  notify(isGif ? 'Failed to copy GIF' : 'Failed to copy image');
   return false;
 }

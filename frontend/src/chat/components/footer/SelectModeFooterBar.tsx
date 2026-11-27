@@ -2,6 +2,7 @@ import React from 'react';
 import type { Message } from '../../types';
 import {
   isPhotoOrGif,
+  isGifMessage,
   hasMediaAttachment,
   isNonTouchDevice,
   copyImageToClipboard,
@@ -75,6 +76,7 @@ export const SelectModeFooterBar: React.FC<SelectModeFooterBarProps> = ({
     if (!isMobileView && isNonTouchDevice()) return null;
 
     const isPhotoGif = isPhotoOrGif(selectedMessage);
+    const isGif = isGifMessage(selectedMessage);
     const hasCaption = Boolean(selectedMessage.text?.trim());
     const hasMedia = hasMediaAttachment(selectedMessage);
 
@@ -96,7 +98,7 @@ export const SelectModeFooterBar: React.FC<SelectModeFooterBarProps> = ({
       }
 
       if (isPhotoGifWithoutCaption && selectedMessage.url) {
-        await copyImageToClipboard(selectedMessage.url);
+        await copyImageToClipboard(selectedMessage.url, undefined, { isGif });
         onCancelSelectMode();
         return;
       }
@@ -122,7 +124,7 @@ export const SelectModeFooterBar: React.FC<SelectModeFooterBarProps> = ({
       e.preventDefault();
       setIsCopyMenuOpen(false);
       if (selectedMessage.url) {
-        await copyImageToClipboard(selectedMessage.url);
+        await copyImageToClipboard(selectedMessage.url, undefined, { isGif });
       }
       onCancelSelectMode();
     };
@@ -144,10 +146,11 @@ export const SelectModeFooterBar: React.FC<SelectModeFooterBarProps> = ({
       onCancelSelectMode();
     };
 
+    const copyMediaLabel = isGif ? 'Copy GIF' : 'Copy image';
     const copyLabel = isPhotoGifWithCaption
       ? 'Copy options'
       : isPhotoGifWithoutCaption
-      ? 'Copy image'
+      ? copyMediaLabel
       : isOtherMediaWithCaption
       ? 'Copy caption'
       : 'Copy';
@@ -191,7 +194,7 @@ export const SelectModeFooterBar: React.FC<SelectModeFooterBarProps> = ({
                 <circle cx="8.5" cy="8.5" r="1.5" />
                 <polyline points="21 15 16 10 5 21" />
               </svg>
-              <span>Copy image</span>
+              <span>{copyMediaLabel}</span>
             </CopyOptionItem>
             <CopyOptionDivider />
             <CopyOptionItem

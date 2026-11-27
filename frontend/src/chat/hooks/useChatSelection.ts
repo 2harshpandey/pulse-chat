@@ -126,42 +126,41 @@ export function useChatSelection({
     document.body.classList.remove('hide-mobile-picker');
   }, [overlayGuardPushed]);
 
+  const computeCanDeleteForEveryone = useCallback(
+    (targetMessages: Message[]): boolean => {
+      if (targetMessages.length === 0) return false;
+      const allAuthoredByCurrentUser = targetMessages.every((msg) => msg.userId === userId);
+      if (!allAuthoredByCurrentUser) return false;
+
+      const timeLimit = 15 * 60 * 1000;
+      const now = Date.now();
+      const allMessagesAreRecent = targetMessages.every(
+        (msg) => now - new Date(msg.timestamp || (msg as any).createdAt || 0).getTime() < timeLimit
+      );
+      const noneAlreadyDeleted = targetMessages.every((msg) => !msg.isDeleted);
+      return allMessagesAreRecent && noneAlreadyDeleted;
+    },
+    [userId]
+  );
+
   const handleInitiateDelete = useCallback(() => {
     if (selectedMessages.length === 0) return;
     const selectedMessageObjects = messages.filter((m) => selectedMessages.includes(m.id));
-    const allAuthoredByCurrentUser = selectedMessageObjects.every((msg) => msg.userId === userId);
-
-    if (!allAuthoredByCurrentUser) {
-      setCanDeleteForEveryone(false);
-    } else {
-      const timeLimit = 15 * 60 * 1000;
-      const now = new Date().getTime();
-      const allMessagesAreRecent = selectedMessageObjects.every(
-        (msg) => now - new Date(msg.timestamp).getTime() < timeLimit
-      );
-      const noneAlreadyDeleted = selectedMessageObjects.every((msg) => !msg.isDeleted);
-      setCanDeleteForEveryone(allMessagesAreRecent && noneAlreadyDeleted);
-    }
+    setCanDeleteForEveryone(computeCanDeleteForEveryone(selectedMessageObjects));
     setIsDeleteConfirmationVisible(true);
-  }, [messages, selectedMessages, userId]);
+  }, [computeCanDeleteForEveryone, messages, selectedMessages]);
 
   const handleInitiateDeleteForMessage = useCallback(
-    (message: Message) => {
-      if (!message || !message.id) return;
-      setSelectedMessages([message.id]);
-      const isAuthoredByCurrentUser = message.userId === userId;
-      if (!isAuthoredByCurrentUser) {
-        setCanDeleteForEveryone(false);
-      } else {
-        const timeLimit = 15 * 60 * 1000;
-        const now = new Date().getTime();
-        const msgTime = new Date(message.timestamp || (message as any).createdAt || 0).getTime();
-        const isRecent = now - msgTime < timeLimit;
-        setCanDeleteForEveryone(isRecent && !message.isDeleted);
-      }
+    (messageOrMessages: Message | Message[]) => {
+      const targets = (Array.isArray(messageOrMessages) ? messageOrMessages : [messageOrMessages]).filter(
+        (m): m is Message => Boolean(m && m.id)
+      );
+      if (targets.length === 0) return;
+      setSelectedMessages(targets.map((m) => m.id));
+      setCanDeleteForEveryone(computeCanDeleteForEveryone(targets));
       setIsDeleteConfirmationVisible(true);
     },
-    [userId]
+    [computeCanDeleteForEveryone]
   );
 
   const handleBulkDeleteForMe = useCallback(() => {

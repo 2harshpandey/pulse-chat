@@ -192,6 +192,9 @@ export function useChatOverlayGuard({
 
       if (curDel) {
         setIsDeleteConfirmationVisible(false);
+        if (!curSelect) {
+          setSelectedMessages([]);
+        }
       } else if (curRep) {
         setIsReportModalVisible(false);
         setReportError('');

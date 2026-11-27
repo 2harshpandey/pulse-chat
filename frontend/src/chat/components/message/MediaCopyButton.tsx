@@ -1,26 +1,30 @@
 import React, { useState } from 'react';
 import { MediaDownloadOverlayBtn } from '../../ChatStyledComponents';
-import { copyImageToClipboard } from '../../utils';
+import { copyImageToClipboard, isGifUrl } from '../../utils';
 
 export interface MediaCopyButtonProps {
   url?: string;
+  isGif?: boolean;
   style?: React.CSSProperties;
   className?: string;
 }
 
 export const MediaCopyButton: React.FC<MediaCopyButtonProps> = ({
   url,
+  isGif,
   style,
   className,
 }) => {
   const [copied, setCopied] = useState(false);
 
   if (!url) return null;
+  const resolvedIsGif = Boolean(isGif) || isGifUrl(url);
+  const label = resolvedIsGif ? 'Copy GIF' : 'Copy image';
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    const success = await copyImageToClipboard(url);
+    const success = await copyImageToClipboard(url, undefined, { isGif: resolvedIsGif });
     if (success) {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
@@ -30,8 +34,8 @@ export const MediaCopyButton: React.FC<MediaCopyButtonProps> = ({
   return (
     <MediaDownloadOverlayBtn
       type="button"
-      title="Copy image"
-      aria-label="Copy image"
+      title={label}
+      aria-label={label}
       data-testid="media-copy-overlay-btn"
       onClick={handleCopy}
       style={{
