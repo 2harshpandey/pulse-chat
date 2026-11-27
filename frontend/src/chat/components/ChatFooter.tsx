@@ -585,6 +585,8 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
             )}
 
             <input
+              id="chat-file-input"
+              name="chatFileInput"
               type="file"
               ref={fileInputRef}
               onClick={onNotifyNativeFilePickerOpen}
@@ -594,6 +596,8 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
               multiple
             />
             <input
+              id="chat-add-file-input"
+              name="chatAddFileInput"
               type="file"
               ref={addFileInputRef}
               onClick={onNotifyNativeFilePickerOpen}

@@ -1169,6 +1169,8 @@ export const VideoPlayer = ({
               </CVPIconBtn>
               <div className="cvp-volume-slider-panel">
                 <input
+                  id="video-player-volume"
+                  name="volume"
                   type="range"
                   className="cvp-vol-range"
                   min={0}

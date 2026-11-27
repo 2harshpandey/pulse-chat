@@ -340,19 +340,31 @@ export function MessagesTab({ admin }: MessagesTabProps) {
       <MessageFilterCollapse $open={showMessageFilters}>
         <FilterContainer>
           <Input
+            id="filter-message-id"
+            name="filterMessageId"
             type="text"
             placeholder="Filter by Message ID"
             value={filterMessageId}
             onChange={(e) => setFilterMessageId(e.target.value)}
+            aria-label="Filter by Message ID"
           />
           <Input
+            id="filter-user"
+            name="filterUser"
             type="text"
             placeholder="Filter by User"
             value={filterUser}
             onChange={(e) => setFilterUser(e.target.value)}
+            aria-label="Filter by User"
           />
           <SelectWrapper>
-            <Select value={filterEventType} onChange={(e) => setFilterEventType(e.target.value)}>
+            <Select
+              id="filter-event-type"
+              name="filterEventType"
+              value={filterEventType}
+              onChange={(e) => setFilterEventType(e.target.value)}
+              aria-label="Filter by Event Type"
+            >
               <option value="All">All Events</option>
               <option value="Create">Create</option>
               <option value="Edit">Edit</option>
@@ -367,10 +379,13 @@ export function MessagesTab({ admin }: MessagesTabProps) {
             </Select>
           </SelectWrapper>
           <Input
+            id="filter-content"
+            name="filterContent"
             type="text"
             placeholder="Filter by Content"
             value={filterContent}
             onChange={(e) => setFilterContent(e.target.value)}
+            aria-label="Filter by Content"
           />
           {activeFiltersCount > 0 && (
             <FilterFooterRow>
@@ -407,9 +422,12 @@ export function MessagesTab({ admin }: MessagesTabProps) {
               <tr>
                 <StickyTh style={{ width: '40px', textAlign: 'center' }}>
                   <input
+                    id="select-all-messages"
+                    name="selectAllMessages"
                     type="checkbox"
                     checked={uniqueValidMessageIds.size > 0 && selectedMessages.size === uniqueValidMessageIds.size}
                     onChange={handleSelectAll}
+                    aria-label="Select all messages"
                   />
                 </StickyTh>
                 <StickyTh>Date</StickyTh>
@@ -438,9 +456,12 @@ export function MessagesTab({ admin }: MessagesTabProps) {
                       <NoWrapTd style={{ textAlign: 'center' }}>
                         {isSelectable && (
                           <input
+                            id={`select-message-${msgId}`}
+                            name={`selectMessage_${msgId}`}
                             type="checkbox"
                             checked={selectedMessages.has(msgId)}
                             onChange={(e) => handleSelectMessage(msgId, e.target.checked)}
+                            aria-label={`Select message ${msgId}`}
                           />
                         )}
                       </NoWrapTd>

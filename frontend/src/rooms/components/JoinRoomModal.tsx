@@ -55,8 +55,10 @@ export const JoinRoomModal: React.FC<JoinRoomModalProps> = ({
         </h2>
         <form onSubmit={onSubmit} onKeyDown={onKeyDown}>
           <FormGroup>
-            <Label>Room ID</Label>
+            <Label htmlFor="join-room-id">Room ID</Label>
             <Input
+              id="join-room-id"
+              name="roomId"
               type="text"
               value={joinRoomId}
               onChange={e => {
@@ -80,24 +82,30 @@ export const JoinRoomModal: React.FC<JoinRoomModalProps> = ({
           </FormGroup>
 
           <FormGroup>
-            <Label>Username</Label>
+            <Label htmlFor="join-room-username">Username</Label>
             <Input
+              id="join-room-username"
+              name="username"
               type="text"
               value={joinUsername}
               onChange={e => setJoinUsername(e.target.value)}
               placeholder="Enter your username"
+              autoComplete="username"
               maxLength={30}
             />
           </FormGroup>
 
           <FormGroup>
-            <Label>Password (if any)</Label>
+            <Label htmlFor="join-room-password">Password (if any)</Label>
             <InputWrapper>
               <Input
+                id="join-room-password"
+                name="password"
                 type={showJoinModalPw ? "text" : "password"}
                 value={joinPasswordInput}
                 onChange={e => setJoinPasswordInput(e.target.value)}
                 placeholder="Enter password if required"
+                autoComplete="current-password"
                 style={{ paddingRight: '2.5rem' }}
               />
               <PasswordToggle type="button" onClick={() => setShowJoinModalPw(!showJoinModalPw)} aria-label="Toggle password visibility">

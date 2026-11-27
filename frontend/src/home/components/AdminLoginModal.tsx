@@ -54,11 +54,14 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
         </h2>
         <form onSubmit={onSubmit}>
           <FormGroup>
-            <Label>Room ID</Label>
+            <Label htmlFor="admin-login-room-id">Room ID</Label>
             <Input
+              id="admin-login-room-id"
+              name="roomId"
               type="text"
               placeholder="e.g. dev_lounge, global, or full link"
               value={adminRoomId}
+              autoComplete="username"
               onChange={(e) => {
                 const val = e.target.value;
                 if (val.includes('/') || val.includes(':')) {
@@ -86,11 +89,14 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
             />
           </FormGroup>
           <FormGroup>
-            <Label>Admin Password</Label>
+            <Label htmlFor="admin-login-password">Admin Password</Label>
             <InputWrapper>
               <Input
+                id="admin-login-password"
+                name="adminPassword"
                 ref={passwordInputRef as any}
                 type={isPasswordVisible ? 'text' : 'password'}
+                autoComplete="current-password"
                 placeholder="Enter admin password"
                 value={adminPassword}
                 onChange={(e) => {

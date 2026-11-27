@@ -58,8 +58,9 @@ export function AdminModals({
             <ModalHeader>Choose how long your pin lasts</ModalHeader>
             <ModalBody>You can unpin at any time.</ModalBody>
             <RadioGroup>
-              <RadioLabel>
+              <RadioLabel htmlFor="pin-duration-24h">
                 <input
+                  id="pin-duration-24h"
                   type="radio"
                   name="pinDuration"
                   checked={pinDuration === 24 * 60 * 60 * 1000}
@@ -67,8 +68,9 @@ export function AdminModals({
                 />
                 <span>24 hours</span>
               </RadioLabel>
-              <RadioLabel>
+              <RadioLabel htmlFor="pin-duration-7d">
                 <input
+                  id="pin-duration-7d"
                   type="radio"
                   name="pinDuration"
                   checked={pinDuration === 7 * 24 * 60 * 60 * 1000}
@@ -76,8 +78,9 @@ export function AdminModals({
                 />
                 <span>7 days</span>
               </RadioLabel>
-              <RadioLabel>
+              <RadioLabel htmlFor="pin-duration-30d">
                 <input
+                  id="pin-duration-30d"
                   type="radio"
                   name="pinDuration"
                   checked={pinDuration === 30 * 24 * 60 * 60 * 1000}
@@ -85,8 +88,9 @@ export function AdminModals({
                 />
                 <span>30 days</span>
               </RadioLabel>
-              <RadioLabel>
+              <RadioLabel htmlFor="pin-duration-forever">
                 <input
+                  id="pin-duration-forever"
                   type="radio"
                   name="pinDuration"
                   checked={pinDuration === null}
@@ -131,8 +135,9 @@ export function AdminModals({
                 Choose how you want to handle the selected messages:
               </p>
               <RadioGroup>
-                <RadioLabel>
+                <RadioLabel htmlFor="bulk-delete-action-hide">
                   <input
+                    id="bulk-delete-action-hide"
                     type="radio"
                     name="bulkDeleteAction"
                     value="hide"
@@ -146,8 +151,9 @@ export function AdminModals({
                     </p>
                   </div>
                 </RadioLabel>
-                <RadioLabel>
+                <RadioLabel htmlFor="bulk-delete-action-delete">
                   <input
+                    id="bulk-delete-action-delete"
                     type="radio"
                     name="bulkDeleteAction"
                     value="delete"
@@ -173,8 +179,10 @@ export function AdminModals({
                     borderRadius: '8px',
                   }}
                 >
-                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer' }}>
+                  <label htmlFor="bulk-delete-vanish" style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer' }}>
                     <input
+                      id="bulk-delete-vanish"
+                      name="bulkDeleteVanish"
                       type="checkbox"
                       checked={bulkDeleteVanish}
                       onChange={(e) => setBulkDeleteVanish(e.target.checked)}

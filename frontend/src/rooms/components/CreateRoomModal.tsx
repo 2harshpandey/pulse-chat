@@ -75,10 +75,12 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
         <form onSubmit={onSubmit} onKeyDown={onKeyDown}>
           <FormGroup>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <Label style={{ margin: 0 }}>Room Name</Label>
+              <Label htmlFor="create-room-name" style={{ margin: 0 }}>Room Name</Label>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{roomName.length}/50</span>
             </div>
             <Input
+              id="create-room-name"
+              name="roomName"
               type="text"
               value={roomName}
               onChange={e => setRoomName(e.target.value)}
@@ -90,10 +92,12 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
 
           <FormGroup>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <Label style={{ margin: 0 }}>Description (Optional)</Label>
+              <Label htmlFor="create-room-desc" style={{ margin: 0 }}>Description (Optional)</Label>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{description.length}/150</span>
             </div>
             <Input
+              id="create-room-desc"
+              name="roomDescription"
               as="textarea"
               value={description}
               onChange={e => setDescription(e.target.value)}
@@ -105,11 +109,13 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
 
           <FormGroup>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-              <Label style={{ margin: 0 }}>Room ID</Label>
+              <Label htmlFor="create-room-custom-id" style={{ margin: 0 }}>Room ID</Label>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{customId.length}/30</span>
             </div>
             <InputWrapper>
               <Input
+                id="create-room-custom-id"
+                name="customId"
                 type="text"
                 value={customId}
                 onChange={e => setCustomId(e.target.value.replace(/[^a-zA-Z0-9._]/g, ''))}
@@ -143,8 +149,10 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
           </FormGroup>
 
           <FormGroup>
-            <CheckboxLabel>
+            <CheckboxLabel htmlFor="create-room-is-private">
               <input
+                id="create-room-is-private"
+                name="isPrivate"
                 type="checkbox"
                 checked={isPrivate}
                 onChange={e => setIsPrivate(e.target.checked)}
@@ -156,13 +164,16 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
 
           {isPrivate && (
             <FormGroup>
-              <Label>Join Password (Optional)</Label>
+              <Label htmlFor="create-room-join-pw">Join Password (Optional)</Label>
               <InputWrapper>
                 <Input
+                  id="create-room-join-pw"
+                  name="joinPassword"
                   type={showJoinPassword ? "text" : "password"}
                   value={joinPassword}
                   onChange={e => setJoinPassword(e.target.value)}
                   placeholder="Enter password for users to join"
+                  autoComplete="new-password"
                   style={{ paddingRight: '2.5rem' }}
                 />
                 <PasswordToggle type="button" onClick={() => setShowJoinPassword(!showJoinPassword)} aria-label="Toggle password visibility">
@@ -178,13 +189,16 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
           )}
 
           <FormGroup>
-            <Label>Admin Password</Label>
+            <Label htmlFor="create-room-admin-pw">Admin Password</Label>
             <InputWrapper>
               <Input
+                id="create-room-admin-pw"
+                name="adminPassword"
                 type={showAdminPassword ? "text" : "password"}
                 value={adminPassword}
                 onChange={e => setAdminPassword(e.target.value)}
                 placeholder="Password for room moderation"
+                autoComplete="new-password"
                 style={{ paddingRight: '2.5rem' }}
               />
               <PasswordToggle type="button" onClick={() => setShowAdminPassword(!showAdminPassword)} aria-label="Toggle password visibility">

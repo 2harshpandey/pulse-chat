@@ -102,6 +102,7 @@ function PasswordField({
       <SettingsPasswordWrapper>
         <SettingsInput
           id={id}
+          name={id}
           type={visible ? 'text' : 'password'}
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -228,6 +229,7 @@ export function RoomSettingsTab({ admin }: RoomSettingsTabProps) {
               </SettingsLabelRow>
               <SettingsInput
                 id="room-settings-name"
+                name="roomName"
                 type="text"
                 value={roomSettingsName}
                 onChange={(e) => {
@@ -249,6 +251,7 @@ export function RoomSettingsTab({ admin }: RoomSettingsTabProps) {
               </SettingsLabelRow>
               <SettingsTextArea
                 id="room-settings-desc"
+                name="roomDescription"
                 rows={3}
                 value={roomSettingsDesc}
                 onChange={(e) => {
@@ -368,6 +371,7 @@ export function RoomSettingsTab({ admin }: RoomSettingsTabProps) {
               </SettingsLabelRow>
               <SettingsInput
                 id="room-settings-custom-id"
+                name="roomCustomId"
                 type="text"
                 value={roomSettingsNewId}
                 onChange={(e) => {
