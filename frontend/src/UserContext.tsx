@@ -1,6 +1,6 @@
 import React, { createContext, useState, ReactNode } from 'react';
 import { clearCachedMediaForUser } from './mediaCache';
-import { getCookie, setCookie, deleteCookie, removeSessionToken } from './chat/utils';
+import { getCookie, setCookie, deleteCookie, removeSessionToken, hasAnyRoomSessionToken, setUserIdForRoom } from './chat/utils';
 import { clearSavedPWALocation } from './pwaLocation';
 
 export type PresenceActivity =
@@ -64,13 +64,17 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const login = (userProfile: UserProfile) => {
     try {
-      localStorage.setItem('pulseUserId', userProfile.userId);
+      setUserIdForRoom(userProfile.userId, userProfile.roomId);
       localStorage.setItem('pulseUsername', userProfile.username);
       if (userProfile.roomId) {
+        localStorage.setItem(`pulseUsername_${userProfile.roomId}`, userProfile.username);
+        const lowerRoom = userProfile.roomId.toLowerCase();
+        if (lowerRoom !== userProfile.roomId) {
+          localStorage.setItem(`pulseUsername_${lowerRoom}`, userProfile.username);
+        }
         localStorage.setItem('pulseRoomId', userProfile.roomId);
       }
       // Issue 14: 30-day cookies with SameSite=Strict (set in setCookie helper)
-      setCookie('pulseUserId', userProfile.userId, 30);
       setCookie('pulseUsername', userProfile.username, 30);
       if (userProfile.roomId) {
         setCookie('pulseRoomId', userProfile.roomId, 30);
@@ -82,13 +86,13 @@ export const UserProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const logout = (roomIdOverride?: string) => {
     const userId = localStorage.getItem('pulseUserId') || getCookie('pulseUserId') || '';
     const currentRoomId = roomIdOverride || profile?.roomId || localStorage.getItem('pulseRoomId') || undefined;
-    if (userId) {
-      void clearCachedMediaForUser(userId);
-    }
     try {
+      removeSessionToken(currentRoomId);
+      if (userId && !hasAnyRoomSessionToken()) {
+        void clearCachedMediaForUser(userId);
+      }
       localStorage.removeItem('pulseUsername');
       localStorage.removeItem('pulseRoomId');
-      removeSessionToken(currentRoomId);
       sessionStorage.removeItem('chatCleared');
       deleteCookie('pulseUsername');
       deleteCookie('pulseRoomId');

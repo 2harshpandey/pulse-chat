@@ -6,7 +6,7 @@ import { NEWER_LOAD_TRIGGER_PX, MAX_MESSAGES_WINDOW } from '../constants';
 import { recordChatScroll } from '../chatScrollState';
 import { formatPageTitle, getRoomDisplayLabel, useDocumentTitle } from '../../pageTitle';
 import type { Message } from '../types';
-import { getUserId, resolveApiBaseUrl, downloadFile, findMessageElement, canEditMessage, setCookie } from '../utils';
+import { getUserIdForRoom, resolveApiBaseUrl, downloadFile, findMessageElement, canEditMessage, setCookie } from '../utils';
 import { isAudioMedia, isVideoMedia } from '../../shared/mediaTypes';
 import { albumDownloadManager } from '../albumDownloadManager';
 import {
@@ -38,7 +38,7 @@ export function useChatController({ isMe, isTempLink }: UseChatControllerProps =
   const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
-  const activeUserId = userContext?.profile?.userId || getUserId();
+  const activeUserId = userContext?.profile?.userId || getUserIdForRoom(roomId);
   const userIdRef = useRef<string>(activeUserId);
   userIdRef.current = activeUserId;
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -282,7 +282,7 @@ export function useChatController({ isMe, isTempLink }: UseChatControllerProps =
     roomId,
     tempToken,
     userProfile: userContext?.profile,
-    logout: () => userContext?.logout(),
+    logout: () => userContext?.logout(roomId),
     overlayGuardPushed,
     playNotificationSound: audio.playNotificationSound,
     setMessages: msgs.setMessages,

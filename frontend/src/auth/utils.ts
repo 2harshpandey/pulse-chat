@@ -19,7 +19,7 @@ export const deleteCookie = (name: string): void => {
   document.cookie = `${encodeURIComponent(name)}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Strict${isHttps ? '; Secure' : ''}`;
 };
 
-const getSignedTokenRoomId = (token: string): string | null => {
+const parseSignedTokenPayload = (token: string): Record<string, any> | null => {
   if (!token || !token.startsWith('pls.')) return null;
   try {
     const parts = token.split('.');
@@ -27,10 +27,20 @@ const getSignedTokenRoomId = (token: string): string | null => {
     const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
     const pad = base64.length % 4 === 0 ? '' : '='.repeat(4 - (base64.length % 4));
     const parsed = JSON.parse(atob(base64 + pad));
-    return typeof parsed?.roomId === 'string' ? parsed.roomId : null;
+    return parsed && typeof parsed === 'object' ? parsed : null;
   } catch {
     return null;
   }
+};
+
+const getSignedTokenRoomId = (token: string): string | null => {
+  const parsed = parseSignedTokenPayload(token);
+  return typeof parsed?.roomId === 'string' ? parsed.roomId : null;
+};
+
+export const getSignedTokenUserId = (token: string): string | null => {
+  const parsed = parseSignedTokenPayload(token);
+  return typeof parsed?.userId === 'string' ? parsed.userId : null;
 };
 
 const isTokenValidForRoom = (token: string, roomId: string): boolean => {
@@ -150,6 +160,39 @@ export const removeSessionToken = (roomId?: string): void => {
   } catch (_) {}
 };
 
+export const hasAnyRoomSessionToken = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  try {
+    if (localStorage.getItem('pulseSessionToken') || sessionStorage.getItem('pulseSessionToken')) {
+      return true;
+    }
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('pulseSessionToken_') && localStorage.getItem(k)) return true;
+    }
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const k = sessionStorage.key(i);
+      if (k && k.startsWith('pulseSessionToken_') && sessionStorage.getItem(k)) return true;
+    }
+  } catch (_) {}
+  return false;
+};
+
+export const setUserIdForRoom = (userId: string, roomId?: string): void => {
+  if (typeof window === 'undefined' || !userId) return;
+  try {
+    localStorage.setItem('pulseUserId', userId);
+    setCookie('pulseUserId', userId, 30);
+    if (roomId) {
+      localStorage.setItem(`pulseUserId_${roomId}`, userId);
+      const lowerRoom = roomId.toLowerCase();
+      if (lowerRoom !== roomId) {
+        localStorage.setItem(`pulseUserId_${lowerRoom}`, userId);
+      }
+    }
+  } catch (_) {}
+};
+
 export const getUserId = (): string => {
   let userId: string | null = null;
   if (typeof window !== 'undefined') {
@@ -174,6 +217,49 @@ export const getUserId = (): string => {
     } catch (_) {}
   }
   return userId;
+};
+
+export const getUserIdForRoom = (roomId?: string): string => {
+  if (typeof window !== 'undefined' && roomId) {
+    try {
+      const token = getSessionToken(roomId);
+      const tokenUserId = token ? getSignedTokenUserId(token) : null;
+      if (tokenUserId) return tokenUserId;
+
+      const lowerRoom = roomId.toLowerCase();
+      const storedRoomUserId =
+        localStorage.getItem(`pulseUserId_${roomId}`) ||
+        (lowerRoom !== roomId ? localStorage.getItem(`pulseUserId_${lowerRoom}`) : null);
+      if (storedRoomUserId) return storedRoomUserId;
+    } catch (_) {}
+  }
+  return getUserId();
+};
+
+export const getStoredRoomProfile = (
+  roomId?: string
+): { userId: string; username: string; roomId: string } | null => {
+  if (typeof window === 'undefined' || !roomId) return null;
+  try {
+    const token = getSessionToken(roomId);
+    if (!token) return null;
+
+    const lowerRoom = roomId.toLowerCase();
+    const username =
+      localStorage.getItem(`pulseUsername_${roomId}`) ||
+      (lowerRoom !== roomId ? localStorage.getItem(`pulseUsername_${lowerRoom}`) : null) ||
+      localStorage.getItem('pulseUsername') ||
+      getCookie('pulseUsername');
+
+    if (!username) return null;
+
+    const userId = getUserIdForRoom(roomId);
+    if (!userId) return null;
+
+    return { userId, username, roomId };
+  } catch {
+    return null;
+  }
 };
 
 export const collectFingerprint = () => ({

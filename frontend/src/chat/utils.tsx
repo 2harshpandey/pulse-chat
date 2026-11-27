@@ -7,7 +7,12 @@ export {
   getSessionToken,
   setSessionToken,
   removeSessionToken,
+  hasAnyRoomSessionToken,
+  getSignedTokenUserId,
+  setUserIdForRoom,
   getUserId,
+  getUserIdForRoom,
+  getStoredRoomProfile,
 } from '../auth/utils';
 
 export * from './utils/urlMediaUtils';

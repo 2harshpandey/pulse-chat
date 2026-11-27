@@ -3,8 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { UserProfile } from '../../UserContext';
 import { useTheme } from '../../ThemeContext';
 import { resolveApiBaseUrl } from '../../chat/utils';
-import { getUserId, setCookie, collectFingerprint, setSessionToken } from '../AuthStyledComponents';
-import { getSessionToken } from '../utils';
+import { collectFingerprint, setSessionToken } from '../AuthStyledComponents';
+import { getSessionToken, getUserIdForRoom, setUserIdForRoom } from '../utils';
 
 interface UseAuthControllerProps {
   onAuthSuccess: (profile: UserProfile) => void;
@@ -157,7 +157,7 @@ export const useAuthController = ({
       if (isTempLink) {
         let token = new URLSearchParams(window.location.search).get('token') || tempToken || '';
         token = token.trim();
-        const submittingUserId = getUserId();
+        const submittingUserId = getUserIdForRoom(roomId);
         const resp = await fetch(`${apiBase}/api/auth/verify-temp`, {
           method: 'POST',
           headers: authHeaders,
@@ -171,10 +171,12 @@ export const useAuthController = ({
           }
           localStorage.setItem('pulseUsername', username.trim());
           localStorage.setItem(`pulseUsername_${verifiedRoomId}`, username.trim());
+          if (verifiedRoomId.toLowerCase() !== verifiedRoomId) {
+            localStorage.setItem(`pulseUsername_${verifiedRoomId.toLowerCase()}`, username.trim());
+          }
           localStorage.setItem('pulseRoomId', verifiedRoomId);
           const verifiedUserId = data.userId || submittingUserId;
-          localStorage.setItem('pulseUserId', verifiedUserId);
-          setCookie('pulseUserId', verifiedUserId, 30);
+          setUserIdForRoom(verifiedUserId, verifiedRoomId);
           try {
             sessionStorage.setItem(`pulseVerifiedTemp_${token}`, verifiedRoomId);
           } catch (_) {}
@@ -191,7 +193,7 @@ export const useAuthController = ({
           }
         }
       } else {
-        const submittingUserId = getUserId();
+        const submittingUserId = getUserIdForRoom(roomId);
         const resp = await fetch(`${apiBase}/api/auth/verify`, {
           method: 'POST',
           headers: authHeaders,
@@ -205,12 +207,14 @@ export const useAuthController = ({
           }
           localStorage.setItem('pulseUsername', username.trim());
           localStorage.setItem(`pulseUsername_${resolvedRoomId}`, username.trim());
+          if (resolvedRoomId && resolvedRoomId.toLowerCase() !== resolvedRoomId) {
+            localStorage.setItem(`pulseUsername_${resolvedRoomId.toLowerCase()}`, username.trim());
+          }
           if (resolvedRoomId) {
             localStorage.setItem('pulseRoomId', resolvedRoomId);
           }
           const verifiedUserId = data.userId || submittingUserId;
-          localStorage.setItem('pulseUserId', verifiedUserId);
-          setCookie('pulseUserId', verifiedUserId, 30);
+          setUserIdForRoom(verifiedUserId, resolvedRoomId);
           onAuthSuccess({ userId: verifiedUserId, username: username.trim(), roomId: resolvedRoomId });
         } else {
           const d = await resp.json().catch(() => ({}));

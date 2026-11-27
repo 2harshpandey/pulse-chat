@@ -4,7 +4,12 @@ import { useParams, useLocation } from 'react-router-dom';
 import Auth from './Auth';
 import { UserContext } from './UserContext';
 import { getInputDraftKey } from './chat/constants';
-import { clearOverlayGuardHistoryEntry } from './chat/utils';
+import {
+  clearOverlayGuardHistoryEntry,
+  getSessionToken,
+  getSignedTokenUserId,
+  getStoredRoomProfile,
+} from './chat/utils';
 import {
   DragDropOverlay,
   DragDropCard,
@@ -206,14 +211,48 @@ function Chat({ isMe, isTempLink }: ChatProps = {}) {
 
   const needsTempLinkAuth = Boolean(isTempLink && tempToken && !verifiedTempRoom);
   const needsAutoJoinReauth = Boolean(locationState?.autoJoin);
+  const roomSessionToken = roomId ? getSessionToken(roomId) : null;
 
-  if (!userContext?.profile || needsTempLinkAuth || needsAutoJoinReauth) {
+  const activeRoomProfile = React.useMemo(() => {
+    if (!roomId || needsTempLinkAuth || needsAutoJoinReauth || !roomSessionToken) {
+      return null;
+    }
+    const ctxProfile = userContext?.profile;
+    if (ctxProfile && (!ctxProfile.roomId || ctxProfile.roomId.toLowerCase() === roomId.toLowerCase())) {
+      const tokenUserId = getSignedTokenUserId(roomSessionToken);
+      return {
+        ...ctxProfile,
+        userId: tokenUserId || ctxProfile.userId,
+        roomId: ctxProfile.roomId || roomId,
+      };
+    }
+    return getStoredRoomProfile(roomId);
+  }, [roomId, needsTempLinkAuth, needsAutoJoinReauth, roomSessionToken, userContext?.profile]);
+
+  const isContextSyncedToRoom = Boolean(
+    activeRoomProfile &&
+    userContext?.profile &&
+    userContext.profile.userId === activeRoomProfile.userId &&
+    userContext.profile.username === activeRoomProfile.username &&
+    (userContext.profile.roomId || '').toLowerCase() === activeRoomProfile.roomId.toLowerCase()
+  );
+
+  React.useEffect(() => {
+    if (!activeRoomProfile || !userContext?.login || isContextSyncedToRoom) return;
+    userContext.login(activeRoomProfile);
+  }, [activeRoomProfile, isContextSyncedToRoom, userContext]);
+
+  if (!activeRoomProfile || needsTempLinkAuth || needsAutoJoinReauth) {
     return <Auth onAuthSuccess={userContext?.login ?? (() => {})} tempToken={tempToken || null} roomId={roomId} />;
+  }
+
+  if (!isContextSyncedToRoom) {
+    return <div style={{ minHeight: '100dvh', background: 'var(--bg-primary)' }} />;
   }
 
   return (
     <ChatAuthenticated
-      key={`${userContext.profile.userId}_${roomId}`}
+      key={`${activeRoomProfile.userId}_${roomId}`}
       isMe={isMeRoom}
       isTempLink={isTempLink}
     />
