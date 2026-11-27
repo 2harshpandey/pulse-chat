@@ -25,7 +25,6 @@ import { VideoPlayer } from './VideoPlayer';
 import { AudioMessagePlayer } from './components/message/AudioMessagePlayer';
 import { MediaCopyButton } from './components/message/MediaCopyButton';
 import {
-  DownloadSvg,
   RingedProgressIcon,
   MediaTapToLoadOverlay,
   MediaUploadProgressOverlay,

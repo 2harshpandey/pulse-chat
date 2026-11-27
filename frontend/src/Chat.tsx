@@ -3,7 +3,6 @@ import EmojiPicker, { EmojiStyle, Theme } from 'emoji-picker-react';
 import { useParams, useLocation } from 'react-router-dom';
 import Auth from './Auth';
 import { UserContext } from './UserContext';
-import { getInputDraftKey } from './chat/constants';
 import {
   clearOverlayGuardHistoryEntry,
   getSessionToken,

@@ -1,4 +1,3 @@
-import React from 'react';
 import type { AdminController } from '../../hooks';
 import { getLinkStatus, getTimeRemaining, formatDateTime, formatTime } from '../../utils';
 import {

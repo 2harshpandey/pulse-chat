@@ -144,9 +144,11 @@ export interface MessageItemProps {
   onShowToast?: (msg: string) => void;
 }
 
+import type { UserProfile, PresenceActivity } from '../UserContext';
+
 export interface TypingIndicatorProps {
-  onlineUsers: import('../UserContext').UserProfile[];
+  onlineUsers: UserProfile[];
   currentUserId: string;
 }
 
-export type { PresenceActivity } from '../UserContext';
+export type { PresenceActivity };
