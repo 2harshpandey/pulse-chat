@@ -18,7 +18,13 @@ export default defineConfig(({ mode }) => {
       VitePWA({
         registerType: 'autoUpdate',
         injectRegister: 'script-defer',
-        includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'pulse_logo.webp'],
+        includeAssets: [
+          'favicon.ico',
+          'apple-touch-icon.png',
+          'pulse_logo.webp',
+          'icon-maskable-192x192.png',
+          'icon-maskable-512x512.png',
+        ],
         manifest: {
           id: '/',
           name: 'PulseChat',
@@ -39,7 +45,7 @@ export default defineConfig(({ mode }) => {
               purpose: 'any'
             },
             {
-              src: '/android-chrome-192x192.png',
+              src: '/icon-maskable-192x192.png',
               sizes: '192x192',
               type: 'image/png',
               purpose: 'maskable'
@@ -51,7 +57,7 @@ export default defineConfig(({ mode }) => {
               purpose: 'any'
             },
             {
-              src: '/android-chrome-512x512.png',
+              src: '/icon-maskable-512x512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'maskable'
