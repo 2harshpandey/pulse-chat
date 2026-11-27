@@ -1259,10 +1259,9 @@ describe('GIF Copy Toast, Non-Touch Direct Delete, DeleteConfirmModal Escape & F
     expect(galleryCopyBtn.getAttribute('aria-label')).toBe('Copy GIF');
   });
 
-  it('NON-TOUCH: clicking Delete in three-dot menu directly calls onInitiateDelete without entering select mode footer', () => {
+  it('NON-TOUCH: clicking Delete in three-dot menu toggles select mode footer via handleToggleSelectMessage', () => {
     mockPointer(true);
     const onToggleSelect = vi.fn();
-    const onInitiateDelete = vi.fn();
     const setActiveDeleteMenu = vi.fn();
 
     const msg: Message = {
@@ -1283,7 +1282,6 @@ describe('GIF Copy Toast, Non-Touch Direct Delete, DeleteConfirmModal Escape & F
         setActiveDeleteMenu={setActiveDeleteMenu}
         handleSetReply={vi.fn()}
         handleToggleSelectMessage={onToggleSelect}
-        onInitiateDelete={onInitiateDelete}
         handleCopy={vi.fn()}
         handleOpenReport={vi.fn()}
         handleStartEdit={vi.fn()}
@@ -1292,16 +1290,15 @@ describe('GIF Copy Toast, Non-Touch Direct Delete, DeleteConfirmModal Escape & F
     );
 
     fireEvent.click(screen.getByTestId('delete-message-menu-item'));
-    expect(onInitiateDelete).toHaveBeenCalledTimes(1);
-    expect(onInitiateDelete).toHaveBeenCalledWith(msg);
-    expect(onToggleSelect).not.toHaveBeenCalled();
+    expect(onToggleSelect).toHaveBeenCalledTimes(1);
+    expect(onToggleSelect).toHaveBeenCalledWith('m-del-1');
     expect(setActiveDeleteMenu).toHaveBeenCalledWith(null);
   });
 
-  it('TOUCH: clicking Delete in three-dot menu still enters select mode footer via handleToggleSelectMessage', () => {
+  it('TOUCH: clicking Delete in three-dot menu enters select mode footer via handleToggleSelectMessage', () => {
     mockPointer(false);
     const onToggleSelect = vi.fn();
-    const onInitiateDelete = vi.fn();
+    const setActiveDeleteMenu = vi.fn();
 
     const msg: Message = {
       id: 'm-del-touch-1',
@@ -1318,10 +1315,9 @@ describe('GIF Copy Toast, Non-Touch Direct Delete, DeleteConfirmModal Escape & F
         currentUserId="user-1"
         canEdit={true}
         menuPos={{ top: 100, left: 100 }}
-        setActiveDeleteMenu={vi.fn()}
+        setActiveDeleteMenu={setActiveDeleteMenu}
         handleSetReply={vi.fn()}
         handleToggleSelectMessage={onToggleSelect}
-        onInitiateDelete={onInitiateDelete}
         handleCopy={vi.fn()}
         handleOpenReport={vi.fn()}
         handleStartEdit={vi.fn()}
@@ -1332,7 +1328,7 @@ describe('GIF Copy Toast, Non-Touch Direct Delete, DeleteConfirmModal Escape & F
     fireEvent.click(screen.getByTestId('delete-message-menu-item'));
     expect(onToggleSelect).toHaveBeenCalledTimes(1);
     expect(onToggleSelect).toHaveBeenCalledWith('m-del-touch-1');
-    expect(onInitiateDelete).not.toHaveBeenCalled();
+    expect(setActiveDeleteMenu).toHaveBeenCalledWith(null);
   });
 
   it('DeleteConfirmModal closes on Escape without propagating Escape to underlying MediaGalleryModal', () => {

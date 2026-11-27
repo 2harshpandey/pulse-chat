@@ -13,7 +13,6 @@ interface MessageActionMenuPortalProps {
   handleSetReply: (msg: Message) => void;
   setActiveDeleteMenu: (id: string | null) => void;
   handleToggleSelectMessage: (id: string) => void;
-  onInitiateDelete?: (msg: Message) => void;
   handleStartEdit: (msg: Message) => void;
   handleCopy: (msg: Message) => void;
   handleOpenReport: (msg: Message) => void;
@@ -32,7 +31,6 @@ export const MessageActionMenuPortal: React.FC<MessageActionMenuPortalProps> = R
   handleSetReply,
   setActiveDeleteMenu,
   handleToggleSelectMessage,
-  onInitiateDelete,
   handleStartEdit,
   handleCopy,
   handleOpenReport,
@@ -45,11 +43,7 @@ export const MessageActionMenuPortal: React.FC<MessageActionMenuPortalProps> = R
 
   const isGif = isGifMessage(msg);
   const handleDeleteClick = () => {
-    if (isNonTouchDevice() && onInitiateDelete) {
-      onInitiateDelete(msg);
-    } else {
-      handleToggleSelectMessage(msg.id);
-    }
+    handleToggleSelectMessage(msg.id);
     setActiveDeleteMenu(null);
   };
 

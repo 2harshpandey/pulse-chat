@@ -142,7 +142,6 @@ export interface MessageItemProps {
   quotedPreviewThumbUrl?: string;
   onOpenQuotedMedia?: (targetId: string, replyingTo?: any, customMessages?: Message[]) => boolean | void;
   onShowToast?: (msg: string) => void;
-  onInitiateDelete?: (message: Message | Message[]) => void;
 }
 
 export interface TypingIndicatorProps {

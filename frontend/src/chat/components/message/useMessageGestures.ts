@@ -37,6 +37,7 @@ export function useMessageGestures({
 
   const touchStartPointRef = useRef<{ x: number; y: number } | null>(null);
   const suppressTapSelectionRef = useRef(false);
+  const isGestureActiveRef = useRef(false);
   const isScrollGestureRef = useRef(false);
   const ignoreSwipeGestureRef = useRef(false);
   const swipeOffsetRef = useRef(0);
@@ -49,7 +50,11 @@ export function useMessageGestures({
         longPressTimerRef.current = null;
       }
       isScrollGestureRef.current = true;
-      suppressTapSelectionRef.current = true;
+      // Only suppress tap selection if a pointer/touch gesture is currently active;
+      // otherwise an earlier unrelated scroll would swallow the user's next click in select mode.
+      if (isGestureActiveRef.current || touchStartTimeRef.current > 0) {
+        suppressTapSelectionRef.current = true;
+      }
     });
   }, []);
 
@@ -106,7 +111,15 @@ export function useMessageGestures({
       const target = event.target as HTMLElement;
 
       if (first) {
+        isGestureActiveRef.current = true;
         ignoreSwipeGestureRef.current = isSwipeQuoteIgnoredTarget(target);
+        if (!isChatActivelyScrolling(250)) {
+          suppressTapSelectionRef.current = false;
+        }
+      }
+
+      if (last) {
+        isGestureActiveRef.current = false;
       }
 
       if (ignoreSwipeGestureRef.current) {
@@ -220,6 +233,7 @@ export function useMessageGestures({
       prevMsgIdRef.current = msg.id;
       wasLongPressed.current = false;
       suppressTapSelectionRef.current = false;
+      isGestureActiveRef.current = false;
       isScrollGestureRef.current = false;
       ignoreSwipeGestureRef.current = false;
       touchStartPointRef.current = null;
@@ -249,6 +263,7 @@ export function useMessageGestures({
     if (!isSelectModeActive) {
       wasLongPressed.current = false;
       suppressTapSelectionRef.current = false;
+      isGestureActiveRef.current = false;
       isScrollGestureRef.current = false;
       ignoreSwipeGestureRef.current = false;
     }

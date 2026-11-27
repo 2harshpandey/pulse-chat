@@ -856,10 +856,40 @@ export const FilePreviewInfo = styled.div`
 `;
 
 export const CancelPreviewButton = styled.button`
-  background: var(--bg-hover); border-radius: 50%; border: none; width: 30px; height: 30px; min-width: 30px; min-height: 30px; flex-shrink: 0; cursor: pointer; font-weight: bold; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; color: var(--text-primary);
-  transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-  &:hover { background-color: var(--border-primary); transform: scale(1.1) rotate(90deg); }
-  &:active { transform: scale(0.9); }
+  background: rgba(15, 23, 42, 0.08);
+  border-radius: 50%;
+  border: none;
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  flex-shrink: 0;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 1.1rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+  transition: background-color 0.2s ease, transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  &:hover {
+    background-color: rgba(15, 23, 42, 0.16);
+    transform: scale(1.1) rotate(90deg);
+  }
+
+  &:active {
+    transform: scale(0.9);
+  }
+
+  [data-theme='dark'] & {
+    background: rgba(255, 255, 255, 0.1);
+
+    &:hover {
+      background-color: rgba(255, 255, 255, 0.18);
+    }
+  }
 `;
 
 /* ══════════════════════════════════════════

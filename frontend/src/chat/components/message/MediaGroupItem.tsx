@@ -89,7 +89,6 @@ export interface MediaGroupItemProps {
   quotedPreviewThumbUrl?: string;
   onOpenQuotedMedia?: (targetId: string, replyingTo?: any, customMessages?: Message[]) => boolean | void;
   onShowToast?: (msg: string) => void;
-  onInitiateDelete?: (message: Message | Message[]) => void;
 }
 
 export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
@@ -127,7 +126,6 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
   quotedPreviewThumbUrl: passedQuotedThumbUrl,
   onOpenQuotedMedia,
   onShowToast,
-  onInitiateDelete,
 }) => {
   const messageBubbleRef = useRef<HTMLDivElement>(null!);
   const [menuPos, setMenuPos] = useState<{ top?: number; bottom?: number; right?: number; left?: number } | null>(null);
@@ -640,7 +638,6 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
           handleSetReply={handleSetReply}
           setActiveDeleteMenu={setActiveDeleteMenu}
           handleToggleSelectMessage={handleToggleSelectMessage}
-          onInitiateDelete={onInitiateDelete ? () => onInitiateDelete(messages) : undefined}
           handleStartEdit={() => {}}
           handleCopy={handleCopy}
           handleOpenReport={handleOpenReport}

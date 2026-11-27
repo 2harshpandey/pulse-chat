@@ -151,13 +151,10 @@ export function useChatSelection({
   }, [computeCanDeleteForEveryone, messages, selectedMessages]);
 
   const handleInitiateDeleteForMessage = useCallback(
-    (messageOrMessages: Message | Message[]) => {
-      const targets = (Array.isArray(messageOrMessages) ? messageOrMessages : [messageOrMessages]).filter(
-        (m): m is Message => Boolean(m && m.id)
-      );
-      if (targets.length === 0) return;
-      setSelectedMessages(targets.map((m) => m.id));
-      setCanDeleteForEveryone(computeCanDeleteForEveryone(targets));
+    (message: Message) => {
+      if (!message || !message.id) return;
+      setSelectedMessages([message.id]);
+      setCanDeleteForEveryone(computeCanDeleteForEveryone([message]));
       setIsDeleteConfirmationVisible(true);
     },
     [computeCanDeleteForEveryone]

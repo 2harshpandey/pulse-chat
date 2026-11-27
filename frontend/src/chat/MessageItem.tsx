@@ -71,7 +71,6 @@ export const MessageItem = React.memo(({
   quotedPreviewThumbUrl: passedQuotedThumbUrl,
   onOpenQuotedMedia,
   onShowToast,
-  onInitiateDelete,
 }: MessageItemProps) => {
   const isEditing = editingMessageId === msg.id;
   const quotedPreviewThumbUrl = passedQuotedThumbUrl ||
@@ -418,7 +417,6 @@ export const MessageItem = React.memo(({
           handleSetReply={handleSetReply}
           setActiveDeleteMenu={setActiveDeleteMenu}
           handleToggleSelectMessage={handleToggleSelectMessage}
-          onInitiateDelete={onInitiateDelete}
           handleStartEdit={handleStartEdit}
           handleCopy={handleCopy}
           handleOpenReport={handleOpenReport}

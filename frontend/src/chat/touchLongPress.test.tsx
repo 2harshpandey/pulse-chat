@@ -475,4 +475,38 @@ describe('Touch Screen Long Press & Haptic Behavior', () => {
     expect(handleReact).toHaveBeenCalledWith(mockMsg.id, '👍');
     expect(handleCancelSelectMode).toHaveBeenCalledTimes(1);
   });
+
+  it('selects a message on the FIRST click in select mode even after chat container has scrolled', () => {
+    const onToggleSelect = vi.fn();
+    const { getByTestId } = render(
+      <TestMessageGestureComponent
+        isMobileView={false}
+        isSelectModeActive={true}
+        onToggleSelect={onToggleSelect}
+      />
+    );
+
+    const row = getByTestId('message-row');
+
+    // Simulate earlier chat scrolling (e.g. scrolling to read messages or auto-scroll on menu open)
+    recordChatScroll();
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+
+    // Simulate a single tap/click on the row after scrolling
+    const touchObj = { clientX: 50, clientY: 50, identifier: 1, target: row };
+    fireEvent.touchStart(row, {
+      touches: [touchObj],
+      targetTouches: [touchObj],
+      changedTouches: [touchObj],
+    });
+    fireEvent.touchEnd(row, {
+      touches: [],
+      changedTouches: [touchObj],
+    });
+
+    expect(onToggleSelect).toHaveBeenCalledTimes(1);
+    expect(onToggleSelect).toHaveBeenCalledWith('msg-test-1');
+  });
 });
