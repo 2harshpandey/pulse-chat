@@ -13,6 +13,7 @@ import { ChatHeader } from './components/ChatHeader';
 import { MediaGalleryModal } from './components/modals/MediaGalleryModal';
 import { VideoPlayer } from './VideoPlayer';
 import { useChatComposer } from './hooks/useChatComposer';
+import { useChatSearch } from './hooks/useChatSearch';
 import type { Message } from './types';
 
 function GlobalKeyboardHarness({ children }: { children: React.ReactNode }) {
@@ -304,8 +305,64 @@ describe('Touch virtual keyboard preservation across chat controls', () => {
     expect(closeSearchBtn.tabIndex).toBe(-1);
 
     fireEvent.click(closeSearchBtn);
-    expect(onCloseSearch).not.toHaveBeenCalled();
-  });
+      expect(onCloseSearch).not.toHaveBeenCalled();
+    });
+
+    it('cancels pending search focus timer and resets scrollLeft when closed rapidly or dismissed outside', () => {
+      vi.useFakeTimers();
+      try {
+        const containerEl = document.createElement('div');
+        containerEl.id = 'chat-search-container';
+        containerEl.scrollLeft = 36;
+        const inputEl = document.createElement('input');
+        inputEl.id = 'chat-search-input';
+        containerEl.appendChild(inputEl);
+        document.body.appendChild(containerEl);
+
+        const outsideEl = document.createElement('button');
+        document.body.appendChild(outsideEl);
+
+        const { result } = renderHook(() =>
+          useChatSearch({
+            messages: [],
+            chatContainerRef: { current: null },
+            isAtBottomRef: { current: true },
+            apiBase: 'http://localhost',
+            roomId: 'me',
+            filterVisibleMessages: (m) => m,
+            normalizeMessage: (m) => m,
+          })
+        );
+
+        act(() => {
+          result.current.setIsSearchActive(true);
+        });
+        expect(result.current.isSearchActive).toBe(true);
+
+        // Advance partway (100ms < 220ms) and dismiss via outside pointerdown
+        act(() => {
+          vi.advanceTimersByTime(100);
+          outsideEl.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+        });
+
+        expect(result.current.isSearchActive).toBe(false);
+        expect(result.current.isSearchClosing).toBe(true);
+        expect(containerEl.scrollLeft).toBe(0);
+
+        // Even after past 220ms, input must NOT be focused and scrollLeft remains 0
+        act(() => {
+          vi.advanceTimersByTime(300);
+        });
+        expect(document.activeElement).not.toBe(inputEl);
+        expect(result.current.isSearchClosing).toBe(false);
+        expect(containerEl.scrollLeft).toBe(0);
+
+        document.body.removeChild(containerEl);
+        document.body.removeChild(outsideEl);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
 
   it('prevents focus theft on inline VideoPlayer controls and timeline scrub bar', () => {
     const { container } = render(
@@ -471,5 +528,80 @@ describe('Touch virtual keyboard preservation across chat controls', () => {
       Object.defineProperty(navigator, 'maxTouchPoints', { value: origMaxTouchPoints, configurable: true });
       Object.defineProperty(navigator, 'userAgent', { value: origUA, configurable: true });
     }
+  });
+
+  it('useChatSearch resetSearch preserves closing transition when active and avoids flicker when closed', () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = renderHook(() =>
+        useChatSearch({
+          messages: [],
+          chatContainerRef: { current: null },
+          isAtBottomRef: { current: true },
+          apiBase: 'http://localhost',
+          roomId: 'room1',
+          userId: 'u1',
+          filterVisibleMessages: (m) => m,
+          normalizeMessage: (m) => m,
+        })
+      );
+
+      // Calling resetSearch while already closed must not flicker isSearchClosing = true
+      act(() => {
+        result.current.resetSearch();
+      });
+      expect(result.current.isSearchActive).toBe(false);
+      expect(result.current.isSearchClosing).toBe(false);
+
+      // Opening and then calling resetSearch keeps isSearchClosing = true for 250ms
+      act(() => {
+        result.current.setIsSearchActive(true);
+        result.current.setChatSearchQuery('hello');
+      });
+      act(() => {
+        result.current.resetSearch();
+      });
+      expect(result.current.isSearchActive).toBe(false);
+      expect(result.current.chatSearchQuery).toBe('');
+      expect(result.current.isSearchClosing).toBe(true);
+
+      act(() => {
+        vi.advanceTimersByTime(260);
+      });
+      expect(result.current.isSearchClosing).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('ChatHeader search button allows composer blur on open, preserves focus when active, and prevents container scrollLeft drift', () => {
+    const commonProps = {
+      isConnected: true,
+      isBrowserOnline: true,
+      isSoundEnabled: false,
+      isSoundToggleAnimating: false,
+      onToggleSound: vi.fn(),
+      isDark: true,
+      onToggleTheme: vi.fn(),
+      isSearchClosing: false,
+      searchQuery: '',
+      onSearchQueryChange: vi.fn(),
+      onOpenSearch: vi.fn(),
+      onCloseSearch: vi.fn(),
+      isUserListVisible: false,
+      onToggleUserList: vi.fn(),
+    };
+
+    const { rerender } = render(<ChatHeader {...commonProps} isSearchActive={false} />);
+    const openSearchBtn = screen.getByRole('button', { name: 'Search messages' });
+    expect(openSearchBtn.getAttribute('data-allow-blur')).toBe('true');
+
+    const container = document.getElementById('chat-search-container') as HTMLDivElement;
+    container.scrollLeft = 48;
+    fireEvent.scroll(container);
+    expect(container.scrollLeft).toBe(0);
+
+    rerender(<ChatHeader {...commonProps} isSearchActive={true} />);
+    expect(screen.getByRole('button', { name: 'Search messages' }).getAttribute('data-allow-blur')).toBeNull();
   });
 });

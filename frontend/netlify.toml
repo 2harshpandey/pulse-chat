@@ -1,15 +1,62 @@
 # Netlify configuration
 # Serves static files directly, with SPA fallback for dynamic routes.
 
+# Never rewrite missing hashed asset chunks to /app.html (causes strict MIME module errors on stale clients)
+[[redirects]]
+  from   = "/assets/*"
+  to     = "/assets/:splat"
+  status = 404
+
 [[redirects]]
   from   = "/*"
   to     = "/app.html"
   status = 200
 
 [[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/room"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/room/"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/about-developer"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/about-developer/"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
   for = "/app.html"
   [headers.values]
     X-Robots-Tag = "noindex, nofollow"
+    Cache-Control = "public, max-age=0, must-revalidate"
 
 [[headers]]
   for = "/sitemap.xml"

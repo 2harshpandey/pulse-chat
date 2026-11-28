@@ -63,14 +63,16 @@ export const SidePanelTab = styled.button<{ $active?: boolean }>`
     opacity: 0.75;
   }
 
-  &:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--text-primary);
-    transform: translateY(-1px);
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text-primary);
+      transform: translateY(-1px);
 
-    svg {
-      opacity: 1;
-      transform: scale(1.08);
+      svg {
+        opacity: 1;
+        transform: scale(1.08);
+      }
     }
   }
 
@@ -247,11 +249,13 @@ export const MediaGalleryFilterChip = styled.button<{ $active?: boolean }>`
   transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease;
   letter-spacing: 0.01em;
 
-  &:hover {
-    border-color: rgba(59, 130, 246, 0.6);
-    background: rgba(59, 130, 246, 0.12);
-    color: #93c5fd;
-    transform: scale(1.03);
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      border-color: rgba(59, 130, 246, 0.6);
+      background: rgba(59, 130, 246, 0.12);
+      color: #93c5fd;
+      transform: scale(1.03);
+    }
   }
 
   &:active {
@@ -438,8 +442,10 @@ export const MediaGalleryPlayOverlay = styled.div`
   transition: background 0.15s ease;
   pointer-events: none;
 
-  ${MediaGalleryTile}:hover & {
-    background: rgba(0, 0, 0, 0.45);
+  @media (hover: hover) and (pointer: fine) {
+    ${MediaGalleryTile}:hover & {
+      background: rgba(0, 0, 0, 0.45);
+    }
   }
 `;
 
@@ -499,11 +505,13 @@ export const MediaGalleryDocCard = styled.div`
   color: var(--text-secondary);
   font-size: 0.75rem;
 
-  &:hover {
-    background: rgba(59, 130, 246, 0.09);
-    border-color: rgba(59, 130, 246, 0.35);
-    color: var(--text-primary);
-    transform: translateX(2px);
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      background: rgba(59, 130, 246, 0.09);
+      border-color: rgba(59, 130, 246, 0.35);
+      color: var(--text-primary);
+      transform: translateX(2px);
+    }
   }
 
   &:active {

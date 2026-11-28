@@ -1135,5 +1135,59 @@ describe('Media Viewer Side Panel and Tab Switching', () => {
       expect(screen.getByText('3 / 3')).toBeTruthy();
       expect((screen.getByAltText('p3.jpg') as HTMLImageElement).src).toContain('p3.jpg');
     });
+
+    it('clears cached video URL across close/reopen so updated hydrated sources take effect immediately', () => {
+      const videoItems: Message[] = [
+        {
+          id: 'vid-reopen-1',
+          userId: 'u2',
+          username: 'Alice',
+          type: 'video',
+          url: 'https://res.cloudinary.com/demo/video/upload/v1/vid1.mp4',
+          originalName: 'vid1.mp4',
+          timestamp: new Date().toISOString(),
+        },
+      ];
+
+      const { rerender, container } = render(
+        <MediaGalleryModal
+          isOpen={true}
+          items={videoItems}
+          initialIndex={0}
+          loadedMediaSrcById={{}}
+          onClose={vi.fn()}
+        />
+      );
+
+      let videoEl = container.querySelector('video') as HTMLVideoElement;
+      expect(videoEl).toBeTruthy();
+      expect(videoEl.getAttribute('src')).toBe('https://res.cloudinary.com/demo/video/upload/v1/vid1.mp4');
+
+      // Close modal
+      rerender(
+        <MediaGalleryModal
+          isOpen={false}
+          items={videoItems}
+          initialIndex={0}
+          loadedMediaSrcById={{}}
+          onClose={vi.fn()}
+        />
+      );
+
+      // Reopen same video with newly hydrated blob URL
+      rerender(
+        <MediaGalleryModal
+          isOpen={true}
+          items={videoItems}
+          initialIndex={0}
+          loadedMediaSrcById={{ 'vid-reopen-1': 'blob:https://example.com/hydrated-vid1' }}
+          onClose={vi.fn()}
+        />
+      );
+
+      videoEl = container.querySelector('video') as HTMLVideoElement;
+      expect(videoEl).toBeTruthy();
+      expect(videoEl.getAttribute('src')).toBe('blob:https://example.com/hydrated-vid1');
+    });
   });
 });

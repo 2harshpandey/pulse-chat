@@ -8,9 +8,13 @@ import reportWebVitals from './reportWebVitals';
 import { BrowserRouter } from 'react-router-dom';
 import { resolveApiBaseUrl } from './chat/utils';
 import { restorePWALocationPreRender } from './pwaLocation';
+import { initPWAUpdater } from './pwaUpdater';
 
 // Restore PWA location before mounting BrowserRouter so initial route renders immediately
 restorePWALocationPreRender();
+
+// Eagerly check for SW updates and auto-recover if stale chunks fail after a deploy
+initPWAUpdater();
 
 if ('scrollRestoration' in window.history) {
   window.history.scrollRestoration = 'manual';

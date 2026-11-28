@@ -53,38 +53,44 @@ export const ChatSearchInput = styled.input<{ $active: boolean }>`
   background: transparent;
   border: none;
   color: var(--text-primary);
-  flex: 1;
-  width: 100%;
+  flex: ${p => p.$active ? '1' : '0 0 0px'};
+  width: ${p => p.$active ? '100%' : '0'};
   min-width: 0;
   opacity: ${p => p.$active ? 1 : 0};
-  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: opacity 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   font-size: 0.9rem;
-  padding: 0 0 0 0.5rem;
+  padding: ${p => p.$active ? '0 0 0 0.5rem' : '0'};
   pointer-events: ${p => p.$active ? 'auto' : 'none'};
   &:focus { outline: none; }
   &::placeholder { color: var(--text-tertiary); }
 `;
 
-export const ChatSearchButton = styled.button`
-  width: 40px;
+export const ChatSearchButton = styled.button<{ $collapsed?: boolean }>`
+  width: ${p => p.$collapsed ? '0px' : '40px'};
   height: 40px;
+  padding: 0;
   border-radius: 50%;
-  border: 1px solid var(--border-secondary);
+  border: ${p => p.$collapsed ? '0 solid transparent' : '1px solid var(--border-secondary)'};
   background: var(--bg-secondary);
   color: var(--text-secondary);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-  cursor: pointer;
+  box-shadow: ${p => p.$collapsed ? 'none' : '0 2px 8px rgba(0, 0, 0, 0.05)'};
+  cursor: ${p => p.$collapsed ? 'default' : 'pointer'};
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+  overflow: hidden;
+  opacity: ${p => p.$collapsed ? 0 : 1};
+  pointer-events: ${p => p.$collapsed ? 'none' : 'auto'};
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease, opacity 0.15s ease;
   flex-shrink: 0;
-  &:hover { 
-    transform: scale(1.15); 
-    border-color: rgba(59, 130, 246, 0.5); 
-    background: rgba(59, 130, 246, 0.1);
-    color: var(--text-primary);
-    box-shadow: 0 10px 25px -5px rgba(59,130,246,0.4); 
+  @media (hover: hover) and (pointer: fine) {
+    &:hover { 
+      transform: scale(1.06); 
+      border-color: rgba(59, 130, 246, 0.5); 
+      background: rgba(59, 130, 246, 0.1);
+      color: var(--text-primary);
+      box-shadow: 0 6px 16px -4px rgba(59,130,246,0.35); 
+    }
   }
   &:active { transform: scale(0.9); }
   svg { width: 18px; height: 18px; transition: transform 0.5s cubic-bezier(0.34,1.56,0.64,1); }

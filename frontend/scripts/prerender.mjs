@@ -30,18 +30,18 @@ function replaceMetaByName(html, name, content) {
   const escaped = escapeHtmlAttr(content);
   const regex = new RegExp(`<meta\\s+name="${name}"\\s+content="[^"]*"\\s*\\/?>`, 'i');
   if (regex.test(html)) {
-    return html.replace(regex, `<meta name="${name}" content="${escaped}" />`);
+    return html.replace(regex, () => `<meta name="${name}" content="${escaped}" />`);
   }
-  return html.replace('</head>', `  <meta name="${name}" content="${escaped}" />\n  </head>`);
+  return html.replace('</head>', () => `  <meta name="${name}" content="${escaped}" />\n  </head>`);
 }
 
 function replaceMetaByProperty(html, property, content) {
   const escaped = escapeHtmlAttr(content);
   const regex = new RegExp(`<meta\\s+property="${property}"\\s+content="[^"]*"\\s*\\/?>`, 'i');
   if (regex.test(html)) {
-    return html.replace(regex, `<meta property="${property}" content="${escaped}" />`);
+    return html.replace(regex, () => `<meta property="${property}" content="${escaped}" />`);
   }
-  return html.replace('</head>', `  <meta property="${property}" content="${escaped}" />\n  </head>`);
+  return html.replace('</head>', () => `  <meta property="${property}" content="${escaped}" />\n  </head>`);
 }
 
 function replaceCanonical(html, canonicalUrl) {
@@ -51,15 +51,15 @@ function replaceCanonical(html, canonicalUrl) {
   }
   const escaped = escapeHtmlAttr(canonicalUrl);
   if (regex.test(html)) {
-    return html.replace(regex, `<link rel="canonical" href="${escaped}" />`);
+    return html.replace(regex, () => `<link rel="canonical" href="${escaped}" />`);
   }
-  return html.replace('</head>', `  <link rel="canonical" href="${escaped}" />\n  </head>`);
+  return html.replace('</head>', () => `  <link rel="canonical" href="${escaped}" />\n  </head>`);
 }
 
 function injectRoutePayload(templateHtml, { appHtml, styleTags, seo }) {
   let html = templateHtml;
 
-  html = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${escapeHtmlText(seo.title)}</title>`);
+  html = html.replace(/<title>[\s\S]*?<\/title>/i, () => `<title>${escapeHtmlText(seo.title)}</title>`);
   html = replaceMetaByName(html, 'description', seo.description);
   html = replaceMetaByName(html, 'robots', seo.robots);
   html = replaceCanonical(html, seo.canonicalUrl);
@@ -79,8 +79,8 @@ function injectRoutePayload(templateHtml, { appHtml, styleTags, seo }) {
     ? `<script id="pulsechat-structured-data" type="application/ld+json">${JSON.stringify(seo.jsonLd).replace(/</g, '\\u003c')}</script>`
     : '';
 
-  html = html.replace('</head>', `  ${styleTags}\n  ${jsonLdTag}\n  </head>`);
-  html = html.replace('<div id="root"></div>', `<div id="root">${appHtml}</div>`);
+  html = html.replace('</head>', () => `  ${styleTags}\n  ${jsonLdTag}\n  </head>`);
+  html = html.replace('<div id="root"></div>', () => `<div id="root">${appHtml}</div>`);
 
   return html;
 }
@@ -142,6 +142,13 @@ async function runPrerender() {
       }
     }
 
+    // Remove the prior VitePWA workbox-*.js file before regenerating sw.js so only one runtime remains.
+    for (const entry of fs.readdirSync(BUILD_DIR)) {
+      if (/^workbox-[a-f0-9]+\.js(\.map)?$/i.test(entry)) {
+        fs.rmSync(path.join(BUILD_DIR, entry), { force: true });
+      }
+    }
+
     // Regenerate Workbox service worker after all prerendered HTML files and app.html exist
     // so precache hashes match and navigations to dynamic routes fall back to app.html cleanly.
     const swResult = await generateSW({
@@ -152,6 +159,7 @@ async function runPrerender() {
       cleanupOutdatedCaches: true,
       clientsClaim: true,
       skipWaiting: true,
+      ignoreURLParametersMatching: [/^utm_/, /^fbclid$/, /^pwa$/],
       navigateFallback: '/app.html',
       navigateFallbackDenylist: [
         /^\/$/,

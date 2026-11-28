@@ -148,6 +148,8 @@ export const HeaderTitle = styled.h1`
   color: var(--text-heading);
   text-align: center;
   flex-grow: 1;
+  min-width: 0;
+  overflow: hidden;
   transition: color 0.3s ease;
   display: flex;
   align-items: center;

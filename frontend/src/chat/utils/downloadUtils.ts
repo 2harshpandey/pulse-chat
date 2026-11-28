@@ -13,6 +13,7 @@ import {
   sanitizeFilename,
   sanitizeMediaUrl,
 } from './urlMediaUtils';
+import { importWithChunkRetry } from '../../pwaUpdater';
 
 export const buildDownloadProxyUrl = (resourceUrl: string, filename?: string): string => {
   const apiBase = resolveApiBaseUrl();
@@ -215,10 +216,13 @@ export const downloadAlbumAsZip = async (
   try {
     options?.onProgress?.(0.05);
 
-    const jszipModule = await import('jszip');
+    const jszipModule = await importWithChunkRetry(() => import('jszip'));
     if (options?.signal?.aborted) return;
 
     const JSZip = (jszipModule && 'default' in jszipModule && jszipModule.default) ? jszipModule.default : (jszipModule as any);
+    if (typeof JSZip !== 'function') {
+      throw new Error('Failed to load ZIP bundler module');
+    }
     const zip = new JSZip();
 
     const primaryMsg = mediaItems[0];

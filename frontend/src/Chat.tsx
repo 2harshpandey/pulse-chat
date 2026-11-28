@@ -118,7 +118,6 @@ function ChatAuthenticated({ isMe, isTempLink }: ChatProps) {
           onSearchKeyDown={(e) => {
             if (e.key === 'Escape') {
               c.search.resetSearch();
-              c.search.handleCloseSearch();
             } else if (e.key === 'Enter') {
               c.search.captureScrollBeforeSearch();
               c.search.setActiveSearchQuery(c.search.chatSearchQuery);
@@ -137,7 +136,6 @@ function ChatAuthenticated({ isMe, isTempLink }: ChatProps) {
             e.stopPropagation();
             if (!c.search.isSearchActive) return;
             c.search.resetSearch();
-            c.search.handleCloseSearch();
           }}
           isUserListVisible={c.isUserListVisible}
           onToggleUserList={() => {
@@ -202,6 +200,9 @@ function ChatAuthenticated({ isMe, isTempLink }: ChatProps) {
         onCaptionTyping={c.socket.handleTyping}
         onSetReply={(message) => {
           c.setIsUserListVisible(false);
+          if (c.selection.isSelectModeActive) {
+            c.selection.handleCancelSelectMode();
+          }
           c.msgs.handleSetReply(message);
         }}
         allMessages={c.msgs.messages}

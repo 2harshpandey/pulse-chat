@@ -477,16 +477,22 @@ export function useChatController({ isMe, isTempLink }: UseChatControllerProps =
     messageInputRef.current?.blur();
   }, [isUserListVisible]);
 
-  // Automatically close side panel whenever the chat input opens the virtual keyboard (e.g., quoting/replying)
+  // Automatically close side panel whenever the chat input opens the virtual keyboard (e.g., quoting/replying),
+  // using document-level focusin so it survives composer remounts (such as entering/exiting select mode).
   useEffect(() => {
-    const textarea = messageInputRef.current;
-    if (!textarea) return;
-    const handleComposerFocusCloseSidebar = () => {
-      setIsUserListVisible(false);
+    if (typeof document === 'undefined') return;
+    const handleComposerFocusCloseSidebar = (e: FocusEvent) => {
+      const target = e.target;
+      if (
+        target instanceof HTMLElement &&
+        (target === messageInputRef.current || target.id === 'chat-message-input')
+      ) {
+        setIsUserListVisible(false);
+      }
     };
-    textarea.addEventListener('focus', handleComposerFocusCloseSidebar);
+    document.addEventListener('focusin', handleComposerFocusCloseSidebar);
     return () => {
-      textarea.removeEventListener('focus', handleComposerFocusCloseSidebar);
+      document.removeEventListener('focusin', handleComposerFocusCloseSidebar);
     };
   }, [messageInputRef]);
 

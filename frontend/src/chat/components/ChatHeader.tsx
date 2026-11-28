@@ -153,8 +153,25 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
 
         <SearchPlaceholder />
 
-        <ChatSearchContainer id="chat-search-container" $active={isSearchActive} $isClosing={isSearchClosing}>
-          <ChatSearchButton type="button" onClick={onOpenSearch} style={{ cursor: 'pointer' }} aria-label="Search messages">
+        <ChatSearchContainer
+          id="chat-search-container"
+          $active={isSearchActive}
+          $isClosing={isSearchClosing}
+          onScroll={(e) => {
+            if (e.currentTarget.scrollLeft !== 0) {
+              e.currentTarget.scrollLeft = 0;
+            }
+          }}
+        >
+          <ChatSearchButton
+            type="button"
+            data-allow-blur={!isSearchActive ? 'true' : undefined}
+            onPointerDown={isSearchActive ? (onHeaderButtonPointerDown ?? preserveKeyboardFocus) : undefined}
+            onMouseDown={isSearchActive ? preserveKeyboardFocus : undefined}
+            onClick={onOpenSearch}
+            style={{ cursor: 'pointer' }}
+            aria-label="Search messages"
+          >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '18px', height: '18px' }}>
               <circle cx="11" cy="11" r="8"></circle>
               <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
@@ -175,6 +192,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
 
           <ChatSearchButton
             type="button"
+            $collapsed={!isSearchActive}
             onPointerDown={onHeaderButtonPointerDown ?? preserveKeyboardFocus}
             onMouseDown={preserveKeyboardFocus}
             onClick={(e) => {
@@ -184,7 +202,6 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             disabled={!isSearchActive}
             tabIndex={isSearchActive ? 0 : -1}
             aria-hidden={!isSearchActive}
-            style={!isSearchActive ? { visibility: 'hidden', pointerEvents: 'none' } : undefined}
             title="Close search"
             aria-label="Close search"
           >

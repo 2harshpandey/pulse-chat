@@ -17,7 +17,7 @@ export default defineConfig(({ mode }) => {
       react(),
       VitePWA({
         registerType: 'autoUpdate',
-        injectRegister: 'script-defer',
+        injectRegister: false,
         includeAssets: [
           'favicon.ico',
           'apple-touch-icon.png',
@@ -65,11 +65,12 @@ export default defineConfig(({ mode }) => {
           ]
         },
         workbox: {
-          globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,json}'],
+          globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,json,webmanifest}'],
           globIgnores: ['og-image.png'],
           cleanupOutdatedCaches: true,
           clientsClaim: true,
           skipWaiting: true,
+          ignoreURLParametersMatching: [/^utm_/, /^fbclid$/, /^pwa$/],
           navigateFallback: '/app.html',
           navigateFallbackDenylist: [
             /^\/$/,

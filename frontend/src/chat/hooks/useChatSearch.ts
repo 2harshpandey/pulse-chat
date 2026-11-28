@@ -26,16 +26,29 @@ export function useChatSearch({
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [isSearchClosing, setIsSearchClosing] = useState(false);
   const closeSearchTimerRef = useRef<number | null>(null);
+  const isSearchActiveRef = useRef(false);
+  isSearchActiveRef.current = isSearchActive;
 
   const handleCloseSearch = useCallback(() => {
     if (closeSearchTimerRef.current !== null) {
       window.clearTimeout(closeSearchTimerRef.current);
       closeSearchTimerRef.current = null;
     }
-    setIsSearchActive(false);
-    setIsSearchClosing(true);
+    const input = document.getElementById('chat-search-input') as HTMLInputElement | null;
+    if (input && document.activeElement === input) {
+      input.blur();
+    }
     const container = document.getElementById('chat-search-container');
     if (container) container.scrollLeft = 0;
+
+    if (!isSearchActiveRef.current) {
+      setIsSearchActive(false);
+      setIsSearchClosing(false);
+      return;
+    }
+
+    setIsSearchActive(false);
+    setIsSearchClosing(true);
     closeSearchTimerRef.current = window.setTimeout(() => {
       setIsSearchClosing(false);
       closeSearchTimerRef.current = null;
@@ -179,7 +192,7 @@ export function useChatSearch({
         input.focus();
       }
       if (container) container.scrollLeft = 0;
-    }, 220);
+    }, 250);
     return () => window.clearTimeout(timer);
   }, [isSearchActive]);
 
@@ -190,14 +203,14 @@ export function useChatSearch({
       if (activeSearchQuery.trim() || chatSearchQuery.trim() || searchResults !== null) {
         return;
       }
-      const target = e.target as HTMLElement;
-      if (!target.closest('#chat-search-container')) {
-        setIsSearchActive(false);
+      const target = e.target;
+      if (!(target instanceof Element) || !target.closest('#chat-search-container')) {
+        handleCloseSearch();
       }
     };
     document.addEventListener('pointerdown', handlePointerDown);
     return () => document.removeEventListener('pointerdown', handlePointerDown);
-  }, [isSearchActive, activeSearchQuery, chatSearchQuery, searchResults]);
+  }, [isSearchActive, activeSearchQuery, chatSearchQuery, searchResults, handleCloseSearch]);
 
   // Full-history search via backend API
   useEffect(() => {
@@ -253,8 +266,8 @@ export function useChatSearch({
   const resetSearch = useCallback(() => {
     setActiveSearchQuery('');
     setChatSearchQuery('');
-    setIsSearchActive(false);
-  }, []);
+    handleCloseSearch();
+  }, [handleCloseSearch]);
 
   return {
     isSearchActive,

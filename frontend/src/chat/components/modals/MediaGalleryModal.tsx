@@ -132,7 +132,16 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     }
   }, [isOpen, activeItems.length, currentIndex]);
 
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      activeMediaUrlRef.current = null;
+    }
+  }, [isOpen]);
+
   useEffect(() => {
+    if (!isOpen) {
+      activeMediaUrlRef.current = null;
+    }
     zoom.resetZoom();
   }, [currentIndex, isOpen, zoom.resetZoom]);
 
@@ -196,24 +205,17 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
 
   const rawItem = activeItems[currentIndex] || activeItems[0] || items[currentIndex] || items[0];
   const currentItem = useMemo(() => {
-    if (!rawItem) return rawItem;
-    if (!allMessages || allMessages.length === 0) return rawItem;
+    if (!rawItem || allMsgMap.size === 0) return rawItem;
     const rId = normalizeMessageId(rawItem.id);
     const rMongoId = (rawItem as any)._id ? normalizeMessageId((rawItem as any)._id) : '';
     const rTempId = (rawItem as any).clientTempId ? normalizeMessageId((rawItem as any).clientTempId) : '';
     return (
-      allMessages.find((m) => {
-        const mId = normalizeMessageId(m.id);
-        const mMongoId = (m as any)._id ? normalizeMessageId((m as any)._id) : '';
-        const mTempId = (m as any).clientTempId ? normalizeMessageId((m as any).clientTempId) : '';
-        return (
-          (rId && (mId === rId || mMongoId === rId)) ||
-          (rMongoId && (mId === rMongoId || mMongoId === rMongoId)) ||
-          (rTempId && mTempId === rTempId)
-        );
-      }) || rawItem
+      (rId ? allMsgMap.get(rId) : undefined) ||
+      (rMongoId ? allMsgMap.get(rMongoId) : undefined) ||
+      (rTempId ? allMsgMap.get(rTempId) : undefined) ||
+      rawItem
     );
-  }, [rawItem, allMessages]);
+  }, [rawItem, allMsgMap]);
 
   const isVideo = Boolean(currentItem) && isVideoMedia(currentItem);
 
@@ -448,6 +450,9 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
 
   return (
     <MediaGalleryOverlay
+      role="dialog"
+      aria-modal="true"
+      aria-label="Media gallery"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}

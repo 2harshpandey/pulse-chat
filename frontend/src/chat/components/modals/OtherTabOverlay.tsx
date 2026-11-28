@@ -1,5 +1,6 @@
 import React from 'react';
 import styled, { keyframes } from 'styled-components';
+import { clearSavedPWALocation } from '../../../pwaLocation';
 
 const cardEnter = keyframes`
   0% {
@@ -216,7 +217,7 @@ export const OtherTabOverlay: React.FC<OtherTabOverlayProps> = ({ isOpen, onUseH
           <PrimaryButton type="button" onClick={onUseHere}>
             Use Here
           </PrimaryButton>
-          <SecondaryLink href="/">
+          <SecondaryLink href="/" onClick={() => clearSavedPWALocation()}>
             Return Home
           </SecondaryLink>
         </ActionsRow>

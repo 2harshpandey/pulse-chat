@@ -306,7 +306,7 @@ export function useChatViewport({
       document.removeEventListener('visibilitychange', handleViewportResize);
       handleViewportResizeRef.current = () => {};
     };
-  }, [clearPendingBottomScrollTimers, getChatScrollerElement, shouldSuppressProgrammaticScroll]);
+  }, [clearPendingBottomScrollTimers, getChatScrollerElement, messageInputRef, shouldSuppressProgrammaticScroll]);
 
   const handleInputFocus = useCallback(() => {
     const scroller = getChatScrollerElement();
@@ -368,18 +368,6 @@ export function useChatViewport({
       resizeTransitionTimerRef.current = null;
     }, 700);
   }, [getChatScrollerElement]);
-
-  useEffect(() => {
-    const textarea = messageInputRef.current;
-    if (!textarea) return;
-
-    textarea.addEventListener('focus', handleInputFocus);
-    textarea.addEventListener('blur', handleInputBlur);
-    return () => {
-      textarea.removeEventListener('focus', handleInputFocus);
-      textarea.removeEventListener('blur', handleInputBlur);
-    };
-  }, [messageInputRef, handleInputFocus, handleInputBlur]);
 
   useEffect(() => {
     return () => {

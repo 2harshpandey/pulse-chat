@@ -58,7 +58,7 @@ export const savePWALocation = (fullPath: string): void => {
   if (typeof window === 'undefined') return;
   if (!isSafePWAPath(fullPath)) return;
   try {
-    localStorage.setItem(PWA_LAST_LOCATION_KEY, fullPath);
+    localStorage.setItem(PWA_LAST_LOCATION_KEY, fullPath.trim());
   } catch (_) {}
 };
 
@@ -70,7 +70,7 @@ export const getSavedPWALocation = (): string | null => {
   try {
     const saved = localStorage.getItem(PWA_LAST_LOCATION_KEY);
     if (isSafePWAPath(saved)) {
-      return saved;
+      return saved.trim();
     }
   } catch (_) {}
   return null;

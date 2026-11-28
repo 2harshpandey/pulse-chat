@@ -2,14 +2,15 @@ import React from 'react';
 import styled, { keyframes } from 'styled-components';
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import Home from './Home';
+import { isChunkLoadError, lazyWithRetry, resetFailedLazyRoutes } from './pwaUpdater';
 
-const Rooms = React.lazy(() => import('./Rooms'));
-const Chat = React.lazy(() => import('./Chat'));
-const Admin = React.lazy(() => import('./Admin'));
-const AboutDeveloper = React.lazy(() => import('./AboutDeveloper'));
+const Rooms = lazyWithRetry(() => import('./Rooms'));
+const Chat = lazyWithRetry(() => import('./Chat'));
+const Admin = lazyWithRetry(() => import('./Admin'));
+const AboutDeveloper = lazyWithRetry(() => import('./AboutDeveloper'));
 import { GlobalStyle } from './chat/ChatStyledComponents';
 import { NotFoundPage, ForbiddenPage, ServerErrorPage, TimeoutPage, RateLimitPage, MaintenancePage } from './ErrorPages';
-import { savePWALocation, getSavedPWALocation, isRunningAsPWA } from './pwaLocation';
+import { savePWALocation, getSavedPWALocation, clearSavedPWALocation, isRunningAsPWA } from './pwaLocation';
 import { BASE_APP_TITLE, formatPageTitle } from './pageTitle';
 
 const GlobalHomeButton = styled.button`
@@ -125,16 +126,16 @@ const FallbackButton = styled.a`
   align-items: center;
   justify-content: center;
   padding: 0.85rem 2.25rem;
-  border-radius: 12px; font-size: 1rem;
+  border: none;
+  border-radius: 12px; font-family: inherit; font-size: 1rem;
   font-weight: 600; color: #fff;
   background: linear-gradient(135deg, var(--accent-blue), var(--accent-indigo));
   cursor: pointer; text-decoration: none;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   flex-shrink: 0;
-  margin-top: 0.5rem;
-  margin-bottom: 2rem;
   &:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(59,130,246,0.35); }
   &:active { transform: translateY(0); }
+  &:focus-visible { outline: 2px solid #93c5fd; outline-offset: 3px; }
 `;
 
 // ─── Error Boundary ────────────────────────────────────────────────────────
@@ -153,16 +154,22 @@ class RouteErrorBoundary extends React.Component<
   componentDidCatch(error: Error, info: React.ErrorInfo): void {
     console.error('[RouteErrorBoundary]', error, info);
     if (typeof document !== 'undefined') {
-      document.title = formatPageTitle('Something Went Wrong');
+      document.title = formatPageTitle(
+        isChunkLoadError(error) ? 'Update Available' : 'Something Went Wrong'
+      );
     }
     this.setState({ info });
   }
 
   componentWillUnmount(): void {
+    if (this.state.crashed) {
+      resetFailedLazyRoutes();
+    }
     if (
       this.state.crashed &&
       typeof document !== 'undefined' &&
-      document.title === formatPageTitle('Something Went Wrong')
+      (document.title === formatPageTitle('Something Went Wrong') ||
+        document.title === formatPageTitle('Update Available'))
     ) {
       document.title = BASE_APP_TITLE;
     }
@@ -170,43 +177,68 @@ class RouteErrorBoundary extends React.Component<
 
   render() {
     if (this.state.crashed) {
+      const chunkError = isChunkLoadError(this.state.error);
       return (
         <FallbackPage>
           <FallbackOrb $size={420} $x="5%"  $y="10%" $color="#3b82f6" />
           <FallbackOrb $size={320} $x="65%" $y="55%" $color="#8b5cf6" />
           <FallbackOrb $size={260} $x="45%" $y="-5%" $color="#06b6d4" />
-          <FallbackCode>Oops!</FallbackCode>
-          <FallbackTitle>Something went wrong</FallbackTitle>
+          <FallbackCode>{chunkError ? 'Update' : 'Oops!'}</FallbackCode>
+          <FallbackTitle>
+            {chunkError ? 'New version ready' : 'Something went wrong'}
+          </FallbackTitle>
           <FallbackDesc>
-            The application encountered an unexpected error. Refreshing the page
-            usually fixes this.
-            {this.state.error && (
-              <div
-                style={{
-                  marginTop: '1.25rem',
-                  padding: '1rem',
-                  background: 'rgba(0, 0, 0, 0.35)',
-                  border: '1px solid rgba(248, 113, 113, 0.3)',
-                  borderRadius: '10px',
-                  textAlign: 'left',
-                  fontSize: '0.82rem',
-                  maxHeight: '280px',
-                  overflowY: 'auto',
-                  overflowX: 'auto',
-                  color: '#f87171',
-                  boxShadow: 'inset 0 2px 8px rgba(0, 0, 0, 0.3)',
-                }}
-              >
-                <strong style={{ display: 'block', marginBottom: '0.5rem', wordBreak: 'break-word' }}>
-                  {this.state.error.toString()}
-                </strong>
-                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'monospace' }}>
-                  {this.state.info?.componentStack || this.state.error.stack}
-                </pre>
-              </div>
+            {chunkError ? (
+              <>
+                PulseChat was updated or couldn&apos;t load this page while offline.
+                Check your connection and reload to get the latest version.
+              </>
+            ) : (
+              <>
+                The application encountered an unexpected error. Refreshing the page
+                usually fixes this.
+                {this.state.error && (
+                  <div
+                    style={{
+                      marginTop: '1.25rem',
+                      padding: '1rem',
+                      background: 'rgba(0, 0, 0, 0.35)',
+                      border: '1px solid rgba(248, 113, 113, 0.3)',
+                      borderRadius: '10px',
+                      textAlign: 'left',
+                      fontSize: '0.82rem',
+                      maxHeight: '280px',
+                      overflowY: 'auto',
+                      overflowX: 'auto',
+                      color: '#f87171',
+                      boxShadow: 'inset 0 2px 8px rgba(0, 0, 0, 0.3)',
+                    }}
+                  >
+                    <strong style={{ display: 'block', marginBottom: '0.5rem', wordBreak: 'break-word' }}>
+                      {this.state.error.toString()}
+                    </strong>
+                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontFamily: 'monospace' }}>
+                      {this.state.info?.componentStack || this.state.error.stack}
+                    </pre>
+                  </div>
+                )}
+              </>
             )}
           </FallbackDesc>
-          <FallbackButton href="/">← Go to Home</FallbackButton>
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'center', marginTop: '0.5rem', marginBottom: '2rem', position: 'relative', zIndex: 1 }}>
+            {chunkError && (
+              <FallbackButton
+                as="button"
+                type="button"
+                onClick={() => window.location.reload()}
+              >
+                ↻ Reload &amp; Update
+              </FallbackButton>
+            )}
+            <FallbackButton href="/" onClick={() => clearSavedPWALocation()}>
+              ← Go to Home
+            </FallbackButton>
+          </div>
         </FallbackPage>
       );
     }
