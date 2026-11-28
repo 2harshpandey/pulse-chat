@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import type { Message, ReactionsPopupData } from '../../types';
 import { filterValidReactions } from '../../constants';
 import { sanitizeMediaUrl, withCloudinaryTransform, getMediaGatePreviewUrl, isNonTouchDevice, isPhotoOrGif, isGifMessage, copyImageToClipboard, getDeletedForMeIds, normalizeMessageId } from '../../utils';
@@ -80,6 +80,20 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
   const thumbsRowRef = useRef<HTMLDivElement>(null);
   const thumbRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
+  const allMsgMap = useMemo(() => {
+    const map = new Map<string, Message>();
+    if (!allMessages || allMessages.length === 0) return map;
+    allMessages.forEach((m) => {
+      const mId = normalizeMessageId(m.id);
+      const mMongoId = (m as any)._id ? normalizeMessageId((m as any)._id) : '';
+      const mTempId = (m as any).clientTempId ? normalizeMessageId((m as any).clientTempId) : '';
+      if (mId) map.set(mId, m);
+      if (mMongoId) map.set(mMongoId, m);
+      if (mTempId) map.set(mTempId, m);
+    });
+    return map;
+  }, [allMessages]);
+
   const activeItems = useMemo(() => {
     const deletedForMeSet = new Set(currentUserId ? getDeletedForMeIds(currentUserId) : []);
     const isNotDeletedForMe = (m: Message) => {
@@ -87,18 +101,9 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
       if ((m as any)._id && deletedForMeSet.has((m as any)._id)) return false;
       return true;
     };
-    if (!allMessages || allMessages.length === 0) {
+    if (allMsgMap.size === 0) {
       return items.filter((m) => !m.isDeleted && isNotDeletedForMe(m));
     }
-    const allMsgMap = new Map<string, Message>();
-    allMessages.forEach((m) => {
-      const mId = normalizeMessageId(m.id);
-      const mMongoId = (m as any)._id ? normalizeMessageId((m as any)._id) : '';
-      const mTempId = (m as any).clientTempId ? normalizeMessageId((m as any).clientTempId) : '';
-      if (mId) allMsgMap.set(mId, m);
-      if (mMongoId) allMsgMap.set(mMongoId, m);
-      if (mTempId) allMsgMap.set(mTempId, m);
-    });
     return items.filter((item) => {
       if (!isNotDeletedForMe(item)) return false;
       const itemId = normalizeMessageId(item.id);
@@ -113,7 +118,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
       }
       return !item.isDeleted;
     });
-  }, [items, allMessages, currentUserId]);
+  }, [items, allMsgMap, currentUserId]);
 
   useEffect(() => {
     if (isOpen && activeItems.length === 0) {
@@ -131,20 +136,19 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     zoom.resetZoom();
   }, [currentIndex, isOpen, zoom.resetZoom]);
 
-  const activeItemsLengthRef = useRef(activeItems.length);
-  activeItemsLengthRef.current = activeItems.length;
-  const itemsLengthRef = useRef(items.length);
-  itemsLengthRef.current = items.length;
-
-  useEffect(() => {
+  // Synchronously align currentIndex before DOM commit when opening so slide 0 never flashes first
+  const [prevSyncState, setPrevSyncState] = useState({ isOpen, initialIndex });
+  if (isOpen !== prevSyncState.isOpen || (isOpen && initialIndex !== prevSyncState.initialIndex)) {
+    setPrevSyncState({ isOpen, initialIndex });
     if (isOpen) {
-      const len = activeItemsLengthRef.current > 0 ? activeItemsLengthRef.current : itemsLengthRef.current;
-      setCurrentIndex(Math.max(0, Math.min(initialIndex, len - 1)));
+      const len = activeItems.length > 0 ? activeItems.length : items.length;
+      const clamped = Math.max(0, Math.min(initialIndex, Math.max(0, len - 1)));
+      setCurrentIndex(clamped);
       setTouchOffset(0);
       setIsSwiping(false);
       setUserNavigated(false);
     }
-  }, [isOpen, initialIndex]);
+  }
 
   const centerActiveThumb = useCallback((behavior: ScrollBehavior = 'smooth') => {
     const container = thumbsRowRef.current;
@@ -165,21 +169,21 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     });
   }, [currentIndex]);
 
-  // Center active thumbnail horizontally in filmstrip so active media is in middle with neighbors on left and right
-  useEffect(() => {
+  // Center active thumbnail synchronously before paint on open (zero post-open jump) and smoothly on navigation
+  useLayoutEffect(() => {
     if (!isOpen) return;
 
-    const behavior: ScrollBehavior = userNavigated ? 'smooth' : 'auto';
+    if (!userNavigated) {
+      centerActiveThumb('auto');
+      return;
+    }
+
     const rafId = requestAnimationFrame(() => {
-      centerActiveThumb(behavior);
+      centerActiveThumb('smooth');
     });
-    const timerId = setTimeout(() => {
-      centerActiveThumb(behavior);
-    }, 60);
 
     return () => {
       cancelAnimationFrame(rafId);
-      clearTimeout(timerId);
     };
   }, [currentIndex, isOpen, activeItems.length, userNavigated, centerActiveThumb]);
 
@@ -237,7 +241,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
       const w = img.clientWidth || img.offsetWidth;
       const h = img.clientHeight || img.offsetHeight;
       if (w > 0 && h > 0) {
-        setPhotoBox({ width: w, height: h });
+        setPhotoBox((prev) => (prev && prev.width === w && prev.height === h ? prev : { width: w, height: h }));
       }
     };
 
@@ -401,20 +405,19 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
           display: 'flex',
           alignItems: 'center',
           gap: '5px',
-          background: 'rgba(30, 41, 59, 0.9)',
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
+          background: 'rgba(15, 23, 42, 0.94)',
           border: '1px solid rgba(255, 255, 255, 0.18)',
           borderRadius: '999px',
           padding: '4px 10px 4px 8px',
-          boxShadow: '0 4px 18px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.2)',
+          boxShadow: '0 4px 14px rgba(0, 0, 0, 0.5)',
           cursor: isVisible ? 'pointer' : 'default',
           userSelect: 'none',
+          touchAction: 'manipulation',
           opacity: isVisible ? 1 : 0,
           visibility: isVisible ? 'visible' : 'hidden',
-          transform: isVisible ? 'scale(1)' : 'scale(0.7)',
+          transform: isVisible ? 'scale(1)' : 'scale(0.9)',
           pointerEvents: isVisible ? 'auto' : 'none',
-          transition: 'opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.2s',
+          transition: 'opacity 0.1s ease, transform 0.1s ease',
         }}
         onPointerDown={(e) => {
           e.stopPropagation();
@@ -660,11 +663,16 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                 src={safeUrl}
                 alt={currentItem.originalName || 'Photo'}
                 draggable={false}
+                decoding="async"
                 onLoad={(e) => {
                   zoom.handleImageLoad(e);
                   const img = e.currentTarget;
                   if (img.clientWidth > 0 && img.clientHeight > 0) {
-                    setPhotoBox({ width: img.clientWidth, height: img.clientHeight });
+                    setPhotoBox((prev) =>
+                      prev && prev.width === img.clientWidth && prev.height === img.clientHeight
+                        ? prev
+                        : { width: img.clientWidth, height: img.clientHeight }
+                    );
                   }
                 }}
                 onError={(e) => {
@@ -828,12 +836,12 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                             src={thumbUrl}
                             alt=""
                             loading="lazy"
+                            decoding="async"
                             style={{
                               width: '100%',
                               height: '100%',
                               objectFit: 'cover',
-                              filter: isLoaded ? 'none' : 'blur(2px) brightness(0.85)',
-                              transition: 'filter 0.2s ease',
+                              opacity: isLoaded ? 1 : 0.72,
                             }}
                           />
                         ) : (
@@ -864,6 +872,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                         src={thumbUrl}
                         alt=""
                         loading="lazy"
+                        decoding="async"
                         onError={(e) => {
                           const fallback = sanitizeMediaUrl(item.url);
                           const img = e.currentTarget;
@@ -876,8 +885,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                           width: '100%',
                           height: '100%',
                           objectFit: 'cover',
-                          filter: isLoaded ? 'none' : 'blur(2px) brightness(0.85)',
-                          transition: 'filter 0.2s ease',
+                          opacity: isLoaded ? 1 : 0.72,
                         }}
                       />
                     )}

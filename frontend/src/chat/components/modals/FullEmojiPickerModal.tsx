@@ -49,7 +49,7 @@ export const FullEmojiPickerModal: React.FC<FullEmojiPickerModalProps> = ({
             emojiStyle={EmojiStyle.NATIVE}
             autoFocusSearch={false}
             width="100%"
-            lazyLoadEmojis={false}
+            lazyLoadEmojis={true}
           />
         </MobileEmojiPanel>
       ) : (
@@ -69,7 +69,7 @@ export const FullEmojiPickerModal: React.FC<FullEmojiPickerModalProps> = ({
             theme={isDark ? Theme.DARK : Theme.LIGHT}
             emojiStyle={EmojiStyle.NATIVE}
             autoFocusSearch={false}
-            lazyLoadEmojis={false}
+            lazyLoadEmojis={true}
           />
         </EmojiPickerWrapper>
       )}

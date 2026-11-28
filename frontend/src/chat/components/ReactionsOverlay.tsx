@@ -1,4 +1,4 @@
-import React, { useState, useLayoutEffect } from 'react';
+import React, { useLayoutEffect } from 'react';
 import { ReactionPicker, ReactionEmoji } from '../Chat.styles';
 import { ReactionsPopup } from './modals/ReactionsPopup';
 import { QUICK_REACTIONS } from '../constants';
@@ -15,6 +15,44 @@ interface ReactionsOverlayProps {
   onCloseReactionsPopup: () => void;
 }
 
+const computePickerPosition = (
+  rect: DOMRect,
+  sender: 'me' | 'other',
+  pickerWidth: number
+) => {
+  const margin = 12;
+  const vvHeight = window.visualViewport?.height || window.innerHeight;
+  const vvTop = window.visualViewport?.offsetTop || 0;
+
+  let top = rect.top - 60;
+  if (top < vvTop + 10) {
+    top = rect.bottom + 10;
+  }
+  if (top + 60 > vvTop + vvHeight) {
+    top = Math.max(vvTop + 10, Math.min(vvTop + vvHeight - 70, rect.top - 60));
+  }
+
+  let left: number;
+  if (
+    sender === 'me' ||
+    rect.left > window.innerWidth / 2 ||
+    rect.right > window.innerWidth - 180
+  ) {
+    left = rect.right - pickerWidth;
+  } else {
+    left = rect.left;
+  }
+
+  if (left + pickerWidth > window.innerWidth - margin) {
+    left = window.innerWidth - pickerWidth - margin;
+  }
+  if (left < margin) {
+    left = margin;
+  }
+
+  return { top, left };
+};
+
 export const ReactionsOverlay: React.FC<ReactionsOverlayProps> = ({
   reactionPickerData,
   reactionPickerRef,
@@ -24,16 +62,19 @@ export const ReactionsOverlay: React.FC<ReactionsOverlayProps> = ({
   currentUserId,
   onCloseReactionsPopup,
 }) => {
-  const [measuredWidth, setMeasuredWidth] = useState<number>(340);
-
+  // Adjust horizontal position synchronously before paint without triggering a second React render
   useLayoutEffect(() => {
-    if (reactionPickerRef.current) {
-      const w = reactionPickerRef.current.offsetWidth;
-      if (w > 0 && Math.abs(w - measuredWidth) > 2) {
-        setMeasuredWidth(w);
-      }
-    }
-  }, [reactionPickerData, measuredWidth, reactionPickerRef]);
+    const el = reactionPickerRef.current;
+    if (!el || !reactionPickerData) return;
+    const actualWidth = el.offsetWidth;
+    if (actualWidth <= 0) return;
+    const { left } = computePickerPosition(
+      reactionPickerData.rect,
+      reactionPickerData.sender,
+      actualWidth
+    );
+    el.style.left = `${left}px`;
+  }, [reactionPickerData, reactionPickerRef]);
 
   return (
     <>
@@ -42,39 +83,12 @@ export const ReactionsOverlay: React.FC<ReactionsOverlayProps> = ({
           ref={reactionPickerRef as any}
           $sender={reactionPickerData.sender}
           style={(() => {
-            const pickerWidth = Math.max(340, reactionPickerRef.current?.offsetWidth || measuredWidth);
-            const margin = 12;
-            const vvHeight = window.visualViewport?.height || window.innerHeight;
-            const vvTop = window.visualViewport?.offsetTop || 0;
-
-            let top = reactionPickerData.rect.top - 60;
-            if (top < vvTop + 10) {
-              top = reactionPickerData.rect.bottom + 10;
-            }
-            if (top + 60 > vvTop + vvHeight) {
-              top = Math.max(vvTop + 10, Math.min(vvTop + vvHeight - 70, reactionPickerData.rect.top - 60));
-            }
-
-            // Align to right edge if sender is 'me', or if button is on the right half of the screen (e.g. MediaGalleryModal actions)
-            let left: number;
-            if (
-              reactionPickerData.sender === 'me' ||
-              reactionPickerData.rect.left > window.innerWidth / 2 ||
-              reactionPickerData.rect.right > window.innerWidth - 180
-            ) {
-              left = reactionPickerData.rect.right - pickerWidth;
-            } else {
-              left = reactionPickerData.rect.left;
-            }
-
-            // Strictly clamp inside screen boundaries so it is never cut off
-            if (left + pickerWidth > window.innerWidth - margin) {
-              left = window.innerWidth - pickerWidth - margin;
-            }
-            if (left < margin) {
-              left = margin;
-            }
-
+            const estimatedWidth = typeof window !== 'undefined' && window.innerWidth <= 380 ? 290 : 340;
+            const { top, left } = computePickerPosition(
+              reactionPickerData.rect,
+              reactionPickerData.sender,
+              estimatedWidth
+            );
             return { top: `${top}px`, left: `${left}px` };
           })()}
         >

@@ -461,6 +461,35 @@ export function useChatController({ isMe, isTempLink }: UseChatControllerProps =
     }
   }, [viewport.isMobileView, userContext?.profile]);
 
+  // Automatically close virtual keyboard whenever side panel opens
+  useEffect(() => {
+    if (!isUserListVisible || typeof document === 'undefined') return;
+    const active = document.activeElement;
+    if (
+      active instanceof HTMLElement &&
+      (active === messageInputRef.current ||
+        active.tagName === 'TEXTAREA' ||
+        active.tagName === 'INPUT' ||
+        active.isContentEditable)
+    ) {
+      active.blur();
+    }
+    messageInputRef.current?.blur();
+  }, [isUserListVisible]);
+
+  // Automatically close side panel whenever the chat input opens the virtual keyboard (e.g., quoting/replying)
+  useEffect(() => {
+    const textarea = messageInputRef.current;
+    if (!textarea) return;
+    const handleComposerFocusCloseSidebar = () => {
+      setIsUserListVisible(false);
+    };
+    textarea.addEventListener('focus', handleComposerFocusCloseSidebar);
+    return () => {
+      textarea.removeEventListener('focus', handleComposerFocusCloseSidebar);
+    };
+  }, [messageInputRef]);
+
   // Auto-scroll when new messages arrive
   useEffect(() => {
     const currentLength = msgs.messages.length;

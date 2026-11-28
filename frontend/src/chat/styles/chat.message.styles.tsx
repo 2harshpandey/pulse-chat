@@ -1,6 +1,9 @@
 import styled, { css } from 'styled-components';
 import {
+  fadeIn,
   fadeInScale,
+  fastPopIn,
+  fastSlideUp,
   modalSlideUp,
   gifItemReveal,
   subtleSlideUp,
@@ -75,8 +78,9 @@ export const UserSidebar = styled.aside<{ $isVisible: boolean }>`
     height: calc(var(--app-height, 100dvh) - 40px);
     overflow-y: auto;
     z-index: 40;
-    transform: ${props => props.$isVisible ? 'translateX(0)' : 'translateX(100%)'};
-    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.3s ease, border-color 0.3s ease;
+    transform: ${props => props.$isVisible ? 'translate3d(0, 0, 0)' : 'translate3d(100%, 0, 0)'};
+    will-change: transform;
+    transition: transform 0.18s cubic-bezier(0.2, 0, 0, 1);
     visibility: ${props => props.$isVisible ? 'visible' : 'hidden'};
   }
 `;
@@ -634,25 +638,29 @@ export const LinkPreviewDesc = styled.p<{ $sender: 'me' | 'other' }>`
 export const ReactionPicker = styled.div<{ $sender: 'me' | 'other' }>`
   position: fixed;
   background: var(--bg-elevated);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   border-radius: 24px; 
   padding: 8px 10px; 
   display: flex; 
   align-items: center;
   gap: 6px; 
-  box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.16), 0 2px 8px rgba(0,0,0,0.08);
   z-index: 1050;
   border: 1px solid var(--border-primary);
   max-width: calc(100vw - 24px);
   box-sizing: border-box;
-  transition: background-color 0.3s ease;
-  animation: ${reactionPickerSlideIn} 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  will-change: transform, opacity;
+  animation: ${fastPopIn} 0.11s cubic-bezier(0.2, 0, 0, 1) forwards;
+  touch-action: manipulation;
+
+  @media (hover: hover) and (pointer: fine) {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
 
   [data-theme='dark'] & {
-    background: rgba(30, 41, 59, 0.95);
+    background: rgba(30, 41, 59, 0.98);
     border: 1px solid rgba(255, 255, 255, 0.16);
-    box-shadow: 0 12px 36px rgba(0,0,0,0.45), 0 2px 10px rgba(0,0,0,0.25);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5), 0 2px 10px rgba(0,0,0,0.28);
   }
 
   @media (max-width: 380px) {
@@ -660,25 +668,13 @@ export const ReactionPicker = styled.div<{ $sender: 'me' | 'other' }>`
     padding: 6px 8px;
     border-radius: 20px;
   }
-
-  /* Stagger each emoji child */
-  & > button {
-    animation: ${staggerFadeIn} 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-  }
-  & > button:nth-child(1) { animation-delay: 0.02s; }
-  & > button:nth-child(2) { animation-delay: 0.05s; }
-  & > button:nth-child(3) { animation-delay: 0.08s; }
-  & > button:nth-child(4) { animation-delay: 0.11s; }
-  & > button:nth-child(5) { animation-delay: 0.14s; }
-  & > button:nth-child(6) { animation-delay: 0.17s; }
-  & > button:nth-child(7) { animation-delay: 0.20s; }
 `;
 
 export const ReactionEmoji = styled.button<{ $isPlusIcon?: boolean }>`
   border: none; 
   font-size: 24px; 
   cursor: pointer; 
-  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+  transition: transform 0.1s ease, background-color 0.12s ease;
   border-radius: ${props => props.$isPlusIcon ? '50%' : '10px'};
   width: 38px;
   height: 38px;
@@ -692,6 +688,8 @@ export const ReactionEmoji = styled.button<{ $isPlusIcon?: boolean }>`
   box-sizing: border-box;
   user-select: none;
   -webkit-user-select: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 
   /* Default / Light mode styles */
   background: ${props => props.$isPlusIcon ? 'rgba(15, 23, 42, 0.08)' : 'rgba(15, 23, 42, 0.05)'};
@@ -705,16 +703,18 @@ export const ReactionEmoji = styled.button<{ $isPlusIcon?: boolean }>`
     line-height: 1;
   `}
 
-  &:hover {
-    transform: ${props => props.$isPlusIcon ? 'scale(1.15)' : 'scale(1.24)'};
-    background: ${props => props.$isPlusIcon ? 'rgba(59, 130, 246, 0.18)' : 'rgba(59, 130, 246, 0.15)'};
-    border-color: ${props => props.$isPlusIcon ? 'rgba(59, 130, 246, 0.45)' : 'rgba(59, 130, 246, 0.35)'};
-    color: var(--accent-blue);
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
-    z-index: 2;
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      transform: ${props => props.$isPlusIcon ? 'scale(1.15)' : 'scale(1.24)'};
+      background: ${props => props.$isPlusIcon ? 'rgba(59, 130, 246, 0.18)' : 'rgba(59, 130, 246, 0.15)'};
+      border-color: ${props => props.$isPlusIcon ? 'rgba(59, 130, 246, 0.45)' : 'rgba(59, 130, 246, 0.35)'};
+      color: var(--accent-blue);
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+      z-index: 2;
+    }
   }
   &:active {
-    animation: ${emojiPopTap} 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transform: scale(0.92);
   }
 
   /* Dark mode styles */
@@ -724,12 +724,14 @@ export const ReactionEmoji = styled.button<{ $isPlusIcon?: boolean }>`
     color: #f8fafc;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 
-    &:hover {
-      background: ${props => props.$isPlusIcon ? 'rgba(59, 130, 246, 0.32)' : 'rgba(59, 130, 246, 0.28)'};
-      border-color: ${props => props.$isPlusIcon ? 'rgba(96, 165, 250, 0.6)' : 'rgba(96, 165, 250, 0.55)'};
-      color: #93c5fd;
-      box-shadow: 0 4px 14px rgba(59, 130, 246, 0.35);
-      z-index: 2;
+    @media (hover: hover) and (pointer: fine) {
+      &:hover {
+        background: ${props => props.$isPlusIcon ? 'rgba(59, 130, 246, 0.32)' : 'rgba(59, 130, 246, 0.28)'};
+        border-color: ${props => props.$isPlusIcon ? 'rgba(96, 165, 250, 0.6)' : 'rgba(96, 165, 250, 0.55)'};
+        color: #93c5fd;
+        box-shadow: 0 4px 14px rgba(59, 130, 246, 0.35);
+        z-index: 2;
+      }
     }
   }
 
@@ -752,17 +754,24 @@ export const ReactionsPopupModal = styled.div`
   left: 0;
   right: 0;
   height: var(--app-height, 100dvh);
-  background: rgba(0,0,0,0.25);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: rgba(0,0,0,0.48);
   z-index: 1100;
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: ${reactionsModalFadeIn} 0.2s ease-out forwards;
+  animation: ${fadeIn} 0.1s ease-out forwards;
+
+  @media (hover: hover) and (pointer: fine) {
+    background: rgba(0,0,0,0.25);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
 
   [data-theme='dark'] & {
-    background: rgba(0,0,0,0.45);
+    background: rgba(0,0,0,0.62);
+    @media (hover: hover) and (pointer: fine) {
+      background: rgba(0,0,0,0.45);
+    }
   }
 `;
 
@@ -774,15 +783,16 @@ export const ReactionsPopupContent = styled.div`
   width: 90%;
   max-width: 400px;
   max-height: calc(var(--app-height, 100dvh) - 24px);
-  box-shadow: 0 20px 60px rgba(0,0,0,0.15), 0 4px 16px rgba(0,0,0,0.08);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.18), 0 4px 16px rgba(0,0,0,0.08);
   display: flex;
   flex-direction: column;
-  animation: ${reactionsContentSlideUp} 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  will-change: transform, opacity;
+  animation: ${fastPopIn} 0.12s cubic-bezier(0.2, 0, 0, 1) forwards;
   border: 1px solid var(--border-primary);
   overflow: hidden;
 
   [data-theme='dark'] & {
-    box-shadow: 0 20px 60px rgba(0,0,0,0.4), 0 4px 16px rgba(0,0,0,0.25);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.45), 0 4px 16px rgba(0,0,0,0.25);
   }
 `;
 
@@ -813,17 +823,21 @@ export const ReactionTab = styled.button<{ active: boolean }>`
   font-size: 1rem;
   font-weight: bold;
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 10px 6px;
   border-bottom: 2.5px solid ${props => props.active ? 'var(--accent-blue)' : 'transparent'};
-  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: color 0.14s ease, border-color 0.14s ease;
   white-space: nowrap;
 
-  &:hover {
-    color: var(--accent-blue);
-    transform: translateY(-1px);
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      color: var(--accent-blue);
+      transform: translateY(-1px);
+    }
   }
 `;
 
@@ -836,14 +850,8 @@ export const ReactionsUserList = styled.div`
   gap: 10px;
 
   & > div {
-    animation: ${userRowFadeIn} 0.3s ease-out both;
+    animation: ${fadeIn} 0.12s ease-out both;
   }
-  & > div:nth-child(1) { animation-delay: 0.05s; }
-  & > div:nth-child(2) { animation-delay: 0.1s; }
-  & > div:nth-child(3) { animation-delay: 0.15s; }
-  & > div:nth-child(4) { animation-delay: 0.2s; }
-  & > div:nth-child(5) { animation-delay: 0.25s; }
-  & > div:nth-child(6) { animation-delay: 0.3s; }
 `;
 
 export const UserAvatar = styled.div`
@@ -868,7 +876,9 @@ export const ReactionUserRow = styled.div`
   font-size: 1rem;
   padding: 6px 8px;
   border-radius: 10px;
-  transition: background-color 0.15s ease;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.12s ease;
 
   &:hover {
     background: var(--bg-hover);
@@ -879,12 +889,7 @@ export const ReactionEmojiSpan = styled.span`
   font-size: 15px;
   margin-right: -2px;
   display: inline-block;
-  animation: ${reactionBounceIn} 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-  transition: transform 0.15s ease;
-
-  &:nth-child(1) { animation-delay: 0s; }
-  &:nth-child(2) { animation-delay: 0.06s; }
-  &:nth-child(3) { animation-delay: 0.12s; }
+  animation: ${fastPopIn} 0.16s cubic-bezier(0.2, 0, 0, 1) both;
 `;
 
 export const ReactionCountSpan = styled.span`
@@ -933,13 +938,20 @@ export const ActionButton = styled.button`
 `;
 
 export const ConfirmationModal = styled.div`
-  position: fixed; top: var(--app-offset-top, 0px); left: 0; right: 0; height: var(--app-height, 100dvh); background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 10000;
-  animation: ${reactionsModalFadeIn} 0.2s ease-out forwards;
+  position: fixed; top: var(--app-offset-top, 0px); left: 0; right: 0; height: var(--app-height, 100dvh); background: rgba(0,0,0,0.62); display: flex; align-items: center; justify-content: center; z-index: 10000;
+  animation: ${fadeIn} 0.1s ease-out forwards;
+
+  @media (hover: hover) and (pointer: fine) {
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
 `;
 
 export const ConfirmationContent = styled.div`
-  background: var(--bg-elevated); padding: 2rem; border-radius: 16px; text-align: center; transition: background-color 0.3s ease, color 0.3s ease;
-  animation: ${modalSlideUp} 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  background: var(--bg-elevated); padding: 2rem; border-radius: 16px; text-align: center;
+  animation: ${fastPopIn} 0.12s cubic-bezier(0.2, 0, 0, 1) forwards;
+  will-change: transform, opacity;
   box-shadow: 0 25px 60px rgba(0,0,0,0.2);
   border: 1px solid var(--border-primary);
   [data-theme='dark'] & { box-shadow: 0 25px 60px rgba(0,0,0,0.5); }
@@ -953,18 +965,25 @@ export const DeleteDialogOverlay = styled.div`
   left: 0;
   right: 0;
   height: var(--app-height, 100dvh);
-  background: rgba(2, 6, 23, 0.58);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background: rgba(2, 6, 23, 0.72);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 1rem;
   z-index: 10000;
-  animation: ${reactionsModalFadeIn} 0.16s ease-out forwards;
+  animation: ${fadeIn} 0.1s ease-out forwards;
+
+  @media (hover: hover) and (pointer: fine) {
+    background: rgba(2, 6, 23, 0.58);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
 
   [data-theme='light'] & {
-    background: rgba(15, 23, 42, 0.36);
+    background: rgba(15, 23, 42, 0.48);
+    @media (hover: hover) and (pointer: fine) {
+      background: rgba(15, 23, 42, 0.36);
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -982,7 +1001,7 @@ export const DeleteDialogCard = styled.div`
   flex-direction: column;
   text-align: left;
   box-shadow: 0 20px 48px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.06);
-  animation: ${fadeInScale} 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: ${fastPopIn} 0.11s cubic-bezier(0.2, 0, 0, 1) forwards;
   will-change: transform, opacity;
 
   [data-theme='dark'] & {
@@ -1027,6 +1046,8 @@ const deleteBtnBase = css`
   font-weight: 600;
   letter-spacing: -0.01em;
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1122,14 +1143,18 @@ export const ReportModal = styled.div`
   right: 0;
   height: var(--app-height, 100dvh);
   z-index: 130;
-  background: rgba(0, 0, 0, 0.46);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.62);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  animation: ${reactionsModalFadeIn} 0.2s ease-out forwards;
+  animation: ${fadeIn} 0.1s ease-out forwards;
+
+  @media (hover: hover) and (pointer: fine) {
+    background: rgba(0, 0, 0, 0.46);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
 `;
 
 export const ReportDialog = styled.div`
@@ -1144,7 +1169,8 @@ export const ReportDialog = styled.div`
   display: flex;
   flex-direction: column;
   gap: 0.8rem;
-  animation: ${modalSlideUp} 0.34s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+  animation: ${fastPopIn} 0.12s cubic-bezier(0.2, 0, 0, 1) forwards;
 
   [data-theme='dark'] & {
     box-shadow: 0 28px 64px rgba(0, 0, 0, 0.5);

@@ -1082,5 +1082,58 @@ describe('Media Viewer Side Panel and Tab Switching', () => {
       expect(updatedBadge.textContent).toContain('😂');
       expect(updatedBadge.textContent).toContain('2');
     });
+
+    it('opens directly on the requested initialIndex without flashing slide 0 first', () => {
+      const items: Message[] = [
+        {
+          id: 'p1',
+          userId: 'u1',
+          username: 'Harsh',
+          type: 'image',
+          url: 'https://res.cloudinary.com/demo/image/upload/p1.jpg',
+          originalName: 'p1.jpg',
+          timestamp: new Date().toISOString(),
+        },
+        {
+          id: 'p2',
+          userId: 'u1',
+          username: 'Harsh',
+          type: 'image',
+          url: 'https://res.cloudinary.com/demo/image/upload/p2.jpg',
+          originalName: 'p2.jpg',
+          timestamp: new Date().toISOString(),
+        },
+        {
+          id: 'p3',
+          userId: 'u1',
+          username: 'Harsh',
+          type: 'image',
+          url: 'https://res.cloudinary.com/demo/image/upload/p3.jpg',
+          originalName: 'p3.jpg',
+          timestamp: new Date().toISOString(),
+        },
+      ];
+
+      const { rerender } = render(
+        <MediaGalleryModal
+          isOpen={false}
+          items={items}
+          initialIndex={0}
+          onClose={vi.fn()}
+        />
+      );
+
+      rerender(
+        <MediaGalleryModal
+          isOpen={true}
+          items={items}
+          initialIndex={2}
+          onClose={vi.fn()}
+        />
+      );
+
+      expect(screen.getByText('3 / 3')).toBeTruthy();
+      expect((screen.getByAltText('p3.jpg') as HTMLImageElement).src).toContain('p3.jpg');
+    });
   });
 });

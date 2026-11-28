@@ -28,11 +28,13 @@ export const SidePanelTab = styled.button<{ $active?: boolean }>`
   font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background-color 0.14s ease, color 0.14s ease, transform 0.14s ease;
   letter-spacing: 0.01em;
 
   span {
@@ -237,10 +239,12 @@ export const MediaGalleryFilterChip = styled.button<{ $active?: boolean }>`
   font-size: 0.70rem;
   font-weight: 600;
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
   white-space: nowrap;
   flex-shrink: 0;
   box-shadow: ${p => p.$active ? '0 0 10px rgba(59, 130, 246, 0.25)' : 'none'};
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease;
   letter-spacing: 0.01em;
 
   &:hover {
@@ -336,17 +340,19 @@ export const MediaGalleryDateDivider = styled.div`
     }
   }
 
-  @keyframes mgDateFadeIn {
-    from {
-      opacity: 0;
-      transform: translateY(-4px) scale(0.97);
+  @media (hover: hover) and (pointer: fine) {
+    @keyframes mgDateFadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(-4px) scale(0.97);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
     }
-    to {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
+    animation: mgDateFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
-  animation: mgDateFadeIn 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 `;
 
 export const MediaGalleryDateBadge = styled.span`
@@ -360,18 +366,15 @@ export const MediaGalleryDateBadge = styled.span`
   letter-spacing: 0.02em;
   text-transform: capitalize;
   color: var(--text-secondary);
-  background: rgba(30, 41, 59, 0.7);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: rgba(30, 41, 59, 0.92);
   border: 1px solid rgba(255, 255, 255, 0.09);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.22);
   margin: 0 8px;
   white-space: nowrap;
   pointer-events: none;
-  transition: all 0.2s ease;
 
   [data-theme='light'] & {
-    background: rgba(241, 245, 249, 0.92);
+    background: rgba(241, 245, 249, 0.95);
     border-color: rgba(0, 0, 0, 0.08);
     color: #475569;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
@@ -385,34 +388,26 @@ export const MediaGalleryTile = styled.div`
   overflow: hidden;
   background: rgba(15, 23, 42, 0.6);
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
   border: 1px solid rgba(255, 255, 255, 0.08);
   contain: content;
   content-visibility: auto;
   contain-intrinsic-size: 100px 100px;
-  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s ease, border-color 0.22s ease;
+  transition: transform 0.15s ease, border-color 0.15s ease;
 
   [data-theme='light'] & {
     background: rgba(0, 0, 0, 0.04);
     border-color: var(--border-secondary);
   }
 
-  @keyframes mgTileFadeIn {
-    from {
-      opacity: 0;
-      transform: scale(0.92);
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      transform: scale(1.03);
+      z-index: 2;
+      border-color: rgba(59, 130, 246, 0.5);
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
     }
-    to {
-      opacity: 1;
-      transform: scale(1);
-    }
-  }
-  animation: mgTileFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-
-  &:hover {
-    transform: scale(1.03);
-    z-index: 2;
-    border-color: rgba(59, 130, 246, 0.5);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
   }
 
   &:active {
@@ -440,7 +435,7 @@ export const MediaGalleryPlayOverlay = styled.div`
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.3);
-  transition: background 0.18s ease;
+  transition: background 0.15s ease;
   pointer-events: none;
 
   ${MediaGalleryTile}:hover & {
@@ -452,15 +447,13 @@ export const MediaGalleryPlayIconCircle = styled.div`
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: rgba(0, 0, 0, 0.68);
   border: 1px solid rgba(255, 255, 255, 0.25);
   display: flex;
   align-items: center;
   justify-content: center;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.15s ease;
 
   svg {
     width: 13px;
@@ -469,8 +462,10 @@ export const MediaGalleryPlayIconCircle = styled.div`
     margin-left: 2px;
   }
 
-  ${MediaGalleryTile}:hover & {
-    transform: scale(1.12);
+  @media (hover: hover) and (pointer: fine) {
+    ${MediaGalleryTile}:hover & {
+      transform: scale(1.12);
+    }
   }
 `;
 
@@ -480,9 +475,7 @@ export const MediaGalleryDurationBadge = styled.div`
   right: 4px;
   padding: 1px 5px;
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.72);
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
+  background: rgba(0, 0, 0, 0.78);
   color: #f1f5f9;
   font-size: 0.64rem;
   font-weight: 600;
@@ -500,21 +493,11 @@ export const MediaGalleryDocCard = styled.div`
   background: rgba(15, 23, 42, 0.5);
   border: 1px solid var(--border-primary);
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
   color: var(--text-secondary);
   font-size: 0.75rem;
-
-  @keyframes mgDocFadeIn {
-    from {
-      opacity: 0;
-      transform: translateY(4px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-  animation: mgDocFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 
   &:hover {
     background: rgba(59, 130, 246, 0.09);

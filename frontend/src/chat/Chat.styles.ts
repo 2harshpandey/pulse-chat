@@ -9,19 +9,20 @@ export const ChatSearchContainer = styled.div<{ $active: boolean; $isClosing?: b
   padding: 0;
   width: ${p => p.$active ? '240px' : '40px'};
   height: 40px;
-  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width 0.24s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.24s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
+  overflow: clip;
   will-change: width;
 
   @media (max-width: 768px) {
     position: absolute;
-    /* When active, move to right: 0 to cover the whole header. When closed, stay at right: 48px (left of Users button) */
-    right: ${p => p.$active || p.$isClosing ? '0' : '48px'};
+    /* When active, expand to right: 0 over the header; when closed or closing, stay/return to right: 48px beside Users button */
+    right: ${p => p.$active ? '0' : '48px'};
     top: 50%;
     transform: translateY(-50%);
     width: ${p => p.$active ? 'calc(100vw - 2rem)' : '40px'};
-    z-index: 10;
-    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: ${p => p.$active || p.$isClosing ? 12 : 10};
+    transition: width 0.24s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.24s cubic-bezier(0.4, 0, 0.2, 1), right 0.24s cubic-bezier(0.4, 0, 0.2, 1);
   }
 `;
 

@@ -10,6 +10,7 @@ import { ReactionsPopup } from './components/modals/ReactionsPopup';
 import { MediaTapToLoadOverlay } from './components/message/MediaOverlayPrimitives';
 import { PinnedMessageBanner } from './components/PinnedMessageBanner';
 import { ChatHeader } from './components/ChatHeader';
+import { MediaGalleryModal } from './components/modals/MediaGalleryModal';
 import { VideoPlayer } from './VideoPlayer';
 import { useChatComposer } from './hooks/useChatComposer';
 import type { Message } from './types';
@@ -220,7 +221,90 @@ describe('Touch virtual keyboard preservation across chat controls', () => {
 
     assertPreservesBothStates(soundBtn);
     assertPreservesBothStates(themeBtn);
-    assertPreservesBothStates(usersBtn);
+
+    // Opening the side panel (isUserListVisible=false) must NOT block blurring the keyboard
+    const input = screen.getByTestId('chat-input') as HTMLTextAreaElement;
+    input.focus();
+    const openPanelPd = new Event('pointerdown', { bubbles: true, cancelable: true });
+    usersBtn.dispatchEvent(openPanelPd);
+    expect(openPanelPd.defaultPrevented).toBe(false);
+    const openPanelMd = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    usersBtn.dispatchEvent(openPanelMd);
+    expect(openPanelMd.defaultPrevented).toBe(false);
+    fireEvent.click(usersBtn);
+    expect(onToggleUserList).toHaveBeenCalled();
+  });
+
+  it('closes side panel and focuses composer when replying from fullscreen media opened via side panel', () => {
+    const setIsUserListVisible = vi.fn();
+    const onCloseGallery = vi.fn();
+    const mediaItem: Message = {
+      id: 'gallery-reply-1',
+      userId: 'user-2',
+      username: 'Bob',
+      type: 'image',
+      url: 'https://cdn.example.com/photo.jpg',
+      timestamp: new Date().toISOString(),
+    };
+
+    render(
+      <GlobalKeyboardHarness>
+        <MediaGalleryModal
+          isOpen={true}
+          items={[mediaItem]}
+          initialIndex={0}
+          onClose={onCloseGallery}
+          onSetReply={() => {
+            setIsUserListVisible(false);
+            (document.getElementById(CHAT_INPUT_ID) as HTMLTextAreaElement)?.focus();
+          }}
+        />
+      </GlobalKeyboardHarness>
+    );
+
+    const chatInput = screen.getByTestId('chat-input') as HTMLTextAreaElement;
+    expect(document.activeElement).not.toBe(chatInput);
+
+    const replyBtn = screen.getByRole('button', { name: /reply to message/i });
+    fireEvent.click(replyBtn);
+
+    expect(setIsUserListVisible).toHaveBeenCalledWith(false);
+    expect(onCloseGallery).toHaveBeenCalled();
+    expect(document.activeElement).toBe(chatInput);
+  });
+
+  it('disables hidden search input and close button when search is inactive to prevent internal scroll corruption', () => {
+    const onCloseSearch = vi.fn();
+    render(
+      <ChatHeader
+        isConnected={true}
+        isBrowserOnline={true}
+        isSoundEnabled={true}
+        isSoundToggleAnimating={false}
+        onToggleSound={vi.fn()}
+        isDark={true}
+        onToggleTheme={vi.fn()}
+        isSearchActive={false}
+        isSearchClosing={true}
+        searchQuery=""
+        onSearchQueryChange={vi.fn()}
+        onOpenSearch={vi.fn()}
+        onCloseSearch={onCloseSearch}
+        isUserListVisible={false}
+        onToggleUserList={vi.fn()}
+      />
+    );
+
+    const searchInput = document.getElementById('chat-search-input') as HTMLInputElement;
+    const closeSearchBtn = screen.getByTitle('Close search') as HTMLButtonElement;
+
+    expect(searchInput.disabled).toBe(true);
+    expect(searchInput.tabIndex).toBe(-1);
+    expect(closeSearchBtn.disabled).toBe(true);
+    expect(closeSearchBtn.tabIndex).toBe(-1);
+
+    fireEvent.click(closeSearchBtn);
+    expect(onCloseSearch).not.toHaveBeenCalled();
   });
 
   it('prevents focus theft on inline VideoPlayer controls and timeline scrub bar', () => {

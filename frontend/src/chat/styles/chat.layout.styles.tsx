@@ -1,6 +1,6 @@
 import styled, { css, keyframes } from 'styled-components';
 import {
-  fadeInScale, slideIn, subtleSlideUp, shimmerOverlay, speakerPulse, speakerWave,
+  fadeIn, fadeInScale, fastPopIn, fastSlideUp, slideIn, subtleSlideUp, shimmerOverlay, speakerPulse, speakerWave,
   inputFocusGlow, sendPulse, staggerFadeIn, reactionPickerSlideIn,
   quoteJumpHighlight, pulseBorderAnim, floatAnim, selectModeSlideUp,
   recordingBlink, recordingBarSlideIn, micButtonPop
@@ -8,7 +8,7 @@ import {
 
 // --- EMOJI PANEL ---
 export const EmojiPickerWrapper = styled.div`
-  animation: ${fadeInScale} 0.2s ease-out forwards;
+  animation: ${fastPopIn} 0.12s cubic-bezier(0.2, 0, 0, 1) forwards;
 `;
 
 /** WhatsApp-style bottom panel for emoji pickers on mobile.
@@ -24,7 +24,8 @@ export const MobileEmojiPanel = styled.div`
   display: flex;
   flex-direction: column;
   max-height: min(45dvh, calc(var(--app-height, 100dvh) - 56px));
-  animation: ${slideIn} 0.2s ease-out forwards;
+  will-change: transform, opacity;
+  animation: ${fastSlideUp} 0.12s cubic-bezier(0.2, 0, 0, 1) forwards;
   .epr-main {
     width: 100% !important;
     border: none !important;
@@ -440,39 +441,31 @@ export const MobileReactionPicker = styled.div<{ $sender: 'me' | 'other' }>`
   z-index: 30;
   
   background: var(--bg-elevated);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   border-radius: 24px;
   padding: 6px 10px;
   display: flex;
   gap: 4px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.08);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.16), 0 2px 8px rgba(0,0,0,0.08);
   border: 1px solid var(--border-primary);
-  animation: ${reactionPickerSlideIn} 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  will-change: transform, opacity;
+  animation: ${fastPopIn} 0.11s cubic-bezier(0.2, 0, 0, 1) forwards;
+  touch-action: manipulation;
+
+  @media (hover: hover) and (pointer: fine) {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
 
   [data-theme='dark'] & {
-    background: rgba(30, 41, 59, 0.95);
+    background: rgba(30, 41, 59, 0.98);
     border: 1px solid rgba(255, 255, 255, 0.16);
-    box-shadow: 0 8px 32px rgba(0,0,0,0.35), 0 2px 8px rgba(0,0,0,0.2);
+    box-shadow: 0 8px 28px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.25);
   }
 
   ${props => props.$sender === 'me'
     ? `right: 10px;`
     : `left: 10px;`
   }
-
-  /* Stagger each emoji child */
-  & > button {
-    animation: ${staggerFadeIn} 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-  }
-  & > button:nth-child(1) { animation-delay: 0.03s; }
-  & > button:nth-child(2) { animation-delay: 0.06s; }
-  & > button:nth-child(3) { animation-delay: 0.09s; }
-  & > button:nth-child(4) { animation-delay: 0.12s; }
-  & > button:nth-child(5) { animation-delay: 0.15s; }
-  & > button:nth-child(6) { animation-delay: 0.18s; }
-  & > button:nth-child(7) { animation-delay: 0.21s; }
-  & > button:nth-child(8) { animation-delay: 0.24s; }
 `;
 
 export const MessageBubble = styled.div<{ $sender: string; $messageType: string; $isUploading?: boolean; $uploadError?: boolean; }>`

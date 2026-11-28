@@ -25,11 +25,31 @@ export function useChatSearch({
 }: UseChatSearchProps) {
   const [isSearchActive, setIsSearchActive] = useState(false);
   const [isSearchClosing, setIsSearchClosing] = useState(false);
+  const closeSearchTimerRef = useRef<number | null>(null);
 
   const handleCloseSearch = useCallback(() => {
+    if (closeSearchTimerRef.current !== null) {
+      window.clearTimeout(closeSearchTimerRef.current);
+      closeSearchTimerRef.current = null;
+    }
     setIsSearchActive(false);
     setIsSearchClosing(true);
-    setTimeout(() => setIsSearchClosing(false), 300); // match CSS transition duration
+    const container = document.getElementById('chat-search-container');
+    if (container) container.scrollLeft = 0;
+    closeSearchTimerRef.current = window.setTimeout(() => {
+      setIsSearchClosing(false);
+      closeSearchTimerRef.current = null;
+      const el = document.getElementById('chat-search-container');
+      if (el) el.scrollLeft = 0;
+    }, 250);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (closeSearchTimerRef.current !== null) {
+        window.clearTimeout(closeSearchTimerRef.current);
+      }
+    };
   }, []);
 
   const [chatSearchQuery, setChatSearchQuery] = useState('');
@@ -141,14 +161,26 @@ export function useChatSearch({
     return () => cleanup?.();
   }, [activeSearchQuery, chatContainerRef]);
 
-  // Delay focus when search opens
+  // Focus search input when opening (cancelled if search closes early so collapsed container never scrolls)
   useEffect(() => {
-    if (isSearchActive) {
-      setTimeout(() => {
-        const input = document.getElementById('chat-search-input');
-        if (input) input.focus();
-      }, 300);
+    const container = document.getElementById('chat-search-container');
+    if (!isSearchActive) {
+      if (container) container.scrollLeft = 0;
+      return;
     }
+    if (closeSearchTimerRef.current !== null) {
+      window.clearTimeout(closeSearchTimerRef.current);
+      closeSearchTimerRef.current = null;
+      setIsSearchClosing(false);
+    }
+    const timer = window.setTimeout(() => {
+      const input = document.getElementById('chat-search-input') as HTMLInputElement | null;
+      if (input && !input.disabled) {
+        input.focus();
+      }
+      if (container) container.scrollLeft = 0;
+    }, 220);
+    return () => window.clearTimeout(timer);
   }, [isSearchActive]);
 
   // Dismiss empty search on outside click

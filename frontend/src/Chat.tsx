@@ -126,17 +126,36 @@ function ChatAuthenticated({ isMe, isTempLink }: ChatProps) {
           }}
           onOpenSearch={() => {
             c.search.captureScrollBeforeSearch();
-            if (!c.search.isSearchActive) c.search.setIsSearchActive(true);
-            else c.search.setActiveSearchQuery(c.search.chatSearchQuery);
+            if (!c.search.isSearchActive) {
+              c.setIsUserListVisible(false);
+              c.search.setIsSearchActive(true);
+            } else {
+              c.search.setActiveSearchQuery(c.search.chatSearchQuery);
+            }
           }}
           onCloseSearch={(e) => {
             e.stopPropagation();
+            if (!c.search.isSearchActive) return;
             c.search.resetSearch();
             c.search.handleCloseSearch();
           }}
           isUserListVisible={c.isUserListVisible}
           onToggleUserList={() => {
-            c.setIsUserListVisible(!c.isUserListVisible);
+            const nextVisible = !c.isUserListVisible;
+            if (nextVisible && typeof document !== 'undefined') {
+              const active = document.activeElement;
+              if (
+                active instanceof HTMLElement &&
+                (active === c.messageInputRef.current ||
+                  active.tagName === 'TEXTAREA' ||
+                  active.tagName === 'INPUT' ||
+                  active.isContentEditable)
+              ) {
+                active.blur();
+              }
+              c.messageInputRef.current?.blur();
+            }
+            c.setIsUserListVisible(nextVisible);
           }}
           onHeaderButtonPointerDown={c.composer.handleHeaderButtonPointerDown}
           onNavigateHome={() => c.navigate('/')}
@@ -181,7 +200,10 @@ function ChatAuthenticated({ isMe, isTempLink }: ChatProps) {
         media={c.media}
         onSendFromPreview={c.composer.handleSendFromPreview}
         onCaptionTyping={c.socket.handleTyping}
-        onSetReply={c.msgs.handleSetReply}
+        onSetReply={(message) => {
+          c.setIsUserListVisible(false);
+          c.msgs.handleSetReply(message);
+        }}
         allMessages={c.msgs.messages}
       />
 

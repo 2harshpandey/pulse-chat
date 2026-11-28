@@ -5,6 +5,7 @@ import {
   filePreviewEnter,
   fadeIn,
   fadeInScale,
+  fastPopIn,
   reactionPillPop,
   lightboxControlReveal,
   replySlideIn
@@ -631,29 +632,37 @@ export const ReactionsContainer = styled.div<{ $sender: 'me' | 'other' }>`
   z-index: 1;
   display: flex;
   align-items: center;
-  background: rgba(255, 255, 255, 0.88);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.94);
   border-radius: 20px;
   padding: 3px 8px 3px 6px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.04);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.04);
   cursor: pointer;
-  animation: ${reactionPillPop} 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  animation: ${fastPopIn} 0.14s cubic-bezier(0.2, 0, 0, 1) forwards;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 
-  &:hover {
-    transform: scale(1.08);
-    box-shadow: 0 4px 18px rgba(0,0,0,0.14), 0 0 0 1px rgba(59, 130, 246, 0.15);
+  @media (hover: hover) and (pointer: fine) {
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    &:hover {
+      transform: scale(1.08);
+      box-shadow: 0 4px 18px rgba(0,0,0,0.14), 0 0 0 1px rgba(59, 130, 246, 0.15);
+    }
   }
   &:active {
     transform: scale(0.96);
   }
 
   [data-theme='dark'] & {
-    background: rgba(30, 41, 59, 0.85);
-    box-shadow: 0 2px 12px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.06);
-    &:hover {
-      box-shadow: 0 4px 18px rgba(0,0,0,0.4), 0 0 0 1px rgba(96, 165, 250, 0.2);
+    background: rgba(30, 41, 59, 0.95);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.08);
+    @media (hover: hover) and (pointer: fine) {
+      background: rgba(30, 41, 59, 0.85);
+      &:hover {
+        box-shadow: 0 4px 18px rgba(0,0,0,0.4), 0 0 0 1px rgba(96, 165, 250, 0.2);
+      }
     }
   }
 
@@ -669,15 +678,19 @@ export const Lightbox = styled.div`
   left: 0;
   right: 0;
   height: var(--app-height, 100dvh);
-  background: rgba(2, 6, 23, 0.92);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: rgba(2, 6, 23, 0.95);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
   padding: 16px;
-  animation: ${fadeInScale} 0.22s ease-out forwards;
+  animation: ${fadeIn} 0.12s ease-out forwards;
+
+  @media (hover: hover) and (pointer: fine) {
+    background: rgba(2, 6, 23, 0.92);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
 `;
 
 export const LightboxCloseButton = styled.button`
@@ -688,18 +701,18 @@ export const LightboxCloseButton = styled.button`
   height: 44px;
   border: 1px solid rgba(148, 163, 184, 0.42);
   border-radius: 999px;
-  background: linear-gradient(145deg, rgba(15, 23, 42, 0.92), rgba(30, 41, 59, 0.76));
+  background: rgba(15, 23, 42, 0.92);
   color: #f8fafc;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
   z-index: 1002;
-  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.5), 0 0 0 1px rgba(148, 163, 184, 0.2);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  animation: ${lightboxControlReveal} 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
-  transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+  box-shadow: 0 6px 18px rgba(2, 6, 23, 0.5), 0 0 0 1px rgba(148, 163, 184, 0.2);
+  animation: ${fadeIn} 0.12s ease-out both;
+  transition: transform 0.14s ease, box-shadow 0.14s ease, background-color 0.14s ease;
 
   &:hover {
     transform: translateY(-1px) scale(1.04);
@@ -1050,12 +1063,14 @@ export const MediaGalleryOverlay = styled.div`
   right: 0;
   height: var(--app-height, 100dvh);
   z-index: 1000;
-  background: rgba(2, 6, 23, 0.96);
+  background: rgba(2, 6, 23, 0.98);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  animation: ${fadeInScale} 0.22s ease-out forwards;
+  animation: ${fadeIn} 0.11s ease-out forwards;
+  will-change: opacity;
   user-select: none;
+  touch-action: manipulation;
 `;
 
 export const MediaGalleryHeader = styled.div`
@@ -1066,11 +1081,9 @@ export const MediaGalleryHeader = styled.div`
   justify-content: space-between;
   flex-shrink: 0;
   z-index: 10;
-  background: rgba(10, 15, 29, 0.75);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  background: rgba(10, 15, 29, 0.95);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
 `;
 
 export const MediaGalleryInfo = styled.div`
@@ -1082,7 +1095,6 @@ export const MediaGalleryInfo = styled.div`
 
 export const MediaGalleryCounter = styled.span`
   background: rgba(255, 255, 255, 0.16);
-  backdrop-filter: blur(8px);
   padding: 3px 10px;
   border-radius: 12px;
   font-size: 0.825rem;
@@ -1114,17 +1126,22 @@ export const MediaGalleryActionBtn = styled.button`
   border: 1px solid rgba(255, 255, 255, 0.18);
   color: #ffffff;
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
+  transition: background-color 0.12s ease, transform 0.1s ease;
 
-  &:hover {
-    background: rgba(255, 255, 255, 0.24);
-    transform: scale(1.06);
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      background: rgba(255, 255, 255, 0.24);
+      transform: scale(1.06);
+    }
   }
   &:active {
-    transform: scale(0.95);
+    transform: scale(0.94);
+    background: rgba(255, 255, 255, 0.22);
   }
 
   svg {
@@ -1156,20 +1173,19 @@ export const MediaGalleryNavBtn = styled.button<{ $direction: 'left' | 'right' }
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.14);
-  backdrop-filter: blur(10px);
+  background: rgba(30, 41, 59, 0.85);
   border: 1px solid rgba(255, 255, 255, 0.22);
   color: #ffffff;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  transition: background-color 0.15s ease, transform 0.15s ease;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.28);
-    transform: translateY(-50%) scale(1.1);
+    background: rgba(51, 65, 85, 0.95);
+    transform: translateY(-50%) scale(1.08);
   }
   &:active {
     transform: translateY(-50%) scale(0.95);
@@ -1184,7 +1200,7 @@ export const MediaGalleryNavBtn = styled.button<{ $direction: 'left' | 'right' }
   }
 
   /* User requirement: "on non touch devices only those buttons should show" */
-  @media (hover: none) and (pointer: coarse) {
+  @media (hover: none), (pointer: coarse) {
     display: none;
   }
 `;
@@ -1242,9 +1258,7 @@ export const MediaGalleryBottom = styled.div`
   align-items: center;
   gap: 8px;
   padding: 10px 1rem 16px;
-  background: rgba(10, 15, 29, 0.75);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  background: rgba(10, 15, 29, 0.95);
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   flex-shrink: 0;
   z-index: 10;
@@ -1257,8 +1271,7 @@ export const MediaGalleryCaption = styled.div`
   font-size: 0.9rem;
   line-height: 1.4;
   padding: 4px 14px;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(8px);
+  background: rgba(0, 0, 0, 0.55);
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   word-break: break-word;
@@ -1283,16 +1296,20 @@ export const MediaGalleryThumb = styled.div<{ $active: boolean }>`
   border-radius: 6px;
   overflow: hidden;
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
   flex-shrink: 0;
   position: relative;
-  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease, border-color 0.2s ease, box-shadow 0.22s ease;
+  transition: transform 0.12s ease, opacity 0.12s ease, border-color 0.12s ease;
   border: 2px solid ${props => props.$active ? '#3b82f6' : 'transparent'};
-  opacity: ${props => props.$active ? 1 : 0.5};
-  transform: ${props => props.$active ? 'scale(1.08)' : 'scale(1)'};
-  box-shadow: ${props => props.$active ? '0 0 12px rgba(59, 130, 246, 0.6)' : 'none'};
+  opacity: ${props => props.$active ? 1 : 0.55};
+  transform: ${props => props.$active ? 'scale(1.06)' : 'scale(1)'};
+  box-shadow: ${props => props.$active ? '0 0 8px rgba(59, 130, 246, 0.5)' : 'none'};
 
-  &:hover {
-    opacity: 0.9;
+  @media (hover: hover) and (pointer: fine) {
+    &:hover {
+      opacity: 0.9;
+    }
   }
 
   img, video {

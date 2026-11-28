@@ -688,9 +688,15 @@ export function useChatMessages({
   const handleSetReply = useCallback((message: Message) => {
     if (message.type === 'system_notification') return;
     setReplyingTo(message);
-    requestAnimationFrame(() => {
-      messageInputRef.current?.focus();
-    });
+    const textarea = messageInputRef.current;
+    if (textarea) {
+      textarea.focus();
+      requestAnimationFrame(() => {
+        if (messageInputRef.current && document.activeElement !== messageInputRef.current) {
+          messageInputRef.current.focus();
+        }
+      });
+    }
   }, [messageInputRef]);
 
   // Edit handlers

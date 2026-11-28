@@ -154,7 +154,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         <SearchPlaceholder />
 
         <ChatSearchContainer id="chat-search-container" $active={isSearchActive} $isClosing={isSearchClosing}>
-          <ChatSearchButton onClick={onOpenSearch} style={{ cursor: 'pointer' }} aria-label="Search messages">
+          <ChatSearchButton type="button" onClick={onOpenSearch} style={{ cursor: 'pointer' }} aria-label="Search messages">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '18px', height: '18px' }}>
               <circle cx="11" cy="11" r="8"></circle>
               <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
@@ -168,14 +168,23 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             onChange={(e) => onSearchQueryChange(e.target.value)}
             onKeyDown={onSearchKeyDown}
             placeholder="Search..."
+            disabled={!isSearchActive}
+            tabIndex={isSearchActive ? 0 : -1}
+            aria-hidden={!isSearchActive}
           />
 
           <ChatSearchButton
+            type="button"
             onPointerDown={onHeaderButtonPointerDown ?? preserveKeyboardFocus}
             onMouseDown={preserveKeyboardFocus}
-            onClick={onCloseSearch}
+            onClick={(e) => {
+              if (!isSearchActive) return;
+              onCloseSearch(e);
+            }}
+            disabled={!isSearchActive}
             tabIndex={isSearchActive ? 0 : -1}
             aria-hidden={!isSearchActive}
+            style={!isSearchActive ? { visibility: 'hidden', pointerEvents: 'none' } : undefined}
             title="Close search"
             aria-label="Close search"
           >
@@ -188,8 +197,9 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
 
         <MobileUserListToggle
           $isOpen={isUserListVisible}
-          onPointerDown={onHeaderButtonPointerDown ?? preserveKeyboardFocus}
-          onMouseDown={preserveKeyboardFocus}
+          data-allow-blur={!isUserListVisible ? 'true' : undefined}
+          onPointerDown={!isUserListVisible ? undefined : (onHeaderButtonPointerDown ?? preserveKeyboardFocus)}
+          onMouseDown={!isUserListVisible ? undefined : preserveKeyboardFocus}
           onClick={onToggleUserList}
           aria-label={isUserListVisible ? 'Hide online users' : 'Show online users'}
           title={isUserListVisible ? 'Hide online users' : 'Show online users'}
