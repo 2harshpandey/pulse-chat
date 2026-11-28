@@ -487,7 +487,62 @@ export const ReplyPreviewContainer = styled.div`
 export const ReplyText = styled.div`
   flex-grow: 1; font-size: 0.9rem; color: var(--text-secondary); min-width: 0; overflow: hidden;
   p { font-weight: bold; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  span { opacity: 0.8; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  > span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+`;
+
+export const QuotedAudioDurationBadge = styled.span<{ $sender?: 'me' | 'other' }>`
+  display: inline-flex;
+  align-items: center;
+  gap: 3.5px;
+  padding: 1.5px 7px;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  flex-shrink: 0;
+  opacity: 1 !important;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+
+  svg {
+    width: 9px;
+    height: 9px;
+    fill: currentColor;
+    flex-shrink: 0;
+    display: inline-block;
+  }
+
+  ${props => props.$sender === 'me' ? `
+    /* Inside sender's own sent bubble (blue gradient background) */
+    background: rgba(255, 255, 255, 0.28);
+    color: #ffffff;
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  ` : `
+    /* Light Mode: rich, crisp royal blue on soft blue pill with border */
+    background: #dbeafe;
+    color: #1d4ed8;
+    border: 1px solid rgba(29, 78, 216, 0.35);
+    box-shadow: 0 1px 2px rgba(29, 78, 216, 0.08);
+
+    [data-theme='light'] & {
+      background: #dbeafe;
+      color: #1d4ed8;
+      border: 1px solid rgba(29, 78, 216, 0.35);
+    }
+
+    /* Dark Mode: luminous sky blue with glow on rich semi-transparent background */
+    [data-theme='dark'] & {
+      background: rgba(59, 130, 246, 0.25);
+      color: #93c5fd;
+      border: 1px solid rgba(147, 197, 253, 0.45);
+      box-shadow: 0 0 10px rgba(59, 130, 246, 0.25);
+      text-shadow: 0 0 6px rgba(147, 197, 253, 0.35);
+    }
+  `}
 `;
 
 export const QuotedMessageContainer = styled.div<{ $sender: 'me' | 'other' }>`

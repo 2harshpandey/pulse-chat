@@ -22,6 +22,7 @@ import {
   EditPreviewDismiss,
   ReplyPreviewContainer,
   ReplyText,
+  QuotedAudioDurationBadge,
   FilePreviewImage,
   FilePreviewContainer,
   FilePreviewInfo,
@@ -226,42 +227,38 @@ export const ReplyEditPreviewBanner: React.FC<ReplyEditPreviewBannerProps> = ({
               }
               if (isGroupReply) {
                 return (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', maxWidth: '100%', minWidth: 0 }}>
                     <MediaAlbumIcon size={14} style={{ opacity: 0.85, flexShrink: 0 }} />
-                    <span style={{ fontWeight: 600 }}>{groupMediaCount} media</span>
-                    {displayCaption ? <span>• {displayCaption}</span> : null}
+                    <span style={{ fontWeight: 600, flexShrink: 0 }}>{groupMediaCount} media</span>
+                    {displayCaption ? (
+                      <span style={{ flex: '0 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        • {displayCaption}
+                      </span>
+                    ) : null}
                   </span>
                 );
               }
-              if (replyingTo.text) return replyingTo.text;
-              if (isGiphyUrl(replyingTo.url)) return 'GIF';
-              if (replyingTo.type === 'image') return 'Image';
-              if (replyingTo.type === 'video') return 'Video';
               if (replyingTo.type === 'audio') {
                 return (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                    <span>{replyingTo.text || 'Voice Message'}</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', maxWidth: '100%', minWidth: 0 }}>
+                    <span style={{ flex: '0 1 auto', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {replyingTo.text || 'Voice Message'}
+                    </span>
                     {Boolean(replyAudioDuration && replyAudioDuration > 0) && (
-                      <span style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '3px',
-                        padding: '1px 6px',
-                        borderRadius: '9999px',
-                        fontSize: '0.72rem',
-                        fontWeight: 600,
-                        background: 'rgba(59, 130, 246, 0.15)',
-                        color: '#3b82f6',
-                      }}>
-                        <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor">
+                      <QuotedAudioDurationBadge data-testid="quoted-audio-duration-badge">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
                           <polygon points="5 3 19 12 5 21 5 3" />
                         </svg>
                         {formatAudioDuration(replyAudioDuration!)}
-                      </span>
+                      </QuotedAudioDurationBadge>
                     )}
                   </span>
                 );
               }
+              if (isGiphyUrl(replyingTo.url)) return 'GIF';
+              if (replyingTo.type === 'image') return replyingTo.text || 'Image';
+              if (replyingTo.type === 'video') return replyingTo.text || 'Video';
+              if (replyingTo.text) return replyingTo.text;
               return 'Message';
             })()}
           </span>

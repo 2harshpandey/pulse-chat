@@ -339,6 +339,53 @@ describe('Voice Messaging System', () => {
       expect(screen.getByText('Voice Message')).toBeDefined();
     });
 
+    it('displays duration badge in composer reply preview banner when replying to an audio message with duration', () => {
+      render(
+        <ChatFooter
+          {...baseFooterProps}
+          replyingTo={{
+            id: 'voice_reply_badge_1',
+            userId: 'user_1',
+            timestamp: new Date().toISOString(),
+            username: 'kh',
+            text: '',
+            type: 'audio',
+            duration: 131,
+            url: 'https://example.com/audio.webm',
+          }}
+        />
+      );
+      expect(screen.getByText('Replying to kh')).toBeDefined();
+      expect(screen.getByText('Voice Message')).toBeDefined();
+      const badge = screen.getByTestId('quoted-audio-duration-badge');
+      expect(badge).toBeDefined();
+      expect(badge.textContent).toContain('2:11');
+      expect(badge.querySelector('svg')).not.toBeNull();
+    });
+
+    it('displays duration badge and custom caption when replying to an audio message with caption', () => {
+      render(
+        <ChatFooter
+          {...baseFooterProps}
+          replyingTo={{
+            id: 'voice_reply_badge_caption',
+            userId: 'user_1',
+            timestamp: new Date().toISOString(),
+            username: 'kh',
+            text: 'Voice note regarding design',
+            type: 'audio',
+            duration: 95,
+            url: 'https://example.com/audio.webm',
+          }}
+        />
+      );
+      expect(screen.getByText('Replying to kh')).toBeDefined();
+      expect(screen.getByText('Voice note regarding design')).toBeDefined();
+      const badge = screen.getByTestId('quoted-audio-duration-badge');
+      expect(badge).toBeDefined();
+      expect(badge.textContent).toContain('1:35');
+    });
+
     it('reliably calls onErrorToast on repeated consecutive clicks when microphone access fails', async () => {
       Object.defineProperty(window, 'isSecureContext', {
         value: true,

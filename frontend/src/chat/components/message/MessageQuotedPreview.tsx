@@ -10,7 +10,7 @@ import {
   isGiphyUrl,
 } from '../../utils';
 import { quoteLog, isTouchDevice } from '../../constants';
-import { QuotedMessageContainer, QuotedMediaThumb } from '../../ChatStyledComponents';
+import { QuotedMessageContainer, QuotedMediaThumb, QuotedAudioDurationBadge } from '../../ChatStyledComponents';
 import { formatAudioDuration } from './AudioMessagePlayer';
 import { MediaAlbumIcon } from './MediaAlbumIcon';
 
@@ -283,35 +283,15 @@ export const MessageQuotedPreview: React.FC<MessageQuotedPreviewProps> = React.m
                   msg.replyingTo.type === 'file' ? 'File' : ''))}
           </span>
           {!isTargetDeleted && msg.replyingTo.type === 'audio' && Boolean(resolvedDuration && resolvedDuration > 0) && (
-            <span
+            <QuotedAudioDurationBadge
+              $sender={sender}
               data-testid="quoted-audio-duration-badge"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '3.5px',
-                padding: '1px 7px',
-                borderRadius: '9999px',
-                fontSize: '0.70rem',
-                fontWeight: 600,
-                fontVariantNumeric: 'tabular-nums',
-                letterSpacing: '0.01em',
-                flexShrink: 0,
-                background: sender === 'me'
-                  ? 'rgba(255, 255, 255, 0.22)'
-                  : 'rgba(59, 130, 246, 0.16)',
-                color: sender === 'me'
-                  ? '#ffffff'
-                  : 'var(--accent-primary, #3b82f6)',
-                border: sender === 'me'
-                  ? '1px solid rgba(255, 255, 255, 0.32)'
-                  : '1px solid rgba(59, 130, 246, 0.25)',
-              }}
             >
-              <svg width="8" height="8" viewBox="0 0 24 24" fill="currentColor">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
                 <polygon points="5 3 19 12 5 21 5 3" />
               </svg>
               {formatAudioDuration(resolvedDuration!)}
-            </span>
+            </QuotedAudioDurationBadge>
           )}
         </div>
       </div>
