@@ -494,10 +494,10 @@ export const QuotedAudioDurationBadge = styled.span<{ $sender?: 'me' | 'other' }
   display: inline-flex;
   align-items: center;
   gap: 3.5px;
-  padding: 1.5px 7px;
+  padding: 1px 6.5px;
   border-radius: 9999px;
   font-size: 0.72rem;
-  font-weight: 700;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.01em;
   line-height: 1.2;
@@ -508,39 +508,36 @@ export const QuotedAudioDurationBadge = styled.span<{ $sender?: 'me' | 'other' }
   transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 
   svg {
-    width: 9px;
-    height: 9px;
+    width: 8.5px;
+    height: 8.5px;
     fill: currentColor;
     flex-shrink: 0;
     display: inline-block;
+    opacity: 0.9;
   }
 
   ${props => props.$sender === 'me' ? `
     /* Inside sender's own sent bubble (blue gradient background) */
-    background: rgba(255, 255, 255, 0.28);
+    background: rgba(255, 255, 255, 0.22);
     color: #ffffff;
-    border: 1px solid rgba(255, 255, 255, 0.45);
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.35);
   ` : `
-    /* Light Mode: rich, crisp royal blue on soft blue pill with border */
-    background: #dbeafe;
-    color: #1d4ed8;
-    border: 1px solid rgba(29, 78, 216, 0.35);
-    box-shadow: 0 1px 2px rgba(29, 78, 216, 0.08);
+    /* Light Mode: refined, gentle slate-blue pill with calm readable text */
+    background: rgba(37, 99, 235, 0.09);
+    color: #2563eb;
+    border: 1px solid rgba(37, 99, 235, 0.22);
 
     [data-theme='light'] & {
-      background: #dbeafe;
-      color: #1d4ed8;
-      border: 1px solid rgba(29, 78, 216, 0.35);
+      background: rgba(37, 99, 235, 0.09);
+      color: #2563eb;
+      border: 1px solid rgba(37, 99, 235, 0.22);
     }
 
-    /* Dark Mode: luminous sky blue with glow on rich semi-transparent background */
+    /* Dark Mode: smooth, subtle sky-blue pill without harsh glow or overly bright ring */
     [data-theme='dark'] & {
-      background: rgba(59, 130, 246, 0.25);
-      color: #93c5fd;
-      border: 1px solid rgba(147, 197, 253, 0.45);
-      box-shadow: 0 0 10px rgba(59, 130, 246, 0.25);
-      text-shadow: 0 0 6px rgba(147, 197, 253, 0.35);
+      background: rgba(59, 130, 246, 0.16);
+      color: #60a5fa;
+      border: 1px solid rgba(96, 165, 250, 0.28);
     }
   `}
 `;
