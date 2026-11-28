@@ -289,6 +289,8 @@ export const MessageItem = React.memo(({
         {isSelectModeActive && (!isMobileView || selectedMessages.length > 1) && (
           <SelectCheckboxContainer
             data-checkbox
+            onPointerDown={(e) => e.preventDefault()}
+            onMouseDown={(e) => e.preventDefault()}
             onClick={(e) => {
               e.stopPropagation();
               handleToggleSelectMessage(msg.id);

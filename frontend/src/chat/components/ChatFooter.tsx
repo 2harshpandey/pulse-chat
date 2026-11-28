@@ -2,7 +2,7 @@ import React from 'react';
 import EmojiPicker, { EmojiClickData, EmojiStyle, Theme } from 'emoji-picker-react';
 import type { Message, Gif } from '../types';
 import { MAX_MESSAGE_LENGTH } from '../constants';
-import { sanitizeMediaUrl } from '../utils';
+import { sanitizeMediaUrl, preserveKeyboardFocus } from '../utils';
 import { detectFirstUrl, renderTextWithLinks } from '../utils/urlLinkUtils';
 import { FilmIcon, FileIcon } from '../TypingIndicator';
 import {
@@ -425,7 +425,8 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
                   <PlusMenuButton
                     ref={plusButtonRef}
                     $isOpen={isPlusMenuOpen}
-                    onPointerDown={(e) => e.preventDefault()}
+                    onPointerDown={preserveKeyboardFocus}
+                    onMouseDown={preserveKeyboardFocus}
                     onClick={onTogglePlusMenu}
                     disabled={!isConnected}
                     aria-label="Open actions menu"
@@ -458,6 +459,8 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
                     </PlusMenuItem>
 
                     <PlusMenuItem
+                      onPointerDown={preserveKeyboardFocus}
+                      onMouseDown={preserveKeyboardFocus}
                       onClick={() => {
                         onTogglePlusMenu();
                         onNotifyNativeFilePickerOpen();
@@ -521,7 +524,8 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
               <SendButton
                 key="voice-send-btn"
                 type="button"
-                onMouseDown={(e) => e.preventDefault()}
+                onPointerDown={preserveKeyboardFocus}
+                onMouseDown={preserveKeyboardFocus}
                 onClick={handleSendVoice}
                 disabled={isFinalizingRecording || !isConnected}
                 title="Send voice message"
@@ -537,7 +541,8 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
               <SendButton
                 key="text-send-btn"
                 type="button"
-                onMouseDown={(e) => e.preventDefault()}
+                onPointerDown={preserveKeyboardFocus}
+                onMouseDown={preserveKeyboardFocus}
                 onClick={onSendMessage}
                 disabled={!isConnected}
                 title={editingMessageId ? 'Save edit' : 'Send message'}
@@ -559,7 +564,8 @@ export const ChatFooter: React.FC<ChatFooterProps> = ({
               <MicButton
                 key="voice-mic-btn"
                 type="button"
-                onMouseDown={(e) => e.preventDefault()}
+                onPointerDown={preserveKeyboardFocus}
+                onMouseDown={preserveKeyboardFocus}
                 onClick={async () => {
                   if (!isConnected) return;
                   audioCoordinator.stop();

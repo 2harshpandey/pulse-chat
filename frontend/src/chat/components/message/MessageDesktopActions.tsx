@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { MessageActions, ActionButton } from '../../ChatStyledComponents';
+import { preserveKeyboardFocus } from '../../utils';
 
 interface MessageDesktopActionsProps {
   msgId: string;
@@ -23,7 +24,8 @@ export const MessageDesktopActions: React.FC<MessageDesktopActionsProps> = React
   const handleOpenMore = (e: React.MouseEvent<HTMLButtonElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const threshold = isDeleted ? 100 : 190;
-    const isNearBottom = rect.bottom + threshold > window.innerHeight;
+    const vvHeight = window.visualViewport?.height || window.innerHeight;
+    const isNearBottom = rect.bottom + threshold > vvHeight;
     const menuWidth = 168;
     const wouldClipLeft = rect.right - menuWidth < 8;
     const hPos = wouldClipLeft
@@ -32,7 +34,7 @@ export const MessageDesktopActions: React.FC<MessageDesktopActionsProps> = React
 
     setMenuPos(
       isNearBottom
-        ? { bottom: window.innerHeight - rect.top + 4, ...hPos }
+        ? { bottom: vvHeight - rect.top + 4, ...hPos }
         : { top: rect.bottom + 4, ...hPos }
     );
     openDeleteMenu(msgId);
@@ -44,6 +46,8 @@ export const MessageDesktopActions: React.FC<MessageDesktopActionsProps> = React
         <ActionButton
           ref={reactButtonRef}
           className="react-action-button"
+          onPointerDown={preserveKeyboardFocus}
+          onMouseDown={preserveKeyboardFocus}
           onClick={() => {
             if (reactButtonRef.current) {
               onOpenReactionPicker(msgId, reactButtonRef.current.getBoundingClientRect(), sender);
@@ -71,6 +75,8 @@ export const MessageDesktopActions: React.FC<MessageDesktopActionsProps> = React
         </ActionButton>
       )}
       <ActionButton
+        onPointerDown={preserveKeyboardFocus}
+        onMouseDown={preserveKeyboardFocus}
         onClick={handleOpenMore}
         title="More"
         aria-label="More actions"

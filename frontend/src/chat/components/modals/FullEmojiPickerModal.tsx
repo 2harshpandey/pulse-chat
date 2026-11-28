@@ -1,6 +1,7 @@
 import React from 'react';
 import EmojiPicker, { EmojiClickData, EmojiStyle, Theme } from 'emoji-picker-react';
 import { MobileEmojiPanel, EmojiPickerWrapper } from '../../Chat.styles';
+import { preserveKeyboardFocus } from '../../utils';
 
 export interface FullEmojiPickerModalProps {
   isOpen: boolean;
@@ -24,12 +25,21 @@ export const FullEmojiPickerModal: React.FC<FullEmojiPickerModalProps> = ({
   return (
     <>
       <div
-        style={{ position: 'fixed', inset: 0, zIndex: 1199, background: 'rgba(0,0,0,0.3)' }}
+        style={{
+          position: 'fixed',
+          top: 'var(--app-offset-top, 0px)',
+          left: 0,
+          right: 0,
+          height: 'var(--app-height, 100dvh)',
+          zIndex: 1199,
+          background: 'rgba(0,0,0,0.3)',
+        }}
         onPointerDown={(e) => {
           e.preventDefault();
           e.stopPropagation();
           onClose();
         }}
+        onMouseDown={preserveKeyboardFocus}
       />
       {isMobileView ? (
         <MobileEmojiPanel style={{ zIndex: 1200 }}>
@@ -47,9 +57,10 @@ export const FullEmojiPickerModal: React.FC<FullEmojiPickerModalProps> = ({
           ref={pickerRef}
           style={{
             position: 'fixed',
-            bottom: '10px',
+            bottom: 'calc(max(0px, 100dvh - var(--app-offset-top, 0px) - var(--app-height, 100dvh)) + 10px)',
             left: '50%',
             transform: 'translateX(-50%)',
+            maxHeight: 'calc(var(--app-height, 100dvh) - 20px)',
             zIndex: 1200,
           }}
         >

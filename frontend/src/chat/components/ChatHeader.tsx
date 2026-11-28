@@ -1,4 +1,5 @@
 import React from 'react';
+import { preserveKeyboardFocus } from '../utils';
 import {
   Header,
   HeaderTitle,
@@ -93,7 +94,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         <SoundToggleButton
           type="button"
           $enabled={isSoundEnabled}
-          onPointerDown={onHeaderButtonPointerDown}
+          onPointerDown={onHeaderButtonPointerDown ?? preserveKeyboardFocus}
+          onMouseDown={preserveKeyboardFocus}
           onClick={onToggleSound}
           aria-pressed={isSoundEnabled}
           aria-label={isSoundEnabled ? 'Disable notification sounds' : 'Enable notification sounds'}
@@ -124,7 +126,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         </SoundToggleButton>
 
         <ThemeToggleBtn
-          onPointerDown={onHeaderButtonPointerDown}
+          onPointerDown={onHeaderButtonPointerDown ?? preserveKeyboardFocus}
+          onMouseDown={preserveKeyboardFocus}
           onClick={onToggleTheme}
           title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
           aria-label="Toggle theme"
@@ -168,6 +171,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           />
 
           <ChatSearchButton
+            onPointerDown={onHeaderButtonPointerDown ?? preserveKeyboardFocus}
+            onMouseDown={preserveKeyboardFocus}
             onClick={onCloseSearch}
             tabIndex={isSearchActive ? 0 : -1}
             aria-hidden={!isSearchActive}
@@ -183,7 +188,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
 
         <MobileUserListToggle
           $isOpen={isUserListVisible}
-          onPointerDown={onHeaderButtonPointerDown}
+          onPointerDown={onHeaderButtonPointerDown ?? preserveKeyboardFocus}
+          onMouseDown={preserveKeyboardFocus}
           onClick={onToggleUserList}
           aria-label={isUserListVisible ? 'Hide online users' : 'Show online users'}
           title={isUserListVisible ? 'Hide online users' : 'Show online users'}

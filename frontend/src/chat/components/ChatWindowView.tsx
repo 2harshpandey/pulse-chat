@@ -7,6 +7,7 @@ import { MessagesList } from './MessagesList';
 import { TypingIndicator } from '../TypingIndicator';
 import { useAlbumDownload } from '../albumDownloadManager';
 import { recordChatScroll } from '../chatScrollState';
+import { preserveKeyboardFocus } from '../utils';
 import {
   ChatWindow,
   MessagesAndScrollWrapper,
@@ -196,6 +197,8 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
         <AlbumDownloadCancelButton
           type="button"
           data-testid="cancel-album-download-btn"
+          onPointerDown={preserveKeyboardFocus}
+          onMouseDown={preserveKeyboardFocus}
           onClick={(e) => {
             e.stopPropagation();
             albumDownload.cancelDownload();
@@ -327,6 +330,7 @@ export function ChatWindowView({ chat }: ChatWindowViewProps) {
             // 3. Firefox/Gecko does not drop or cancel the subsequent click/scroll event.
             e.preventDefault();
           }}
+          onMouseDown={preserveKeyboardFocus}
           aria-label={scrollToLatestLabel}
           title={scrollToLatestTitle}
         >

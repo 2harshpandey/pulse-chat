@@ -2,6 +2,7 @@ import React, { useState, useLayoutEffect } from 'react';
 import { ReactionPicker, ReactionEmoji } from '../Chat.styles';
 import { ReactionsPopup } from './modals/ReactionsPopup';
 import { QUICK_REACTIONS } from '../constants';
+import { preserveKeyboardFocus } from '../utils';
 import type { ReactionsPopupData } from '../types';
 
 interface ReactionsOverlayProps {
@@ -43,13 +44,15 @@ export const ReactionsOverlay: React.FC<ReactionsOverlayProps> = ({
           style={(() => {
             const pickerWidth = Math.max(340, reactionPickerRef.current?.offsetWidth || measuredWidth);
             const margin = 12;
+            const vvHeight = window.visualViewport?.height || window.innerHeight;
+            const vvTop = window.visualViewport?.offsetTop || 0;
 
             let top = reactionPickerData.rect.top - 60;
-            if (top < 10) {
+            if (top < vvTop + 10) {
               top = reactionPickerData.rect.bottom + 10;
             }
-            if (top + 60 > window.innerHeight) {
-              top = Math.max(10, reactionPickerData.rect.top - 60);
+            if (top + 60 > vvTop + vvHeight) {
+              top = Math.max(vvTop + 10, Math.min(vvTop + vvHeight - 70, reactionPickerData.rect.top - 60));
             }
 
             // Align to right edge if sender is 'me', or if button is on the right half of the screen (e.g. MediaGalleryModal actions)
@@ -78,6 +81,8 @@ export const ReactionsOverlay: React.FC<ReactionsOverlayProps> = ({
           {QUICK_REACTIONS.map((emoji) => (
             <ReactionEmoji
               key={emoji}
+              onPointerDown={preserveKeyboardFocus}
+              onMouseDown={preserveKeyboardFocus}
               onClick={(e) => {
                 e.stopPropagation();
                 onReact(reactionPickerData.messageId, emoji, reactionPickerData.isAlbum);
@@ -91,6 +96,8 @@ export const ReactionsOverlay: React.FC<ReactionsOverlayProps> = ({
             data-is-plus-icon="true"
             aria-label="Add reaction"
             title="More reactions"
+            onPointerDown={preserveKeyboardFocus}
+            onMouseDown={preserveKeyboardFocus}
             onClick={(e) => {
               e.stopPropagation();
               onOpenFullEmojiPicker(

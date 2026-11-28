@@ -15,7 +15,7 @@ export const EmojiPickerWrapper = styled.div`
  *  Sits exactly where the keyboard would be, below the footer. */
 export const MobileEmojiPanel = styled.div`
   position: fixed;
-  bottom: 0;
+  bottom: max(0px, calc(100dvh - var(--app-offset-top, 0px) - var(--app-height, 100dvh)));
   left: 0;
   right: 0;
   z-index: 100;
@@ -23,7 +23,7 @@ export const MobileEmojiPanel = styled.div`
   border-top: 1px solid var(--border-primary);
   display: flex;
   flex-direction: column;
-  max-height: 45dvh;
+  max-height: min(45dvh, calc(var(--app-height, 100dvh) - 56px));
   animation: ${slideIn} 0.2s ease-out forwards;
   .epr-main {
     width: 100% !important;
@@ -35,7 +35,10 @@ export const MobileEmojiPanel = styled.div`
 // --- DRAG & DROP OVERLAY ---
 export const DragDropOverlay = styled.div<{ $isVisible: boolean }>`
   position: fixed;
-  inset: 0;
+  top: var(--app-offset-top, 0px);
+  left: 0;
+  right: 0;
+  height: var(--app-height, 100dvh);
   z-index: 9999;
   display: flex;
   flex-direction: column;

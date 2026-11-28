@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import type { Message } from '../../types';
-import { sanitizeMediaUrl, formatMediaSize, audioDurationCache, setAudioDurationCache, isCloudinaryUrl } from '../../utils';
+import { sanitizeMediaUrl, formatMediaSize, audioDurationCache, setAudioDurationCache, isCloudinaryUrl, preserveKeyboardFocus, nonTouchTabIndex } from '../../utils';
 import { renderTextWithLinks } from '../../utils/urlLinkUtils';
 import { MessageText } from '../../ChatStyledComponents';
 import { sendClientDiagnostic } from '../../telemetry';
@@ -476,6 +476,7 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
 
   const handleWaveformPointerDown = (e: React.PointerEvent) => {
     if (isSelectModeActive || hasLoadError) return;
+    e.preventDefault();
     if (e.pointerType !== 'touch') {
       e.stopPropagation();
     }
@@ -547,6 +548,8 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
           $isPlaying={isPlaying}
           $hasError={hasLoadError}
           $isShaking={isShaking}
+          onPointerDown={preserveKeyboardFocus}
+          onMouseDown={preserveKeyboardFocus}
           onClick={togglePlayPause}
           title={hasLoadError ? 'Audio unavailable on server' : (isPlaying ? 'Pause' : 'Play voice message')}
           aria-label={hasLoadError ? 'Audio unavailable on server' : (isPlaying ? 'Pause voice message' : 'Play voice message')}
@@ -586,6 +589,7 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
               ref={waveformRef}
               onClick={handleWaveformClick}
               onPointerDown={handleWaveformPointerDown}
+              onMouseDown={preserveKeyboardFocus}
               title="Seek audio position"
               role="slider"
               aria-label="Seek audio position"
@@ -593,7 +597,7 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
               aria-valuemax={effectiveTotal}
               aria-valuenow={currentTime}
               aria-valuetext={displayTimer}
-              tabIndex={0}
+              tabIndex={nonTouchTabIndex(0)}
               data-quote-swipe-ignore="true"
               onKeyDown={(e) => {
                 if (isSelectModeActive) return;
@@ -652,6 +656,8 @@ export const AudioMessagePlayer: React.FC<AudioMessagePlayerProps> = ({
                   data-sender={sender}
                   $isBouncing={isSpeedBouncing}
                   $isBoosted={playbackSpeed > 1}
+                  onPointerDown={preserveKeyboardFocus}
+                  onMouseDown={preserveKeyboardFocus}
                   onClick={handleSpeedCycle}
                   title={`Playback speed: ${playbackSpeed}x (Click to cycle 1x → 1.5x → 2x)`}
                   aria-label={`Playback speed: ${playbackSpeed}x. Click to cycle speed.`}

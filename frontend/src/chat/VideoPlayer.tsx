@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { SPEEDS } from './constants';
-import { sanitizeMediaUrl, isNonTouchDevice } from './utils';
+import { sanitizeMediaUrl, isNonTouchDevice, preserveKeyboardFocus } from './utils';
 import { sendClientDiagnostic } from './telemetry';
 import {
   VideoPlayerWrapper, CVPContainer, CVPControls, CVPTimelineWrapper, CVPTimelineTrack,
@@ -498,7 +498,7 @@ export const VideoPlayer = ({
 
   // Auto-pause video when scrolled off-screen (unless in PiP mode or gallery modal)
   useEffect(() => {
-    if (isGalleryMode) return;
+    if (isGalleryMode || typeof IntersectionObserver === 'undefined') return;
     const video = videoRef.current;
     if (!video) return;
 
@@ -562,7 +562,7 @@ export const VideoPlayer = ({
       pendingPlayRef.current = true;
       retryCountRef.current = 0;
       v.load();
-      v.play().catch(() => { });
+      Promise.resolve(v.play()).catch(() => { });
       return;
     }
     if (v.paused) {
@@ -575,7 +575,7 @@ export const VideoPlayer = ({
           }
         }, 160);
       }
-      v.play().catch(() => {
+      Promise.resolve(v.play()).catch(() => {
         if (bufferingDelayTimerRef.current) {
           clearTimeout(bufferingDelayTimerRef.current);
           bufferingDelayTimerRef.current = null;
@@ -944,7 +944,9 @@ export const VideoPlayer = ({
     }
   };
 
-  const isTouchDevice = window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+  const isTouchDevice =
+    (typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches) ||
+    (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0);
 
   return (
     <VideoPlayerWrapper onContextMenu={(e) => e.preventDefault()} onPointerDown={() => onPointerDown?.()}>
@@ -952,7 +954,9 @@ export const VideoPlayer = ({
         ref={containerRef}
         onPointerDown={(e) => {
           lastPointerTypeRef.current = e.pointerType || 'mouse';
+          preserveKeyboardFocus(e);
         }}
+        onMouseDown={preserveKeyboardFocus}
         onClick={handleContainerTap}
         onMouseMove={() => {
           if (lastPointerTypeRef.current !== 'touch') {
@@ -1034,6 +1038,8 @@ export const VideoPlayer = ({
         {/* Center play/pause flash/button */}
         <CVPCenterPlayBtn
           $visible={!isUploading && !isRetrying && !isBuffering && !hasError && (!isPlaying || showCenterPlay || (isTouchDevice && showControls))}
+          onPointerDown={preserveKeyboardFocus}
+          onMouseDown={preserveKeyboardFocus}
           onClick={(e) => { e.stopPropagation(); togglePlay(); }}
           aria-label={isPlaying ? 'Pause' : 'Play'}
         >
@@ -1049,7 +1055,14 @@ export const VideoPlayer = ({
           data-cvp-controls
           data-quote-swipe-ignore
           onClick={(e) => e.stopPropagation()}
-          onPointerDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            preserveKeyboardFocus(e);
+          }}
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            preserveKeyboardFocus(e);
+          }}
           onTouchStart={(e) => {
             e.stopPropagation();
             resetControlsTimer();
@@ -1063,6 +1076,7 @@ export const VideoPlayer = ({
             data-quote-swipe-ignore
             onPointerDown={(e) => {
               e.stopPropagation();
+              e.preventDefault();
               beginScrub('pointer', e.clientX, e.currentTarget, e.pointerId);
             }}
             onPointerMove={(e) => {
@@ -1084,6 +1098,7 @@ export const VideoPlayer = ({
             onLostPointerCapture={() => finishScrub('pointer')}
             onMouseDown={(e) => {
               e.stopPropagation();
+              e.preventDefault();
               beginScrub('mouse', e.clientX, e.currentTarget);
             }}
             onMouseMove={(e) => {
@@ -1126,7 +1141,7 @@ export const VideoPlayer = ({
           {/* Bottom row */}
           <CVPBottomRow>
             {/* Play/Pause */}
-            <CVPIconBtn onClick={togglePlay} title={isPlaying ? 'Pause' : 'Play'} aria-label={isPlaying ? 'Pause' : 'Play'}>
+            <CVPIconBtn onPointerDown={preserveKeyboardFocus} onMouseDown={preserveKeyboardFocus} onClick={togglePlay} title={isPlaying ? 'Pause' : 'Play'} aria-label={isPlaying ? 'Pause' : 'Play'}>
               {isPlaying
                 ? <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" /></svg>
                 : <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3" /></svg>
@@ -1134,7 +1149,7 @@ export const VideoPlayer = ({
             </CVPIconBtn>
 
             {/* Skip back 10s - counter-clockwise arrow + crisp vector 10 */}
-            <CVPIconBtn onClick={() => skip(-10)} title="Back 10s" aria-label="Back 10 seconds">
+            <CVPIconBtn onPointerDown={preserveKeyboardFocus} onMouseDown={preserveKeyboardFocus} onClick={() => skip(-10)} title="Back 10s" aria-label="Back 10 seconds">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
                 <polyline points="3 3.5 3 8 7.5 8" />
@@ -1144,7 +1159,7 @@ export const VideoPlayer = ({
             </CVPIconBtn>
 
             {/* Skip forward 10s - clockwise arrow + crisp vector 10 */}
-            <CVPIconBtn onClick={() => skip(10)} title="Forward 10s" aria-label="Forward 10 seconds">
+            <CVPIconBtn onPointerDown={preserveKeyboardFocus} onMouseDown={preserveKeyboardFocus} onClick={() => skip(10)} title="Forward 10s" aria-label="Forward 10 seconds">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 12a9 9 0 1 1-3-6.7L21 8" />
                 <polyline points="21 3.5 21 8 16.5 8" />
@@ -1161,7 +1176,7 @@ export const VideoPlayer = ({
               onMouseEnter={() => { if (isNonTouchDevice()) openVolumeMenu(); }}
               onMouseLeave={() => { if (isNonTouchDevice()) handleVolumeWrapperMouseLeave(); }}
             >
-              <CVPIconBtn onClick={toggleMute} title={isMuted ? 'Unmute' : 'Mute'} aria-label={isMuted ? 'Unmute' : 'Mute'}>
+              <CVPIconBtn onPointerDown={preserveKeyboardFocus} onMouseDown={preserveKeyboardFocus} onClick={toggleMute} title={isMuted ? 'Unmute' : 'Mute'} aria-label={isMuted ? 'Unmute' : 'Mute'}>
                 {isMuted || volume === 0
                   ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><line x1="23" y1="9" x2="17" y2="15" /><line x1="17" y1="9" x2="23" y2="15" /></svg>
                   : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" /></svg>
@@ -1196,6 +1211,8 @@ export const VideoPlayer = ({
             {(isFullscreen || isGalleryMode) && (
               <CVPIconBtn
                 $active={isLooping}
+                onPointerDown={preserveKeyboardFocus}
+                onMouseDown={preserveKeyboardFocus}
                 onClick={toggleLoop}
                 title={isLooping ? 'Loop on' : 'Loop off'}
                 aria-label={isLooping ? 'Disable loop' : 'Enable loop'}
@@ -1213,6 +1230,8 @@ export const VideoPlayer = ({
             {(isFullscreen || isGalleryMode) && (
               <CVPIconBtn
                 className="cvp-pip-btn"
+                onPointerDown={preserveKeyboardFocus}
+                onMouseDown={preserveKeyboardFocus}
                 onClick={togglePiP}
                 title="Picture in Picture"
                 aria-label="Picture in Picture"
@@ -1225,12 +1244,12 @@ export const VideoPlayer = ({
             )}
 
             {/* Playback speed */}
-            <CVPSpeedBtn onClick={cycleSpeed} title="Playback speed" aria-label="Playback speed">
+            <CVPSpeedBtn onPointerDown={preserveKeyboardFocus} onMouseDown={preserveKeyboardFocus} onClick={cycleSpeed} title="Playback speed" aria-label="Playback speed">
               {SPEEDS[speedIdx]}x
             </CVPSpeedBtn>
 
             {/* Fullscreen */}
-            <CVPIconBtn onClick={toggleFullscreen} title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'} aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
+            <CVPIconBtn onPointerDown={preserveKeyboardFocus} onMouseDown={preserveKeyboardFocus} onClick={toggleFullscreen} title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'} aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
               {isFullscreen
                 ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3" /><path d="M21 8h-3a2 2 0 0 1-2-2V3" /><path d="M3 16h3a2 2 0 0 1 2 2v3" /><path d="M16 21v-3a2 2 0 0 1 2-2h3" /></svg>
                 : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3" /><path d="M21 8V5a2 2 0 0 0-2-2h-3" /><path d="M3 16v3a2 2 0 0 0 2 2h3" /><path d="M16 21h3a2 2 0 0 0 2-2v-3" /></svg>

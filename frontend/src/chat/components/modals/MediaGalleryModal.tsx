@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { Message, ReactionsPopupData } from '../../types';
 import { filterValidReactions } from '../../constants';
-import { sanitizeMediaUrl, withCloudinaryTransform, getMediaGatePreviewUrl, isNonTouchDevice, isPhotoOrGif, isGifMessage, copyImageToClipboard, getDeletedForMeIds } from '../../utils';
+import { sanitizeMediaUrl, withCloudinaryTransform, getMediaGatePreviewUrl, isNonTouchDevice, isPhotoOrGif, isGifMessage, copyImageToClipboard, getDeletedForMeIds, normalizeMessageId } from '../../utils';
 import { VideoPlayer } from '../../VideoPlayer';
 import { MediaDownloadButton } from '../message';
 import { usePhotoZoom } from '../../hooks/usePhotoZoom';
@@ -92,16 +92,22 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     }
     const allMsgMap = new Map<string, Message>();
     allMessages.forEach((m) => {
-      if (m.id) allMsgMap.set(m.id, m);
-      if ((m as any)._id) allMsgMap.set((m as any)._id, m);
-      if ((m as any).clientTempId) allMsgMap.set((m as any).clientTempId, m);
+      const mId = normalizeMessageId(m.id);
+      const mMongoId = (m as any)._id ? normalizeMessageId((m as any)._id) : '';
+      const mTempId = (m as any).clientTempId ? normalizeMessageId((m as any).clientTempId) : '';
+      if (mId) allMsgMap.set(mId, m);
+      if (mMongoId) allMsgMap.set(mMongoId, m);
+      if (mTempId) allMsgMap.set(mTempId, m);
     });
     return items.filter((item) => {
       if (!isNotDeletedForMe(item)) return false;
+      const itemId = normalizeMessageId(item.id);
+      const itemMongoId = (item as any)._id ? normalizeMessageId((item as any)._id) : '';
+      const itemTempId = (item as any).clientTempId ? normalizeMessageId((item as any).clientTempId) : '';
       const live =
-        allMsgMap.get(item.id) ||
-        (item._id ? allMsgMap.get(item._id) : undefined) ||
-        ((item as any).clientTempId ? allMsgMap.get((item as any).clientTempId) : undefined);
+        (itemId ? allMsgMap.get(itemId) : undefined) ||
+        (itemMongoId ? allMsgMap.get(itemMongoId) : undefined) ||
+        (itemTempId ? allMsgMap.get(itemTempId) : undefined);
       if (live) {
         return !live.isDeleted;
       }
@@ -188,14 +194,20 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
   const currentItem = useMemo(() => {
     if (!rawItem) return rawItem;
     if (!allMessages || allMessages.length === 0) return rawItem;
+    const rId = normalizeMessageId(rawItem.id);
+    const rMongoId = (rawItem as any)._id ? normalizeMessageId((rawItem as any)._id) : '';
+    const rTempId = (rawItem as any).clientTempId ? normalizeMessageId((rawItem as any).clientTempId) : '';
     return (
-      allMessages.find(
-        (m) =>
-          m.id === rawItem.id ||
-          ((m as any)._id && (m as any)._id === rawItem.id) ||
-          (rawItem._id && (m.id === rawItem._id || (m as any)._id === rawItem._id)) ||
-          ((m as any).clientTempId && (m as any).clientTempId === (rawItem as any).clientTempId)
-      ) || rawItem
+      allMessages.find((m) => {
+        const mId = normalizeMessageId(m.id);
+        const mMongoId = (m as any)._id ? normalizeMessageId((m as any)._id) : '';
+        const mTempId = (m as any).clientTempId ? normalizeMessageId((m as any).clientTempId) : '';
+        return (
+          (rId && (mId === rId || mMongoId === rId)) ||
+          (rMongoId && (mId === rMongoId || mMongoId === rMongoId)) ||
+          (rTempId && mTempId === rTempId)
+        );
+      }) || rawItem
     );
   }, [rawItem, allMessages]);
 

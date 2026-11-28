@@ -22,7 +22,7 @@ import {
 import { MessageBubble } from './chat.layout.styles';
 
 export const GifPickerModal = styled.div`
-  position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 50;
+  position: fixed; top: var(--app-offset-top, 0px); left: 0; right: 0; height: var(--app-height, 100dvh); background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 50;
   animation: ${fadeInScale} 0.3s ease-out forwards;
 `;
 export const GifPickerContent = styled.div`
@@ -70,9 +70,10 @@ export const UserSidebar = styled.aside<{ $isVisible: boolean }>`
   }
   @media (max-width: 768px), (pointer: coarse) {
     position: fixed;
-    top: 40px;
+    top: calc(var(--app-offset-top, 0px) + 40px);
     right: 0;
-    bottom: 0;
+    height: calc(var(--app-height, 100dvh) - 40px);
+    overflow-y: auto;
     z-index: 40;
     transform: ${props => props.$isVisible ? 'translateX(0)' : 'translateX(100%)'};
     transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.3s ease, border-color 0.3s ease;
@@ -86,7 +87,10 @@ export const SidebarBackdrop = styled.div<{ $isVisible: boolean }>`
   @media (max-width: 768px), (pointer: coarse) {
     display: ${props => props.$isVisible ? 'block' : 'none'};
     position: fixed;
-    inset: 0;
+    top: var(--app-offset-top, 0px);
+    left: 0;
+    right: 0;
+    height: var(--app-height, 100dvh);
     background: transparent;
     z-index: 39;
   }
@@ -98,6 +102,7 @@ export const UserList = styled.ul`
   margin: 0;
   margin-top: 0.5rem;
   flex-grow: 1; /* Allow UserList to take up available space */
+  min-height: 0;
   overflow-y: auto; /* Enable scrolling for the user list */
 `;
 
@@ -743,10 +748,10 @@ export const ReactionEmoji = styled.button<{ $isPlusIcon?: boolean }>`
 
 export const ReactionsPopupModal = styled.div`
   position: fixed;
-  top: 0;
+  top: var(--app-offset-top, 0px);
   left: 0;
   right: 0;
-  bottom: 0;
+  height: var(--app-height, 100dvh);
   background: rgba(0,0,0,0.25);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
@@ -768,6 +773,7 @@ export const ReactionsPopupContent = styled.div`
   border-radius: 16px;
   width: 90%;
   max-width: 400px;
+  max-height: calc(var(--app-height, 100dvh) - 24px);
   box-shadow: 0 20px 60px rgba(0,0,0,0.15), 0 4px 16px rgba(0,0,0,0.08);
   display: flex;
   flex-direction: column;
@@ -823,7 +829,7 @@ export const ReactionTab = styled.button<{ active: boolean }>`
 
 export const ReactionsUserList = styled.div`
   padding: 10px 16px 16px 16px;
-  max-height: 300px;
+  max-height: min(300px, calc(var(--app-height, 100dvh) - 110px));
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -927,7 +933,7 @@ export const ActionButton = styled.button`
 `;
 
 export const ConfirmationModal = styled.div`
-  position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 10000;
+  position: fixed; top: var(--app-offset-top, 0px); left: 0; right: 0; height: var(--app-height, 100dvh); background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); display: flex; align-items: center; justify-content: center; z-index: 10000;
   animation: ${reactionsModalFadeIn} 0.2s ease-out forwards;
 `;
 
@@ -943,7 +949,10 @@ export const ConfirmationContent = styled.div`
 
 export const DeleteDialogOverlay = styled.div`
   position: fixed;
-  inset: 0;
+  top: var(--app-offset-top, 0px);
+  left: 0;
+  right: 0;
+  height: var(--app-height, 100dvh);
   background: rgba(2, 6, 23, 0.58);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
@@ -1108,7 +1117,10 @@ export const DeleteBtnCancel = styled.button`
 
 export const ReportModal = styled.div`
   position: fixed;
-  inset: 0;
+  top: var(--app-offset-top, 0px);
+  left: 0;
+  right: 0;
+  height: var(--app-height, 100dvh);
   z-index: 130;
   background: rgba(0, 0, 0, 0.46);
   backdrop-filter: blur(4px);
@@ -1122,6 +1134,8 @@ export const ReportModal = styled.div`
 
 export const ReportDialog = styled.div`
   width: min(92vw, 460px);
+  max-height: calc(var(--app-height, 100dvh) - 24px);
+  overflow-y: auto;
   background: var(--bg-elevated);
   border: 1px solid var(--border-primary);
   border-radius: 16px;

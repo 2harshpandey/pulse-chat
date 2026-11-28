@@ -2,6 +2,7 @@
 
 import React from 'react';
 import type { Message } from '../types';
+import { computeToggledReactions } from '../constants';
 
 export const normalizeMessageId = (rawId: any): string => {
   if (rawId === null || rawId === undefined) return '';
@@ -182,4 +183,67 @@ export function findLastEditableSentMessage(
     }
   }
   return null;
+}
+
+/**
+ * Applies a `pulse:message_updated` event detail (`toggleReaction` or `messages`) onto a list of messages or gallery items.
+ * Returns the original array reference when nothing matched so React skips unnecessary re-renders.
+ */
+export function applyMessageUpdateDetailToList<
+  T extends { id: string; _id?: string; reactions?: Message['reactions'] }
+>(
+  list: T[],
+  detail: any,
+  pickPatch: (match: Partial<Message>) => Partial<T> = (match) => match as Partial<T>
+): T[] {
+  if (!detail || list.length === 0) return list;
+
+  if (detail.toggleReaction?.messageId) {
+    const { messageId, userId, username, emoji, isAlbum } = detail.toggleReaction;
+    const targetId = normalizeMessageId(messageId);
+    if (!targetId) return list;
+
+    let changed = false;
+    const next = list.map((item) => {
+      const itemId = normalizeMessageId(item.id);
+      const itemMongoId = item._id ? normalizeMessageId(item._id) : '';
+      if (itemId !== targetId && itemMongoId !== targetId) return item;
+      const nextReactions = computeToggledReactions(item.reactions, {
+        userId,
+        username,
+        emoji,
+        isAlbum,
+      });
+      if (!nextReactions) return item;
+      changed = true;
+      return { ...item, reactions: nextReactions };
+    });
+    return changed ? next : list;
+  }
+
+  const incomingUpdates: Array<Partial<Message> & { id?: string; _id?: string }> = Array.isArray(detail.messages)
+    ? detail.messages
+    : detail.message
+      ? [detail.message]
+      : [];
+  if (incomingUpdates.length === 0) return list;
+
+  const updateMap = new Map<string, Partial<Message>>();
+  for (const u of incomingUpdates) {
+    const uId = normalizeMessageId(u.id);
+    const uMongoId = u._id ? normalizeMessageId(u._id) : '';
+    if (uId) updateMap.set(uId, u);
+    if (uMongoId) updateMap.set(uMongoId, u);
+  }
+
+  let changed = false;
+  const next = list.map((item) => {
+    const match =
+      updateMap.get(normalizeMessageId(item.id)) ||
+      (item._id ? updateMap.get(normalizeMessageId(item._id)) : undefined);
+    if (!match) return item;
+    changed = true;
+    return { ...item, ...pickPatch(match) };
+  });
+  return changed ? next : list;
 }

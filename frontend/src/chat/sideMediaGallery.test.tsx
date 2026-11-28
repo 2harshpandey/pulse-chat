@@ -7,6 +7,9 @@ import { render, screen, fireEvent, act, waitFor, cleanup } from '@testing-libra
 import { UserSidebar } from './components/UserSidebar';
 import { SideMediaGallery, getMediaDateGroupLabel } from './components/SideMediaGallery';
 import { MediaGalleryModal } from './components/modals/MediaGalleryModal';
+import { useChatLightbox } from './hooks/useChatLightbox';
+import { useChatReactions } from './hooks/useChatReactions';
+import { routeIncomingWsMessage } from './hooks/wsMessageRouter';
 import type { Message } from './types';
 
 // Mock IntersectionObserver
@@ -867,6 +870,217 @@ describe('Media Viewer Side Panel and Tab Switching', () => {
         '_blank',
         'noopener,noreferrer'
       );
+    });
+  });
+
+  describe('Live reactions on historical media opened from SideMediaGallery', () => {
+    it('forwards saved reactions and preserves gif type when opening MediaGalleryModal from SideMediaGallery', async () => {
+      const mockItems = [
+        {
+          id: 'old-gif-1',
+          type: 'gif',
+          url: 'https://media.giphy.com/media/123/giphy.gif',
+          originalName: 'funny.gif',
+          userId: 'u2',
+          username: 'Alice',
+          createdAt: '2026-11-01T12:00:00.000Z',
+          reactions: {
+            '😂': [{ userId: 'u2', username: 'Alice' }],
+          },
+        },
+      ];
+
+      vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ items: mockItems, hasMore: false }),
+        } as any)
+      );
+
+      const mockOpenMediaGallery = vi.fn();
+
+      render(
+        <SideMediaGallery
+          roomId="test-room"
+          isActive={true}
+          openMediaGallery={mockOpenMediaGallery}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTitle('funny.gif')).toBeDefined();
+      });
+
+      act(() => {
+        fireEvent.click(screen.getByTitle('funny.gif'));
+      });
+
+      expect(mockOpenMediaGallery).toHaveBeenCalledTimes(1);
+      const [passedItems] = mockOpenMediaGallery.mock.calls[0];
+      expect(passedItems[0].type).toBe('gif');
+      expect(passedItems[0].reactions).toEqual({
+        '😂': [{ userId: 'u2', username: 'Alice' }],
+      });
+    });
+
+    it('immediately shows and updates bottom-right reaction badge in MediaGalleryModal for disjoint old media before scrolling up', async () => {
+      const olderSideGalleryItems = [
+        {
+          id: 'old-photo-42',
+          type: 'image',
+          url: 'https://res.cloudinary.com/test/image/upload/v1/old42.jpg',
+          originalName: 'old42.jpg',
+          userId: 'u2',
+          username: 'Alice',
+          createdAt: '2026-10-01T10:00:00.000Z',
+          reactions: {},
+        },
+        {
+          id: 'old-video-43',
+          type: 'video',
+          url: 'https://res.cloudinary.com/test/video/upload/v1/old43.mp4',
+          originalName: 'old43.mp4',
+          userId: 'u2',
+          username: 'Alice',
+          createdAt: '2026-10-01T10:05:00.000Z',
+          reactions: {},
+        },
+      ];
+
+      vi.spyOn(globalThis, 'fetch').mockImplementation(() =>
+        Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ items: olderSideGalleryItems, hasMore: false }),
+        } as any)
+      );
+
+      const wsSendMock = vi.fn();
+      const wsRef = { current: { readyState: 1, send: wsSendMock } as any };
+      const recentChatOnly: Message[] = [
+        {
+          id: 'recent-msg-1',
+          type: 'text',
+          text: 'Hello there',
+          userId: 'u1',
+          username: 'Harsh',
+          timestamp: '2026-11-28T10:00:00.000Z',
+        },
+      ];
+
+      let latestMessages = recentChatOnly;
+      const setMessages = vi.fn((updater: any) => {
+        latestMessages = typeof updater === 'function' ? updater(latestMessages) : updater;
+      });
+
+      let latestReactFn: ((messageId: string, emoji: string, isAlbum?: boolean) => void) | null = null;
+
+      function TestHarness() {
+        const lightbox = useChatLightbox({ roomId: 'test-room' });
+        const chatContainerRef = React.useRef<HTMLDivElement | null>(null);
+        const reactions = useChatReactions({
+          userId: 'u1',
+          userProfile: { userId: 'u1', username: 'Harsh', roomId: 'test-room' } as any,
+          roomId: 'test-room',
+          ws: wsRef as any,
+          setMessages: setMessages as any,
+          chatContainerRef,
+        });
+        latestReactFn = reactions.handleReact;
+
+        return (
+          <div>
+            <SideMediaGallery
+              roomId="test-room"
+              isActive={true}
+              currentUserId="u1"
+              openMediaGallery={lightbox.openMediaGallery}
+            />
+            <MediaGalleryModal
+              isOpen={Boolean(lightbox.mediaGallery)}
+              items={lightbox.mediaGallery?.items || []}
+              initialIndex={lightbox.mediaGallery?.initialIndex || 0}
+              autoPlayVideo={lightbox.mediaGallery?.autoPlayVideo}
+              onClose={lightbox.closeMediaGallery}
+              currentUserId="u1"
+              onOpenReactionPicker={reactions.handleOpenReactionPicker}
+              onSetReactionsPopup={reactions.setReactionsPopup}
+              allMessages={recentChatOnly}
+            />
+          </div>
+        );
+      }
+
+      render(<TestHarness />);
+
+      await waitFor(() => {
+        expect(screen.getByTitle('old42.jpg')).toBeDefined();
+      });
+
+      // Open the old photo from SideMediaGallery (NOT present in allMessages)
+      act(() => {
+        fireEvent.click(screen.getByTitle('old42.jpg'));
+      });
+
+      expect(screen.queryByTitle('View reactions on this media')).toBeNull();
+
+      // React optimistically with ❤️
+      act(() => {
+        latestReactFn?.('old-photo-42', '❤️');
+      });
+
+      expect(wsSendMock).toHaveBeenCalledWith(
+        expect.stringContaining('"messageId":"old-photo-42"')
+      );
+      const badge = screen.getByTitle('View reactions on this media');
+      expect(badge.textContent).toContain('❤️');
+
+      // Re-react with 👍 (replaces ❤️ with 👍)
+      act(() => {
+        latestReactFn?.('old-photo-42', '👍');
+      });
+      expect(screen.getByTitle('View reactions on this media').textContent).toContain('👍');
+      expect(screen.getByTitle('View reactions on this media').textContent).not.toContain('❤️');
+
+      // Close modal and re-open from SideMediaGallery: SideMediaGallery also preserved 👍!
+      act(() => {
+        fireEvent.click(screen.getByLabelText('Close viewer'));
+      });
+      expect(screen.queryByTitle('View reactions on this media')).toBeNull();
+
+      act(() => {
+        fireEvent.click(screen.getByTitle('old42.jpg'));
+      });
+      expect(screen.getByTitle('View reactions on this media').textContent).toContain('👍');
+
+      // Simulate server WS update frame from another user reacting 😂 on old-photo-42
+      act(() => {
+        routeIncomingWsMessage(
+          {
+            roomId: 'test-room',
+            userId: 'u1',
+            normalizeMessage: (m: any) => m,
+            setMessages: setMessages as any,
+            setSearchResults: vi.fn(),
+            setReplyingTo: vi.fn(),
+            setPinnedMessages: vi.fn(),
+          } as any,
+          JSON.stringify({
+            type: 'update',
+            data: {
+              id: 'old-photo-42',
+              reactions: {
+                '👍': [{ userId: 'u1', username: 'Harsh' }],
+                '😂': [{ userId: 'u2', username: 'Alice' }],
+              },
+            },
+          })
+        );
+      });
+
+      const updatedBadge = screen.getByTitle('View reactions on this media');
+      expect(updatedBadge.textContent).toContain('👍');
+      expect(updatedBadge.textContent).toContain('😂');
+      expect(updatedBadge.textContent).toContain('2');
     });
   });
 });

@@ -304,6 +304,24 @@ function handleUpdateOrBulkFrame(ctx: WsMessageRouterContext, messageData: any):
         return match ? { ...p, ...match } : p;
       })
   );
+
+  if (typeof window !== 'undefined') {
+    const nonDeletedUpdates = updatedMessages.filter((m) => !isHardRemovedForPinOrReply(m));
+    if (nonDeletedUpdates.length > 0) {
+      window.dispatchEvent(
+        new CustomEvent('pulse:message_updated', {
+          detail: { messages: nonDeletedUpdates, roomId: ctx.roomId },
+        })
+      );
+    }
+    if (deletedOrVanishedIds.size > 0) {
+      window.dispatchEvent(
+        new CustomEvent('pulse:message_deleted', {
+          detail: { ids: Array.from(deletedOrVanishedIds), roomId: ctx.roomId },
+        })
+      );
+    }
+  }
 }
 
 function handleIncomingChatMessageFrame(ctx: WsMessageRouterContext, messageData: any): void {

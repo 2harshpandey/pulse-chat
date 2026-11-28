@@ -175,3 +175,43 @@ export const filterValidReactions = (rawReactions: unknown): ReactionMap => {
 
   return Object.fromEntries(safeMap);
 };
+
+/**
+ * Pure reducer that toggles a user's reaction on a reaction map without mutating the input.
+ * Supports independent album-level (`isAlbum: true`) and item-level (`isAlbum: false`) reactions.
+ */
+export const computeToggledReactions = (
+  rawReactions: unknown,
+  {
+    userId,
+    username,
+    emoji,
+    isAlbum = false,
+  }: { userId: string; username: string; emoji: string; isAlbum?: boolean }
+): ReactionMap | null => {
+  const canonicalEmoji = normalizeReactionEmoji(emoji);
+  if (!canonicalEmoji || !userId) return null;
+
+  const reactions = filterValidReactions(rawReactions);
+  const isAlbumReaction = Boolean(isAlbum);
+  let previousEmoji: string | null = null;
+
+  for (const [e, users] of Object.entries(reactions)) {
+    const idx = users.findIndex((r) => r.userId === userId && Boolean(r.isAlbum) === isAlbumReaction);
+    if (idx > -1) {
+      previousEmoji = e;
+      users.splice(idx, 1);
+      if (users.length === 0) delete reactions[e];
+      break;
+    }
+  }
+
+  if (previousEmoji !== canonicalEmoji) {
+    if (!Array.isArray(reactions[canonicalEmoji])) reactions[canonicalEmoji] = [];
+    const entry: ReactionUser = { userId, username };
+    if (isAlbumReaction) entry.isAlbum = true;
+    reactions[canonicalEmoji].push(entry);
+  }
+
+  return reactions;
+};

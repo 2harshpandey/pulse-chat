@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { transferManager, TransferInfo } from '../../TransferManager';
 import { MediaDownloadOverlayBtn, MediaGalleryActionBtn, DownloadProgressRing } from '../../ChatStyledComponents';
-import { downloadFile } from '../../utils';
+import { downloadFile, preserveKeyboardFocus } from '../../utils';
 
 export const DownloadSvg = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -93,10 +93,12 @@ export const MediaDownloadButton: React.FC<MediaDownloadButtonProps> = ({
       aria-label={isDownloading ? 'Cancel download' : 'Download media'}
       onPointerDown={(e) => {
         if ('button' in e && e.button !== 0) return;
+        e.preventDefault();
         handledPointerDownRef.current = true;
         // Prevent click loss during high-frequency re-renders
         handleClick(e);
       }}
+      onMouseDown={preserveKeyboardFocus}
       onPointerCancel={() => {
         handledPointerDownRef.current = false;
       }}

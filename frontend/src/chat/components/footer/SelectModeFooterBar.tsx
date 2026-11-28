@@ -7,6 +7,7 @@ import {
   isNonTouchDevice,
   copyImageToClipboard,
   copyTextToClipboard,
+  preserveKeyboardFocus,
 } from '../../utils';
 import {
   SelectModeFooter,
@@ -159,6 +160,8 @@ export const SelectModeFooterBar: React.FC<SelectModeFooterBarProps> = ({
       <div style={{ position: 'relative' }} ref={copyMenuRef}>
         <CopyButton
           data-testid="select-copy-btn"
+          onPointerDown={preserveKeyboardFocus}
+          onMouseDown={preserveKeyboardFocus}
           onClick={handleCopyClick}
           title={copyLabel}
           aria-label={copyLabel}
@@ -187,6 +190,8 @@ export const SelectModeFooterBar: React.FC<SelectModeFooterBarProps> = ({
               type="button"
               role="menuitem"
               data-testid="popover-copy-image-btn"
+              onPointerDown={preserveKeyboardFocus}
+              onMouseDown={preserveKeyboardFocus}
               onClick={handleCopyImageOption}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -201,6 +206,8 @@ export const SelectModeFooterBar: React.FC<SelectModeFooterBarProps> = ({
               type="button"
               role="menuitem"
               data-testid="popover-copy-caption-btn"
+              onPointerDown={preserveKeyboardFocus}
+              onMouseDown={preserveKeyboardFocus}
               onClick={handleCopyCaptionOption}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -220,11 +227,19 @@ export const SelectModeFooterBar: React.FC<SelectModeFooterBarProps> = ({
 
   return (
     <SelectModeFooter>
-      <CancelPreviewButton onClick={onCancelSelectMode}>&times;</CancelPreviewButton>
+      <CancelPreviewButton
+        onPointerDown={preserveKeyboardFocus}
+        onMouseDown={preserveKeyboardFocus}
+        onClick={onCancelSelectMode}
+      >
+        &times;
+      </CancelPreviewButton>
       <span>{selectedMessages.length} selected</span>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
         {canEditSelectedMessage && selectedMessage && (
           <EditButton
+            onPointerDown={preserveKeyboardFocus}
+            onMouseDown={preserveKeyboardFocus}
             onClick={() => {
               onStartEdit(selectedMessage);
               onCancelSelectMode();
@@ -241,6 +256,8 @@ export const SelectModeFooterBar: React.FC<SelectModeFooterBarProps> = ({
         {renderCopyAction()}
         {hasSelectedMedia && onDownloadSelectedMedia && (
           <DownloadAllButton
+            onPointerDown={preserveKeyboardFocus}
+            onMouseDown={preserveKeyboardFocus}
             onClick={() => {
               onDownloadSelectedMedia();
             }}
@@ -256,6 +273,8 @@ export const SelectModeFooterBar: React.FC<SelectModeFooterBarProps> = ({
         )}
         {isMobileView && selectedMessages.length === 1 && selectedMessage && !selectedMessage.isDeleted && selectedMessage.userId !== currentUserId && selectedMessage.type !== 'system_notification' && (
           <ReportButton
+            onPointerDown={preserveKeyboardFocus}
+            onMouseDown={preserveKeyboardFocus}
             onClick={() => {
               onOpenReport(selectedMessage);
               onCancelSelectMode();
@@ -269,7 +288,13 @@ export const SelectModeFooterBar: React.FC<SelectModeFooterBarProps> = ({
             </svg>
           </ReportButton>
         )}
-        <DeleteButton onClick={onInitiateDelete} title="Delete" aria-label="Delete selected messages">
+        <DeleteButton
+          onPointerDown={preserveKeyboardFocus}
+          onMouseDown={preserveKeyboardFocus}
+          onClick={onInitiateDelete}
+          title="Delete"
+          aria-label="Delete selected messages"
+        >
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="3 6 5 6 21 6"></polyline>
             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>

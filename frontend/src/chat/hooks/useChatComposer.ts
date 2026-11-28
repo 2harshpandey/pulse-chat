@@ -967,19 +967,9 @@ export function useChatComposer({
     }
   }, [setFirstItemIndex, setHasMoreOlderMessages, setMessages, setOldestLoadedAt, userId, roomId]);
 
-  const handleHeaderButtonPointerDown = useCallback((e: React.PointerEvent) => {
-    if (isMobileView) {
-      const vvHeight = window.visualViewport?.height || window.innerHeight;
-      const isKeyboardLikelyOpen = (stableViewportHeightRef.current - vvHeight) > 96;
-      if (isKeyboardLikelyOpen) {
-        e.preventDefault();
-      } else {
-        messageInputRef.current?.blur();
-      }
-    } else {
-      e.preventDefault();
-    }
-  }, [isMobileView, messageInputRef, stableViewportHeightRef]);
+  const handleHeaderButtonPointerDown = useCallback((e: React.PointerEvent | React.MouseEvent) => {
+    e.preventDefault();
+  }, []);
 
   const handleChatAreaClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target !== chatContainerRef.current) return;
@@ -988,9 +978,7 @@ export function useChatComposer({
       typeof navigator !== 'undefined' ? navigator.userAgent || '' : ''
     );
     if (isMobileOS && isTouchDevice()) {
-      if (messageInputRef.current && document.activeElement === messageInputRef.current) {
-        messageInputRef.current.blur();
-      }
+      // Leave the touch virtual keyboard in its current state when tapping empty chat space.
       return;
     }
     messageInputRef.current?.focus();

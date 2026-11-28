@@ -2,7 +2,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import type { Message } from '../../types';
 import { DeleteMenu, DeleteMenuItem } from '../../ChatStyledComponents';
-import { isNonTouchDevice, isPhotoOrGif, isGifMessage, copyImageToClipboard, hasMediaAttachment } from '../../utils';
+import { isNonTouchDevice, isPhotoOrGif, isGifMessage, copyImageToClipboard, hasMediaAttachment, preserveKeyboardFocus } from '../../utils';
 
 interface MessageActionMenuPortalProps {
   msg: Message;
@@ -57,7 +57,7 @@ export const MessageActionMenuPortal: React.FC<MessageActionMenuPortalProps> = R
         zIndex: 9999,
       }}
     >
-      <DeleteMenu>
+      <DeleteMenu onPointerDown={preserveKeyboardFocus} onMouseDown={preserveKeyboardFocus}>
         {msg.isDeleted ? (
           <>
             <DeleteMenuItem onClick={() => { handleSetReply(msg); setActiveDeleteMenu(null); }}>

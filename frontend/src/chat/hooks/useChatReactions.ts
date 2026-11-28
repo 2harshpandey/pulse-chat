@@ -1,7 +1,8 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import type { Message, ReactionsPopupData } from '../types';
 import type { UserProfile } from '../../UserContext';
-import { normalizeReactionEmoji, filterValidReactions } from '../constants';
+import { normalizeReactionEmoji, computeToggledReactions } from '../constants';
+import { normalizeMessageId } from '../utils';
 
 interface UseChatReactionsProps {
   userId: string;
@@ -84,33 +85,40 @@ export function useChatReactions({
       }
       const username = userProfile?.username || '';
       const isAlbumReaction = Boolean(isAlbum);
+      const targetId = normalizeMessageId(messageId);
 
       const applyReactionUpdate = (prevList: Message[]) =>
         prevList.map((m) => {
-          if (m.id !== messageId) return m;
-          const reactions: Record<string, { userId: string; username: string; isAlbum?: boolean }[]> = filterValidReactions(m.reactions);
-          let previousEmoji: string | null = null;
-          for (const [e, users] of Object.entries(reactions)) {
-            if (Array.isArray(users)) {
-              const idx = users.findIndex((r: any) => r.userId === userId && Boolean(r.isAlbum) === isAlbumReaction);
-              if (idx > -1) {
-                previousEmoji = e;
-                users.splice(idx, 1);
-                if (users.length === 0) delete reactions[e];
-                break;
-              }
-            }
-          }
-          if (previousEmoji !== canonicalEmoji) {
-            if (!Array.isArray(reactions[canonicalEmoji])) reactions[canonicalEmoji] = [];
-            const entry: any = { userId, username };
-            if (isAlbumReaction) entry.isAlbum = true;
-            reactions[canonicalEmoji].push(entry);
-          }
-          return { ...m, reactions };
+          const mId = normalizeMessageId(m.id);
+          const mMongoId = (m as any)._id ? normalizeMessageId((m as any)._id) : '';
+          if (mId !== targetId && mMongoId !== targetId) return m;
+          const nextReactions = computeToggledReactions(m.reactions, {
+            userId,
+            username,
+            emoji: canonicalEmoji,
+            isAlbum: isAlbumReaction,
+          });
+          return nextReactions ? { ...m, reactions: nextReactions } : m;
         });
 
       setMessages((prev) => applyReactionUpdate(prev));
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('pulse:message_updated', {
+            detail: {
+              roomId,
+              toggleReaction: {
+                messageId,
+                userId,
+                username,
+                emoji: canonicalEmoji,
+                isAlbum: isAlbumReaction,
+              },
+            },
+          })
+        );
+      }
 
       try {
         ws.current.send(JSON.stringify({
@@ -142,9 +150,6 @@ export function useChatReactions({
   }, []);
 
   const handleOpenFullEmojiPicker = useCallback((rect: DOMRect, messageId: string, isAlbum?: boolean) => {
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
     setFullEmojiPickerPosition(rect);
     messageIdForFullEmojiPickerRef.current = { messageId, isAlbum };
     setReactionPickerData(null);

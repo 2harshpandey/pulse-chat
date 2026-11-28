@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Message, ReactionsPopupData } from '../../types';
 import { QUICK_REACTIONS } from '../../constants';
+import { preserveKeyboardFocus } from '../../utils';
 import {
   MobileReactionPicker,
   ReactionEmoji,
@@ -54,10 +55,12 @@ export const MessageReactions: React.FC<MessageReactionsProps> = React.memo(({
               key={emoji}
               data-allow-click="true"
               onPointerDown={(e) => {
+                e.preventDefault();
                 if (e.pointerType === 'touch' || e.pointerType === 'pen' || e.button === 0) {
                   triggerReaction(emoji, e);
                 }
               }}
+              onMouseDown={preserveKeyboardFocus}
               onClick={(e) => {
                 triggerReaction(emoji, e);
               }}
@@ -69,10 +72,12 @@ export const MessageReactions: React.FC<MessageReactionsProps> = React.memo(({
             <ReactionEmoji
               data-allow-click="true"
               onPointerDown={(e) => {
+                e.preventDefault();
                 if (e.pointerType === 'touch' || e.pointerType === 'pen' || e.button === 0) {
                   triggerReaction(currentUserReaction, e);
                 }
               }}
+              onMouseDown={preserveKeyboardFocus}
               onClick={(e) => {
                 triggerReaction(currentUserReaction, e);
               }}
@@ -93,6 +98,7 @@ export const MessageReactions: React.FC<MessageReactionsProps> = React.memo(({
                 const rect = e.currentTarget.getBoundingClientRect();
                 handleOpenFullEmojiPicker(rect, msgId);
               }}
+              onMouseDown={preserveKeyboardFocus}
             >
               +
             </ReactionEmoji>
@@ -107,6 +113,8 @@ export const MessageReactions: React.FC<MessageReactionsProps> = React.memo(({
           <ReactionsContainer
             $sender={sender}
             data-testid="reactions-container"
+            onPointerDown={preserveKeyboardFocus}
+            onMouseDown={preserveKeyboardFocus}
             onClick={(e) =>
               setReactionsPopup({
                 messageId: msg.id,

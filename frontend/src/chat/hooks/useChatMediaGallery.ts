@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getSessionToken, getUserId, resolveApiBaseUrl, getDeletedForMeIds, getStoredValue } from '../utils';
+import type { Message } from '../types';
+import { applyMessageUpdateDetailToList, normalizeMessageId, getSessionToken, getUserId, resolveApiBaseUrl, getDeletedForMeIds, getStoredValue } from '../utils';
 import { detectFirstUrl, normalizeUrl, safeExternalUrl } from '../utils/urlLinkUtils';
 
 export type GalleryFilter = 'photo' | 'video' | 'doc' | 'link' | null;
@@ -16,6 +17,7 @@ export interface GalleryItem {
   username?: string;
   text?: string;
   duration?: number;
+  reactions?: Message['reactions'];
 }
 
 export interface UseChatMediaGalleryProps {
@@ -156,9 +158,15 @@ export function useChatMediaGallery({ roomId, isActive, userId }: UseChatMediaGa
     if (typeof window === 'undefined') return;
 
     const handleMessageDeleted = (e: any) => {
-      const deletedIds = new Set<string>(e?.detail?.ids || []);
+      const detail = e?.detail;
+      const currentRoomKey = roomId || 'me';
+      if (detail?.roomId && detail.roomId !== currentRoomKey && detail.roomId !== roomId) {
+        return;
+      }
+      const ids: unknown[] = Array.isArray(detail?.ids) ? detail.ids : [];
+      const deletedIds = new Set<string>(ids.map((id) => normalizeMessageId(id)).filter(Boolean));
       if (deletedIds.size > 0) {
-        setItems((prev) => prev.filter((item) => !deletedIds.has(item.id)));
+        setItems((prev) => prev.filter((item) => !deletedIds.has(normalizeMessageId(item.id))));
       }
     };
 
@@ -203,6 +211,7 @@ export function useChatMediaGallery({ roomId, isActive, userId }: UseChatMediaGa
         username: msg.username,
         text: msg.text,
         duration: msg.duration,
+        reactions: msg.reactions,
       };
 
       setItems((prev) => {
@@ -211,14 +220,34 @@ export function useChatMediaGallery({ roomId, isActive, userId }: UseChatMediaGa
       });
     };
 
+    const handleMessageUpdated = (e: any) => {
+      const detail = e?.detail;
+      if (!detail) return;
+      const currentRoomKey = roomId || 'me';
+      if (detail.roomId && detail.roomId !== currentRoomKey && detail.roomId !== roomId) {
+        return;
+      }
+
+      setItems((prev) =>
+        applyMessageUpdateDetailToList(prev, detail, (match) => ({
+          ...(match.reactions !== undefined ? { reactions: match.reactions } : {}),
+          ...(match.text !== undefined ? { text: match.text } : {}),
+          ...(match.url !== undefined ? { url: match.url } : {}),
+          ...(match.originalName !== undefined ? { originalName: match.originalName } : {}),
+        }))
+      );
+    };
+
     window.addEventListener('pulse:message_deleted', handleMessageDeleted);
     window.addEventListener('pulse:chat_cleared', handleChatCleared);
     window.addEventListener('pulse:new_message', handleNewMessage);
+    window.addEventListener('pulse:message_updated', handleMessageUpdated);
 
     return () => {
       window.removeEventListener('pulse:message_deleted', handleMessageDeleted);
       window.removeEventListener('pulse:chat_cleared', handleChatCleared);
       window.removeEventListener('pulse:new_message', handleNewMessage);
+      window.removeEventListener('pulse:message_updated', handleMessageUpdated);
     };
   }, [roomId, filter]);
 

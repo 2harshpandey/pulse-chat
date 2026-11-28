@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { Message } from '../types';
-import { copyTextToClipboard } from '../utils';
+import { copyTextToClipboard, preserveKeyboardFocus } from '../utils';
 import { SideMediaGallery } from './SideMediaGallery';
 import {
   SidebarBackdrop,
@@ -95,7 +95,12 @@ export const UserSidebar: React.FC<UserSidebarProps> = ({
 
   return (
     <>
-      <SidebarBackdrop $isVisible={isVisible} onClick={onClose} />
+      <SidebarBackdrop
+        $isVisible={isVisible}
+        onPointerDown={preserveKeyboardFocus}
+        onMouseDown={preserveKeyboardFocus}
+        onClick={onClose}
+      />
       <StyledUserSidebar $isVisible={isVisible}>
         <SidePanelTabBar role="tablist" aria-label="Side panel view switch">
           <SidePanelTab
@@ -104,6 +109,8 @@ export const UserSidebar: React.FC<UserSidebarProps> = ({
             aria-selected={activeTab === 'online'}
             data-active={activeTab === 'online'}
             $active={activeTab === 'online'}
+            onPointerDown={preserveKeyboardFocus}
+            onMouseDown={preserveKeyboardFocus}
             onClick={() => setActiveTab('online')}
           >
             <svg
@@ -127,6 +134,8 @@ export const UserSidebar: React.FC<UserSidebarProps> = ({
             aria-selected={activeTab === 'media'}
             data-active={activeTab === 'media'}
             $active={activeTab === 'media'}
+            onPointerDown={preserveKeyboardFocus}
+            onMouseDown={preserveKeyboardFocus}
             onClick={() => setActiveTab('media')}
           >
             <svg
@@ -172,7 +181,7 @@ export const UserSidebar: React.FC<UserSidebarProps> = ({
           />
         )}
 
-        <ClearChatButton onClick={onClearChat}>
+        <ClearChatButton onPointerDown={preserveKeyboardFocus} onMouseDown={preserveKeyboardFocus} onClick={onClearChat}>
           <svg
             xmlns="http://www.w3.org/2000/svg"
             width="20"
@@ -192,7 +201,7 @@ export const UserSidebar: React.FC<UserSidebarProps> = ({
           Clear Chat
         </ClearChatButton>
 
-        <LogoutButton onClick={onLogout}>
+        <LogoutButton onPointerDown={preserveKeyboardFocus} onMouseDown={preserveKeyboardFocus} onClick={onLogout}>
           <svg
             xmlns="http://www.w3.org/2000/svg"
             width="20"

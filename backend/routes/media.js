@@ -24,6 +24,7 @@ const {
   generateSafePublicId,
 } = require('../security');
 const { isRoomAccessAllowed } = require('../roomAccess');
+const { filterValidReactions } = require('../reactions');
 const {
   MONGODB_CANDIDATE_URL_REGEX,
   normalizeUrl,
@@ -938,7 +939,7 @@ module.exports = (wss, broadcasts) => {
 
       if (!needsLinkValidation) {
         const messages = await Message.find(query)
-          .select('id _id type url originalName size createdAt timestamp userId username text duration')
+          .select('id _id type url originalName size createdAt timestamp userId username text duration reactions')
           .sort({ createdAt: -1 })
           .limit(limit + 1)
           .lean();
@@ -967,7 +968,7 @@ module.exports = (wss, broadcasts) => {
           }
 
           const batchMessages = await Message.find(batchQuery)
-            .select('id _id type url originalName size createdAt timestamp userId username text duration')
+            .select('id _id type url originalName size createdAt timestamp userId username text duration reactions')
             .sort({ createdAt: -1 })
             .limit(limit + 1)
             .lean();
@@ -1040,6 +1041,7 @@ module.exports = (wss, broadcasts) => {
           username: typeof item.username === 'string' ? item.username.slice(0, 200) : undefined,
           text: typeof item.text === 'string' ? item.text.slice(0, 1000) : undefined,
           duration: typeof item.duration === 'number' ? item.duration : undefined,
+          reactions: filterValidReactions(item.reactions),
         };
       });
 

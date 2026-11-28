@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { preserveKeyboardFocus } from '../../utils';
 import {
   DeleteDialogOverlay,
   DeleteDialogCard,
@@ -51,6 +52,8 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
   return (
     <DeleteDialogOverlay
       data-testid="delete-confirm-overlay"
+      onPointerDown={preserveKeyboardFocus}
+      onMouseDown={preserveKeyboardFocus}
       onClick={onCancel}
     >
       <DeleteDialogCard
@@ -58,6 +61,14 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
         aria-modal="true"
         aria-labelledby="delete-confirm-title"
         data-testid="delete-confirm-dialog"
+        onPointerDown={(e: React.PointerEvent) => {
+          e.stopPropagation();
+          preserveKeyboardFocus(e);
+        }}
+        onMouseDown={(e: React.MouseEvent) => {
+          e.stopPropagation();
+          preserveKeyboardFocus(e);
+        }}
         onClick={(e: React.MouseEvent) => e.stopPropagation()}
       >
         <DeleteDialogTitle id="delete-confirm-title">
@@ -73,22 +84,22 @@ export const DeleteConfirmModal: React.FC<DeleteConfirmModalProps> = ({
         <DeleteDialogActions $columns={showDeleteForEveryone ? 1 : 2}>
           {showDeleteForEveryone && onDeleteForEveryone ? (
             <>
-              <DeleteBtnPrimary type="button" onClick={onDeleteForEveryone}>
+              <DeleteBtnPrimary type="button" onPointerDown={preserveKeyboardFocus} onMouseDown={preserveKeyboardFocus} onClick={onDeleteForEveryone}>
                 Delete for everyone
               </DeleteBtnPrimary>
-              <DeleteBtnSecondary type="button" onClick={onDeleteForMe}>
+              <DeleteBtnSecondary type="button" onPointerDown={preserveKeyboardFocus} onMouseDown={preserveKeyboardFocus} onClick={onDeleteForMe}>
                 Delete for me
               </DeleteBtnSecondary>
-              <DeleteBtnCancel type="button" onClick={onCancel}>
+              <DeleteBtnCancel type="button" onPointerDown={preserveKeyboardFocus} onMouseDown={preserveKeyboardFocus} onClick={onCancel}>
                 Cancel
               </DeleteBtnCancel>
             </>
           ) : (
             <>
-              <DeleteBtnCancel type="button" onClick={onCancel}>
+              <DeleteBtnCancel type="button" onPointerDown={preserveKeyboardFocus} onMouseDown={preserveKeyboardFocus} onClick={onCancel}>
                 Cancel
               </DeleteBtnCancel>
-              <DeleteBtnPrimary type="button" onClick={onDeleteForMe}>
+              <DeleteBtnPrimary type="button" onPointerDown={preserveKeyboardFocus} onMouseDown={preserveKeyboardFocus} onClick={onDeleteForMe}>
                 Delete for me
               </DeleteBtnPrimary>
             </>

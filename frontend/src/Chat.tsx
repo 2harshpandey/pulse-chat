@@ -8,6 +8,7 @@ import {
   getSessionToken,
   getSignedTokenUserId,
   getStoredRoomProfile,
+  usePreserveVirtualKeyboard,
 } from './chat/utils';
 import {
   DragDropOverlay,
@@ -36,6 +37,7 @@ interface ChatProps {
 
 function ChatAuthenticated({ isMe, isTempLink }: ChatProps) {
   const c = useChatController({ isMe, isTempLink });
+  usePreserveVirtualKeyboard();
 
   return (
     <>
@@ -134,9 +136,6 @@ function ChatAuthenticated({ isMe, isTempLink }: ChatProps) {
           }}
           isUserListVisible={c.isUserListVisible}
           onToggleUserList={() => {
-            if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
-              document.activeElement.blur();
-            }
             c.setIsUserListVisible(!c.isUserListVisible);
           }}
           onHeaderButtonPointerDown={c.composer.handleHeaderButtonPointerDown}

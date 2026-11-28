@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useCallback, useMemo } from 'react';
 import type { Message } from '../types';
+import { filterValidReactions } from '../constants';
 import { useChatMediaGallery, type GalleryFilter, type GalleryItem } from '../hooks/useChatMediaGallery';
-import { sanitizeMediaUrl, withCloudinaryTransform, downloadFile } from '../utils';
+import { sanitizeMediaUrl, withCloudinaryTransform, downloadFile, preserveKeyboardFocus, nonTouchTabIndex } from '../utils';
 import { detectFirstUrl, normalizeUrl, safeExternalUrl } from '../utils/urlLinkUtils';
 import { IMAGE_URL_RE, VIDEO_URL_RE } from '../../shared/mediaTypes';
 import {
@@ -188,25 +189,35 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
     return items.filter(isDisplayableMediaItem);
   }, [items]);
 
+  const toGalleryMessage = useCallback((it: GalleryItem): Message => {
+    const resolvedType =
+      it.type === 'video' || (it.url && /\.(mp4|webm|mov|m4v)$/i.test(it.url))
+        ? 'video'
+        : it.type === 'gif'
+          ? 'gif'
+          : 'image';
+    return {
+      id: it.id,
+      userId: it.userId || '',
+      username: it.username || 'User',
+      text: it.text || '',
+      timestamp: it.createdAt || new Date().toISOString(),
+      createdAt: it.createdAt || new Date().toISOString(),
+      type: resolvedType as any,
+      url: it.url,
+      originalName: it.originalName,
+      size: it.size,
+      duration: it.duration,
+      ...(it.reactions ? { reactions: filterValidReactions(it.reactions) } : {}),
+    };
+  }, []);
+
   // Build playable items list for the full-screen media player
   const playableItems = useMemo<Message[]>(() => {
     return displayableItems
       .filter((it) => isPlayableType(it.type, it.url))
-      .map((it) => ({
-        id: it.id,
-        userId: it.userId || '',
-        username: it.username || 'User',
-        text: it.text || '',
-        timestamp: it.createdAt || new Date().toISOString(),
-        createdAt: it.createdAt || new Date().toISOString(),
-        type: (it.type === 'video' || (it.url && /\.(mp4|webm|mov|m4v)$/i.test(it.url)) ? 'video' : 'image') as any,
-        url: it.url,
-        originalName: it.originalName,
-        size: it.size,
-        duration: it.duration,
-        sender: it.userId || '',
-      }));
-  }, [displayableItems]);
+      .map(toGalleryMessage);
+  }, [displayableItems, toGalleryMessage]);
 
   const handleMediaClick = useCallback(
     (item: GalleryItem) => {
@@ -217,22 +228,7 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
         const targetList =
           playableItems.length > 0
             ? playableItems
-            : [
-                {
-                  id: item.id,
-                  userId: item.userId || '',
-                  username: item.username || 'User',
-                  text: item.text || '',
-                  timestamp: item.createdAt || new Date().toISOString(),
-                  createdAt: item.createdAt || new Date().toISOString(),
-                  type: (item.type === 'video' || (item.url && /\.(mp4|webm|mov|m4v)$/i.test(item.url)) ? 'video' : 'image') as any,
-                  url: item.url,
-                  originalName: item.originalName,
-                  size: item.size,
-                  duration: item.duration,
-                  sender: item.userId || '',
-                },
-              ];
+            : [toGalleryMessage(item)];
         const targetIndex = targetList.findIndex((m) => m.id === item.id);
         if (openMediaGallery) {
           openMediaGallery(targetList, Math.max(0, targetIndex), { autoPlayVideo: true });
@@ -268,7 +264,7 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
         }
       }
     },
-    [openMediaGallery, openLightbox, playableItems, onShowToast]
+    [openMediaGallery, openLightbox, playableItems, toGalleryMessage, onShowToast]
   );
 
   const renderItem = useCallback(
@@ -283,18 +279,20 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
         const cachedSrc = loadedMediaSrcById ? loadedMediaSrcById[item.id] : undefined;
         const thumbUrl = sanitizeMediaUrl(
           cachedSrc ||
-            withCloudinaryTransform(item.url || '', 'f_auto,q_auto,w_240,h_240,c_fill') ||
-            item.url ||
-            ''
+          withCloudinaryTransform(item.url || '', 'f_auto,q_auto,w_240,h_240,c_fill') ||
+          item.url ||
+          ''
         );
 
         return (
           <MediaGalleryTile
             key={item.id}
+            onPointerDown={preserveKeyboardFocus}
+            onMouseDown={preserveKeyboardFocus}
             onClick={() => handleMediaClick(item)}
             title={item.originalName || 'Photo'}
             role="button"
-            tabIndex={0}
+            tabIndex={nonTouchTabIndex(0)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
@@ -324,9 +322,9 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
         const cachedSrc = loadedMediaSrcById ? loadedMediaSrcById[item.id] : undefined;
         const posterUrl = sanitizeMediaUrl(
           withCloudinaryTransform(item.url || '', 'so_0,f_jpg,q_auto,w_240,h_240,c_fill') ||
-            cachedSrc ||
-            item.url ||
-            ''
+          cachedSrc ||
+          item.url ||
+          ''
         );
 
         const durationStr = formatDuration(item.duration);
@@ -334,10 +332,12 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
         return (
           <MediaGalleryTile
             key={item.id}
+            onPointerDown={preserveKeyboardFocus}
+            onMouseDown={preserveKeyboardFocus}
             onClick={() => handleMediaClick(item)}
             title={item.originalName || 'Video'}
             role="button"
-            tabIndex={0}
+            tabIndex={nonTouchTabIndex(0)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
@@ -378,10 +378,12 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
         return (
           <MediaGalleryDocCard
             key={item.id}
+            onPointerDown={preserveKeyboardFocus}
+            onMouseDown={preserveKeyboardFocus}
             onClick={() => handleMediaClick(item)}
             title={`Download ${item.originalName || 'file'}`}
             role="button"
-            tabIndex={0}
+            tabIndex={nonTouchTabIndex(0)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
@@ -418,10 +420,12 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
         return (
           <MediaGalleryLinkCard
             key={item.id}
+            onPointerDown={preserveKeyboardFocus}
+            onMouseDown={preserveKeyboardFocus}
             onClick={() => handleMediaClick(item)}
             title={`Open ${domain || 'link'}`}
             role="button"
-            tabIndex={0}
+            tabIndex={nonTouchTabIndex(0)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
@@ -467,6 +471,8 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
           <MediaGalleryFilterChip
             key={value}
             $active={filter === value}
+            onPointerDown={preserveKeyboardFocus}
+            onMouseDown={preserveKeyboardFocus}
             onClick={() => toggleFilter(value)}
             type="button"
             role="tab"
@@ -510,7 +516,12 @@ export const SideMediaGallery: React.FC<SideMediaGalleryProps> = ({
           {error && (
             <MediaGalleryErrorState>
               <span>{error}</span>
-              <button type="button" onClick={refetch}>
+              <button
+                type="button"
+                onPointerDown={preserveKeyboardFocus}
+                onMouseDown={preserveKeyboardFocus}
+                onClick={refetch}
+              >
                 Retry
               </button>
             </MediaGalleryErrorState>

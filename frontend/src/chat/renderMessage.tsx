@@ -6,6 +6,7 @@ import {
   formatMediaSize, getFileContainerLabel,
   downloadFile, getDisplayFilename,
   isNonTouchDevice, isPhotoOrGif, isGifMessage,
+  preserveKeyboardFocus, nonTouchTabIndex,
 } from './utils';
 import {
   VALID_TLDS,
@@ -132,7 +133,8 @@ export const renderMessageContent = (
                 src={sanitizeMediaUrl(resolvedMediaUrl)}
                 alt={displayFilename}
                 onClick={() => { if (isSelectModeActive) return; const u = sanitizeMediaUrl(resolvedMediaUrl); if (u) openLightbox(u, msg.url); }}
-                onPointerDown={() => onMediaPointerDown?.()}
+                onPointerDown={(e) => { preserveKeyboardFocus(e); onMediaPointerDown?.(); }}
+                onMouseDown={preserveKeyboardFocus}
                 onDoubleClick={(e) => e.preventDefault()}
                 onContextMenu={(e) => e.preventDefault()}
               />
@@ -261,8 +263,10 @@ export const renderMessageContent = (
       <MediaContent>
         <FileAttachmentCard
           role={canDownload ? 'button' : undefined}
-          tabIndex={canDownload ? 0 : -1}
+          tabIndex={canDownload ? nonTouchTabIndex(0) : undefined}
           title={canDownload ? (isDownloadInProgress ? 'Downloading' : 'Download file') : undefined}
+          onPointerDown={preserveKeyboardFocus}
+          onMouseDown={preserveKeyboardFocus}
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();

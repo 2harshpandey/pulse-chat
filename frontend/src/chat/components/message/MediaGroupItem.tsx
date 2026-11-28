@@ -12,6 +12,7 @@ import {
   isNonTouchDevice,
   isPhotoOrGif,
   isGifMessage,
+  preserveKeyboardFocus,
 } from '../../utils';
 import { useAlbumDownload } from '../../albumDownloadManager';
 import {
@@ -324,6 +325,8 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
         {isSelectModeActive && (!isMobileView || selectedMessages.length > 1) && (
           <SelectCheckboxContainer
             data-checkbox
+            onPointerDown={preserveKeyboardFocus}
+            onMouseDown={preserveKeyboardFocus}
             onClick={(e) => {
               e.stopPropagation();
               handleToggleSelectMessage(primaryMessage.id);
@@ -411,6 +414,8 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
                 return (
                   <MediaGroupTile
                     key={item.id || idx}
+                    onPointerDown={preserveKeyboardFocus}
+                    onMouseDown={preserveKeyboardFocus}
                     onDoubleClick={(e) => {
                       if (!isMobileView && !isSelectModeActive) {
                         e.stopPropagation();
@@ -457,6 +462,8 @@ export const MediaGroupItem: React.FC<MediaGroupItemProps> = React.memo(({
                               data-allow-quote-swipe
                               aria-label={isVideo ? 'Load video' : 'Load image'}
                               title={isVideo ? 'Load video' : 'Load image'}
+                              onPointerDown={preserveKeyboardFocus}
+                              onMouseDown={preserveKeyboardFocus}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 if (onRequestMediaLoad && item.url) {

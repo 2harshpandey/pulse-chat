@@ -1,6 +1,7 @@
 import React from 'react';
 import type { VoicePreviewSnapshot, useVoiceRecorder } from '../../hooks';
 import { formatAudioDuration } from '../message';
+import { preserveKeyboardFocus } from '../../utils';
 import { VoiceNotePreviewBar } from '../VoiceNotePreviewBar';
 import {
   RecordingBarWrapper,
@@ -62,7 +63,8 @@ export const VoiceRecordingBar: React.FC<VoiceRecordingBarProps> = ({
       <RecordingActionGroup>
         <RecordingCancelBtn
           type="button"
-          onMouseDown={(e) => e.preventDefault()}
+          onPointerDown={preserveKeyboardFocus}
+          onMouseDown={preserveKeyboardFocus}
           onClick={onDiscardVoice}
           title="Cancel recording"
           aria-label="Cancel recording"
@@ -79,7 +81,8 @@ export const VoiceRecordingBar: React.FC<VoiceRecordingBarProps> = ({
           <>
             <RecordingPreviewBtn
               type="button"
-              onMouseDown={(e) => e.preventDefault()}
+              onPointerDown={preserveKeyboardFocus}
+              onMouseDown={preserveKeyboardFocus}
               disabled={isFinalizingRecording}
               onClick={onOpenVoicePreview}
               title="Listen & peek before sending"
@@ -126,7 +129,8 @@ export const VoiceRecordingBar: React.FC<VoiceRecordingBarProps> = ({
 
         <RecordingPauseResumeBtn
           type="button"
-          onMouseDown={(e) => e.preventDefault()}
+          onPointerDown={preserveKeyboardFocus}
+          onMouseDown={preserveKeyboardFocus}
           $isPaused={recorder.isPaused}
           disabled={isFinalizingRecording}
           onClick={recorder.isPaused ? recorder.resumeRecording : recorder.pauseRecording}

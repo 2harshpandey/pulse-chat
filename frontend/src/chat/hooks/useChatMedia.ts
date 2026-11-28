@@ -164,7 +164,7 @@ export function useChatMedia({
   });
 
   // Sub-hook: Lightbox
-  const lightbox = useChatLightbox();
+  const lightbox = useChatLightbox({ roomId });
 
   // Media Loading & Hydration
   const [loadedMediaMessageIds, setLoadedMediaMessageIds] = useState<string[]>([]);

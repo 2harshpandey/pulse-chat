@@ -9,6 +9,7 @@ import {
   subscribeAudioDuration,
   resolveAudioDuration,
   getDeletedForMeIds,
+  preserveKeyboardFocus,
 } from '../../utils';
 import { MediaAlbumIcon } from '../message/MediaAlbumIcon';
 import { getDeletedForMeMessageLabel } from '../message/MessageQuotedPreview';
@@ -299,7 +300,13 @@ export const ReplyEditPreviewBanner: React.FC<ReplyEditPreviewBannerProps> = ({
             <p>Editing message</p>
             <span>{editingMessageOriginalText || 'Message'}</span>
           </EditPreviewText>
-          <EditPreviewDismiss onClick={onCancelEdit} title="Cancel editing (Esc)" aria-label="Cancel editing">
+          <EditPreviewDismiss
+            onPointerDown={preserveKeyboardFocus}
+            onMouseDown={preserveKeyboardFocus}
+            onClick={onCancelEdit}
+            title="Cancel editing (Esc)"
+            aria-label="Cancel editing"
+          >
             &times;
           </EditPreviewDismiss>
         </EditPreviewContainer>
@@ -322,7 +329,13 @@ export const ReplyEditPreviewBanner: React.FC<ReplyEditPreviewBannerProps> = ({
             </div>
           )}
           <FilePreviewInfo>{stagedFile.name}</FilePreviewInfo>
-          <CancelPreviewButton onClick={onCancelStagedFile}>&times;</CancelPreviewButton>
+          <CancelPreviewButton
+            onPointerDown={preserveKeyboardFocus}
+            onMouseDown={preserveKeyboardFocus}
+            onClick={onCancelStagedFile}
+          >
+            &times;
+          </CancelPreviewButton>
         </FilePreviewContainer>
       )}
 
@@ -331,7 +344,13 @@ export const ReplyEditPreviewBanner: React.FC<ReplyEditPreviewBannerProps> = ({
           <FilePreviewInfo>
             {stagedFiles.length} file{stagedFiles.length > 1 ? 's' : ''} ready
           </FilePreviewInfo>
-          <CancelPreviewButton onClick={onCancelStagedFiles}>&times;</CancelPreviewButton>
+          <CancelPreviewButton
+            onPointerDown={preserveKeyboardFocus}
+            onMouseDown={preserveKeyboardFocus}
+            onClick={onCancelStagedFiles}
+          >
+            &times;
+          </CancelPreviewButton>
         </FilePreviewContainer>
       )}
 
@@ -339,7 +358,13 @@ export const ReplyEditPreviewBanner: React.FC<ReplyEditPreviewBannerProps> = ({
         <FilePreviewContainer>
           <FilePreviewImage src={stagedGif.preview} alt="GIF Preview" />
           <FilePreviewInfo>GIF</FilePreviewInfo>
-          <CancelPreviewButton onClick={onCancelStagedGif}>&times;</CancelPreviewButton>
+          <CancelPreviewButton
+            onPointerDown={preserveKeyboardFocus}
+            onMouseDown={preserveKeyboardFocus}
+            onClick={onCancelStagedGif}
+          >
+            &times;
+          </CancelPreviewButton>
         </FilePreviewContainer>
       )}
     </>

@@ -11,7 +11,7 @@ import {
   VoicePreviewWaveformBar,
   VoicePreviewTimerSpan,
 } from '../Chat.styles';
-import { sanitizeMediaUrl } from '../utils';
+import { sanitizeMediaUrl, preserveKeyboardFocus, nonTouchTabIndex } from '../utils';
 import {
   audioCoordinator,
   formatAudioDuration,
@@ -360,7 +360,8 @@ export const VoiceNotePreviewBar: React.FC<VoiceNotePreviewBarProps> = ({
       <RecordingActionGroup>
         <RecordingCancelBtn
           type="button"
-          onMouseDown={(e) => e.preventDefault()}
+          onPointerDown={preserveKeyboardFocus}
+          onMouseDown={preserveKeyboardFocus}
           onClick={() => {
             pausePlayback();
             audioCoordinator.stop(coordinatorIdRef.current);
@@ -380,7 +381,8 @@ export const VoiceNotePreviewBar: React.FC<VoiceNotePreviewBarProps> = ({
         <VoicePreviewPlayBtn
           type="button"
           $isPlaying={isPlaying}
-          onMouseDown={(e) => e.preventDefault()}
+          onPointerDown={preserveKeyboardFocus}
+          onMouseDown={preserveKeyboardFocus}
           onClick={togglePlayPause}
           title={isPlaying ? 'Pause preview' : 'Play preview'}
           aria-label={isPlaying ? 'Pause voice preview' : 'Play voice preview'}
@@ -400,13 +402,14 @@ export const VoiceNotePreviewBar: React.FC<VoiceNotePreviewBarProps> = ({
         <VoicePreviewWaveformBox
           ref={waveformRef}
           role="slider"
-          tabIndex={0}
+          tabIndex={nonTouchTabIndex(0)}
           aria-label="Seek voice message preview"
           aria-valuemin={0}
           aria-valuemax={Math.round(audioDuration)}
           aria-valuenow={Math.round(currentTime)}
           title="Peek audio position"
           onPointerDown={handleWaveformPointerDown}
+          onMouseDown={preserveKeyboardFocus}
           onPointerMove={handleWaveformPointerMove}
           onPointerUp={(e) => {
             if (activePointerIdRef.current !== null && e.pointerId !== activePointerIdRef.current) return;
@@ -448,7 +451,8 @@ export const VoiceNotePreviewBar: React.FC<VoiceNotePreviewBarProps> = ({
           <RecordingPauseResumeBtn
             type="button"
             $isPaused={true}
-            onMouseDown={(e) => e.preventDefault()}
+            onPointerDown={preserveKeyboardFocus}
+            onMouseDown={preserveKeyboardFocus}
             onClick={() => {
               pausePlayback();
               audioCoordinator.stop(coordinatorIdRef.current);

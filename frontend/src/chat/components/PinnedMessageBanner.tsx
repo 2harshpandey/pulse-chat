@@ -1,4 +1,5 @@
 import React from 'react';
+import { preserveKeyboardFocus } from '../utils';
 import {
   PinnedBannerContainer,
   PinnedBannerIconWrapper,
@@ -37,7 +38,11 @@ export const PinnedMessageBanner: React.FC<PinnedMessageBannerProps> = ({
   if (!msg) return null;
 
   return (
-    <PinnedBannerContainer onClick={onClick}>
+    <PinnedBannerContainer
+      onPointerDown={preserveKeyboardFocus}
+      onMouseDown={preserveKeyboardFocus}
+      onClick={onClick}
+    >
       <PinnedBannerIconWrapper>
         {isJumpingToPinned ? (
           <>

@@ -9,6 +9,7 @@ import {
   DownloadProgressRing,
 } from '../../ChatStyledComponents';
 import type { TransferInfo } from '../../TransferManager';
+import { preserveKeyboardFocus } from '../../utils';
 
 export const DownloadSvg: React.FC = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -94,7 +95,11 @@ export const MediaTapToLoadOverlay: React.FC<MediaTapToLoadOverlayProps> = ({
       data-allow-quote-swipe
       aria-label={isVideo ? 'Load video' : 'Load image'}
       title={isVideo ? 'Load video' : 'Load image'}
-      onPointerDown={onPointerDown}
+      onPointerDown={(e) => {
+        preserveKeyboardFocus(e);
+        onPointerDown?.();
+      }}
+      onMouseDown={preserveKeyboardFocus}
       onClick={onClick}
       $isLoading={isLoading}
     >
@@ -133,6 +138,8 @@ export const MediaUploadProgressOverlay: React.FC<MediaUploadProgressOverlayProp
 }) => (
   <MediaLoadGate
     type="button"
+    onPointerDown={preserveKeyboardFocus}
+    onMouseDown={preserveKeyboardFocus}
     onClick={(e) => {
       e.stopPropagation();
       const target = e.target as HTMLElement;
@@ -196,6 +203,7 @@ export const MediaDownloadActionOverlay: React.FC<MediaDownloadActionOverlayProp
       e.preventDefault();
       onTrigger();
     }}
+    onMouseDown={preserveKeyboardFocus}
     onClick={(e) => {
       e.preventDefault();
       e.stopPropagation();

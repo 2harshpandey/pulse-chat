@@ -295,7 +295,10 @@ export const InlineDownloadBtn = styled.button`
 /* - WhatsApp-style File Preview Modal - */
 export const FilePreviewModal = styled.div`
   position: fixed;
-  inset: 0;
+  top: var(--app-offset-top, 0px);
+  left: 0;
+  right: 0;
+  height: var(--app-height, 100dvh);
   z-index: 9999;
   display: flex;
   flex-direction: column;
@@ -662,7 +665,10 @@ export const ReactionsContainer = styled.div<{ $sender: 'me' | 'other' }>`
 
 export const Lightbox = styled.div`
   position: fixed;
-  inset: 0;
+  top: var(--app-offset-top, 0px);
+  left: 0;
+  right: 0;
+  height: var(--app-height, 100dvh);
   background: rgba(2, 6, 23, 0.92);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -1039,7 +1045,10 @@ export const MediaVideoCornerTag = styled.div`
    ══════════════════════════════════════════ */
 export const MediaGalleryOverlay = styled.div`
   position: fixed;
-  inset: 0;
+  top: var(--app-offset-top, 0px);
+  left: 0;
+  right: 0;
+  height: var(--app-height, 100dvh);
   z-index: 1000;
   background: rgba(2, 6, 23, 0.96);
   display: flex;

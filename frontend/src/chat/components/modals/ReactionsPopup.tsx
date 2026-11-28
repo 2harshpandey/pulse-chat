@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { sanitizeMediaUrl } from '../../utils';
+import { sanitizeMediaUrl, preserveKeyboardFocus } from '../../utils';
 import type { ReactionsPopupData } from '../../types';
 import {
   ReactionsPopupModal,
@@ -66,8 +66,22 @@ export const ReactionsPopup: React.FC<ReactionsPopupProps> = ({
   const tabs = ['All', ...Object.keys(popupData.reactions)];
 
   return (
-    <ReactionsPopupModal onClick={onClose}>
-      <ReactionsPopupContent onClick={(e) => e.stopPropagation()}>
+    <ReactionsPopupModal
+      onPointerDown={preserveKeyboardFocus}
+      onMouseDown={preserveKeyboardFocus}
+      onClick={onClose}
+    >
+      <ReactionsPopupContent
+        onPointerDown={(e) => {
+          e.stopPropagation();
+          preserveKeyboardFocus(e);
+        }}
+        onMouseDown={(e) => {
+          e.stopPropagation();
+          preserveKeyboardFocus(e);
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
         <ReactionsPopupHeader ref={tabsRef}>
           {tabs.map(tab => {
             const count = tab === 'All'
@@ -75,7 +89,13 @@ export const ReactionsPopup: React.FC<ReactionsPopupProps> = ({
               : popupData.reactions[tab]?.length || 0;
             if (count === 0) return null;
             return (
-              <ReactionTab key={tab} active={tab === activeTab} onClick={() => setActiveTab(tab)}>
+              <ReactionTab
+                key={tab}
+                active={tab === activeTab}
+                onPointerDown={preserveKeyboardFocus}
+                onMouseDown={preserveKeyboardFocus}
+                onClick={() => setActiveTab(tab)}
+              >
                 <span>{tab}</span>
                 <span>{count}</span>
               </ReactionTab>
@@ -92,6 +112,8 @@ export const ReactionsPopup: React.FC<ReactionsPopupProps> = ({
             return (
               <ReactionUserRow
                 key={`${userId}_${emoji}_${messageId || index}_${index}`}
+                onPointerDown={preserveKeyboardFocus}
+                onMouseDown={preserveKeyboardFocus}
                 onClick={() => {
                   if (userId === currentUserId) {
                     onRemoveReaction(emoji, messageId, isAlbum);
